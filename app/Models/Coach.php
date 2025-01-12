@@ -20,4 +20,5 @@ class Coach extends Model
     {
         return $this->hasMany(CoachingSessions::class, 'CoachID', 'CoachID');
     }
+    
 }

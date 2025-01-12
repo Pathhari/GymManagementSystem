@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('lockers', function (Blueprint $table) {
             $table->id('LockerID');
+            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->string('LockerNumber')->unique();
             $table->string('Status')->default('Available'); // "Available", "Occupied", "OutOfService"
             $table->text('Notes')->nullable();

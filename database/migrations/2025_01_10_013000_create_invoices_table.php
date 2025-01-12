@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('invoices', function (Blueprint $table) {
             $table->id('InvoiceID');
+            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->unsignedBigInteger('MemberID')->nullable();
             $table->unsignedBigInteger('PromotionID')->nullable();
             $table->dateTime('InvoiceDate')->nullable();

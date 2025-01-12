@@ -12,6 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('staff', function (Blueprint $table) {
+            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->id('StaffID');
             $table->string('FullName');
             $table->string('Role')->default('Staff'); 

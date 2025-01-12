@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('system_logs', function (Blueprint $table) {
             $table->id('LogID');
+            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->unsignedBigInteger('UserID')->nullable(); // references Staff or system user
             $table->string('Action');
             $table->dateTime('Timestamp');

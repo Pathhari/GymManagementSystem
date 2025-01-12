@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('members', function (Blueprint $table) {
             $table->id('MemberID');                 // PK
+            $table->unsignedBigInteger('StartedBranchID')->nullable();
+            $table->foreign('StartedBranchID')->references('BranchID')->on('branches');
             $table->string('FullName');
             $table->string('Email')->unique();
             $table->string('Phone')->nullable();

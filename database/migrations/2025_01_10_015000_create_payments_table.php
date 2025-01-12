@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('payments', function (Blueprint $table) {
             $table->id('PaymentID');
+            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->unsignedBigInteger('MemberID')->nullable();  // if walk-ins, might be null
             $table->string('PaymentFor')->nullable();            // "Membership", "Session", "Facility", etc.
             $table->string('PaymentMethod')->nullable();         // "Cash", "GCash", "BPI"

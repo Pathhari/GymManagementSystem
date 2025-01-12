@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('daily_cash_flows', function (Blueprint $table) {
             $table->id('CashFlowID');
+            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->date('Date');
             $table->string('BusinessType')->default('Gym'); // or "Cafe", "Yogurt Cafe"
             $table->decimal('CashSales', 10, 2)->default(0);

@@ -12,7 +12,7 @@ use App\Models\Equipment;
 use App\Models\MaintenanceLog;
 use App\Models\MemberVisit;
 use App\Models\Member;
-use Illuminate\Support\Facades\DB; // if needed for transactions
+use Illuminate\Support\Facades\DB;
 
 class OperationsController extends Controller
 {
@@ -27,8 +27,19 @@ class OperationsController extends Controller
      */
     public function indexProducts()
     {
-        // Get all products from the DB
-        $products = Product::orderBy('ProductName','asc')->get();
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+
+        // Staff sees only their branch. Owner/Admin see all.
+        if ($staff) {
+            $products = Product::where('BranchID', $staff->BranchID)
+                ->orderBy('ProductName','asc')
+                ->get();
+        } else {
+            // Admin or Owner => show all
+            $products = Product::orderBy('ProductName','asc')->get();
+        }
 
         return Inertia::render('Operations/Inventory/Index', compact('products'));
     }
@@ -39,9 +50,12 @@ class OperationsController extends Controller
      */
     public function storeProduct(Request $request)
     {
-        // Validate according to your Product table fields
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+
+        // Validate
         $data = $request->validate([
-            // If you want to handle create vs. update in one method, you might check if an ID is present
             'ProductID'      => 'nullable|exists:products,ProductID',
             'ProductName'    => 'required|string|max:255',
             'Category'       => 'nullable|string|max:100',
@@ -51,14 +65,29 @@ class OperationsController extends Controller
             'Cost'           => 'nullable|numeric|min:0',
             'Price'          => 'nullable|numeric|min:0',
             'Notes'          => 'nullable|string',
+            // Because branch-based:
+            'BranchID'       => 'nullable|exists:branches,BranchID',
         ]);
 
+        // If staff => forcibly set BranchID to staff->BranchID
+        if ($staff) {
+            $data['BranchID'] = $staff->BranchID;
+        } 
+        // If admin/owner => they can pass in BranchID from the form 
+        // (or you can auto-set a default if needed).
+
         if (!empty($data['ProductID'])) {
-            // If ProductID was supplied, we update an existing record
+            // Update existing
             $product = Product::findOrFail($data['ProductID']);
+
+            // Check if staff -> can only update if product->BranchID == staff->BranchID
+            if ($staff && $product->BranchID != $staff->BranchID) {
+                abort(403, 'You cannot update another branch’s product.');
+            }
+
             $product->update($data);
         } else {
-            // Otherwise, we create a new product
+            // Create new
             Product::create($data);
         }
 
@@ -73,37 +102,45 @@ class OperationsController extends Controller
      */
     public function adjustStock(Request $request)
     {
+        $staff = auth('staff')->user();
+
         $data = $request->validate([
             'ProductID'       => 'required|exists:products,ProductID',
             'QuantityChange'  => 'required|integer',
-            'ChangeType'      => 'nullable|string|max:50', // e.g. 'Purchase', 'Usage', 'Disposal'
+            'ChangeType'      => 'nullable|string|max:50',
             'Notes'           => 'nullable|string',
         ]);
 
-        // We'll do an example of an atomic update to the product's StockLevel
-        DB::transaction(function () use ($data) {
-            // 1) Fetch product
+        // Ensure staff can only adjust products from their branch
+        if ($staff) {
+            $productCheck = Product::where('ProductID',$data['ProductID'])
+                ->where('BranchID',$staff->BranchID)
+                ->first();
+
+            if (!$productCheck) {
+                abort(403, 'You cannot adjust stock of another branch’s product.');
+            }
+        }
+
+        DB::transaction(function () use ($data, $staff) {
+            // Lock row to avoid race conditions
             $product = Product::lockForUpdate()->find($data['ProductID']);
 
-            // 2) Calculate new stock
             $newStock = $product->StockLevel + $data['QuantityChange'];
             if ($newStock < 0) {
-                // Ensure we don’t go negative; or handle how you wish
                 abort(400, 'Stock cannot go below zero.');
             }
-
             $product->StockLevel = $newStock;
             $product->save();
 
-            // 3) Insert ProductInventoryLog
+            // Insert a new inventory log
             ProductInventoryLog::create([
                 'ProductID'     => $product->ProductID,
                 'ChangeDate'    => now(),
                 'ChangeType'    => $data['ChangeType'] ?? 'Adjustment',
                 'QuantityChange'=> $data['QuantityChange'],
                 'NewStockLevel' => $newStock,
-                // If you track who performed the action:
-                // 'StaffID'    => auth()->id() 
+                'StaffID'       => $staff ? $staff->StaffID : null,
                 'Notes'         => $data['Notes'] ?? null,
             ]);
         });
@@ -116,7 +153,18 @@ class OperationsController extends Controller
      */
     public function destroyProduct($id)
     {
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+
         $product = Product::findOrFail($id);
+
+        // Staff not supposed to delete => but if your RBA matrix allows staff, 
+        // you can do the same branch check:
+        if ($staff && $product->BranchID != $staff->BranchID) {
+            abort(403, 'You cannot delete a product in another branch.');
+        }
+
         $product->delete();
 
         return redirect()
@@ -130,9 +178,15 @@ class OperationsController extends Controller
      */
     public function viewStockLevels()
     {
-        // Could do a more advanced aggregated view
-        // For example, each Product with current StockLevel
-        $products = Product::orderBy('ProductName')->get();
+        $staff = auth('staff')->user();
+
+        if ($staff) {
+            $products = Product::where('BranchID',$staff->BranchID)
+                ->orderBy('ProductName')
+                ->get();
+        } else {
+            $products = Product::orderBy('ProductName')->get();
+        }
 
         return Inertia::render('Operations/Inventory/StockLevels', [
             'products' => $products
@@ -146,11 +200,20 @@ class OperationsController extends Controller
 
     /**
      * 44. Manage Locker => route:Owner,Admin,Staff
-     * We show a list of lockers and their status.
+     * Show a list of lockers and their status.
      */
     public function indexLockers()
     {
-        $lockers = Locker::orderBy('LockerNumber','asc')->get();
+        $staff = auth('staff')->user();
+
+        if ($staff) {
+            $lockers = Locker::where('BranchID',$staff->BranchID)
+                ->orderBy('LockerNumber','asc')
+                ->get();
+        } else {
+            // admin/owner => all
+            $lockers = Locker::orderBy('LockerNumber','asc')->get();
+        }
 
         return Inertia::render('Operations/Lockers/Index', [
             'lockers' => $lockers
@@ -162,19 +225,33 @@ class OperationsController extends Controller
      */
     public function storeLocker(Request $request)
     {
+        $staff = auth('staff')->user();
+
         $data = $request->validate([
-            'LockerID'    => 'nullable|exists:lockers,LockerID',
-            'LockerNumber'=> 'required|string|max:50|unique:lockers,LockerNumber,'.$request->LockerID.',LockerID',
-            'Status'      => 'required|string|max:50',   // e.g. 'Available', 'Occupied', 'OutOfService'
-            'Notes'       => 'nullable|string',
+            'LockerID'     => 'nullable|exists:lockers,LockerID',
+            'LockerNumber' => 'required|string|max:50',
+            'Status'       => 'required|string|max:50',
+            'Notes'        => 'nullable|string',
+            'BranchID'     => 'nullable|exists:branches,BranchID',
         ]);
 
+        // Staff forced to own branch
+        if ($staff) {
+            $data['BranchID'] = $staff->BranchID;
+        }
+
         if (!empty($data['LockerID'])) {
-            // update existing
             $locker = Locker::findOrFail($data['LockerID']);
+
+            // If staff => branch check
+            if ($staff && $locker->BranchID != $staff->BranchID) {
+                abort(403,'Cannot update locker from another branch.');
+            }
+
+            // Check unique LockerNumber ignoring self
             $locker->update($data);
         } else {
-            // create new
+            // If staff => or admin => create new
             Locker::create($data);
         }
 
@@ -188,13 +265,24 @@ class OperationsController extends Controller
      */
     public function borrowLockerKey(Request $request)
     {
+        $staff = auth('staff')->user();
+
         $data = $request->validate([
-            'LockerID'    => 'required|exists:lockers,LockerID',
-            'MemberID'    => 'required|exists:members,MemberID',
-            'Notes'       => 'nullable|string',
+            'LockerID' => 'required|exists:lockers,LockerID',
+            'MemberID' => 'required|exists:members,MemberID',
+            'Notes'    => 'nullable|string',
         ]);
 
-        // Create a new usage record
+        // Check staff’s branch vs. locker->BranchID
+        if ($staff) {
+            $lockerCheck = Locker::where('LockerID',$data['LockerID'])
+                ->where('BranchID',$staff->BranchID)
+                ->first();
+            if (!$lockerCheck) {
+                abort(403,'Cannot borrow a locker from another branch.');
+            }
+        }
+
         LockerUsage::create([
             'LockerID'     => $data['LockerID'],
             'MemberID'     => $data['MemberID'],
@@ -204,7 +292,7 @@ class OperationsController extends Controller
             'Notes'        => $data['Notes'] ?? null,
         ]);
 
-        // Optionally update locker status => 'Occupied'
+        // Optionally update locker status => "Occupied"
         Locker::where('LockerID',$data['LockerID'])->update(['Status'=>'Occupied']);
 
         return redirect()->back()->with('success','Locker key borrowed successfully.');
@@ -215,7 +303,14 @@ class OperationsController extends Controller
      */
     public function returnLockerKey($usageId)
     {
+        $staff = auth('staff')->user();
         $usage = LockerUsage::findOrFail($usageId);
+
+        // If staff => check usage->locker->BranchID
+        if ($staff && $usage->locker && $usage->locker->BranchID != $staff->BranchID) {
+            abort(403,'Cannot return a locker key from another branch.');
+        }
+
         if ($usage->Returned) {
             return redirect()->back()->with('info','Key already returned.');
         }
@@ -225,7 +320,7 @@ class OperationsController extends Controller
             'Returned'   => true,
         ]);
 
-        // Optionally set locker back to 'Available'
+        // Optionally set locker back to "Available"
         $locker = $usage->locker;
         if ($locker) {
             $locker->update(['Status'=>'Available']);
@@ -244,7 +339,16 @@ class OperationsController extends Controller
      */
     public function indexEquipment()
     {
-        $equipment = Equipment::orderBy('Name','asc')->get();
+        $staff = auth('staff')->user();
+
+        if ($staff) {
+            $equipment = Equipment::where('BranchID',$staff->BranchID)
+                ->orderBy('Name','asc')
+                ->get();
+        } else {
+            // Admin/Owner => all
+            $equipment = Equipment::orderBy('Name','asc')->get();
+        }
 
         return Inertia::render('Operations/Equipment/Index', [
             'equipment' => $equipment
@@ -256,21 +360,32 @@ class OperationsController extends Controller
      */
     public function storeEquipment(Request $request)
     {
+        $staff = auth('staff')->user();
+
         $data = $request->validate([
-            'EquipmentID'        => 'nullable|exists:equipment,EquipmentID',
-            'Name'               => 'required|string|max:100',
-            'SerialNumber'       => 'nullable|string|max:100|unique:equipment,SerialNumber,'.$request->EquipmentID.',EquipmentID',
-            'Status'             => 'required|string|max:50', // e.g. 'Available','InMaintenance','OutOfService'
-            'LastMaintenanceDate'=> 'nullable|date',
-            'Notes'              => 'nullable|string',
+            'EquipmentID'         => 'nullable|exists:equipment,EquipmentID',
+            'Name'                => 'required|string|max:100',
+            'SerialNumber'        => 'nullable|string|max:100',
+            'Status'              => 'required|string|max:50',
+            'LastMaintenanceDate' => 'nullable|date',
+            'Notes'               => 'nullable|string',
+            'BranchID'            => 'nullable|exists:branches,BranchID',
         ]);
 
+        if ($staff) {
+            $data['BranchID'] = $staff->BranchID;
+        }
+
         if (!empty($data['EquipmentID'])) {
-            // update
             $eq = Equipment::findOrFail($data['EquipmentID']);
+
+            // staff => must match eq->BranchID
+            if ($staff && $eq->BranchID != $staff->BranchID) {
+                abort(403,'Cannot update equipment of another branch.');
+            }
+
             $eq->update($data);
         } else {
-            // create
             Equipment::create($data);
         }
 
@@ -284,20 +399,29 @@ class OperationsController extends Controller
      */
     public function addMaintenanceLog(Request $request)
     {
+        $staff = auth('staff')->user();
+
         $data = $request->validate([
             'EquipmentID'        => 'required|exists:equipment,EquipmentID',
             'MaintenanceDate'    => 'required|date',
             'IssueDescription'   => 'nullable|string|max:255',
             'Resolution'         => 'nullable|string|max:255',
-            'MaintainedBy'       => 'nullable|integer', // if referencing staff ID or external
+            'MaintainedBy'       => 'nullable|integer',
             'NextMaintenanceDate'=> 'nullable|date|after_or_equal:MaintenanceDate',
             'Notes'              => 'nullable|string',
         ]);
 
-        MaintenanceLog::create($data);
+        // staff => check eq->BranchID
+        if ($staff) {
+            $eqCheck = Equipment::where('EquipmentID',$data['EquipmentID'])
+                ->where('BranchID',$staff->BranchID)
+                ->first();
+            if (!$eqCheck) {
+                abort(403,'Cannot log maintenance for another branch’s equipment.');
+            }
+        }
 
-        // Optionally update equipment status => 'InMaintenance' or something
-        // Or keep it separate.
+        MaintenanceLog::create($data);
 
         return redirect()->back()->with('success','Maintenance log recorded successfully.');
     }
@@ -312,7 +436,8 @@ class OperationsController extends Controller
      */
     public function createVisit()
     {
-        // For a dropdown of members
+        // Possibly staff can only pick members of their branch => if you wish
+        // For now, we show all members
         $members = Member::orderBy('FullName')->get();
 
         return Inertia::render('Operations/Visits/Create', compact('members'));
@@ -320,13 +445,21 @@ class OperationsController extends Controller
 
     public function storeVisit(Request $request)
     {
+        $staff = auth('staff')->user();
+
         $data = $request->validate([
             'MemberID'      => 'required|exists:members,MemberID',
             'VisitDate'     => 'required|date',
             'VisitTime'     => 'required',
-            'CheckInMethod' => 'nullable|string|max:50', // e.g. 'Biometric','Card'
+            'CheckInMethod' => 'nullable|string|max:50',
             'Remarks'       => 'nullable|string',
+            'BranchID'      => 'nullable|exists:branches,BranchID',
         ]);
+
+        // If staff, fix BranchID
+        if ($staff) {
+            $data['BranchID'] = $staff->BranchID;
+        }
 
         MemberVisit::create($data);
 
@@ -338,14 +471,32 @@ class OperationsController extends Controller
     // 51. View/Update => route:All
     public function indexVisits()
     {
-        $visits = MemberVisit::with('member')->orderBy('VisitDate','desc')->get();
+        $staff = auth('staff')->user();
+
+        if ($staff) {
+            $visits = MemberVisit::where('BranchID',$staff->BranchID)
+                ->with('member')
+                ->orderBy('VisitDate','desc')
+                ->get();
+        } else {
+            $visits = MemberVisit::with('member')
+                ->orderBy('VisitDate','desc')
+                ->get();
+        }
 
         return Inertia::render('Operations/Visits/Index', compact('visits'));
     }
 
     public function editVisit($id)
     {
-        $visit   = MemberVisit::findOrFail($id);
+        $staff = auth('staff')->user();
+        $visit = MemberVisit::findOrFail($id);
+
+        // Check branch
+        if ($staff && $visit->BranchID != $staff->BranchID) {
+            abort(403,'Cannot edit a visit from another branch.');
+        }
+
         $members = Member::orderBy('FullName')->get();
 
         return Inertia::render('Operations/Visits/Edit', [
@@ -356,7 +507,12 @@ class OperationsController extends Controller
 
     public function updateVisit(Request $request, $id)
     {
+        $staff = auth('staff')->user();
         $visit = MemberVisit::findOrFail($id);
+
+        if ($staff && $visit->BranchID != $staff->BranchID) {
+            abort(403,'Cannot update a visit from another branch.');
+        }
 
         $data = $request->validate([
             'MemberID'      => 'required|exists:members,MemberID',
@@ -364,7 +520,13 @@ class OperationsController extends Controller
             'VisitTime'     => 'required',
             'CheckInMethod' => 'nullable|string|max:50',
             'Remarks'       => 'nullable|string',
+            'BranchID'      => 'nullable|exists:branches,BranchID',
         ]);
+
+        // If staff, forcibly keep the old BranchID or staff->BranchID
+        if ($staff) {
+            $data['BranchID'] = $staff->BranchID;
+        }
 
         $visit->update($data);
 

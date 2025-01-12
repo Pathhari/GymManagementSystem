@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('equipment', function (Blueprint $table) {
             $table->id('EquipmentID');
+            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->string('Name');
             $table->string('SerialNumber')->nullable();
             $table->string('Status')->default('Available'); // "Available", "InMaintenance", "OutOfService"

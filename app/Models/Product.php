@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Product extends Model
 {
+    protected $table = 'products';
     protected $primaryKey = 'ProductID';
 
     protected $fillable = [
@@ -17,7 +18,14 @@ class Product extends Model
         'Cost',
         'Price',
         'Notes',
+        'BranchID', // <--- new column
     ];
+
+    // Relationship: This product is stored in one branch
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');
+    }
 
     public function inventoryLogs()
     {

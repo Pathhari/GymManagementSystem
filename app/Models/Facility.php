@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Facility extends Model
 {
+    protected $table = 'facilities';   // If your table is named "facilities"
     protected $primaryKey = 'FacilityID';
 
     protected $fillable = [
@@ -15,7 +16,14 @@ class Facility extends Model
         'Capacity',
         'Location',
         'Notes',
+        'BranchID', // <--- new column
     ];
+
+    // Relationship: A facility belongs to one branch
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');
+    }
 
     public function bookings()
     {

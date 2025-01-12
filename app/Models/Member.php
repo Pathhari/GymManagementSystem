@@ -6,7 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class Member extends Model
 {
-    protected $primaryKey = 'MemberID';
+    protected $table = 'members';         // If your table name is "members"
+    protected $primaryKey = 'MemberID';   // If the PK is "MemberID"
 
     protected $fillable = [
         'FullName',
@@ -21,8 +22,15 @@ class Member extends Model
         'Biometrics',
         'FreeSessions',
         'Notes',
+        'StartedBranchID',  // <--- new column
     ];
 
+    // Relationship: A member started at one branch
+    public function startedBranch()
+    {
+        // references: 'StartedBranchID' on this model => 'BranchID' on branches table
+        return $this->belongsTo(Branch::class, 'StartedBranchID', 'BranchID');
+    }
     // Relationship: A member belongs to a membership plan
     public function plan()
     {
@@ -94,4 +102,5 @@ class Member extends Model
     {
         return $this->hasMany(MemberVisit::class, 'MemberID', 'MemberID');
     }
+
 }

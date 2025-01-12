@@ -17,7 +17,9 @@
     "dependencies": {
         "@inertiajs/inertia": "^0.11.1",
         "@inertiajs/inertia-react": "^0.8.1",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0"
+        "@vitejs/plugin-react": "^4.3.4",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "ziggy-js": "^2.4.2"
     }
 }

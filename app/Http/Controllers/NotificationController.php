@@ -8,18 +8,19 @@ use Illuminate\Support\Facades\Gate;
 use App\Models\SystemSetting;
 use App\Models\NotificationTemplate;
 use App\Models\Notification;
+use App\Models\Member;
 
 class NotificationController extends Controller
 {
     /* ------------------------------------------------------------------
-     * D. Notification Channels Setup
-     *    - Storing credentials/limits in 'system_settings'
+     * D. NOTIFICATION CHANNELS SETUP
+     * - Storing credentials/limits in 'system_settings'
      * ------------------------------------------------------------------ */
 
     // 8. Semaphore SMS Creds => route:Owner
     public function viewSemaphore()
     {
-        // Get semaphore_key from system_settings
+        // Usually staff doesn't have access to global credentials, so no branch logic here.
         $setting = SystemSetting::where('key','semaphore_key')->first();
         $semaphoreKey = $setting ? $setting->value : '';
 
@@ -34,10 +35,10 @@ class NotificationController extends Controller
             'semaphoreKey' => 'required|string|max:255',
         ]);
 
-        // Update or create system_settings row
+        // Upsert the system_settings row
         SystemSetting::updateOrCreate(
-            ['key'=>'semaphore_key'],
-            ['value'=>$data['semaphoreKey']]
+            ['key' => 'semaphore_key'],
+            ['value' => $data['semaphoreKey']]
         );
 
         return redirect()
@@ -90,8 +91,8 @@ class NotificationController extends Controller
         ]);
 
         SystemSetting::updateOrCreate(
-            ['key'=>'mailjet_key'],
-            ['value'=>$data['mailjetKey']]
+            ['key' => 'mailjet_key'],
+            ['value'=> $data['mailjetKey']]
         );
 
         return redirect()
@@ -101,23 +102,29 @@ class NotificationController extends Controller
 
 
     /* ------------------------------------------------------------------
-     * E. Notification Sending & Management
-     *    - We'll store logs in "notifications" table
+     * E. NOTIFICATION SENDING & MANAGEMENT
+     * - Typically logs in "notifications" table
      * ------------------------------------------------------------------ */
 
     // 11. Send Bulk SMS => route:Owner,Admin,Staff
     public function sendBulkSMS(Request $request)
     {
-        // e.g. "message" and "recipientGroup" from form
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+
+        // In a real app, staff might only send to their own branch's members
+        // But this code doesn't do a membership query. It's just an example.
+        // You could extend to fetch members of staff->BranchID if you want.
+
         $data = $request->validate([
-            'message'         => 'required|string|max:500',
-            'recipientGroup'  => 'nullable|string|max:50', // e.g. "AllMembers","ActiveOnly", etc.
+            'message'        => 'required|string|max:500',
+            'recipientGroup' => 'nullable|string|max:50',
         ]);
 
-        // Here, you’d integrate with actual SMS sending logic using the "semaphore_key."
-        // For demonstration, we just log a single row in "notifications" table.
+        // Possibly integrate with your SMS service here.
         Notification::create([
-            'MemberID'          => null,                 // Bulk => no specific member
+            'MemberID'          => null,  // bulk => not a specific member
             'EventTrigger'      => 'BulkSMS',
             'Message'           => $data['message'],
             'NotificationMethod'=> 'SMS',
@@ -131,12 +138,16 @@ class NotificationController extends Controller
     // 12. Send Bulk Emails => route:Owner,Admin,Staff
     public function sendBulkEmail(Request $request)
     {
+        $staff = auth('staff')->user();
+        // If staff => limit to staff->BranchID members? 
+        // The snippet doesn't do that by default, but you can adapt it similarly.
+
         $data = $request->validate([
             'subject' => 'required|string|max:100',
             'body'    => 'required|string|max:2000',
         ]);
 
-        // Integrate with mailjet_key. For now, just log to "notifications."
+        // Similar approach: no specific member, so no direct branch check here.
         Notification::create([
             'MemberID'          => null,
             'EventTrigger'      => 'BulkEmail',
@@ -152,12 +163,24 @@ class NotificationController extends Controller
     // 13. Ad-hoc => route:Owner,Admin,Staff
     public function adHocNotification(Request $request)
     {
-        // Suppose we pick a single MemberID and a message
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+
+        // Staff can only pick members from their branch if you want the same approach
         $data = $request->validate([
             'MemberID' => 'required|exists:members,MemberID',
             'method'   => 'required|string|in:SMS,Email',
             'message'  => 'required|string|max:500',
         ]);
+
+        // If staff => check that the chosen member is from staff->BranchID
+        if ($staff) {
+            $member = Member::findOrFail($data['MemberID']);
+            if ($member->StartedBranchID != $staff->BranchID) {
+                abort(403, 'You cannot send an ad-hoc notification to another branch\'s member.');
+            }
+        }
 
         // Insert row in "notifications"
         Notification::create([
@@ -175,12 +198,12 @@ class NotificationController extends Controller
     // 14. View SMS Credits => route:Owner,Admin,Staff
     public function viewSMSCredits()
     {
-        // Possibly call an API or read "sms_daily_limit" from system_settings
         $limitSetting = SystemSetting::where('key','sms_daily_limit')->first();
         $limit = $limitSetting ? (int)$limitSetting->value : 1000;
 
-        // If you track usage, you might do something like "sms_used_today." But let's keep it simple
-        $creditsUsed = 200; // example
+        // If you track usage by branch, staff sees only their usage. 
+        // Here we keep it simple: a universal approach.
+        $creditsUsed = 200; 
         $creditsRemaining = $limit - $creditsUsed;
 
         return Inertia::render('Notifications/SMSCredits', [
@@ -193,19 +216,19 @@ class NotificationController extends Controller
     // 15. Advanced Email Settings => route:Owner
     public function advancedMailjet()
     {
-        // For advanced domain verification or sender management
+        // No branch logic; typically a global owner feature
         return Inertia::render('Notifications/Setup/AdvancedMailjet');
     }
 
 
     /* ------------------------------------------------------------------
-     * F. Notification Templates
+     * F. NOTIFICATION TEMPLATES
      * ------------------------------------------------------------------ */
 
     // 16. Create/Edit => route:All
     public function indexTemplates()
     {
-        // Show all templates from "notification_templates"
+        // Typically global, no branch column in notification_templates
         $templates = NotificationTemplate::orderBy('name','asc')->get();
 
         return Inertia::render('Notifications/Templates/Index', [
@@ -215,7 +238,6 @@ class NotificationController extends Controller
 
     public function storeTemplate(Request $request)
     {
-        // If "TemplateID" is present => update, else create
         $data = $request->validate([
             'TemplateID' => 'nullable|exists:notification_templates,id',
             'name'       => 'required|string|max:100|unique:notification_templates,name,'.$request->TemplateID.',id',
@@ -223,12 +245,14 @@ class NotificationController extends Controller
         ]);
 
         if (!empty($data['TemplateID'])) {
+            // Update existing
             $template = NotificationTemplate::findOrFail($data['TemplateID']);
             $template->update([
                 'name'    => $data['name'],
                 'content' => $data['content'],
             ]);
         } else {
+            // Create new
             NotificationTemplate::create([
                 'name'    => $data['name'],
                 'content' => $data['content'],

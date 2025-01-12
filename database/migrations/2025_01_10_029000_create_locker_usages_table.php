@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('locker_usages', function (Blueprint $table) {
             $table->id('UsageID');
+            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->unsignedBigInteger('LockerID');
             $table->unsignedBigInteger('MemberID');
             $table->boolean('KeyBorrowed')->default(true);

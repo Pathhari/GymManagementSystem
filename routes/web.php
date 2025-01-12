@@ -85,15 +85,16 @@ Route::get('/owner/login', [OwnerAuthController::class, 'showLoginForm'])->name(
 Route::post('/owner/login', [OwnerAuthController::class, 'login'])->name('owner.login.post');
 Route::post('/owner/logout', [OwnerAuthController::class, 'logout'])->name('owner.logout');
 
-/* --------------------------------------------------------------------------
+/* 
+|--------------------------------------------------------------------------
 | 1) PaymentController
-|---------------------------------------------------------------------------
+|--------------------------------------------------------------------------
 */
 use App\Http\Controllers\PaymentController;
 
 Route::prefix('payments')->group(function() {
 
-    // Payment Setup & Configuration
+    // A) Payment Setup & Configuration
     Route::get('setup/paymongo', [PaymentController::class, 'viewPayMongoCredentials'])
         ->middleware('auth:owner')
         ->name('payments.setup.paymongo');
@@ -116,7 +117,7 @@ Route::prefix('payments')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('payments.setup.methods.toggle');
 
-    // Transaction Logs
+    // B) Transaction Logs
     Route::get('transactions', [PaymentController::class, 'indexTransactions'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.transactions.index');
@@ -124,7 +125,7 @@ Route::prefix('payments')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('payments.transactions.export');
 
-    // Refunds
+    // C) Issue Refunds
     Route::post('{paymentId}/refund/initiate', [PaymentController::class, 'initiateRefund'])
         ->middleware('multiGuard:owner,admin')
         ->name('payments.refund.initiate');
@@ -132,7 +133,7 @@ Route::prefix('payments')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('payments.refund.approve');
 
-    // Payment (Direct Table)
+    // K) Payment (Direct Table) CRUD
     Route::get('create', [PaymentController::class, 'create'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.create');
@@ -153,7 +154,7 @@ Route::prefix('payments')->group(function() {
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.destroy');
 
-    // Partial / Multiple
+    // M) Partial / Multiple Payments
     Route::get('partial/create', [PaymentController::class, 'createPartialPayment'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.partial.create');
@@ -165,15 +166,16 @@ Route::prefix('payments')->group(function() {
         ->name('payments.link.invoices');
 });
 
-/* --------------------------------------------------------------------------
+/* 
+|--------------------------------------------------------------------------
 | 2) NotificationController
-|---------------------------------------------------------------------------
+|--------------------------------------------------------------------------
 */
 use App\Http\Controllers\NotificationController;
 
 Route::prefix('notifications')->group(function() {
 
-    // Channels Setup
+    // D) Notification Channels Setup
     Route::get('channels/semaphore', [NotificationController::class, 'viewSemaphore'])
         ->middleware('auth:owner')
         ->name('notifications.channels.semaphore');
@@ -195,7 +197,7 @@ Route::prefix('notifications')->group(function() {
         ->middleware('auth:owner')
         ->name('notifications.channels.mailjet.update');
 
-    // Sending & Management
+    // E) Notification Sending & Management
     Route::post('send/bulk-sms', [NotificationController::class, 'sendBulkSMS'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('notifications.send.bulkSMS');
@@ -212,7 +214,7 @@ Route::prefix('notifications')->group(function() {
         ->middleware('auth:owner')
         ->name('notifications.mailjet.advanced');
 
-    // Templates
+    // F) Notification Templates
     Route::get('templates', [NotificationController::class, 'indexTemplates'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('notifications.templates.index');
@@ -230,7 +232,8 @@ Route::prefix('notifications')->group(function() {
         ->name('notifications.templates.approve');
 });
 
-/* --------------------------------------------------------------------------
+/* 
+|--------------------------------------------------------------------------
 | 3) MembershipController
 |--------------------------------------------------------------------------
 */
@@ -238,7 +241,7 @@ use App\Http\Controllers\MembershipController;
 
 Route::prefix('membership')->group(function() {
 
-    // Member
+    // G) Member Table
     Route::get('members/create', [MembershipController::class, 'createMember'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('membership.members.create');
@@ -258,7 +261,7 @@ Route::prefix('membership')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('membership.members.destroy');
 
-    // Plans
+    // H) MembershipPlan
     Route::get('plans', [MembershipController::class, 'indexPlans'])
         ->middleware('multiGuard:owner,admin')
         ->name('membership.plans.index');
@@ -272,7 +275,7 @@ Route::prefix('membership')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('membership.plans.destroy');
 
-    // Renewals
+    // I) MembershipRenewal
     Route::get('renewals/create', [MembershipController::class, 'createRenewal'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('membership.renewals.create');
@@ -283,7 +286,7 @@ Route::prefix('membership')->group(function() {
         ->middleware('multiGuard:owner,admin,staff')
         ->name('membership.renewals.logs');
 
-    // Freezes
+    // J) MembershipFreeze
     Route::get('freezes/create', [MembershipController::class, 'createFreeze'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('membership.freezes.create');
@@ -295,7 +298,8 @@ Route::prefix('membership')->group(function() {
         ->name('membership.freezes.index');
 });
 
-/* --------------------------------------------------------------------------
+/* 
+|--------------------------------------------------------------------------
 | 4) BookingController
 |--------------------------------------------------------------------------
 */
@@ -303,7 +307,7 @@ use App\Http\Controllers\BookingController;
 
 Route::prefix('booking')->group(function() {
 
-    // Bookings
+    // N) Bookings
     Route::get('create', [BookingController::class, 'createBooking'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('booking.create');
@@ -328,7 +332,7 @@ Route::prefix('booking')->group(function() {
         ->middleware('multiGuard:owner,admin,staff')
         ->name('booking.facilities.index');
 
-    // Coaching Sessions
+    // O) Coaching Sessions
     Route::get('sessions', [BookingController::class, 'indexSessions'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('booking.sessions.index');
@@ -349,7 +353,8 @@ Route::prefix('booking')->group(function() {
         ->name('booking.sessions.attendance');
 });
 
-/* --------------------------------------------------------------------------
+/* 
+|--------------------------------------------------------------------------
 | 5) StaffController
 |--------------------------------------------------------------------------
 */
@@ -357,7 +362,7 @@ use App\Http\Controllers\StaffController;
 
 Route::prefix('staff')->group(function() {
 
-    // Staff Management
+    // AA) Staff Management
     Route::get('create', [StaffController::class, 'createStaff'])
         ->middleware('multiGuard:owner,admin')
         ->name('staff.create');
@@ -380,7 +385,7 @@ Route::prefix('staff')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('staff.destroy');
 
-    // Attendance
+    // V) Attendance
     Route::post('attendance/clock', [StaffController::class, 'clockInOut'])
         ->middleware('multiGuard:admin,staff')
         ->name('staff.attendance.clock');
@@ -391,7 +396,7 @@ Route::prefix('staff')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('staff.attendance.update');
 
-    // Tasks
+    // R) Staff Tasks
     Route::get('tasks', [StaffController::class, 'indexTasks'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('staff.tasks.index');
@@ -405,7 +410,7 @@ Route::prefix('staff')->group(function() {
         ->middleware('multiGuard:owner,admin,staff')
         ->name('staff.tasks.complete');
 
-    // StaffSchedule
+    // AB) StaffSchedule
     Route::get('schedules', [StaffController::class, 'indexSchedules'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('staff.schedules.index');
@@ -419,7 +424,7 @@ Route::prefix('staff')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('staff.schedules.destroy');
 
-    // Payroll & Bonus
+    // W) Payroll & Bonus
     Route::get('payroll/create', [StaffController::class, 'createPayroll'])
         ->middleware('multiGuard:owner,admin')
         ->name('staff.payroll.create');
@@ -440,7 +445,8 @@ Route::prefix('staff')->group(function() {
         ->name('staff.bonus.store');
 });
 
-/* --------------------------------------------------------------------------
+/* 
+|--------------------------------------------------------------------------
 | 6) OperationsController
 |--------------------------------------------------------------------------
 */
@@ -508,7 +514,8 @@ Route::prefix('operations')->group(function() {
         ->name('operations.visits.update');
 });
 
-/* --------------------------------------------------------------------------
+/* 
+|--------------------------------------------------------------------------
 | 7) FinanceController
 |--------------------------------------------------------------------------
 */
@@ -559,7 +566,8 @@ Route::prefix('finance')->group(function() {
         ->name('finance.promotions.toggle');
 });
 
-/* --------------------------------------------------------------------------
+/* 
+|--------------------------------------------------------------------------
 | 8) SystemController
 |--------------------------------------------------------------------------
 */

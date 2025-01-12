@@ -4,13 +4,13 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
 
 class StaffAuthController extends Controller
 {
     public function showLoginForm()
     {
-        return view('auth.staff-login'); 
-        // Or Inertia::render('Staff/Auth/Login');
+        return Inertia::render('Auth/StaffLogin');
     }
 
     public function login(Request $request)

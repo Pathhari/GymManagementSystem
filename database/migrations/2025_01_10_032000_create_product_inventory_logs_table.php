@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('product_inventory_logs', function (Blueprint $table) {
             $table->id('InventoryLogID');
+            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->unsignedBigInteger('ProductID');
             $table->dateTime('ChangeDate');
             $table->string('ChangeType')->nullable(); // "Purchase", "Usage", "Disposal", "Correction"

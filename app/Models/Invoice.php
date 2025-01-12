@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Invoice extends Model
 {
+    protected $table = 'invoices';
     protected $primaryKey = 'InvoiceID';
 
     protected $fillable = [
@@ -13,8 +14,9 @@ class Invoice extends Model
         'PromotionID',
         'InvoiceDate',
         'InvoiceTotal',
+        'BranchID', // <--- new column
     ];
-
+    
     public function member()
     {
         return $this->belongsTo(Member::class, 'MemberID', 'MemberID');
@@ -37,4 +39,10 @@ class Invoice extends Model
                     ->withPivot('AmountAllocated')
                     ->withTimestamps();
     }
+
+    public function branch()
+{
+    return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');
+}
+
 }

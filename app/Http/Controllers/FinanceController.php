@@ -7,6 +7,8 @@ use Inertia\Inertia;
 use App\Models\DailyCashFlow;
 use App\Models\Expense;
 use App\Models\Promotions;
+// If you have a Staff model, you can reference it too:
+// use App\Models\Staff;
 use Illuminate\Support\Facades\DB;
 
 class FinanceController extends Controller
@@ -21,8 +23,14 @@ class FinanceController extends Controller
      */
     public function createCashFlow()
     {
-        // Possibly no extra data needed—just show the form
-        return Inertia::render('Finance/CashFlow/Create');
+        // If admin/owner can choose the branch, you might load a Branch::all() here
+        // and pass it to the view. For staff, they'd have only 1 branch.
+        // Example:
+        // $branches = auth('owner')->check() || auth('admin')->check()
+        //     ? Branch::orderBy('BranchName')->get()
+        //     : null;
+
+        return Inertia::render('Finance/CashFlow/Create'/*, compact('branches')*/);
     }
 
     /**
@@ -30,10 +38,14 @@ class FinanceController extends Controller
      */
     public function storeCashFlow(Request $request)
     {
-        // Validating fields from your DailyCashFlow ERD structure
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+
+        // Validation of daily cash flow fields
         $data = $request->validate([
             'Date'              => 'required|date',
-            'BusinessType'      => 'required|string|max:100',  // e.g. 'Gym', 'Cafe', 'Yogurt Cafe'
+            'BusinessType'      => 'required|string|max:100',  
             'CashSales'         => 'nullable|numeric|min:0',
             'GCashSales'        => 'nullable|numeric|min:0',
             'BPISales'          => 'nullable|numeric|min:0',
@@ -45,8 +57,8 @@ class FinanceController extends Controller
             'Remarks'           => 'nullable|string',
         ]);
 
-        // Auto-compute TotalSales from the relevant fields:
-        $total = 0;
+        // Auto-compute total
+        $total  = 0;
         $total += $data['CashSales']         ?? 0;
         $total += $data['GCashSales']        ?? 0;
         $total += $data['BPISales']          ?? 0;
@@ -55,7 +67,13 @@ class FinanceController extends Controller
         $total += $data['WalkInBPISales']    ?? 0;
         $data['TotalSales'] = $total;
 
-        // Create the daily cash flow record
+        // If staff, auto-assign their BranchID
+        if ($staff) {
+            $data['BranchID'] = $staff->BranchID;
+        } 
+        // If owner or admin can pick a branch from the form, you'd do:
+        // else if ($admin || $owner) { $data['BranchID'] = $request->BranchID; }
+
         DailyCashFlow::create($data);
 
         return redirect()
@@ -65,19 +83,32 @@ class FinanceController extends Controller
 
     /**
      * 62. View => route:Owner,Admin,Staff
-     * Possibly partial data for Staff.
+     * Possibly partial data for Staff (per your example).
      */
     public function indexCashFlow()
     {
-        $user = auth()->user();
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
 
-        if ($user && $user->role === 'Staff') {
-            // Staff sees partial columns
+        // Staff can only see daily cash flow for their branch
+        if ($staff) {
+            // Possibly partial columns
             $flows = DailyCashFlow::select(
                 'CashFlowID','Date','BusinessType','TotalSales','Remarks'
-            )->orderBy('Date','desc')->get();
+            )
+            ->where('BranchID', $staff->BranchID)
+            ->orderBy('Date','desc')
+            ->get();
+        } elseif ($admin) {
+            // Admin sees full columns from all branches (assuming multi-branch)
+            // Or if an admin is pinned to a single branch, filter here as well
+            $flows = DailyCashFlow::orderBy('Date','desc')->get();
+        } elseif ($owner) {
+            // Owner sees everything
+            $flows = DailyCashFlow::orderBy('Date','desc')->get();
         } else {
-            // Owner/Admin see full columns
+            // If user is not recognized, or for universal logic
             $flows = DailyCashFlow::orderBy('Date','desc')->get();
         }
 
@@ -85,7 +116,6 @@ class FinanceController extends Controller
             'flows' => $flows
         ]);
     }
-
 
     /* ------------------------------------------------------------------
      * AE. EXPENSES TABLE (#81–84 in ERD)
@@ -97,9 +127,9 @@ class FinanceController extends Controller
      */
     public function createExpense()
     {
-        // If you need Staff info for StaffID, you could load it here
-        // e.g. $staff = Staff::all();
-        return Inertia::render('Finance/Expenses/Create'/*, compact('staff')*/);
+        // If admin/owner can pick the branch, load branches
+        // If staff => pinned to 1 branch
+        return Inertia::render('Finance/Expenses/Create');
     }
 
     /**
@@ -107,18 +137,26 @@ class FinanceController extends Controller
      */
     public function storeExpense(Request $request)
     {
-        // Fields from ERD:
-        // ExpenseID (PK), ExpenseDate, ExpenseCategory, Amount, PaymentMethod, StaffID, Notes
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+
         $data = $request->validate([
             'ExpenseDate'     => 'required|date',
             'ExpenseCategory' => 'required|string|max:100',
             'Amount'          => 'required|numeric|min:0',
-            'PaymentMethod'   => 'nullable|string|max:50',  // e.g. 'Cash','GCash','BPI'
-            'StaffID'         => 'nullable|exists:staff,StaffID', // if a staff member incurred it
+            'PaymentMethod'   => 'nullable|string|max:50',
+            'StaffID'         => 'nullable|exists:staff,StaffID',
             'Notes'           => 'nullable|string',
         ]);
 
-        // Create expense row
+        // If staff, auto-assign BranchID
+        if ($staff) {
+            $data['BranchID'] = $staff->BranchID;
+        } 
+        // If admin/owner can choose a branch from the form:
+        // else if ($admin || $owner) { $data['BranchID'] = $request->BranchID; }
+
         Expense::create($data);
 
         return redirect()
@@ -131,19 +169,26 @@ class FinanceController extends Controller
      */
     public function indexExpenses()
     {
-        $user = auth()->user();
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
 
-        if ($user && $user->role === 'Staff') {
-            // Staff sees partial columns, e.g., not PaymentMethod
+        // If staff => filter by staff->BranchID
+        if ($staff) {
+            // staff sees partial columns + only their branch
             $expenses = Expense::with('staff')
-                ->select('ExpenseID','ExpenseDate','ExpenseCategory','Amount','StaffID','Notes')
+                ->select('ExpenseID','ExpenseDate','ExpenseCategory','Amount','Notes','StaffID','BranchID')
+                ->where('BranchID', $staff->BranchID)
+                ->orderBy('ExpenseDate','desc')
+                ->get();
+        } elseif ($admin || $owner) {
+            // admin/owner => see all branches, all columns
+            $expenses = Expense::with('staff')
                 ->orderBy('ExpenseDate','desc')
                 ->get();
         } else {
-            // Owner/Admin see full columns
-            $expenses = Expense::with('staff')
-                ->orderBy('ExpenseDate','desc')
-                ->get();
+            // fallback => maybe no data
+            $expenses = collect([]);
         }
 
         return Inertia::render('Finance/Expenses/Index', [
@@ -157,18 +202,34 @@ class FinanceController extends Controller
      */
     public function editExpense($id)
     {
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+
         $expense = Expense::findOrFail($id);
-        // $staff = Staff::all(); // if you want to let user pick new StaffID
+
+        // If staff, ensure it’s in their branch
+        if ($staff && $expense->BranchID != $staff->BranchID) {
+            abort(403, 'Cannot edit an expense from another branch.');
+        }
 
         return Inertia::render('Finance/Expenses/Edit', [
             'expense' => $expense
-            // 'staff' => $staff
         ]);
     }
 
     public function updateExpense(Request $request, $id)
     {
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+
         $expense = Expense::findOrFail($id);
+
+        // staff => check branch
+        if ($staff && $expense->BranchID != $staff->BranchID) {
+            abort(403, 'Cannot update an expense from another branch.');
+        }
 
         $data = $request->validate([
             'ExpenseDate'     => 'required|date',
@@ -178,6 +239,9 @@ class FinanceController extends Controller
             'StaffID'         => 'nullable|exists:staff,StaffID',
             'Notes'           => 'nullable|string',
         ]);
+
+        // If staff => keep existing expense->BranchID (cannot change)
+        // If admin/owner => could allow $data['BranchID'] = $request->BranchID if you want
 
         $expense->update($data);
 
@@ -191,7 +255,17 @@ class FinanceController extends Controller
      */
     public function destroyExpense($id)
     {
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+
         $expense = Expense::findOrFail($id);
+
+        // staff => block if belongs to another branch
+        if ($staff && $expense->BranchID != $staff->BranchID) {
+            abort(403, 'Cannot delete an expense from another branch.');
+        }
+
         $expense->delete();
 
         return redirect()
@@ -210,38 +284,41 @@ class FinanceController extends Controller
      */
     public function indexPromotions()
     {
-        // promotions => [PromotionID, Name, DiscountType, DiscountValue, StartDate, EndDate, TermsAndConditions, Status]
+        // Currently, no BranchID in promotions table,
+        // so we won’t filter by branch.
+        // If you want staff to see partial columns, do it similarly:
+        //   ->select('PromotionID','Name',...) for staff
         $promos = Promotions::orderBy('Name','asc')->get();
 
         return Inertia::render('Finance/Promotions/Index', compact('promos'));
     }
 
     /**
-     * Store or update a Promotion
+     * Store or update a Promotion (like a simple create).
      */
     public function storePromotion(Request $request)
     {
         $data = $request->validate([
             'PromotionID'        => 'nullable|exists:promotions,PromotionID',
             'Name'               => 'required|string|max:255',
-            'DiscountType'       => 'required|string|max:50',   // e.g. 'Percentage','FixedAmount'
+            'DiscountType'       => 'required|string|max:50',
             'DiscountValue'      => 'required|numeric|min:0',
             'StartDate'          => 'required|date',
             'EndDate'            => 'nullable|date|after_or_equal:StartDate',
             'TermsAndConditions' => 'nullable|string',
-            'Status'             => 'nullable|string|max:50',  // 'Active','Expired','Scheduled'
+            'Status'             => 'nullable|string|max:50',
         ]);
 
         if (!empty($data['PromotionID'])) {
-            // Update existing
             $promo = Promotions::findOrFail($data['PromotionID']);
             $promo->update($data);
         } else {
-            // Create new
             Promotions::create($data);
         }
 
-        return redirect()->back()->with('success','Promotion saved successfully.');
+        return redirect()
+            ->back()
+            ->with('success','Promotion saved successfully.');
     }
 
     /**
@@ -251,13 +328,13 @@ class FinanceController extends Controller
     {
         $promo = Promotions::findOrFail($id);
 
-        // If currently 'Active', switch to 'Inactive' or vice versa
         if ($promo->Status === 'Active') {
             $promo->update(['Status' => 'Inactive']);
         } else {
             $promo->update(['Status' => 'Active']);
         }
 
-        return redirect()->back()->with('success','Promotion status toggled.');
+        return redirect()->back()
+            ->with('success','Promotion status toggled.');
     }
 }

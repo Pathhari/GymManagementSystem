@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('walk_ins', function (Blueprint $table) {
             $table->id('WalkInID');
+            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->string('FullName')->nullable();
             $table->dateTime('VisitDate')->nullable();
             $table->string('PaymentMethod')->nullable();

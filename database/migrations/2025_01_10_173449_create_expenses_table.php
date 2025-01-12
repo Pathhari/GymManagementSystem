@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('expenses', function (Blueprint $table) {
             $table->id('ExpenseID');
+            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->dateTime('ExpenseDate')->nullable();
             $table->string('ExpenseCategory'); // "Utilities", "Marketing", "Repairs", etc.
             $table->decimal('Amount', 10, 2)->default(0);

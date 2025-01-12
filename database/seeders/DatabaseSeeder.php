@@ -13,9 +13,7 @@ class DatabaseSeeder extends Seeder
     {
         // Add your newly created seeders
         $this->call([
-            OwnerSeeder::class,
-            AdminSeeder::class,
-            StaffSeeder::class,
+            TestDataSeeder::class,
         ]);
     }
 }
