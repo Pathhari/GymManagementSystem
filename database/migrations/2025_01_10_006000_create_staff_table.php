@@ -14,8 +14,10 @@ return new class extends Migration
         Schema::create('staff', function (Blueprint $table) {
             $table->id('StaffID');
             $table->string('FullName');
-            $table->string('Role')->default('Staff'); // "Admin", etc.
-            $table->string('Email')->unique();
+            $table->string('Role')->default('Staff'); 
+            $table->string('Email')->unique()->nullable();
+            $table->string('password')->nullable();
+            $table->rememberToken()->nullable();
             $table->string('Phone')->nullable();
             $table->decimal('DailyRate', 10, 2)->nullable();
             $table->decimal('HourlyRate', 10, 2)->nullable();
