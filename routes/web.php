@@ -588,3 +588,32 @@ Route::prefix('system')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('system.reports');
 });
+
+    use App\Http\Controllers\BranchController;
+
+    oute::prefix('system')->group(function() {
+    // … existing routes for logs, reports, etc.
+
+    // Branch Management (Owner only)
+    Route::get('branches', [BranchController::class, 'index'])
+         ->middleware('auth:owner')
+         ->name('system.branches.index');
+
+    Route::get('branches/create', [BranchController::class, 'create'])
+         ->middleware('auth:owner')
+         ->name('system.branches.create');
+    Route::post('branches', [BranchController::class, 'store'])
+         ->middleware('auth:owner')
+         ->name('system.branches.store');
+
+    Route::get('branches/{id}/edit', [BranchController::class, 'edit'])
+         ->middleware('auth:owner')
+         ->name('system.branches.edit');
+    Route::put('branches/{id}', [BranchController::class, 'update'])
+         ->middleware('auth:owner')
+         ->name('system.branches.update');
+
+    Route::delete('branches/{id}', [BranchController::class, 'destroy'])
+         ->middleware('auth:owner')
+         ->name('system.branches.destroy');
+});
