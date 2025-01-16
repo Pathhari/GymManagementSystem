@@ -52,9 +52,8 @@ class StaffController extends Controller
             'OvertimeRate' => 'nullable|numeric|min:0',
             'DateHired'    => 'nullable|date',
             'Notes'        => 'nullable|string',
-
             // If you want staff to have a login password:
-            // 'password' => 'sometimes|required|min:8|confirmed',
+             'password' => 'sometimes|required|min:8|confirmed',
         ]);
 
         // Insert staff record
