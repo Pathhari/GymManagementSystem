@@ -28,6 +28,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -601,45 +602,65 @@ export default function BookingsSessions() {
           {/* Buttons: Add & Export */}
           <Box sx={{ display: "flex", gap: 1 }}>
             {/* Export button with Menu */}
-            <Button
-              variant="outlined"
-              onClick={handleExportClick}
-              sx={{ textTransform: "none" }}
-            >
-              Export
-            </Button>
-            <Menu
-              anchorEl={exportAnchor}
-              open={openExport}
-              onClose={handleExportClose}
-              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-            >
-              {/* CSV export using react-csv */}
-              <MenuItem onClick={handleExportCSV}>
-                {activeTab === 0 ? (
-                  <CSVLink
-                    data={filteredBookings}
-                    headers={csvHeadersBookings}
-                    filename="Bookings.csv"
-                    style={{ textDecoration: "none", color: "inherit" }}
-                  >
-                    Export CSV
-                  </CSVLink>
-                ) : (
-                  <CSVLink
-                    data={filteredSessions}
-                    headers={csvHeadersSessions}
-                    filename="Sessions.csv"
-                    style={{ textDecoration: "none", color: "inherit" }}
-                  >
-                    Export CSV
-                  </CSVLink>
-                )}
-              </MenuItem>
+<Button
+  variant="outlined"
+  onClick={handleExportClick}
+  startIcon={<FileDownloadIcon />}
+  sx={{ textTransform: "none" }}
+>
+  Export
+</Button>
+<Menu
+  anchorEl={exportAnchor}
+  open={openExport}
+  onClose={handleExportClose}
+  anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+>
+  {/* CSV export using react-csv */}
+  <MenuItem>
+    {activeTab === 0 ? (
+      <CSVLink
+        data={filteredBookings}
+        headers={csvHeadersBookings}
+        filename="Bookings.csv"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          textDecoration: "none",
+          color: "inherit",
+        }}
+      >
+        <Typography>Export CSV</Typography>
+      </CSVLink>
+    ) : (
+      <CSVLink
+        data={filteredSessions}
+        headers={csvHeadersSessions}
+        filename="Sessions.csv"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          textDecoration: "none",
+          color: "inherit",
+        }}
+      >
 
-              {/* PDF export using jsPDF + autoTable */}
-              <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
-            </Menu>
+        <Typography>Export CSV</Typography>
+      </CSVLink>
+    )}
+  </MenuItem>
+
+  {/* PDF export using jsPDF + autoTable */}
+  <MenuItem onClick={handleExportPDF}>
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+
+      <Typography>Export PDF</Typography>
+    </Box>
+  </MenuItem>
+</Menu>
+
 
             {/* Add booking / session button */}
             {activeTab === 0 ? (

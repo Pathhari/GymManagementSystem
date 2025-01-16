@@ -30,6 +30,7 @@ import ReceiptIcon from "@mui/icons-material/Receipt";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import HistoryIcon from "@mui/icons-material/History";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -1436,9 +1437,14 @@ const handleAddSchedule = () => {
           {/* Export + Add Buttons */}
           <Box sx={{ display: "flex", gap: 1 }}>
             {/* Export Menu (CSV/PDF) */}
-            <Button variant="outlined" onClick={handleExportMenuOpen} sx={{ textTransform: "none" }}>
-              Export
-            </Button>
+            <Button
+  variant="outlined"
+  startIcon={<FileDownloadIcon />} // Add the icon here
+  onClick={handleExportMenuOpen}
+  sx={{ textTransform: "none" }}
+>
+  Export
+</Button>
             <Menu
               anchorEl={exportAnchorEl}
               open={openExportMenu}

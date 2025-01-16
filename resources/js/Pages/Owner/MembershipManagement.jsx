@@ -31,7 +31,7 @@ import HistoryIcon from "@mui/icons-material/History";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 // Icons for the Overview Cards
 import GroupsIcon from "@mui/icons-material/Groups";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -1054,12 +1054,13 @@ export default function MembershipManagement() {
           <Box sx={{ display: "flex", gap: 1 }}>
             {/* Export Menu (CSV/PDF) */}
             <Button
-              variant="outlined"
-              onClick={handleExportMenuOpen}
-              sx={{ textTransform: "none" }}
-            >
-              Export
-            </Button>
+  variant="outlined"
+  startIcon={<FileDownloadIcon />} // Add the icon here
+  onClick={handleExportMenuOpen}
+  sx={{ textTransform: "none" }}
+>
+  Export
+</Button>
             <Menu
               anchorEl={exportAnchorEl}
               open={openExportMenu}

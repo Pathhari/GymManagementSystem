@@ -65,8 +65,8 @@ const getListStyle = (droppableId, isDraggingOver) => ({
     ? "#eeeeee"
     : droppableBackground[droppableId] || "#f5f5f5",
   padding: 8,
-  width: 260,
-  minHeight: 350,
+  width: 300, // Updated width to match the equipment management
+  minHeight: 370, // Updated height to match the equipment management
   borderRadius: 4,
   transition: "background 0.2s",
 });

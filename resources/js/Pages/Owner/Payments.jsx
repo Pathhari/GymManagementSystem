@@ -19,6 +19,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Menu,
+  Divider,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import { DataGrid } from "@mui/x-data-grid";
@@ -28,6 +30,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ReplayCircleFilledIcon from "@mui/icons-material/ReplayCircleFilled";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 
 // ---------------------- SAMPLE DATA ----------------------
 const samplePayments = [
@@ -89,6 +92,32 @@ const sampleInvoices = [
     linkedPaymentId: "",
   },
 ];
+
+// ---------- CSV & PDF Headers -------------
+const csvHeadersPayments = [
+  { label: "Payment ID", key: "paymentId" },
+  { label: "Member Name", key: "memberName" },
+  { label: "Payment Date", key: "paymentDate" },
+  { label: "Amount Paid", key: "amountPaid" },
+  { label: "Method", key: "method" },
+  { label: "Status", key: "status" },
+  { label: "Linked Invoice", key: "linkedInvoiceId" },
+];
+
+const csvHeadersInvoices = [
+  { label: "Invoice ID", key: "invoiceId" },
+  { label: "Member Name", key: "memberName" },
+  { label: "Invoice Date", key: "invoiceDate" },
+  { label: "Due Date", key: "dueDate" },
+  { label: "Total Amount", key: "totalAmount" },
+  { label: "Status", key: "status" },
+  { label: "Linked Payment", key: "linkedPaymentId" },
+];
+
+// For PDF
+import jsPDF from "jspdf";
+import "jspdf-autotable";
+import { CSVLink } from "react-csv";
 
 export default function PaymentsAndInvoices() {
   // ------------------ Tab / Search States ------------------
@@ -419,6 +448,70 @@ export default function PaymentsAndInvoices() {
   const displayedColumns = activeTab === 0 ? paymentColumns : invoiceColumns;
   const rowIdGetter = activeTab === 0 ? getPaymentRowId : getInvoiceRowId;
 
+  // =============== Export Menu Logic For Each Table ===============
+  const [exportAnchorEl, setExportAnchorEl] = useState(null);
+  const openExportMenu = Boolean(exportAnchorEl);
+
+  const handleExportMenuOpen = (event) => {
+    setExportAnchorEl(event.currentTarget);
+  };
+  const handleExportMenuClose = () => {
+    setExportAnchorEl(null);
+  };
+
+  // Export to CSV (react-csv handles the actual download)
+  const handleExportCSV = () => {
+    handleExportMenuClose();
+  };
+
+  // Export to PDF (jsPDF + autoTable)
+  const handleExportPDF = () => {
+    handleExportMenuClose();
+    const doc = new jsPDF();
+
+    if (activeTab === 0) {
+      // Export Payments
+      doc.text("Payments Export", 14, 10);
+      const bodyData = filteredPayments.map((p) => [
+        p.paymentId,
+        p.memberName,
+        p.paymentDate,
+        p.amountPaid,
+        p.method,
+        p.status,
+        p.linkedInvoiceId,
+      ]);
+      doc.autoTable({
+        head: [
+          ["Payment ID", "Member Name", "Date", "Amount", "Method", "Status", "Invoice"],
+        ],
+        body: bodyData,
+        startY: 20,
+      });
+      doc.save("Payments.pdf");
+    } else {
+      // Export Invoices
+      doc.text("Invoices Export", 14, 10);
+      const bodyData = filteredInvoices.map((i) => [
+        i.invoiceId,
+        i.memberName,
+        i.invoiceDate,
+        i.dueDate,
+        i.totalAmount,
+        i.status,
+        i.linkedPaymentId,
+      ]);
+      doc.autoTable({
+        head: [
+          ["Invoice ID", "Member Name", "Date", "Due", "Amount", "Status", "Payment"],
+        ],
+        body: bodyData,
+        startY: 20,
+      });
+      doc.save("Invoices.pdf");
+    }
+  };
+
   return (
     <Box sx={{ p: 4 }}>
       {/* ------------------- OVERVIEW PANEL (Black/White Scheme) ------------------- */}
@@ -437,7 +530,11 @@ export default function PaymentsAndInvoices() {
           {/* Time Period Dropdown */}
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <InputLabel>Time Period</InputLabel>
-            <Select value={timePeriod} label="Time Period" onChange={handleTimePeriodChange}>
+            <Select
+              value={timePeriod}
+              label="Time Period"
+              onChange={handleTimePeriodChange}
+            >
               <MenuItem value="daily">Daily</MenuItem>
               <MenuItem value="weekly">Weekly</MenuItem>
               <MenuItem value="monthly">Monthly</MenuItem>
@@ -468,82 +565,90 @@ export default function PaymentsAndInvoices() {
 
         {/* ---------- Summaries (3 Cards) ---------- */}
         <Grid container spacing={2}>
-  {/* Card 1: Total Revenue */}
-  <Grid item xs={12} sm={6} md={4}>
-    <Card
-      sx={{
-        bgcolor: "text.primary",
-        color: "background.paper",
-        textAlign: "center",
-        p: 2,
-        display: "flex",
-        alignItems: "center",
-        gap: 2,
-      }}
-    >
-      <ReceiptIcon sx={{ fontSize: 40, color: "gold" }} />
-      <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Total Revenue
-        </Typography>
-        <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-          ${totalRevenue}
-        </Typography>
-      </CardContent>
-    </Card>
-  </Grid>
+          {/* Card 1: Total Revenue */}
+          <Grid item xs={12} sm={6} md={4}>
+            <Card
+              sx={{
+                bgcolor: "text.primary",
+                color: "background.paper",
+                textAlign: "center",
+                p: 2,
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+              }}
+            >
+              <ReceiptIcon sx={{ fontSize: 40, color: "gold" }} />
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Total Revenue
+                </Typography>
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: "1.2rem", fontWeight: "bold" }}
+                >
+                  ${totalRevenue}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
 
-  {/* Card 2: Pending Invoices */}
-  <Grid item xs={12} sm={6} md={4}>
-    <Card
-      sx={{
-        bgcolor: "text.primary",
-        color: "background.paper",
-        textAlign: "center",
-        p: 2,
-        display: "flex",
-        alignItems: "center",
-        gap: 2,
-      }}
-    >
-      <DescriptionIcon sx={{ fontSize: 40, color: "orange" }} />
-      <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Pending Invoices
-        </Typography>
-        <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-          {pendingInvoices}
-        </Typography>
-      </CardContent>
-    </Card>
-  </Grid>
+          {/* Card 2: Pending Invoices */}
+          <Grid item xs={12} sm={6} md={4}>
+            <Card
+              sx={{
+                bgcolor: "text.primary",
+                color: "background.paper",
+                textAlign: "center",
+                p: 2,
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+              }}
+            >
+              <DescriptionIcon sx={{ fontSize: 40, color: "orange" }} />
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Pending Invoices
+                </Typography>
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: "1.2rem", fontWeight: "bold" }}
+                >
+                  {pendingInvoices}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
 
-  {/* Card 3: Completed Invoices */}
-  <Grid item xs={12} sm={6} md={4}>
-    <Card
-      sx={{
-        bgcolor: "text.primary",
-        color: "background.paper",
-        textAlign: "center",
-        p: 2,
-        display: "flex",
-        alignItems: "center",
-        gap: 2,
-      }}
-    >
-      <ReplayCircleFilledIcon sx={{ fontSize: 40, color: "limegreen" }} />
-      <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Completed Invoices
-        </Typography>
-        <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-          {completedInvoices}
-        </Typography>
-      </CardContent>
-    </Card>
-  </Grid>
-</Grid>
-
+          {/* Card 3: Completed Invoices */}
+          <Grid item xs={12} sm={6} md={4}>
+            <Card
+              sx={{
+                bgcolor: "text.primary",
+                color: "background.paper",
+                textAlign: "center",
+                p: 2,
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+              }}
+            >
+              <ReplayCircleFilledIcon sx={{ fontSize: 40, color: "limegreen" }} />
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Completed Invoices
+                </Typography>
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: "1.2rem", fontWeight: "bold" }}
+                >
+                  {completedInvoices}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
       </Box>
 
       {/* ---------- Title & Tabs ---------- */}
@@ -568,9 +673,10 @@ export default function PaymentsAndInvoices() {
         </Tabs>
       </Box>
 
-      {/* ---------- Search & Add Button ---------- */}
+      {/* ---------- Search & Action Buttons ---------- */}
       <Paper elevation={2} sx={{ mt: 3, p: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+          {/* Search Input */}
           <TextField
             placeholder="Search"
             value={searchTerm}
@@ -579,28 +685,72 @@ export default function PaymentsAndInvoices() {
             size="small"
             sx={{ width: "100%", maxWidth: 300 }}
           />
-          {activeTab === 0 ? (
+
+          {/* Right side: Export + Add Buttons */}
+          <Box sx={{ display: "flex", gap: 1 }}>
+            {/* Export Button w/ Icon */}
             <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={() => setAddPaymentOpen(true)}
+              variant="outlined"
+              startIcon={<FileDownloadIcon />}
+              onClick={handleExportMenuOpen}
+              sx={{ textTransform: "none" }}
             >
-              Add Payment
+              Export
             </Button>
-          ) : (
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={() => setAddInvoiceOpen(true)}
+            <Menu
+              anchorEl={exportAnchorEl}
+              open={openExportMenu}
+              onClose={handleExportMenuClose}
+              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
             >
-              Add Invoice
-            </Button>
-          )}
+              <MenuItem onClick={handleExportCSV}>
+                {activeTab === 0 ? (
+                  <CSVLink
+                    data={filteredPayments}
+                    headers={csvHeadersPayments}
+                    filename="Payments.csv"
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
+                    Export CSV
+                  </CSVLink>
+                ) : (
+                  <CSVLink
+                    data={filteredInvoices}
+                    headers={csvHeadersInvoices}
+                    filename="Invoices.csv"
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
+                    Export CSV
+                  </CSVLink>
+                )}
+              </MenuItem>
+              <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
+            </Menu>
+
+            {/* Add Payment or Add Invoice */}
+            {activeTab === 0 ? (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={() => setAddPaymentOpen(true)}
+              >
+                Add Payment
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={() => setAddInvoiceOpen(true)}
+              >
+                Add Invoice
+              </Button>
+            )}
+          </Box>
         </Box>
 
-        {/* ---------- DataGrid ---------- */}
+        {/* ---------- DataGrid Table ---------- */}
         <div style={{ height: 420, width: "100%" }}>
           <DataGrid
             rows={displayedRows}

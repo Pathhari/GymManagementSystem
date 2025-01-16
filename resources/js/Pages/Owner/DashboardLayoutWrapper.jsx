@@ -16,7 +16,7 @@ import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import Diversity3Icon from '@mui/icons-material/Diversity3';
 import LogoutIcon from '@mui/icons-material/Logout';
-import EditProfile from '@mui/icons-material/ManageAccounts';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import { AppProvider } from '@toolpad/core/AppProvider';
 import { DashboardLayout } from '@toolpad/core/DashboardLayout';
 import axios from 'axios';
@@ -34,6 +34,7 @@ import MaintenanceEquip from './MaintenanceEquip';
 import Promotions from './Promotions';
 import SystemLogs from './SystemLogs';
 import Reports from './Reports';
+import EditAccount from './EditAccount';
 
 // Navigation items
 const NAVIGATION = [
@@ -48,7 +49,7 @@ const NAVIGATION = [
   { segment: 'system-logs', title: 'System Logs', icon: <HistoryIcon /> },
   { segment: 'reports', title: 'Reports & Analytics', icon: <BarChartIcon /> },
   { segment: 'notifications', title: 'Notifications', icon: <NotificationsIcon /> },
-  { segment: 'editprofile', title: 'Edit Profile', icon: <EditProfile /> },
+  { segment: 'editaccount', title: 'Edit Account', icon: <ManageAccountsIcon /> },
 ];
 
 const demoTheme = createTheme({
@@ -90,8 +91,8 @@ function DemoPageContent({ pathname }) {
         return <SystemLogs />;
       case '/reports':
         return <Reports />;
-      case '/editprofile':
-        return <EditProfile />;
+      case '/editaccount':
+        return <EditAccount />;
       default:
         return <DashboardContent />;
     }
