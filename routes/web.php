@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-
+use Inertia\Inertia;
 /*
 |--------------------------------------------------------------------------
 | Root: Redirect to Correct Dashboard if Logged In
@@ -16,7 +16,7 @@ Route::get('/', function() {
         return redirect()->route('staff.dashboard');
     }
     // If no one is logged in, show a public landing or Blade 'welcome'
-    return view('welcome'); // or Inertia::render('Public/Welcome')
+    return Inertia::render('LandingPage');// or Inertia::render('Public/Welcome')
 })->name('root');
 
 /*
@@ -26,9 +26,11 @@ Route::get('/', function() {
 */
 use App\Http\Controllers\OwnerDashboardController;
 
-Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index'])
-    ->middleware('auth:owner')
-    ->name('owner.dashboard');
+Route::middleware(['auth:owner'])->group(function () {
+    Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index'])
+        ->name('owner.dashboard');
+});
+
 
 /*
 |--------------------------------------------------------------------------
@@ -37,9 +39,15 @@ Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index'])
 */
 use App\Http\Controllers\AdminDashboardController;
 
-Route::get('/admin/dashboard', [AdminDashboardController::class, 'index'])
-    ->middleware('auth:admin')
-    ->name('admin.dashboard');
+Route::middleware('auth:admin')->prefix('admin')->group(function () {
+    Route::get('dashboard', [AdminDashboardController::class, 'index'])->name('admin.dashboard');
+    Route::get('users', [AdminDashboardController::class, 'users'])->name('admin.users');
+    Route::get('payments', [AdminDashboardController::class, 'payments'])->name('admin.payments');
+    Route::get('system-logs', [AdminDashboardController::class, 'systemLogs'])->name('admin.systemLogs');
+    Route::get('notifications', [AdminDashboardController::class, 'notifications'])->name('admin.notifications');
+    Route::get('settings', [AdminDashboardController::class, 'settings'])->name('admin.settings');
+});
+
 
 /*
 |--------------------------------------------------------------------------
@@ -48,9 +56,16 @@ Route::get('/admin/dashboard', [AdminDashboardController::class, 'index'])
 */
 use App\Http\Controllers\StaffDashboardController;
 
-Route::get('/staff/dashboard', [StaffDashboardController::class, 'index'])
-    ->middleware('auth:staff')
-    ->name('staff.dashboard');
+Route::middleware('auth:staff')->prefix('staff')->group(function () {
+    Route::get('dashboard', [StaffDashboardController::class, 'index'])->name('staff.dashboard');
+    Route::get('tasks', [StaffDashboardController::class, 'tasks'])->name('staff.tasks');
+    Route::get('attendance', [StaffDashboardController::class, 'attendance'])->name('staff.attendance');
+    Route::get('notifications', [StaffDashboardController::class, 'notifications'])->name('staff.notifications');
+    Route::get('system-logs', [StaffDashboardController::class, 'systemLogs'])->name('staff.systemLogs');
+});
+
+
+
 
 /*
 |--------------------------------------------------------------------------
@@ -74,6 +89,7 @@ Route::get('/admin/login', [AdminAuthController::class, 'showLoginForm'])->name(
 Route::post('/admin/login', [AdminAuthController::class, 'login'])->name('admin.login.post');
 Route::post('/admin/logout', [AdminAuthController::class, 'logout'])->name('admin.logout');
 
+
 /*
 |--------------------------------------------------------------------------
 | Owner Authentication Routes
@@ -84,6 +100,7 @@ use App\Http\Controllers\OwnerAuthController;
 Route::get('/owner/login', [OwnerAuthController::class, 'showLoginForm'])->name('owner.login');
 Route::post('/owner/login', [OwnerAuthController::class, 'login'])->name('owner.login.post');
 Route::post('/owner/logout', [OwnerAuthController::class, 'logout'])->name('owner.logout');
+
 
 /* 
 |--------------------------------------------------------------------------
@@ -587,4 +604,24 @@ Route::prefix('system')->group(function() {
     Route::get('reports', [SystemController::class, 'generateReports'])
         ->middleware('multiGuard:owner,admin')
         ->name('system.reports');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Shared Modules: Payments and Notifications
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['multiGuard:owner,admin,staff'])->group(function () {
+    // Notifications
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [NotificationController::class, 'index'])->name('notifications.index');
+        Route::post('send', [NotificationController::class, 'send'])->name('notifications.send');
+    });
+
+    // Payments
+    Route::prefix('payments')->group(function () {
+        Route::get('/', [PaymentController::class, 'index'])->name('payments.index');
+        Route::get('logs', [PaymentController::class, 'logs'])->name('payments.logs');
+        Route::post('refund', [PaymentController::class, 'refund'])->name('payments.refund');
+    });
 });

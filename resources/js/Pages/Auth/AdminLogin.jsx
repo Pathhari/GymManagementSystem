@@ -1,57 +1,212 @@
-import React from 'react';
-import { route } from 'ziggy-js'
-import { useForm, Inertia } from '@inertiajs/inertia-react';
+import React, { useState } from 'react';
+import axios from 'axios';
+import { AppProvider } from '@toolpad/core/AppProvider';
+import { useTheme } from '@mui/material/styles';
+import {
+  TextField,
+  Button,
+  Box,
+  Typography,
+  IconButton,
+  InputAdornment,
+  Alert,
+} from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
+
+const BRANDING = {
+  logo: (
+    <img
+      src="/imgs/logo-main.png"
+      alt="Logo"
+      style={{ maxWidth: '100%', height: 'auto' }}
+    />
+  ),
+  title: 'Admin Login',
+};
 
 export default function AdminLogin() {
-    const { data, setData, post, processing, errors } = useForm({ 
-      email: '', 
-      password: '' 
-    });
-  
-    function handleSubmit(e) {
-      e.preventDefault();
-      post(route('admin.login.post'));
+  const theme = useTheme();
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState(''); // General error message
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(''); // Clear previous errors on submission
+
+    try {
+      const response = await axios.post('/admin/login', {
+        email,
+        password,
+      });
+
+      if (response.data.success) {
+        window.location.href = response.data.redirect;
+      }
+    } catch (error) {
+      if (error.response?.status === 422) {
+        setError(error.response.data.errors.general); // Set general error message
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
     }
+  };
+
+  const togglePasswordVisibility = () => {
+    setShowPassword((prev) => !prev);
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm">
-        <h1 className="text-2xl mb-4">Admin Login</h1>
-
-        <div className="mb-4">
-          <label className="block mb-1">Email</label>
-          <input
-            type="email"
-            value={data.email}
-            onChange={e => setData('email', e.target.value)}
-            className="border p-2 w-full"
-          />
-          {errors.email && (
-            <div className="text-red-600 text-sm mt-1">{errors.email}</div>
-          )}
-        </div>
-
-        <div className="mb-4">
-          <label className="block mb-1">Password</label>
-          <input
-            type="password"
-            value={data.password}
-            onChange={e => setData('password', e.target.value)}
-            className="border p-2 w-full"
-          />
-          {errors.password && (
-            <div className="text-red-600 text-sm mt-1">{errors.password}</div>
-          )}
-        </div>
-
-        <button
-          type="submit"
-          disabled={processing}
-          className="bg-blue-600 text-white py-2 px-4 rounded"
+    <AppProvider branding={BRANDING} theme={theme}>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          backgroundColor: 'black',
+        }}
+      >
+        {/* Left Column - Login Form */}
+        <Box
+          sx={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'linear-gradient(to bottom, black, gray, white)',
+            p: { xs: 3, md: 0 },
+          }}
         >
-          {processing ? 'Logging in...' : 'Login'}
-        </button>
-      </form>
-    </div>
+          <Box
+            component="form"
+            onSubmit={handleSubmit}
+            sx={{
+              maxWidth: 400,
+              width: '100%',
+              p: 3,
+              borderRadius: 2,
+              boxShadow: theme.shadows[5],
+              backgroundColor: 'white',
+            }}
+          >
+            <Typography variant="h5" sx={{ textAlign: 'center', mb: 3 }}>
+              {BRANDING.title}
+            </Typography>
+
+            {/* Email Field */}
+            <TextField
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              fullWidth
+              margin="normal"
+              error={!!error} // Highlight if there's a general error
+              helperText={!!error ? '' : null} // No specific error message
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  '&.Mui-focused fieldset': {
+                    borderColor: error ? 'red' : 'black',
+                  },
+                  '& fieldset': {
+                    borderColor: error ? 'red' : undefined,
+                  },
+                },
+                '& .MuiInputLabel-root': {
+                  color: error ? 'red' : 'gray',
+                },
+                '& .MuiInputLabel-root.Mui-focused': {
+                  color: error ? 'red' : 'black',
+                },
+              }}
+            />
+
+            {/* Password Field */}
+            <TextField
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              fullWidth
+              margin="normal"
+              error={!!error} // Highlight if there's a general error
+              helperText={!!error ? '' : null} // No specific error message
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton onClick={togglePasswordVisibility} edge="end">
+                      {showPassword ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  '&.Mui-focused fieldset': {
+                    borderColor: error ? 'red' : 'black',
+                  },
+                  '& fieldset': {
+                    borderColor: error ? 'red' : undefined,
+                  },
+                },
+                '& .MuiInputLabel-root': {
+                  color: error ? 'red' : 'gray',
+                },
+                '& .MuiInputLabel-root.Mui-focused': {
+                  color: error ? 'red' : 'black',
+                },
+              }}
+            />
+
+            {/* General Error Alert */}
+            {error && (
+              <Alert severity="error" sx={{ mt: 2, mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              variant="contained"
+              fullWidth
+              sx={{
+                mt: error ? 1 : 2,
+                backgroundColor: 'black',
+                color: 'white',
+                '&:hover': {
+                  backgroundColor: '#333',
+                },
+              }}
+            >
+              Login
+            </Button>
+          </Box>
+        </Box>
+
+        {/* Right Column - Logo */}
+        <Box
+          sx={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'black',
+            p: { xs: 3, md: 0 },
+          }}
+        >
+          <Box
+            sx={{
+              maxWidth: { xs: '60%', md: '80%' },
+              textAlign: 'center',
+            }}
+          >
+            {BRANDING.logo}
+          </Box>
+        </Box>
+      </Box>
+    </AppProvider>
   );
 }

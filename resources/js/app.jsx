@@ -2,9 +2,12 @@
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { createInertiaApp } from '@inertiajs/inertia-react';
-import { route } from 'ziggy-js'; // for Reactwindow.route = route; 
-// or attach to global
+import { createInertiaApp } from '@inertiajs/react'; // Correct adapter
+import 'tw-elements-react/dist/css/tw-elements-react.min.css';
+import { route } from 'ziggy-js'; // For React
+
+// Attach Ziggy's `route` function to the global `window` object
+window.route = route;
 
 createInertiaApp({
   resolve: (name) => {

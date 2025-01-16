@@ -1,0 +1,1706 @@
+import React, { useState } from "react";
+import {
+  Box,
+  Typography,
+  Paper,
+  Button,
+  TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Tabs,
+  Tab,
+  Tooltip,
+  Grid,
+  Card,
+  CardContent,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Divider,
+  Menu,
+} from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import { DataGrid } from "@mui/x-data-grid";
+import PeopleIcon from "@mui/icons-material/People";
+import AutorenewIcon from "@mui/icons-material/Autorenew";
+import AcUnitIcon from "@mui/icons-material/AcUnit";
+import HistoryIcon from "@mui/icons-material/History";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+
+// Icons for the Overview Cards
+import GroupsIcon from "@mui/icons-material/Groups";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import WarningIcon from "@mui/icons-material/Warning";
+import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+
+// --------- For CSV Export ---------
+import { CSVLink } from "react-csv";
+
+// --------- For PDF Export ---------
+import jsPDF from "jspdf";
+import "jspdf-autotable";
+
+// ---------------------- SAMPLE DATA ----------------------
+const sampleMemberships = [
+  {
+    MemberID: 1,
+    FullName: "John Doe",
+    Email: "john.doe@example.com",
+    Phone: "123-456-7890",
+    PlanID: 1,
+    MembershipCardNumber: "CARD-1001",
+    MembershipCardIssued: true,
+    MembershipStatus: "Active",
+    MembershipStartDate: "2023-01-01",
+    MembershipEndDate: "2023-12-31",
+    Biometrics: "Fingerprint",
+    FreeSessions: 5,
+    Notes: "First time member",
+  },
+  {
+    MemberID: 2,
+    FullName: "Jane Smith",
+    Email: "jane.smith@example.com",
+    Phone: "987-654-3210",
+    PlanID: 2,
+    MembershipCardNumber: "CARD-1002",
+    MembershipCardIssued: false,
+    MembershipStatus: "Expired",
+    MembershipStartDate: "2022-01-01",
+    MembershipEndDate: "2022-12-31",
+    Biometrics: "Facial",
+    FreeSessions: 2,
+    Notes: "Pending renewal",
+  },
+];
+
+const sampleFreezes = [
+  {
+    FreezeID: 1,
+    MemberID: 1,
+    FreezeStartDate: "2023-05-01",
+    FreezeEndDate: "2023-05-15",
+    Reason: "Vacation",
+    ApprovalStatus: "Approved",
+  },
+  {
+    FreezeID: 2,
+    MemberID: 2,
+    FreezeStartDate: "2023-06-01",
+    FreezeEndDate: "2023-06-10",
+    Reason: "Medical",
+    ApprovalStatus: "Pending",
+  },
+];
+
+const sampleRenewals = [
+  {
+    RenewalID: 1,
+    MemberID: 1,
+    RenewalDate: "2023-12-01",
+    PlanID: 1,
+    RenewalAmount: 1200,
+    ProcessedBy: "Admin1",
+  },
+  {
+    RenewalID: 2,
+    MemberID: 2,
+    RenewalDate: "2023-11-15",
+    PlanID: 2,
+    RenewalAmount: 900,
+    ProcessedBy: "Staff2",
+  },
+];
+
+const sampleLogs = [
+  {
+    LogID: 1,
+    UserID: 1,
+    Action: "Updated membership status",
+    Timestamp: "2023-02-10 10:15:00",
+    Details: "Changed status from expired to active",
+  },
+  {
+    LogID: 2,
+    UserID: 2,
+    Action: "Payment processed",
+    Timestamp: "2023-02-11 09:00:00",
+    Details: "Renewal payment confirmed for MemberID 2",
+  },
+];
+
+export default function MembershipManagement() {
+  // ------------------- STATES: MEMBERSHIP TAB -------------------
+  const [membershipRecords, setMembershipRecords] = useState(sampleMemberships);
+  const [filteredMemberships, setFilteredMemberships] = useState(sampleMemberships);
+  const [selectedMembership, setSelectedMembership] = useState(null);
+
+  // Modals for Membership
+  const [isViewMembershipOpen, setViewMembershipOpen] = useState(false);
+  const [isEditMembershipOpen, setEditMembershipOpen] = useState(false);
+  const [isAddMembershipOpen, setAddMembershipOpen] = useState(false);
+
+  // For adding a new membership
+  const [newMembership, setNewMembership] = useState({
+    FullName: "",
+    Email: "",
+    Phone: "",
+    PlanID: 0,
+    MembershipCardNumber: "",
+    MembershipCardIssued: false,
+    MembershipStatus: "",
+    MembershipStartDate: "",
+    MembershipEndDate: "",
+    Biometrics: "",
+    FreeSessions: 0,
+    Notes: "",
+  });
+  const [errors, setErrors] = useState({});
+
+  // ------------------- STATES: FREEZES TAB --------------------
+  const [freezeRecords, setFreezeRecords] = useState(sampleFreezes);
+  const [filteredFreezes, setFilteredFreezes] = useState(sampleFreezes);
+  const [selectedFreeze, setSelectedFreeze] = useState(null);
+  const [isViewFreezeOpen, setViewFreezeOpen] = useState(false);
+  const [isEditFreezeOpen, setEditFreezeOpen] = useState(false);
+
+  // ------------------- STATES: RENEWALS TAB -------------------
+  const [renewalRecords, setRenewalRecords] = useState(sampleRenewals);
+  const [filteredRenewals, setFilteredRenewals] = useState(sampleRenewals);
+  const [selectedRenewal, setSelectedRenewal] = useState(null);
+  const [isViewRenewalOpen, setViewRenewalOpen] = useState(false);
+  const [isEditRenewalOpen, setEditRenewalOpen] = useState(false);
+
+  // ------------------- STATES: LOGS TAB -----------------------
+  const [activityLogs, setActivityLogs] = useState(sampleLogs);
+  const [filteredLogs, setFilteredLogs] = useState(sampleLogs);
+  const [selectedLog, setSelectedLog] = useState(null);
+  const [isViewLogOpen, setViewLogOpen] = useState(false);
+
+  // ------------------- TABS & SEARCH --------------------------
+  const [activeTab, setActiveTab] = useState(0);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // -------------- TIME PERIOD + DATE FILTERS (like in Payments) --------------
+  const [timePeriod, setTimePeriod] = useState("daily");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const handleTimePeriodChange = (e) => {
+    setTimePeriod(e.target.value);
+    // Insert your filtering logic if desired
+  };
+  const handleDateFromChange = (e) => {
+    setDateFrom(e.target.value);
+    // Insert your filtering logic if desired
+  };
+  const handleDateToChange = (e) => {
+    setDateTo(e.target.value);
+    // Insert your filtering logic if desired
+  };
+
+  // ------------------- ADD MEMBERSHIP -------------------------
+  const handleAddMembershipChange = (e) => {
+    const { name, value } = e.target;
+    setNewMembership({ ...newMembership, [name]: value });
+  };
+
+  const handleAddMembership = () => {
+    if (!newMembership.FullName || !newMembership.Email) {
+      setErrors({
+        FullName: newMembership.FullName ? "" : "Required",
+        Email: newMembership.Email ? "" : "Required",
+      });
+      return;
+    }
+    const nextID = membershipRecords.length
+      ? Math.max(...membershipRecords.map((m) => m.MemberID)) + 1
+      : 1;
+
+    const newRecord = {
+      MemberID: nextID,
+      ...newMembership,
+      PlanID: Number(newMembership.PlanID) || 0,
+      MembershipCardIssued: newMembership.MembershipCardIssued === "true" || false,
+    };
+
+    const updated = [...membershipRecords, newRecord];
+    setMembershipRecords(updated);
+    setFilteredMemberships(updated);
+
+    // Reset form and close dialog
+    setNewMembership({
+      FullName: "",
+      Email: "",
+      Phone: "",
+      PlanID: 0,
+      MembershipCardNumber: "",
+      MembershipCardIssued: false,
+      MembershipStatus: "",
+      MembershipStartDate: "",
+      MembershipEndDate: "",
+      Biometrics: "",
+      FreeSessions: 0,
+      Notes: "",
+    });
+    setErrors({});
+    setAddMembershipOpen(false);
+  };
+
+  // ------------------- MEMBERSHIP: VIEW, EDIT, DELETE ---------
+  const handleViewMembership = (record) => {
+    setSelectedMembership(record);
+    setViewMembershipOpen(true);
+  };
+
+  const handleEditMembership = (record) => {
+    setSelectedMembership(record);
+    setEditMembershipOpen(true);
+  };
+
+  const handleDeleteMembership = (memberID) => {
+    const updated = membershipRecords.filter((m) => m.MemberID !== memberID);
+    setMembershipRecords(updated);
+    setFilteredMemberships(updated);
+  };
+
+  const handleEditMembershipSubmit = () => {
+    setMembershipRecords((prev) =>
+      prev.map((m) => (m.MemberID === selectedMembership.MemberID ? selectedMembership : m))
+    );
+    setFilteredMemberships((prev) =>
+      prev.map((m) => (m.MemberID === selectedMembership.MemberID ? selectedMembership : m))
+    );
+    setEditMembershipOpen(false);
+  };
+
+  // ------------------- FREEZES: VIEW, EDIT, DELETE ------------
+  const handleViewFreeze = (record) => {
+    setSelectedFreeze(record);
+    setViewFreezeOpen(true);
+  };
+
+  const handleEditFreeze = (record) => {
+    setSelectedFreeze(record);
+    setEditFreezeOpen(true);
+  };
+
+  const handleDeleteFreeze = (freezeID) => {
+    const updated = freezeRecords.filter((f) => f.FreezeID !== freezeID);
+    setFreezeRecords(updated);
+    setFilteredFreezes(updated);
+  };
+
+  const handleEditFreezeSubmit = () => {
+    setFreezeRecords((prev) =>
+      prev.map((f) => (f.FreezeID === selectedFreeze.FreezeID ? selectedFreeze : f))
+    );
+    setFilteredFreezes((prev) =>
+      prev.map((f) => (f.FreezeID === selectedFreeze.FreezeID ? selectedFreeze : f))
+    );
+    setEditFreezeOpen(false);
+  };
+
+  // ------------------- RENEWALS: VIEW, EDIT, DELETE -----------
+  const handleViewRenewal = (record) => {
+    setSelectedRenewal(record);
+    setViewRenewalOpen(true);
+  };
+
+  const handleEditRenewal = (record) => {
+    setSelectedRenewal(record);
+    setEditRenewalOpen(true);
+  };
+
+  const handleDeleteRenewal = (renewalID) => {
+    const updated = renewalRecords.filter((r) => r.RenewalID !== renewalID);
+    setRenewalRecords(updated);
+    setFilteredRenewals(updated);
+  };
+
+  const handleEditRenewalSubmit = () => {
+    setRenewalRecords((prev) =>
+      prev.map((r) => (r.RenewalID === selectedRenewal.RenewalID ? selectedRenewal : r))
+    );
+    setFilteredRenewals((prev) =>
+      prev.map((r) => (r.RenewalID === selectedRenewal.RenewalID ? selectedRenewal : r))
+    );
+    setEditRenewalOpen(false);
+  };
+
+  // ------------------- LOGS: VIEW, DELETE (no Edit) -----------
+  const handleViewLog = (record) => {
+    setSelectedLog(record);
+    setViewLogOpen(true);
+  };
+
+  const handleDeleteLog = (logID) => {
+    const updated = activityLogs.filter((l) => l.LogID !== logID);
+    setActivityLogs(updated);
+    setFilteredLogs(updated);
+  };
+
+  // ------------------- SEARCH & TAB SWITCHING -----------------
+  const handleSearchChange = (e) => {
+    const value = e.target.value.toLowerCase();
+    setSearchTerm(value);
+
+    if (activeTab === 0) {
+      const filtered = membershipRecords.filter((item) =>
+        Object.values(item).some((val) => String(val).toLowerCase().includes(value))
+      );
+      setFilteredMemberships(filtered);
+    } else if (activeTab === 1) {
+      const filtered = renewalRecords.filter((item) =>
+        Object.values(item).some((val) => String(val).toLowerCase().includes(value))
+      );
+      setFilteredRenewals(filtered);
+    } else if (activeTab === 2) {
+      const filtered = freezeRecords.filter((item) =>
+        Object.values(item).some((val) => String(val).toLowerCase().includes(value))
+      );
+      setFilteredFreezes(filtered);
+    } else {
+      const filtered = activityLogs.filter((item) =>
+        Object.values(item).some((val) => String(val).toLowerCase().includes(value))
+      );
+      setFilteredLogs(filtered);
+    }
+  };
+
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+    setSearchTerm("");
+
+    if (newValue === 0) {
+      setFilteredMemberships(membershipRecords);
+    } else if (newValue === 1) {
+      setFilteredRenewals(renewalRecords);
+    } else if (newValue === 2) {
+      setFilteredFreezes(freezeRecords);
+    } else {
+      setFilteredLogs(activityLogs);
+    }
+  };
+
+  // ------------------- Overview Cards: 4 Metrics -------------------
+  const totalMembers = membershipRecords.length;
+  const activeMembers = membershipRecords.filter(
+    (m) => m.MembershipStatus === "Active"
+  ).length;
+  const expiredMemberships = membershipRecords.filter(
+    (m) => m.MembershipStatus === "Expired"
+  ).length;
+
+  const today = new Date();
+  const next30 = new Date();
+  next30.setDate(today.getDate() + 30);
+  const upcomingExpirations = membershipRecords.filter((m) => {
+    const endDate = new Date(m.MembershipEndDate);
+    return endDate > today && endDate <= next30;
+  }).length;
+
+  // -------------- Decide columns --------------
+  const membershipColumns = [
+    { field: "MemberID", headerName: "Member ID", width: 100 },
+    { field: "FullName", headerName: "Full Name", width: 160 },
+    { field: "Email", headerName: "Email", width: 160 },
+    { field: "Phone", headerName: "Phone", width: 130 },
+    { field: "PlanID", headerName: "Plan ID", width: 90 },
+    { field: "MembershipCardNumber", headerName: "Card #", width: 130 },
+    {
+      field: "MembershipCardIssued",
+      headerName: "Issued",
+      width: 80,
+      renderCell: (params) => (
+        <span style={{ color: params.value ? "limegreen" : "red" }}>
+          {params.value ? "Yes" : "No"}
+        </span>
+      ),
+    },
+    {
+      field: "MembershipStatus",
+      headerName: "Status",
+      width: 100,
+      renderCell: (params) => (
+        <span
+          style={{
+            color: params.value === "Active" ? "limegreen" : "orange",
+          }}
+        >
+          {params.value}
+        </span>
+      ),
+    },
+    { field: "MembershipStartDate", headerName: "Start", width: 100 },
+    { field: "MembershipEndDate", headerName: "End", width: 100 },
+    { field: "Biometrics", headerName: "Biometrics", width: 120 },
+    { field: "FreeSessions", headerName: "Free", width: 70 },
+    { field: "Notes", headerName: "Notes", width: 150 },
+    {
+      field: "Actions",
+      headerName: "Actions",
+      width: 300,
+      sortable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title="View">
+            <Button
+              variant="contained"
+              sx={{
+                backgroundColor: "#4caf50",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#43a047" },
+                minWidth: "40px",
+                padding: "6px",
+              }}
+              onClick={() => handleViewMembership(params.row)}
+            >
+              <VisibilityIcon />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Edit">
+            <Button
+              variant="contained"
+              sx={{
+                backgroundColor: "#2196f3",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#1976d2" },
+                minWidth: "40px",
+                padding: "6px",
+              }}
+              onClick={() => handleEditMembership(params.row)}
+            >
+              <EditIcon />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <Button
+              variant="contained"
+              sx={{
+                backgroundColor: "#f44336",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#d32f2f" },
+                minWidth: "40px",
+                padding: "6px",
+              }}
+              onClick={() => handleDeleteMembership(params.row.MemberID)}
+            >
+              <DeleteIcon />
+            </Button>
+          </Tooltip>
+        </Box>
+      ),
+    },
+  ];
+
+  const renewalColumns = [
+    { field: "RenewalID", headerName: "Renewal ID", width: 110 },
+    { field: "MemberID", headerName: "Member ID", width: 100 },
+    { field: "RenewalDate", headerName: "Renewal Date", width: 130 },
+    { field: "PlanID", headerName: "Plan ID", width: 90 },
+    { field: "RenewalAmount", headerName: "Amount", width: 100 },
+    { field: "ProcessedBy", headerName: "Processed By", width: 130 },
+    {
+      field: "Actions",
+      headerName: "Actions",
+      width: 280,
+      sortable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Button
+            variant="contained"
+            sx={{
+              backgroundColor: "#4caf50",
+              color: "#fff",
+              "&:hover": { backgroundColor: "#43a047" },
+              minWidth: "40px",
+              padding: "6px",
+            }}
+            onClick={() => handleViewRenewal(params.row)}
+          >
+            <VisibilityIcon />
+          </Button>
+          <Button
+            variant="contained"
+            sx={{
+              backgroundColor: "#2196f3",
+              color: "#fff",
+              "&:hover": { backgroundColor: "#1976d2" },
+              minWidth: "40px",
+              padding: "6px",
+            }}
+            onClick={() => handleEditRenewal(params.row)}
+          >
+            <EditIcon />
+          </Button>
+          <Button
+            variant="contained"
+            sx={{
+              backgroundColor: "#f44336",
+              color: "#fff",
+              "&:hover": { backgroundColor: "#d32f2f" },
+              minWidth: "40px",
+              padding: "6px",
+            }}
+            onClick={() => handleDeleteRenewal(params.row.RenewalID)}
+          >
+            <DeleteIcon />
+          </Button>
+        </Box>
+      ),
+    },
+  ];
+
+  const freezeColumns = [
+    { field: "FreezeID", headerName: "Freeze ID", width: 100 },
+    { field: "MemberID", headerName: "Member ID", width: 100 },
+    { field: "FreezeStartDate", headerName: "Start Date", width: 130 },
+    { field: "FreezeEndDate", headerName: "End Date", width: 130 },
+    { field: "Reason", headerName: "Reason", width: 150 },
+    {
+      field: "ApprovalStatus",
+      headerName: "Approval",
+      width: 100,
+      renderCell: (params) => (
+        <span style={{ color: params.value === "Approved" ? "limegreen" : "orange" }}>
+          {params.value}
+        </span>
+      ),
+    },
+    {
+      field: "Actions",
+      headerName: "Actions",
+      width: 280,
+      sortable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Button
+            variant="contained"
+            sx={{
+              backgroundColor: "#4caf50",
+              color: "#fff",
+              "&:hover": { backgroundColor: "#43a047" },
+              minWidth: "40px",
+              padding: "6px",
+            }}
+            onClick={() => handleViewFreeze(params.row)}
+          >
+            <VisibilityIcon />
+          </Button>
+          <Button
+            variant="contained"
+            sx={{
+              backgroundColor: "#2196f3",
+              color: "#fff",
+              "&:hover": { backgroundColor: "#1976d2" },
+              minWidth: "40px",
+              padding: "6px",
+            }}
+            onClick={() => handleEditFreeze(params.row)}
+          >
+            <EditIcon />
+          </Button>
+          <Button
+            variant="contained"
+            sx={{
+              backgroundColor: "#f44336",
+              color: "#fff",
+              "&:hover": { backgroundColor: "#d32f2f" },
+              minWidth: "40px",
+              padding: "6px",
+            }}
+            onClick={() => handleDeleteFreeze(params.row.FreezeID)}
+          >
+            <DeleteIcon />
+          </Button>
+        </Box>
+      ),
+    },
+  ];
+
+  const logColumns = [
+    { field: "LogID", headerName: "Log ID", width: 80 },
+    { field: "UserID", headerName: "User ID", width: 80 },
+    { field: "Action", headerName: "Action", width: 160 },
+    { field: "Timestamp", headerName: "Timestamp", width: 160 },
+    { field: "Details", headerName: "Details", width: 200 },
+    {
+      field: "Actions",
+      headerName: "Actions",
+      width: 220,
+      sortable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Button
+            variant="contained"
+            sx={{
+              backgroundColor: "#4caf50",
+              color: "#fff",
+              "&:hover": { backgroundColor: "#43a047" },
+              minWidth: "40px",
+              padding: "6px",
+            }}
+            onClick={() => handleViewLog(params.row)}
+          >
+            <VisibilityIcon />
+          </Button>
+          <Button
+            variant="contained"
+            sx={{
+              backgroundColor: "#f44336",
+              color: "#fff",
+              "&:hover": { backgroundColor: "#d32f2f" },
+              minWidth: "40px",
+              padding: "6px",
+            }}
+            onClick={() => handleDeleteLog(params.row.LogID)}
+          >
+            <DeleteIcon />
+          </Button>
+        </Box>
+      ),
+    },
+  ];
+
+  const columns =
+    activeTab === 0
+      ? membershipColumns
+      : activeTab === 1
+      ? renewalColumns
+      : activeTab === 2
+      ? freezeColumns
+      : logColumns;
+
+  const getRowId = (row) => {
+    if (activeTab === 0) return row.MemberID;
+    if (activeTab === 1) return row.RenewalID;
+    if (activeTab === 2) return row.FreezeID;
+    return row.LogID;
+  };
+
+  const rows =
+    activeTab === 0
+      ? filteredMemberships
+      : activeTab === 1
+      ? filteredRenewals
+      : activeTab === 2
+      ? filteredFreezes
+      : filteredLogs;
+
+  // ==================================================================
+  // ======================= EXPORT FUNCTIONALITY ======================
+  // ==================================================================
+
+  // 1) Create an anchor for the Export Menu
+  const [exportAnchorEl, setExportAnchorEl] = useState(null);
+  const openExportMenu = Boolean(exportAnchorEl);
+
+  const handleExportMenuOpen = (event) => {
+    setExportAnchorEl(event.currentTarget);
+  };
+
+  const handleExportMenuClose = () => {
+    setExportAnchorEl(null);
+  };
+
+  // 2) CSV Headers for each tab
+  const membershipCSVHeaders = [
+    { label: "Member ID", key: "MemberID" },
+    { label: "Full Name", key: "FullName" },
+    { label: "Email", key: "Email" },
+    { label: "Phone", key: "Phone" },
+    { label: "PlanID", key: "PlanID" },
+    { label: "MembershipCardNumber", key: "MembershipCardNumber" },
+    { label: "MembershipCardIssued", key: "MembershipCardIssued" },
+    { label: "MembershipStatus", key: "MembershipStatus" },
+    { label: "MembershipStartDate", key: "MembershipStartDate" },
+    { label: "MembershipEndDate", key: "MembershipEndDate" },
+    { label: "Biometrics", key: "Biometrics" },
+    { label: "FreeSessions", key: "FreeSessions" },
+    { label: "Notes", key: "Notes" },
+  ];
+
+  const renewalCSVHeaders = [
+    { label: "RenewalID", key: "RenewalID" },
+    { label: "MemberID", key: "MemberID" },
+    { label: "RenewalDate", key: "RenewalDate" },
+    { label: "PlanID", key: "PlanID" },
+    { label: "RenewalAmount", key: "RenewalAmount" },
+    { label: "ProcessedBy", key: "ProcessedBy" },
+  ];
+
+  const freezeCSVHeaders = [
+    { label: "FreezeID", key: "FreezeID" },
+    { label: "MemberID", key: "MemberID" },
+    { label: "FreezeStartDate", key: "FreezeStartDate" },
+    { label: "FreezeEndDate", key: "FreezeEndDate" },
+    { label: "Reason", key: "Reason" },
+    { label: "ApprovalStatus", key: "ApprovalStatus" },
+  ];
+
+  const logsCSVHeaders = [
+    { label: "LogID", key: "LogID" },
+    { label: "UserID", key: "UserID" },
+    { label: "Action", key: "Action" },
+    { label: "Timestamp", key: "Timestamp" },
+    { label: "Details", key: "Details" },
+  ];
+
+  const handleExportCSV = () => {
+    // react-csv handles the actual file download via <CSVLink>
+    handleExportMenuClose();
+  };
+
+  // 3) PDF Export (JS PDF)
+  const handleExportPDF = () => {
+    handleExportMenuClose();
+    const doc = new jsPDF();
+
+    if (activeTab === 0) {
+      // MEMBERSHIPS
+      doc.text("Memberships Export", 14, 10);
+      const bodyData = filteredMemberships.map((m) => [
+        m.MemberID,
+        m.FullName,
+        m.Email,
+        m.Phone,
+        m.PlanID,
+        m.MembershipCardNumber,
+        m.MembershipCardIssued ? "Yes" : "No",
+        m.MembershipStatus,
+        m.MembershipStartDate,
+        m.MembershipEndDate,
+        m.Biometrics,
+        m.FreeSessions,
+        m.Notes,
+      ]);
+      doc.autoTable({
+        head: [
+          [
+            "MemberID",
+            "Full Name",
+            "Email",
+            "Phone",
+            "PlanID",
+            "Card #",
+            "Issued?",
+            "Status",
+            "Start",
+            "End",
+            "Biometrics",
+            "Free?",
+            "Notes",
+          ],
+        ],
+        body: bodyData,
+        startY: 20,
+      });
+      doc.save("Memberships.pdf");
+    } else if (activeTab === 1) {
+      // RENEWALS
+      doc.text("Renewals Export", 14, 10);
+      const bodyData = filteredRenewals.map((r) => [
+        r.RenewalID,
+        r.MemberID,
+        r.RenewalDate,
+        r.PlanID,
+        r.RenewalAmount,
+        r.ProcessedBy,
+      ]);
+      doc.autoTable({
+        head: [["ID", "MemberID", "Date", "PlanID", "Amount", "ProcessedBy"]],
+        body: bodyData,
+        startY: 20,
+      });
+      doc.save("Renewals.pdf");
+    } else if (activeTab === 2) {
+      // FREEZES
+      doc.text("Freezes Export", 14, 10);
+      const bodyData = filteredFreezes.map((f) => [
+        f.FreezeID,
+        f.MemberID,
+        f.FreezeStartDate,
+        f.FreezeEndDate,
+        f.Reason,
+        f.ApprovalStatus,
+      ]);
+      doc.autoTable({
+        head: [["ID", "MemberID", "Start", "End", "Reason", "Status"]],
+        body: bodyData,
+        startY: 20,
+      });
+      doc.save("Freezes.pdf");
+    } else {
+      // LOGS
+      doc.text("Logs Export", 14, 10);
+      const bodyData = filteredLogs.map((l) => [
+        l.LogID,
+        l.UserID,
+        l.Action,
+        l.Timestamp,
+        l.Details,
+      ]);
+      doc.autoTable({
+        head: [["LogID", "UserID", "Action", "Timestamp", "Details"]],
+        body: bodyData,
+        startY: 20,
+      });
+      doc.save("Logs.pdf");
+    }
+  };
+
+  // Decide CSV data + headers based on active tab
+  let csvData = [];
+  let csvHeaders = [];
+  let csvFilename = "";
+  if (activeTab === 0) {
+    csvData = filteredMemberships;
+    csvHeaders = membershipCSVHeaders;
+    csvFilename = "Memberships.csv";
+  } else if (activeTab === 1) {
+    csvData = filteredRenewals;
+    csvHeaders = renewalCSVHeaders;
+    csvFilename = "Renewals.csv";
+  } else if (activeTab === 2) {
+    csvData = filteredFreezes;
+    csvHeaders = freezeCSVHeaders;
+    csvFilename = "Freezes.csv";
+  } else {
+    csvData = filteredLogs;
+    csvHeaders = logsCSVHeaders;
+    csvFilename = "Logs.csv";
+  }
+
+  return (
+    <Box sx={{ p: 4 }}>
+      {/* ----------- TIME PERIOD & DATE FILTERS (like in Payments) ----------- */}
+      <Box
+        sx={{
+          mb: 2,
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 2,
+          alignItems: "center",
+        }}
+      >
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel>Time Period</InputLabel>
+          <Select value={timePeriod} label="Time Period" onChange={handleTimePeriodChange}>
+            <MenuItem value="daily">Daily</MenuItem>
+            <MenuItem value="weekly">Weekly</MenuItem>
+            <MenuItem value="monthly">Monthly</MenuItem>
+            <MenuItem value="yearly">Yearly</MenuItem>
+          </Select>
+        </FormControl>
+        <TextField
+          type="date"
+          size="small"
+          label="From"
+          InputLabelProps={{ shrink: true }}
+          value={dateFrom}
+          onChange={handleDateFromChange}
+        />
+        <TextField
+          type="date"
+          size="small"
+          label="To"
+          InputLabelProps={{ shrink: true }}
+          value={dateTo}
+          onChange={handleDateToChange}
+        />
+      </Box>
+
+      {/* ------------------- Four Overview Cards ------------------- */}
+      <Box sx={{ mb: 3 }}>
+        <Grid container spacing={2}>
+          {/* 1. Total Members */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Card
+              sx={{
+                bgcolor: "text.primary",
+                color: "background.paper",
+                display: "flex",
+                alignItems: "center",
+                p: 2,
+              }}
+            >
+              <GroupsIcon sx={{ fontSize: 40, color: "gray", mr: 2 }} />
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Total Members
+                </Typography>
+                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                  {totalMembers}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* 2. Active Members */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Card
+              sx={{
+                bgcolor: "text.primary",
+                color: "background.paper",
+                display: "flex",
+                alignItems: "center",
+                p: 2,
+              }}
+            >
+              <CheckCircleIcon sx={{ fontSize: 40, color: "limegreen", mr: 2 }} />
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Active Members
+                </Typography>
+                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                  {activeMembers}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* 3. Expired Memberships */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Card
+              sx={{
+                bgcolor: "text.primary",
+                color: "background.paper",
+                display: "flex",
+                alignItems: "center",
+                p: 2,
+              }}
+            >
+              <WarningIcon sx={{ fontSize: 40, color: "red", mr: 2 }} />
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Expired Memberships
+                </Typography>
+                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                  {expiredMemberships}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* 4. Upcoming Expirations */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Card
+              sx={{
+                bgcolor: "text.primary",
+                color: "background.paper",
+                display: "flex",
+                alignItems: "center",
+                p: 2,
+              }}
+            >
+              <EventAvailableIcon sx={{ fontSize: 40, color: "blue", mr: 2 }} />
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Upcoming Expirations
+                </Typography>
+                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                  {upcomingExpirations}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </Box>
+
+      {/* ---------------- Title and Tabs ---------------- */}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <Typography variant="h4" gutterBottom>
+          Membership Management
+        </Typography>
+        <Tabs
+          value={activeTab}
+          onChange={handleTabChange}
+          sx={{ flexWrap: "wrap", justifyContent: "flex-end" }}
+        >
+          <Tab icon={<PeopleIcon />} label="Memberships" />
+          <Tab icon={<AutorenewIcon />} label="Renewals" />
+          <Tab icon={<AcUnitIcon />} label="Freezes" />
+          <Tab icon={<HistoryIcon />} label="Activity Logs" />
+        </Tabs>
+      </Box>
+
+      {/* ---------------- DataGrid & Search ---------------- */}
+      <Paper elevation={2} sx={{ mt: 3, p: 2 }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+          {/* Search box */}
+          <TextField
+            placeholder="Search"
+            value={searchTerm}
+            onChange={handleSearchChange}
+            variant="outlined"
+            size="small"
+            sx={{ width: "100%", maxWidth: 300 }}
+          />
+
+          {/* ---------- Export & Add Buttons for ALL Tabs ---------- */}
+          <Box sx={{ display: "flex", gap: 1 }}>
+            {/* Export Menu (CSV/PDF) */}
+            <Button
+              variant="outlined"
+              onClick={handleExportMenuOpen}
+              sx={{ textTransform: "none" }}
+            >
+              Export
+            </Button>
+            <Menu
+              anchorEl={exportAnchorEl}
+              open={openExportMenu}
+              onClose={handleExportMenuClose}
+              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+            >
+              <MenuItem onClick={handleExportCSV}>
+                <CSVLink
+                  data={rows}
+                  headers={
+                    activeTab === 0
+                      ? membershipCSVHeaders
+                      : activeTab === 1
+                      ? renewalCSVHeaders
+                      : activeTab === 2
+                      ? freezeCSVHeaders
+                      : logsCSVHeaders
+                  }
+                  filename={
+                    activeTab === 0
+                      ? "Memberships.csv"
+                      : activeTab === 1
+                      ? "Renewals.csv"
+                      : activeTab === 2
+                      ? "Freezes.csv"
+                      : "Logs.csv"
+                  }
+                  style={{ textDecoration: "none", color: "inherit" }}
+                >
+                  Export CSV
+                </CSVLink>
+              </MenuItem>
+              <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
+            </Menu>
+
+            {/* (Only show Add button if it's the Membership tab; or show on all if desired) */}
+            {activeTab === 0 && (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={() => setAddMembershipOpen(true)}
+              >
+                Add New Membership
+              </Button>
+            )}
+          </Box>
+        </Box>
+
+        <div style={{ height: 420, width: "100%" }}>
+          <DataGrid
+            rows={rows}
+            columns={columns}
+            getRowId={getRowId}
+            pageSize={5}
+            rowsPerPageOptions={[5, 10]}
+          />
+        </div>
+      </Paper>
+
+      {/* ========== ADD MEMBERSHIP DIALOG ========== */}
+      <Dialog open={isAddMembershipOpen} onClose={() => setAddMembershipOpen(false)}>
+        <DialogTitle>Add New Membership</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Full Name"
+            name="FullName"
+            value={newMembership.FullName}
+            onChange={handleAddMembershipChange}
+            error={!!errors.FullName}
+            helperText={errors.FullName}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Email"
+            name="Email"
+            value={newMembership.Email}
+            onChange={handleAddMembershipChange}
+            error={!!errors.Email}
+            helperText={errors.Email}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Phone"
+            name="Phone"
+            value={newMembership.Phone}
+            onChange={handleAddMembershipChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Plan ID"
+            name="PlanID"
+            value={newMembership.PlanID}
+            onChange={handleAddMembershipChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Membership Card Number"
+            name="MembershipCardNumber"
+            value={newMembership.MembershipCardNumber}
+            onChange={handleAddMembershipChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Membership Card Issued? (true/false)"
+            name="MembershipCardIssued"
+            value={String(newMembership.MembershipCardIssued)}
+            onChange={handleAddMembershipChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Membership Status"
+            name="MembershipStatus"
+            value={newMembership.MembershipStatus}
+            onChange={handleAddMembershipChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Membership Start Date"
+            name="MembershipStartDate"
+            value={newMembership.MembershipStartDate}
+            onChange={handleAddMembershipChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Membership End Date"
+            name="MembershipEndDate"
+            value={newMembership.MembershipEndDate}
+            onChange={handleAddMembershipChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Biometrics"
+            name="Biometrics"
+            value={newMembership.Biometrics}
+            onChange={handleAddMembershipChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Free Sessions"
+            name="FreeSessions"
+            type="number"
+            value={newMembership.FreeSessions}
+            onChange={handleAddMembershipChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Notes"
+            name="Notes"
+            value={newMembership.Notes}
+            onChange={handleAddMembershipChange}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddMembershipOpen(false)}>Cancel</Button>
+          <Button onClick={handleAddMembership} variant="contained" color="primary">
+            Add Membership
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== VIEW MEMBERSHIP DIALOG ========== */}
+      <Dialog open={isViewMembershipOpen} onClose={() => setViewMembershipOpen(false)}>
+        <DialogTitle>Membership Details</DialogTitle>
+        <DialogContent dividers>
+          {selectedMembership && (
+            <>
+              <Typography gutterBottom>
+                <strong>MemberID:</strong> {selectedMembership.MemberID}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Full Name:</strong> {selectedMembership.FullName}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Email:</strong> {selectedMembership.Email}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Phone:</strong> {selectedMembership.Phone}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>PlanID:</strong> {selectedMembership.PlanID}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Membership Card #:</strong>{" "}
+                {selectedMembership.MembershipCardNumber}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Card Issued?</strong>{" "}
+                {selectedMembership.MembershipCardIssued ? "Yes" : "No"}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Status:</strong> {selectedMembership.MembershipStatus}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Start Date:</strong> {selectedMembership.MembershipStartDate}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>End Date:</strong> {selectedMembership.MembershipEndDate}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Biometrics:</strong> {selectedMembership.Biometrics}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Free Sessions:</strong> {selectedMembership.FreeSessions}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Notes:</strong> {selectedMembership.Notes}
+              </Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewMembershipOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== EDIT MEMBERSHIP DIALOG ========== */}
+      <Dialog open={isEditMembershipOpen} onClose={() => setEditMembershipOpen(false)}>
+        <DialogTitle>Edit Membership</DialogTitle>
+        <DialogContent>
+          {selectedMembership && (
+            <>
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Full Name"
+                value={selectedMembership.FullName}
+                onChange={(e) =>
+                  setSelectedMembership((prev) => ({ ...prev, FullName: e.target.value }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Email"
+                value={selectedMembership.Email}
+                onChange={(e) =>
+                  setSelectedMembership((prev) => ({ ...prev, Email: e.target.value }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Phone"
+                value={selectedMembership.Phone}
+                onChange={(e) =>
+                  setSelectedMembership((prev) => ({ ...prev, Phone: e.target.value }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Plan ID"
+                value={selectedMembership.PlanID}
+                onChange={(e) =>
+                  setSelectedMembership((prev) => ({ ...prev, PlanID: e.target.value }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Membership Card Number"
+                value={selectedMembership.MembershipCardNumber}
+                onChange={(e) =>
+                  setSelectedMembership((prev) => ({
+                    ...prev,
+                    MembershipCardNumber: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Card Issued? (true/false)"
+                value={String(selectedMembership.MembershipCardIssued)}
+                onChange={(e) =>
+                  setSelectedMembership((prev) => ({
+                    ...prev,
+                    MembershipCardIssued: e.target.value === "true",
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Status"
+                value={selectedMembership.MembershipStatus}
+                onChange={(e) =>
+                  setSelectedMembership((prev) => ({
+                    ...prev,
+                    MembershipStatus: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Start Date"
+                value={selectedMembership.MembershipStartDate}
+                onChange={(e) =>
+                  setSelectedMembership((prev) => ({
+                    ...prev,
+                    MembershipStartDate: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="End Date"
+                value={selectedMembership.MembershipEndDate}
+                onChange={(e) =>
+                  setSelectedMembership((prev) => ({
+                    ...prev,
+                    MembershipEndDate: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Biometrics"
+                value={selectedMembership.Biometrics}
+                onChange={(e) =>
+                  setSelectedMembership((prev) => ({
+                    ...prev,
+                    Biometrics: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Free Sessions"
+                type="number"
+                value={selectedMembership.FreeSessions}
+                onChange={(e) =>
+                  setSelectedMembership((prev) => ({
+                    ...prev,
+                    FreeSessions: parseInt(e.target.value, 10) || 0,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Notes"
+                value={selectedMembership.Notes}
+                onChange={(e) =>
+                  setSelectedMembership((prev) => ({
+                    ...prev,
+                    Notes: e.target.value,
+                  }))
+                }
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditMembershipOpen(false)}>Cancel</Button>
+          <Button onClick={handleEditMembershipSubmit} variant="contained" color="primary">
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== VIEW FREEZE DIALOG ========== */}
+      <Dialog open={isViewFreezeOpen} onClose={() => setViewFreezeOpen(false)}>
+        <DialogTitle>Freeze Details</DialogTitle>
+        <DialogContent dividers>
+          {selectedFreeze && (
+            <>
+              <Typography gutterBottom>
+                <strong>FreezeID:</strong> {selectedFreeze.FreezeID}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>MemberID:</strong> {selectedFreeze.MemberID}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Start:</strong> {selectedFreeze.FreezeStartDate}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>End:</strong> {selectedFreeze.FreezeEndDate}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Reason:</strong> {selectedFreeze.Reason}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Approval Status:</strong> {selectedFreeze.ApprovalStatus}
+              </Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewFreezeOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== EDIT FREEZE DIALOG ========== */}
+      <Dialog open={isEditFreezeOpen} onClose={() => setEditFreezeOpen(false)}>
+        <DialogTitle>Edit Freeze</DialogTitle>
+        <DialogContent>
+          {selectedFreeze && (
+            <>
+              <TextField
+                fullWidth
+                margin="normal"
+                label="FreezeID"
+                disabled
+                value={selectedFreeze.FreezeID}
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="MemberID"
+                value={selectedFreeze.MemberID}
+                onChange={(e) =>
+                  setSelectedFreeze((prev) => ({
+                    ...prev,
+                    MemberID: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Freeze Start Date"
+                value={selectedFreeze.FreezeStartDate}
+                onChange={(e) =>
+                  setSelectedFreeze((prev) => ({
+                    ...prev,
+                    FreezeStartDate: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Freeze End Date"
+                value={selectedFreeze.FreezeEndDate}
+                onChange={(e) =>
+                  setSelectedFreeze((prev) => ({
+                    ...prev,
+                    FreezeEndDate: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Reason"
+                value={selectedFreeze.Reason}
+                onChange={(e) =>
+                  setSelectedFreeze((prev) => ({
+                    ...prev,
+                    Reason: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Approval Status"
+                value={selectedFreeze.ApprovalStatus}
+                onChange={(e) =>
+                  setSelectedFreeze((prev) => ({
+                    ...prev,
+                    ApprovalStatus: e.target.value,
+                  }))
+                }
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditFreezeOpen(false)}>Cancel</Button>
+          <Button onClick={handleEditFreezeSubmit} variant="contained" color="primary">
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== VIEW RENEWAL DIALOG ========== */}
+      <Dialog open={isViewRenewalOpen} onClose={() => setViewRenewalOpen(false)}>
+        <DialogTitle>Renewal Details</DialogTitle>
+        <DialogContent dividers>
+          {selectedRenewal && (
+            <>
+              <Typography gutterBottom>
+                <strong>RenewalID:</strong> {selectedRenewal.RenewalID}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>MemberID:</strong> {selectedRenewal.MemberID}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Renewal Date:</strong> {selectedRenewal.RenewalDate}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>PlanID:</strong> {selectedRenewal.PlanID}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Renewal Amount:</strong> {selectedRenewal.RenewalAmount}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Processed By:</strong> {selectedRenewal.ProcessedBy}
+              </Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewRenewalOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== EDIT RENEWAL DIALOG ========== */}
+      <Dialog open={isEditRenewalOpen} onClose={() => setEditRenewalOpen(false)}>
+        <DialogTitle>Edit Renewal</DialogTitle>
+        <DialogContent>
+          {selectedRenewal && (
+            <>
+              <TextField
+                fullWidth
+                margin="normal"
+                label="RenewalID"
+                disabled
+                value={selectedRenewal.RenewalID}
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="MemberID"
+                value={selectedRenewal.MemberID}
+                onChange={(e) =>
+                  setSelectedRenewal((prev) => ({
+                    ...prev,
+                    MemberID: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Renewal Date"
+                value={selectedRenewal.RenewalDate}
+                onChange={(e) =>
+                  setSelectedRenewal((prev) => ({
+                    ...prev,
+                    RenewalDate: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="PlanID"
+                value={selectedRenewal.PlanID}
+                onChange={(e) =>
+                  setSelectedRenewal((prev) => ({
+                    ...prev,
+                    PlanID: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Renewal Amount"
+                type="number"
+                value={selectedRenewal.RenewalAmount}
+                onChange={(e) =>
+                  setSelectedRenewal((prev) => ({
+                    ...prev,
+                    RenewalAmount: parseFloat(e.target.value) || 0,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Processed By"
+                value={selectedRenewal.ProcessedBy}
+                onChange={(e) =>
+                  setSelectedRenewal((prev) => ({
+                    ...prev,
+                    ProcessedBy: e.target.value,
+                  }))
+                }
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditRenewalOpen(false)}>Cancel</Button>
+          <Button onClick={handleEditRenewalSubmit} variant="contained" color="primary">
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== VIEW LOG DIALOG ========== */}
+      <Dialog open={isViewLogOpen} onClose={() => setViewLogOpen(false)}>
+        <DialogTitle>Log Details</DialogTitle>
+        <DialogContent dividers>
+          {selectedLog && (
+            <>
+              <Typography gutterBottom>
+                <strong>LogID:</strong> {selectedLog.LogID}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>UserID:</strong> {selectedLog.UserID}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Action:</strong> {selectedLog.Action}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Timestamp:</strong> {selectedLog.Timestamp}
+              </Typography>
+              {/* IPAddress not in sample data... */}
+              <Typography gutterBottom>
+                <strong>Details:</strong> {selectedLog.Details}
+              </Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewLogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}

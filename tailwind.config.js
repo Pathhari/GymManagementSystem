@@ -7,7 +7,8 @@ export default {
         './storage/framework/views/*.php',
         './resources/**/*.blade.php',
         './resources/**/*.js',
-        './resources/**/*.vue',
+        './resources/**/*.jsx',
+        './node_modules/tw-elements-react/**/*.js',
     ],
     theme: {
         extend: {

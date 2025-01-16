@@ -6,7 +6,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
-
 class OwnerAuthController extends Controller
 {
     /**
@@ -33,23 +32,21 @@ class OwnerAuthController extends Controller
         ]);
 
         // Optional "remember me" checkbox
-        // By default it's false if not present
         $remember = $request->boolean('remember', false);
 
-        // Attempt login via the 'owner' guard
-        if (Auth::guard('owner')->attempt($credentials, $remember)) {
-            // Regenerate session to prevent fixation
-            $request->session()->regenerate();
-
-            // Redirect to the Owner dashboard
-            return redirect()->route('owner.dashboard')
-                             ->with('success', 'Welcome, Owner!');
+        // Check if the login attempt is successful
+        if (!Auth::guard('owner')->attempt($credentials, $remember)) {
+            // Return a single error message
+            return response()->json([
+                'errors' => ['general' => 'Invalid log-in credentials.'],
+            ], 422);
         }
 
-        // If login fails
-        return back()->withErrors([
-            'email' => 'Invalid Owner credentials.',
-        ])->onlyInput('email');
+        // Regenerate session to prevent fixation attacks
+        $request->session()->regenerate();
+
+        // Redirect to the Owner Dashboard
+        return response()->json(['success' => true, 'redirect' => route('owner.dashboard')], 200);
     }
 
     /**
@@ -58,12 +55,12 @@ class OwnerAuthController extends Controller
     public function logout(Request $request)
     {
         Auth::guard('owner')->logout();
-
-        // Invalidate and regenerate session tokens
         $request->session()->invalidate();
         $request->session()->regenerateToken();
-
-        return redirect()->route('owner.login')
-                         ->with('success','Owner logged out successfully.');
+    
+        // Redirect to the root route
+        return redirect()->route('root');  // Redirects to the home page or a public page
     }
+    
 }
+    

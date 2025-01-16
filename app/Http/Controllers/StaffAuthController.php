@@ -15,24 +15,27 @@ class StaffAuthController extends Controller
 
     public function login(Request $request)
     {
+        // Validate incoming request
         $credentials = $request->validate([
             'email'    => 'required|email',
             'password' => 'required',
         ]);
 
-        // Attempt with 'staff' guard
-        if (Auth::guard('staff')->attempt($credentials)) {
-            return redirect()->route('staff.dashboard');
+        // Attempt to log in with the 'staff' guard
+        if (!Auth::guard('staff')->attempt($credentials)) {
+            return response()->json([
+                'errors' => ['general' => 'Invalid login credentials.'],
+            ], 422);
         }
 
-        return back()->withErrors([
-            'email' => 'Invalid Staff credentials',
-        ]);
+        // Regenerate session and redirect to the staff dashboard
+        $request->session()->regenerate();
+        return response()->json(['success' => true, 'redirect' => route('staff.dashboard')], 200);
     }
 
     public function logout()
     {
         Auth::guard('staff')->logout();
-        return redirect()->route('staff.login')->with('success','Staff logged out.');
+        return redirect()->route('staff.login')->with('success', 'Staff logged out.');
     }
 }
