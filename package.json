@@ -7,7 +7,7 @@
     },
     "devDependencies": {
         "autoprefixer": "^10.4.20",
-        "axios": "^1.7.4",
+        "axios": "^1.7.9",
         "concurrently": "^9.0.1",
         "laravel-vite-plugin": "^1.0",
         "postcss": "^8.4.47",
@@ -30,7 +30,7 @@
         "@mui/icons-material": "^6.4.0",
         "@mui/material": "^6.4.0",
         "@mui/styled-engine-sc": "^6.3.1",
-        "@mui/x-data-grid": "^7.23.6",
+        "@mui/x-data-grid": "^7.24.0",
         "@mui/x-date-pickers": "^7.23.6",
         "@nivo/bar": "^0.88.0",
         "@nivo/core": "^0.88.0",

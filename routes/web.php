@@ -343,6 +343,7 @@ Route::prefix('booking')->group(function() {
     Route::post('{id}/cancel', [BookingController::class, 'cancelBooking'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('booking.cancel');
+    
 
     // Facilities
     Route::get('facilities', [BookingController::class, 'indexFacilities'])
@@ -359,6 +360,14 @@ Route::prefix('booking')->group(function() {
     Route::post('sessions', [BookingController::class, 'storeSession'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('booking.sessions.store');
+    // **NEW** Update & Cancel Session
+    Route::put('sessions/{id}', [BookingController::class, 'updateSession'])
+         ->middleware('multiGuard:owner,admin,staff')
+         ->name('booking.sessions.update');
+    Route::post('sessions/{id}/cancel', [BookingController::class, 'cancelSession'])
+         ->middleware('multiGuard:owner,admin,staff')
+         ->name('booking.sessions.cancel');
+
     Route::post('sessions/book', [BookingController::class, 'storeSessionBooking'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('booking.sessions.book');
