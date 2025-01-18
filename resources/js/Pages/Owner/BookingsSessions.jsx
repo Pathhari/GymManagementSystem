@@ -20,6 +20,9 @@ import {
   Divider,
   Menu,
   MenuItem,
+  FormControl,         // <--- Added
+  InputLabel,          // <--- Added
+  Select               // <--- Added
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday"; // for Bookings Tab
@@ -108,7 +111,7 @@ export default function BookingsSessions() {
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // States for "Add" dialogs
+  // ------------------ Dialog States ------------------
   const [isAddBookingOpen, setAddBookingOpen] = useState(false);
   const [isAddSessionOpen, setAddSessionOpen] = useState(false);
 
@@ -134,7 +137,7 @@ export default function BookingsSessions() {
   const [bookings, setBookings] = useState(sampleBookings);
   const [sessions, setSessions] = useState(sampleSessions);
 
-  // Filtered
+  // Filtered data for table
   const filteredBookings = bookings.filter((b) =>
     Object.values(b).some((val) =>
       String(val).toLowerCase().includes(searchTerm.toLowerCase())
@@ -146,12 +149,45 @@ export default function BookingsSessions() {
     )
   );
 
-  // Combined events
+  // Combined events for calendar
   const [calendarEvents, setCalendarEvents] = useState(
     createCalendarEvents(bookings, sessions)
   );
 
-  // Switch tabs
+  // ------------------ NEW: DATE & BRANCH FILTERS for Overview Panel ------------------
+  const [timePeriod, setTimePeriod] = useState("daily");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  // New branch filter state with dummy options
+  const [branch, setBranch] = useState("all");
+  const branchOptions = [
+    { value: "all", label: "All Branches" },
+    { value: "1", label: "Branch 1" },
+    { value: "2", label: "Branch 2" },
+    { value: "3", label: "Branch 3" },
+  ];
+
+  const handleTimePeriodChange = (e) => {
+    setTimePeriod(e.target.value);
+    // Insert your filtering logic if desired
+  };
+
+  const handleDateFromChange = (e) => {
+    setDateFrom(e.target.value);
+    // Insert your filtering logic if desired
+  };
+
+  const handleDateToChange = (e) => {
+    setDateTo(e.target.value);
+    // Insert your filtering logic if desired
+  };
+
+  const handleBranchChange = (e) => {
+    setBranch(e.target.value);
+    // Insert branch filtering logic if desired
+  };
+
+  // ------------------ Tab & Search Handlers ------------------
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
     setSearchTerm("");
@@ -166,7 +202,6 @@ export default function BookingsSessions() {
     id: ev.id,
     title: ev.title,
     start: ev.date,
-    // allDay: true if you want them all day
   }));
 
   const handleDateClick = (info) => {
@@ -363,7 +398,8 @@ export default function BookingsSessions() {
 
   const columns = activeTab === 0 ? bookingColumns : sessionColumns;
   const rows = activeTab === 0 ? filteredBookings : filteredSessions;
-  const getRowId = (row) => (activeTab === 0 ? row.BookingID : row.SessionID);
+  const getRowId = (row) =>
+    activeTab === 0 ? row.BookingID : row.SessionID;
 
   // --------- Export Menu logic ---------
   const [exportAnchor, setExportAnchor] = useState(null);
@@ -371,7 +407,7 @@ export default function BookingsSessions() {
   const handleExportClick = (e) => setExportAnchor(e.currentTarget);
   const handleExportClose = () => setExportAnchor(null);
 
-  // Provide CSV data (Bookings or Sessions) to react-csv
+  // CSV export headers
   const csvHeadersBookings = [
     { label: "Booking ID", key: "BookingID" },
     { label: "Member Name", key: "MemberName" },
@@ -381,7 +417,6 @@ export default function BookingsSessions() {
     { label: "Duration", key: "Duration" },
     { label: "Status", key: "Status" },
   ];
-
   const csvHeadersSessions = [
     { label: "Session ID", key: "SessionID" },
     { label: "Session Name", key: "SessionName" },
@@ -394,11 +429,10 @@ export default function BookingsSessions() {
   ];
 
   const handleExportCSV = () => {
-    // We'll do nothing here because CSVLink itself handles the download
     handleExportClose();
   };
 
-  // Export to PDF (Bookings or Sessions)
+  // Export to PDF
   const handleExportPDF = () => {
     handleExportClose();
     const doc = new jsPDF();
@@ -466,7 +500,7 @@ export default function BookingsSessions() {
 
   return (
     <Box sx={{ p: 4 }}>
-      {/* =============== Calendar + Event List on TOP =============== */}
+      {/* ====== OVERVIEW PANEL: Calendar & Event List ====== */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {/* Larger dynamic FullCalendar */}
         <Grid item xs={12} md={8}>
@@ -563,6 +597,7 @@ export default function BookingsSessions() {
         </Grid>
       </Grid>
 
+      {/* ====== CONTROLS: Title, Tabs & Filters ====== */}
       <Box
         sx={{
           display: "flex",
@@ -572,24 +607,73 @@ export default function BookingsSessions() {
         }}
       >
         <Typography variant="h4" gutterBottom>
-          Bookings & sessions
+          Bookings & Sessions
         </Typography>
         <Tabs
           value={activeTab}
           onChange={handleTabChange}
-          sx={{
-            alignSelf: "center",
-          }}
+          sx={{ alignSelf: "center" }}
         >
           <Tab icon={<CalendarTodayIcon />} label="Bookings" />
           <Tab icon={<FitnessCenterIcon />} label="Sessions" />
         </Tabs>
       </Box>
-      &nbsp;
-      {/* =============== Table & Tabs BELOW =============== */}
+
+      {/* ---------- Filters: Time Period, Date & Branch ---------- */}
+      <Box
+        sx={{
+          mb: 3,
+          display: "flex",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 2,
+        }}
+      >
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel>Time Period</InputLabel>
+          <Select
+            value={timePeriod}
+            label="Time Period"
+            onChange={handleTimePeriodChange}
+          >
+            <MenuItem value="daily">Daily</MenuItem>
+            <MenuItem value="weekly">Weekly</MenuItem>
+            <MenuItem value="monthly">Monthly</MenuItem>
+            <MenuItem value="yearly">Yearly</MenuItem>
+          </Select>
+        </FormControl>
+        <TextField
+          type="date"
+          size="small"
+          label="From"
+          InputLabelProps={{ shrink: true }}
+          value={dateFrom}
+          onChange={handleDateFromChange}
+        />
+        <TextField
+          type="date"
+          size="small"
+          label="To"
+          InputLabelProps={{ shrink: true }}
+          value={dateTo}
+          onChange={handleDateToChange}
+        />
+        {/* Branch Filter */}
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel>Branch</InputLabel>
+          <Select value={branch} label="Branch" onChange={handleBranchChange}>
+            {branchOptions.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Box>
+
+      {/* ====== Table & Action Buttons ====== */}
       <Paper sx={{ p: 2, mb: 3 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-          {/* Search box */}
           <TextField
             placeholder="Search"
             value={searchTerm}
@@ -599,70 +683,61 @@ export default function BookingsSessions() {
             sx={{ width: "100%", maxWidth: 300 }}
           />
 
-          {/* Buttons: Add & Export */}
           <Box sx={{ display: "flex", gap: 1 }}>
-            {/* Export button with Menu */}
-<Button
-  variant="outlined"
-  onClick={handleExportClick}
-  startIcon={<FileDownloadIcon />}
-  sx={{ textTransform: "none" }}
->
-  Export
-</Button>
-<Menu
-  anchorEl={exportAnchor}
-  open={openExport}
-  onClose={handleExportClose}
-  anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
->
-  {/* CSV export using react-csv */}
-  <MenuItem>
-    {activeTab === 0 ? (
-      <CSVLink
-        data={filteredBookings}
-        headers={csvHeadersBookings}
-        filename="Bookings.csv"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          textDecoration: "none",
-          color: "inherit",
-        }}
-      >
-        <Typography>Export CSV</Typography>
-      </CSVLink>
-    ) : (
-      <CSVLink
-        data={filteredSessions}
-        headers={csvHeadersSessions}
-        filename="Sessions.csv"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          textDecoration: "none",
-          color: "inherit",
-        }}
-      >
+            <Button
+              variant="outlined"
+              onClick={handleExportClick}
+              startIcon={<FileDownloadIcon />}
+              sx={{ textTransform: "none" }}
+            >
+              Export
+            </Button>
+            <Menu
+              anchorEl={exportAnchor}
+              open={openExport}
+              onClose={handleExportClose}
+              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+            >
+              <MenuItem onClick={handleExportCSV}>
+                {activeTab === 0 ? (
+                  <CSVLink
+                    data={filteredBookings}
+                    headers={csvHeadersBookings}
+                    filename="Bookings.csv"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      textDecoration: "none",
+                      color: "inherit",
+                    }}
+                  >
+                    <Typography>Export CSV</Typography>
+                  </CSVLink>
+                ) : (
+                  <CSVLink
+                    data={filteredSessions}
+                    headers={csvHeadersSessions}
+                    filename="Sessions.csv"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      textDecoration: "none",
+                      color: "inherit",
+                    }}
+                  >
+                    <Typography>Export CSV</Typography>
+                  </CSVLink>
+                )}
+              </MenuItem>
+              <MenuItem onClick={handleExportPDF}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Typography>Export PDF</Typography>
+                </Box>
+              </MenuItem>
+            </Menu>
 
-        <Typography>Export CSV</Typography>
-      </CSVLink>
-    )}
-  </MenuItem>
-
-  {/* PDF export using jsPDF + autoTable */}
-  <MenuItem onClick={handleExportPDF}>
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-
-      <Typography>Export PDF</Typography>
-    </Box>
-  </MenuItem>
-</Menu>
-
-
-            {/* Add booking / session button */}
             {activeTab === 0 ? (
               <Button
                 variant="contained"
@@ -685,11 +760,13 @@ export default function BookingsSessions() {
 
         <div style={{ height: 420, width: "100%" }}>
           <DataGrid
-            rows={rows}
-            columns={columns}
+            rows={activeTab === 0 ? filteredBookings : filteredSessions}
+            columns={activeTab === 0 ? bookingColumns : sessionColumns}
             pageSize={5}
             rowsPerPageOptions={[5, 10]}
-            getRowId={getRowId}
+            getRowId={(row) =>
+              activeTab === 0 ? row.BookingID : row.SessionID
+            }
           />
         </div>
       </Paper>
@@ -758,18 +835,8 @@ export default function BookingsSessions() {
             <TextField label="Coach Name" variant="outlined" size="small" />
             <TextField label="Start Time" variant="outlined" size="small" />
             <TextField label="End Time" variant="outlined" size="small" />
-            <TextField
-              label="Capacity"
-              type="number"
-              variant="outlined"
-              size="small"
-            />
-            <TextField
-              label="Participants"
-              type="number"
-              variant="outlined"
-              size="small"
-            />
+            <TextField label="Capacity" type="number" variant="outlined" size="small" />
+            <TextField label="Participants" type="number" variant="outlined" size="small" />
             <TextField label="Status" variant="outlined" size="small" />
           </Box>
         </DialogContent>
@@ -787,7 +854,7 @@ export default function BookingsSessions() {
         </DialogActions>
       </Dialog>
 
-      {/* ---------- Add Event from Calendar Dialog ---------- */}
+      {/* ---------- Add Calendar Event Dialog ---------- */}
       <Dialog
         open={isAddCalendarEventOpen}
         onClose={() => setAddCalendarEventOpen(false)}
@@ -831,7 +898,7 @@ export default function BookingsSessions() {
         </DialogActions>
       </Dialog>
 
-      {/* ---------- Edit Event Dialog (from Event List) ---------- */}
+      {/* ---------- Edit Event Dialog ---------- */}
       <Dialog
         open={isEditEventOpen}
         onClose={() => setEditEventOpen(false)}
@@ -841,9 +908,7 @@ export default function BookingsSessions() {
         <DialogTitle>Edit Event</DialogTitle>
         <DialogContent dividers>
           {selectedEvent && (
-            <Box
-              sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}
-            >
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
               <TextField
                 label="Title"
                 variant="outlined"

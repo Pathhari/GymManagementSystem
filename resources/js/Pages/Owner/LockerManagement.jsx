@@ -11,8 +11,16 @@ import {
   TextField,
   Divider,
   IconButton,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
 } from "@mui/material";
-import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+} from "react-beautiful-dnd";
 
 import AddIcon from "@mui/icons-material/Add";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
@@ -21,16 +29,28 @@ import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 
+// ===================================================================
+// NOTE on react-beautiful-dnd warning:
+// The warning about "defaultProps" comes from internals of react-beautiful-dnd.
+// Upgrading or switching to an actively maintained alternative (like @hello-pangea/dnd)
+// is recommended if you wish to remove such warnings. Otherwise, you may also choose to
+// ignore/suppress it during development.
+// ===================================================================
+
 // ---------- SAMPLE DATA -----------
+// Each locker now has a branch property.
 const initialLockers = [
-  { id: "locker-101", lockerNumber: 101, status: "vacant", occupant: "" },
-  { id: "locker-102", lockerNumber: 102, status: "occupied", occupant: "John Doe" },
-  { id: "locker-103", lockerNumber: 103, status: "outOfService", occupant: "" },
-  { id: "locker-104", lockerNumber: 104, status: "vacant", occupant: "" },
-  { id: "locker-105", lockerNumber: 105, status: "occupied", occupant: "Jane Smith" },
+  { id: "locker-101", lockerNumber: 101, status: "vacant", occupant: "", branch: "New York" },
+  { id: "locker-102", lockerNumber: 102, status: "occupied", occupant: "John Doe", branch: "Los Angeles" },
+  { id: "locker-103", lockerNumber: 103, status: "outOfService", occupant: "", branch: "New York" },
+  { id: "locker-104", lockerNumber: 104, status: "vacant", occupant: "", branch: "Chicago" },
+  { id: "locker-105", lockerNumber: 105, status: "occupied", occupant: "Jane Smith", branch: "Los Angeles" },
 ];
 
-// Helper: reorder array items if reordering in the same column
+// List of branches (plus an option for all)
+const branchOptions = ["All Branches", "New York", "Los Angeles", "Chicago", "Houston", "Miami"];
+
+// Helper function to reorder an array within the same list.
 const reorder = (list, startIndex, endIndex) => {
   const result = Array.from(list);
   const [removed] = result.splice(startIndex, 1);
@@ -38,14 +58,14 @@ const reorder = (list, startIndex, endIndex) => {
   return result;
 };
 
-// Decide background color for each column
+// Define background colors for the droppable columns.
 const droppableBackground = {
-  vacantList: "#A6AEBF", // or your preferred color for "Vacant"
-  occupiedList: "#F4DEB3", // or your preferred color for "Occupied"
-  outServiceList: "#C96868", // or your preferred color for "Out of Service"
+  vacantList: "#A6AEBF",    // Vacant
+  occupiedList: "#F4DEB3",  // Occupied
+  outServiceList: "#C96868",// Out of Service
 };
 
-// Draggable item style
+// Function to get the style of a draggable item.
 const getItemStyle = (isDragging, draggableStyle) => ({
   userSelect: "none",
   padding: 12,
@@ -59,57 +79,63 @@ const getItemStyle = (isDragging, draggableStyle) => ({
   ...draggableStyle,
 });
 
-// Droppable column style
+// Function to style the droppable area.
 const getListStyle = (droppableId, isDraggingOver) => ({
-  background: isDraggingOver
-    ? "#eeeeee"
-    : droppableBackground[droppableId] || "#f5f5f5",
+  background: isDraggingOver ? "#eeeeee" : droppableBackground[droppableId] || "#f5f5f5",
   padding: 8,
-  width: 300, // Updated width to match the equipment management
-  minHeight: 370, // Updated height to match the equipment management
+  width: 300,
+  minHeight: 370,
   borderRadius: 4,
   transition: "background 0.2s",
 });
 
 export default function LockerManagement() {
-  // ----------- Real-Time Clock -----------
+  // ------------- Real-Time Clock -------------
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
   const clockString = currentTime.toLocaleTimeString();
 
-  // Lockers state
+  // ------------- Lockers State -------------
   const [lockers, setLockers] = useState(initialLockers);
-
-  // Activity logs (newest first)
   const [logs, setLogs] = useState([]);
 
-  // Derived arrays for each status
-  const vacantLockers = lockers.filter((lk) => lk.status === "vacant");
-  const occupiedLockers = lockers.filter((lk) => lk.status === "occupied");
-  const outServiceLockers = lockers.filter((lk) => lk.status === "outOfService");
+  // ------------- Branch Filter State -------------
+  const [selectedBranch, setSelectedBranch] = useState("All Branches");
 
-  // ADD LOCKER
+  // Only show lockers that match the selected branch.
+  const filteredLockers =
+    selectedBranch === "All Branches"
+      ? lockers
+      : lockers.filter((lk) => lk.branch === selectedBranch);
+
+  // From the filtered list, derive the three status arrays.
+  const vacantLockers = filteredLockers.filter((lk) => lk.status === "vacant");
+  const occupiedLockers = filteredLockers.filter((lk) => lk.status === "occupied");
+  const outServiceLockers = filteredLockers.filter((lk) => lk.status === "outOfService");
+
+  // ------------- Add Locker Dialog State -------------
   const [isAddLockerOpen, setAddLockerOpen] = useState(false);
   const [newLockerNumber, setNewLockerNumber] = useState("");
+  const [newLockerBranch, setNewLockerBranch] = useState(branchOptions[1]); // default to first branch (skip "All Branches")
   const [addError, setAddError] = useState("");
 
   const handleAddLockerOpen = () => {
     setNewLockerNumber("");
+    setNewLockerBranch(branchOptions[1]);
     setAddError("");
     setAddLockerOpen(true);
   };
+
   const handleAddLocker = () => {
     const numVal = parseInt(newLockerNumber, 10);
     if (!numVal || numVal <= 0) {
       setAddError("Please enter a valid locker number.");
       return;
     }
-    // check duplicates
+    // Check for duplicate locker numbers (regardless of branch).
     if (lockers.some((lk) => lk.lockerNumber === numVal)) {
       setAddError("That locker number already exists!");
       return;
@@ -119,18 +145,20 @@ export default function LockerManagement() {
       lockerNumber: numVal,
       status: "vacant",
       occupant: "",
+      branch: newLockerBranch,
     };
     setLockers((prev) => [...prev, newLocker]);
-    const newLog = `Added locker #${numVal}.`;
+    const newLog = `Added locker #${numVal} in ${newLockerBranch}.`;
     setLogs((prev) => [newLog, ...prev]);
     setAddLockerOpen(false);
   };
 
-  // DRAG & DROP
+  // ------------- Drag & Drop -------------
   const onDragEnd = (result) => {
     const { source, destination } = result;
     if (!destination) return;
-    // same-list reorder
+
+    // Reordering within the same column.
     if (source.droppableId === destination.droppableId && source.index !== destination.index) {
       let updated = [];
       if (source.droppableId === "vacantList") {
@@ -145,26 +173,31 @@ export default function LockerManagement() {
       }
       return;
     }
-    // changing columns
+
+    // Moving between columns.
     if (source.droppableId !== destination.droppableId) {
       const movedItem = handleStatusChange(source, destination);
-      // if form consumed it, movedItem can be null
       if (!movedItem) return;
     }
   };
 
+  // Update the lockers list when reordering within one status.
   const applyReorderToLockers = (newArr, status) => {
-    const other = lockers.filter((lk) => lk.status !== status);
-    const final = [...other, ...newArr.map((item) => ({ ...item, status }))];
-    setLockers(final);
+    // Update only the lockers of a given status.
+    const otherLockers = lockers.filter((lk) => lk.status !== status);
+    const updatedLockers = [...otherLockers, ...newArr.map((item) => ({ ...item, status }))];
+    setLockers(updatedLockers);
   };
 
+  // Given a droppable ID, return the corresponding list.
   const getLockersByDroppable = (droppableId) => {
     if (droppableId === "vacantList") return vacantLockers;
     if (droppableId === "occupiedList") return occupiedLockers;
-    return outServiceLockers;
+    if (droppableId === "outServiceList") return outServiceLockers;
+    return [];
   };
 
+  // Update the global lockers if items have changed status.
   const applyAllLockers = (vacArr, occArr, outArr) => {
     const final = [
       ...vacArr.map((lk) => ({ ...lk, status: "vacant" })),
@@ -174,7 +207,8 @@ export default function LockerManagement() {
     setLockers(final);
   };
 
-  // when user changes status from one column to another
+  // When a locker changes status between columns.
+  // (For example, from vacant to occupied or vice-versa.)
   const handleStatusChange = (source, destination) => {
     const srcList = getLockersByDroppable(source.droppableId);
     const destList = getLockersByDroppable(destination.droppableId);
@@ -184,30 +218,21 @@ export default function LockerManagement() {
     if (destination.droppableId === "occupiedList") newStatus = "occupied";
     if (destination.droppableId === "outServiceList") newStatus = "outOfService";
 
-    // vacant->occupied => open borrow form
-    if (movedItem.status === "vacant" && newStatus === "occupied") {
-      openBorrowForm(movedItem);
-      return null;
-    }
-    // occupied->vacant => open return form
-    else if (movedItem.status === "occupied" && newStatus === "vacant") {
-      openReturnForm(movedItem);
-      return null;
-    }
-    // else immediate update
-    else {
-      const oldStatus = movedItem.status;
-      movedItem.status = newStatus;
-      if (newStatus !== "occupied") movedItem.occupant = "";
-      destList.splice(destination.index, 0, movedItem);
-      applyAllLockers(vacantLockers, occupiedLockers, outServiceLockers);
-      const logMsg = `Locker #${movedItem.lockerNumber} changed from ${oldStatus} to ${newStatus}.`;
-      setLogs((prev) => [logMsg, ...prev]);
-      return movedItem;
-    }
+    // (Optional) Add any logic here if you need to open a form
+    // when a particular status change occurs.
+
+    // Immediate update:
+    const oldStatus = movedItem.status;
+    movedItem.status = newStatus;
+    if (newStatus !== "occupied") movedItem.occupant = "";
+    destList.splice(destination.index, 0, movedItem);
+    applyAllLockers(vacantLockers, occupiedLockers, outServiceLockers);
+    const logMsg = `Locker #${movedItem.lockerNumber} (${movedItem.branch}) changed from ${oldStatus} to ${newStatus}.`;
+    setLogs((prev) => [logMsg, ...prev]);
+    return movedItem;
   };
 
-  // BORROW FORM
+  // ------------- Borrow / Return Forms (for completeness) -------------
   const [borrowOpen, setBorrowOpen] = useState(false);
   const [borrowData, setBorrowData] = useState({
     usageId: "",
@@ -229,30 +254,35 @@ export default function LockerManagement() {
     });
     setBorrowOpen(true);
   };
+
   const handleBorrowChange = (e) => {
     const { name, value } = e.target;
     setBorrowData((prev) => ({ ...prev, [name]: value }));
   };
+
   const handleBorrowSubmit = () => {
-    if (!borrowData.usageId || !borrowData.memberName || !borrowData.borrowDate || !borrowData.borrowTime) {
+    if (
+      !borrowData.usageId ||
+      !borrowData.memberName ||
+      !borrowData.borrowDate ||
+      !borrowData.borrowTime
+    ) {
       alert("Please fill out all fields (Usage ID, Name, Date, Time).");
       return;
     }
-    // update locker
+    // Update the locker to occupied.
     setLockers((prev) =>
-      prev.map((lk) => {
-        if (lk.id === borrowLocker.id) {
-          return { ...lk, status: "occupied", occupant: borrowData.memberName };
-        }
-        return lk;
-      })
+      prev.map((lk) =>
+        lk.id === borrowLocker.id
+          ? { ...lk, status: "occupied", occupant: borrowData.memberName }
+          : lk
+      )
     );
-    const logMsg = `Locker #${borrowLocker.lockerNumber} borrowed by ${borrowData.memberName} on ${borrowData.borrowDate} at ${borrowData.borrowTime} (UsageID: ${borrowData.usageId}).`;
+    const logMsg = `Locker #${borrowLocker.lockerNumber} (${borrowLocker.branch}) borrowed by ${borrowData.memberName} on ${borrowData.borrowDate} at ${borrowData.borrowTime} (UsageID: ${borrowData.usageId}).`;
     setLogs((prev) => [logMsg, ...prev]);
     setBorrowOpen(false);
   };
 
-  // RETURN FORM
   const [returnOpen, setReturnOpen] = useState(false);
   const [returnData, setReturnData] = useState({
     returnDate: "",
@@ -270,67 +300,68 @@ export default function LockerManagement() {
     });
     setReturnOpen(true);
   };
+
   const handleReturnChange = (e) => {
     const { name, value } = e.target;
     setReturnData((prev) => ({ ...prev, [name]: value }));
   };
+
   const handleReturnSubmit = () => {
     if (!returnData.returnDate || !returnData.returnTime) {
       alert("Please provide a Return Date and Time.");
       return;
     }
-    // update locker
+    // Update the locker to vacant.
     setLockers((prev) =>
-      prev.map((lk) => {
-        if (lk.id === returnLocker.id) {
-          return { ...lk, status: "vacant", occupant: "" };
-        }
-        return lk;
-      })
+      prev.map((lk) =>
+        lk.id === returnLocker.id
+          ? { ...lk, status: "vacant", occupant: "" }
+          : lk
+      )
     );
-    const logMsg = `Locker #${returnLocker.lockerNumber} returned on ${returnData.returnDate} at ${returnData.returnTime}. Notes: ${returnData.notes || "N/A"}`;
+    const logMsg = `Locker #${returnLocker.lockerNumber} (${returnLocker.branch}) returned on ${returnData.returnDate} at ${returnData.returnTime}. Notes: ${returnData.notes || "N/A"}`;
     setLogs((prev) => [logMsg, ...prev]);
     setReturnOpen(false);
   };
 
-  // REMOVE a locker completely
+  // ------------- Remove Locker -------------
   const removeLocker = (id) => {
     const lockerToRemove = lockers.find((lk) => lk.id === id);
     if (!lockerToRemove) return;
     setLockers((prev) => prev.filter((lk) => lk.id !== id));
-    const logMsg = `Removed Locker #${lockerToRemove.lockerNumber} from system.`;
+    const logMsg = `Removed Locker #${lockerToRemove.lockerNumber} (${lockerToRemove.branch}).`;
     setLogs((prev) => [logMsg, ...prev]);
   };
 
-  // RENDER DRAGGABLE
-  const renderDraggableLocker = (locker, index) => {
-    return (
-      <Draggable key={locker.id} draggableId={locker.id} index={index}>
-        {(provided, snapshot) => (
-          <Box
-            ref={provided.innerRef}
-            {...provided.draggableProps}
-            {...provided.dragHandleProps}
-            style={getItemStyle(snapshot.isDragging, provided.draggableProps.style)}
-          >
-            <Box sx={{ textAlign: "right" }}>
-              <IconButton
-                size="small"
-                onClick={() => removeLocker(locker.id)}
-                sx={{ color: "#f44336" }}
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Box>
-            <strong>#{locker.lockerNumber}</strong>{" "}
-            {locker.occupant ? `(User: ${locker.occupant})` : ""}
+  // ------------- Render Draggable Locker -------------
+  const renderDraggableLocker = (locker, index) => (
+    <Draggable key={locker.id} draggableId={locker.id} index={index}>
+      {(provided, snapshot) => (
+        <Box
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          {...provided.dragHandleProps}
+          style={getItemStyle(snapshot.isDragging, provided.draggableProps.style)}
+        >
+          <Box sx={{ textAlign: "right" }}>
+            <IconButton
+              size="small"
+              onClick={() => removeLocker(locker.id)}
+              sx={{ color: "#f44336" }}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
           </Box>
-        )}
-      </Draggable>
-    );
-  };
+          <strong>#{locker.lockerNumber}</strong>
+          {locker.occupant ? ` (User: ${locker.occupant})` : ""}
+          <br />
+          <small>{locker.branch}</small>
+        </Box>
+      )}
+    </Draggable>
+  );
 
-  // LOG EDITING
+  // ------------- Log Editing -------------
   const [editLogIndex, setEditLogIndex] = useState(null);
   const [editLogText, setEditLogText] = useState("");
 
@@ -338,6 +369,7 @@ export default function LockerManagement() {
     setEditLogIndex(idx);
     setEditLogText(logs[idx]);
   };
+
   const handleSaveLogEdit = () => {
     if (editLogIndex !== null) {
       const updatedLogs = [...logs];
@@ -347,6 +379,7 @@ export default function LockerManagement() {
     setEditLogIndex(null);
     setEditLogText("");
   };
+
   const handleCancelLogEdit = () => {
     setEditLogIndex(null);
     setEditLogText("");
@@ -354,13 +387,29 @@ export default function LockerManagement() {
 
   const truncatedLogs = logs.slice(0, 15);
 
-  // CLEAR LOGS
+  // ------------- Clear Logs -------------
   const clearAllLogs = () => setLogs([]);
 
   return (
     <Box sx={{ display: "flex", gap: 3, p: 4 }}>
-      {/* LEFT SIDE: Column Drag&Drop */}
+      {/* ---------- LEFT SIDE: Filter, Columns ---------- */}
       <Box flex={1}>
+        {/* Moved Branch Filter to the very top */}
+        <FormControl sx={{ mb: 2, minWidth: 180 }}>
+          <InputLabel>Filter by Branch</InputLabel>
+          <Select
+            label="Filter by Branch"
+            value={selectedBranch}
+            onChange={(e) => setSelectedBranch(e.target.value)}
+          >
+            {branchOptions.map((branch) => (
+              <MenuItem key={branch} value={branch}>
+                {branch}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
         <Typography variant="h4" gutterBottom>
           Locker Management
         </Typography>
@@ -377,7 +426,7 @@ export default function LockerManagement() {
 
         <DragDropContext onDragEnd={onDragEnd}>
           <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-            {/* VACANT */}
+            {/* ---------- VACANT Column ---------- */}
             <Droppable droppableId="vacantList">
               {(provided, snapshot) => (
                 <Paper
@@ -386,7 +435,11 @@ export default function LockerManagement() {
                   sx={{ p: 2 }}
                   style={getListStyle("vacantList", snapshot.isDraggingOver)}
                 >
-                  <Typography variant="h6" gutterBottom sx={{ textAlign: "center" }}>
+                  <Typography
+                    variant="h6"
+                    gutterBottom
+                    sx={{ textAlign: "center" }}
+                  >
                     <CheckBoxOutlineBlankIcon /> Vacant
                   </Typography>
                   {vacantLockers.map((lk, index) => renderDraggableLocker(lk, index))}
@@ -395,7 +448,7 @@ export default function LockerManagement() {
               )}
             </Droppable>
 
-            {/* OCCUPIED */}
+            {/* ---------- OCCUPIED Column ---------- */}
             <Droppable droppableId="occupiedList">
               {(provided, snapshot) => (
                 <Paper
@@ -404,7 +457,11 @@ export default function LockerManagement() {
                   sx={{ p: 2 }}
                   style={getListStyle("occupiedList", snapshot.isDraggingOver)}
                 >
-                  <Typography variant="h6" gutterBottom sx={{ textAlign: "center" }}>
+                  <Typography
+                    variant="h6"
+                    gutterBottom
+                    sx={{ textAlign: "center" }}
+                  >
                     <AssignmentTurnedInIcon /> Occupied
                   </Typography>
                   {occupiedLockers.map((lk, index) => renderDraggableLocker(lk, index))}
@@ -413,7 +470,7 @@ export default function LockerManagement() {
               )}
             </Droppable>
 
-            {/* OUT OF SERVICE */}
+            {/* ---------- Out of Service Column ---------- */}
             <Droppable droppableId="outServiceList">
               {(provided, snapshot) => (
                 <Paper
@@ -422,7 +479,11 @@ export default function LockerManagement() {
                   sx={{ p: 2 }}
                   style={getListStyle("outServiceList", snapshot.isDraggingOver)}
                 >
-                  <Typography variant="h6" gutterBottom sx={{ textAlign: "center" }}>
+                  <Typography
+                    variant="h6"
+                    gutterBottom
+                    sx={{ textAlign: "center" }}
+                  >
                     <ErrorOutlineIcon /> Out of Service
                   </Typography>
                   {outServiceLockers.map((lk, index) => renderDraggableLocker(lk, index))}
@@ -434,9 +495,8 @@ export default function LockerManagement() {
         </DragDropContext>
       </Box>
 
-      {/* RIGHT SIDE: Activity / Logs */}
+      {/* ---------- RIGHT SIDE: Activity / Logs ---------- */}
       <Box sx={{ width: 320, maxWidth: "100%" }}>
-        {/* Real-Time Clock on top */}
         <Paper
           sx={{
             p: 1,
@@ -457,7 +517,6 @@ export default function LockerManagement() {
         </Typography>
         <Divider sx={{ mb: 2 }} />
 
-        {/* CLEAR ACTIVITY */}
         <Box sx={{ mb: 1, textAlign: "right" }}>
           <Button variant="outlined" color="secondary" onClick={clearAllLogs}>
             Clear All
@@ -508,7 +567,7 @@ export default function LockerManagement() {
         </Paper>
       </Box>
 
-      {/* DIALOG: Add Locker */}
+      {/* ---------- DIALOG: Add Locker ---------- */}
       <Dialog open={isAddLockerOpen} onClose={() => setAddLockerOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>Add New Locker</DialogTitle>
         <DialogContent dividers>
@@ -521,6 +580,22 @@ export default function LockerManagement() {
             error={!!addError}
             helperText={addError}
           />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Select Branch</InputLabel>
+            <Select
+              label="Select Branch"
+              value={newLockerBranch}
+              onChange={(e) => setNewLockerBranch(e.target.value)}
+            >
+              {branchOptions
+                .filter((branch) => branch !== "All Branches")
+                .map((branch) => (
+                  <MenuItem key={branch} value={branch}>
+                    {branch}
+                  </MenuItem>
+                ))}
+            </Select>
+          </FormControl>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddLockerOpen(false)}>Cancel</Button>
@@ -530,7 +605,7 @@ export default function LockerManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* DIALOG: BORROW FORM */}
+      {/* ---------- DIALOG: Borrow Form ---------- */}
       <Dialog open={borrowOpen} onClose={() => setBorrowOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Locker Borrow Form</DialogTitle>
         <DialogContent dividers>
@@ -549,7 +624,6 @@ export default function LockerManagement() {
             margin="normal"
             fullWidth
             value={borrowData.lockerId}
-            onChange={handleBorrowChange}
             disabled
             inputProps={{ style: { fontSize: 18 } }}
           />
@@ -593,7 +667,7 @@ export default function LockerManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* DIALOG: RETURN FORM */}
+      {/* ---------- DIALOG: Return Form ---------- */}
       <Dialog open={returnOpen} onClose={() => setReturnOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Locker Return Form</DialogTitle>
         <DialogContent dividers>
@@ -639,7 +713,7 @@ export default function LockerManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* DIALOG: EDIT LOG ENTRY */}
+      {/* ---------- DIALOG: Edit Log Entry ---------- */}
       <Dialog
         open={editLogIndex !== null}
         onClose={handleCancelLogEdit}

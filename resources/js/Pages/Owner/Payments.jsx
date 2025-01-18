@@ -184,6 +184,7 @@ export default function PaymentsAndInvoices() {
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value.toLowerCase());
   };
+
   const filteredPayments = payments.filter((p) =>
     Object.values(p).some((val) => String(val).toLowerCase().includes(searchTerm))
   );
@@ -202,6 +203,7 @@ export default function PaymentsAndInvoices() {
     const { name, value } = e.target;
     setNewPayment((prev) => ({ ...prev, [name]: value }));
   };
+
   const handleAddPaymentSubmit = () => {
     const updated = [...payments, { ...newPayment }];
     setPayments(updated);
@@ -223,10 +225,12 @@ export default function PaymentsAndInvoices() {
     setEditPayment({ ...row }); // copy row data into editPayment form
     setEditPaymentOpen(true);
   };
+
   const handleEditPaymentChange = (e) => {
     const { name, value } = e.target;
     setEditPayment((prev) => ({ ...prev, [name]: value }));
   };
+
   const handleEditPaymentSubmit = () => {
     const updated = payments.map((p) =>
       p.paymentId === editPayment.paymentId ? editPayment : p
@@ -240,6 +244,7 @@ export default function PaymentsAndInvoices() {
     const { name, value } = e.target;
     setNewInvoice((prev) => ({ ...prev, [name]: value }));
   };
+
   const handleAddInvoiceSubmit = () => {
     const updated = [...invoices, { ...newInvoice }];
     setInvoices(updated);
@@ -261,10 +266,12 @@ export default function PaymentsAndInvoices() {
     setEditInvoice({ ...row }); // copy row data into editInvoice form
     setEditInvoiceOpen(true);
   };
+
   const handleEditInvoiceChange = (e) => {
     const { name, value } = e.target;
     setEditInvoice((prev) => ({ ...prev, [name]: value }));
   };
+
   const handleEditInvoiceSubmit = () => {
     const updated = invoices.map((inv) =>
       inv.invoiceId === editInvoice.invoiceId ? editInvoice : inv
@@ -285,6 +292,7 @@ export default function PaymentsAndInvoices() {
   const completedInvoices = invoices.filter((inv) => inv.status === "Paid").length;
 
   // -------------- DATE FILTERS for Summary Cards --------------
+  // (Reusing the same state names for time period, dateFrom, dateTo)
   const [timePeriod, setTimePeriod] = useState("daily");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -300,6 +308,19 @@ export default function PaymentsAndInvoices() {
   const handleDateToChange = (e) => {
     setDateTo(e.target.value);
     // Insert your actual filtering logic if desired
+  };
+
+  // -------------- NEW: BRANCH FILTER --------------
+  const [branch, setBranch] = useState("all");
+  const branchOptions = [
+    { value: "all", label: "All Branches" },
+    { value: "1", label: "Branch 1" },
+    { value: "2", label: "Branch 2" },
+    { value: "3", label: "Branch 3" },
+  ];
+  const handleBranchChange = (e) => {
+    setBranch(e.target.value);
+    // Insert branch filtering logic if desired
   };
 
   // -------------- COLUMNS: PAYMENTS --------------
@@ -514,7 +535,7 @@ export default function PaymentsAndInvoices() {
 
   return (
     <Box sx={{ p: 4 }}>
-      {/* ------------------- OVERVIEW PANEL (Black/White Scheme) ------------------- */}
+      {/* ------------------- OVERVIEW PANEL ------------------- */}
       <Box sx={{ mb: 3 }}>
         {/* ---------- Date Filters for Summary Cards ---------- */}
         <Box
@@ -541,7 +562,6 @@ export default function PaymentsAndInvoices() {
               <MenuItem value="yearly">Yearly</MenuItem>
             </Select>
           </FormControl>
-
           {/* From Date */}
           <TextField
             type="date"
@@ -551,7 +571,6 @@ export default function PaymentsAndInvoices() {
             value={dateFrom}
             onChange={handleDateFromChange}
           />
-
           {/* To Date */}
           <TextField
             type="date"
@@ -561,11 +580,21 @@ export default function PaymentsAndInvoices() {
             value={dateTo}
             onChange={handleDateToChange}
           />
+          {/* New Branch Filter */}
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel>Branch</InputLabel>
+            <Select value={branch} label="Branch" onChange={handleBranchChange}>
+              {branchOptions.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </Box>
 
-        {/* ---------- Summaries (3 Cards) ---------- */}
+        {/* ---------- Summaries (Example cards - adjust as needed) ---------- */}
         <Grid container spacing={2}>
-          {/* Card 1: Total Revenue */}
           <Grid item xs={12} sm={6} md={4}>
             <Card
               sx={{
@@ -583,17 +612,12 @@ export default function PaymentsAndInvoices() {
                 <Typography variant="h6" gutterBottom>
                   Total Revenue
                 </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontSize: "1.2rem", fontWeight: "bold" }}
-                >
+                <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
                   ${totalRevenue}
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-
-          {/* Card 2: Pending Invoices */}
           <Grid item xs={12} sm={6} md={4}>
             <Card
               sx={{
@@ -611,17 +635,12 @@ export default function PaymentsAndInvoices() {
                 <Typography variant="h6" gutterBottom>
                   Pending Invoices
                 </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontSize: "1.2rem", fontWeight: "bold" }}
-                >
+                <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
                   {pendingInvoices}
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-
-          {/* Card 3: Completed Invoices */}
           <Grid item xs={12} sm={6} md={4}>
             <Card
               sx={{
@@ -639,10 +658,7 @@ export default function PaymentsAndInvoices() {
                 <Typography variant="h6" gutterBottom>
                   Completed Invoices
                 </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontSize: "1.2rem", fontWeight: "bold" }}
-                >
+                <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
                   {completedInvoices}
                 </Typography>
               </CardContent>
@@ -688,7 +704,6 @@ export default function PaymentsAndInvoices() {
 
           {/* Right side: Export + Add Buttons */}
           <Box sx={{ display: "flex", gap: 1 }}>
-            {/* Export Button w/ Icon */}
             <Button
               variant="outlined"
               startIcon={<FileDownloadIcon />}
@@ -727,7 +742,6 @@ export default function PaymentsAndInvoices() {
               <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
             </Menu>
 
-            {/* Add Payment or Add Invoice */}
             {activeTab === 0 ? (
               <Button
                 variant="contained"

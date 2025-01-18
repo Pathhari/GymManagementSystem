@@ -13,7 +13,13 @@ import {
   Select,
   MenuItem,
   Menu,
-  Divider
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  Tooltip
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
@@ -21,6 +27,9 @@ import MonetizationOnIcon from "@mui/icons-material/MonetizationOn";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import GroupWorkIcon from "@mui/icons-material/GroupWork";
 import FavoriteIcon from "@mui/icons-material/Favorite";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
 import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
@@ -53,11 +62,44 @@ ChartJS.register(
 );
 
 // -------------- SAMPLE DATA --------------
-const sampleRevenueTable = [
-  { id: 1, source: "Memberships", amount: 350000 },
-  { id: 2, source: "Facility Bookings", amount: 90000 },
-  { id: 3, source: "Coaching Sessions", amount: 30000 },
-  { id: 4, source: "Retail Products", amount: 20000 }
+
+// DailyCashFlow sample data (replacing revenue breakdown table)
+// Added a new 'branch' property to each record.
+const sampleDailyCashFlow = [
+  {
+    CashFlowID: 1,
+    Date: "2025-01-15",
+    BranchID: 101,
+    BusinessType: "Gym",
+    CashSales: 10000.0,
+    GCashSales: 5000.0,
+    BPISales: 3000.0,
+    OtherSales: 2000.0,
+    TotalSales: 20000.0,
+    PettyCash: 1000.0,
+    DepositedAmount: 19000.0,
+    Remarks: "All good.",
+    CreatedAt: "2025-01-15 08:00:00",
+    UpdatedAt: "2025-01-15 20:00:00",
+    branch: "Main Branch"
+  },
+  {
+    CashFlowID: 2,
+    Date: "2025-01-16",
+    BranchID: 101,
+    BusinessType: "Gym",
+    CashSales: 12000.0,
+    GCashSales: 7000.0,
+    BPISales: 4000.0,
+    OtherSales: 1000.0,
+    TotalSales: 24000.0,
+    PettyCash: 1500.0,
+    DepositedAmount: 22500.0,
+    Remarks: "Slightly busy day.",
+    CreatedAt: "2025-01-16 08:00:00",
+    UpdatedAt: "2025-01-16 20:00:00",
+    branch: "Secondary Branch"
+  }
 ];
 
 const sampleMembershipTable = [
@@ -122,22 +164,26 @@ const sampleSystemMetrics = [
   { metric: "Downtime (mins)", count: 15 }
 ];
 
+// ------------- NEW: Define Branch Options for Daily Cashflow Once -------------
+const cashFlowBranchOptions = ["All Branches", "Main Branch", "Secondary Branch"];
+
 export default function Reports() {
+  // ----------------- FILTERS & DATE -----------------
   const [timePeriod, setTimePeriod] = useState("monthly");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-
   const handleTimePeriodChange = (e) => setTimePeriod(e.target.value);
   const handleDateFromChange = (e) => setDateFrom(e.target.value);
   const handleDateToChange = (e) => setDateTo(e.target.value);
 
-  // Overview KPIs
+  // ----------------- OVERVIEW KPIs -----------------
   const totalRevenue = "₱500,000";
   const newMembersThisMonth = 25;
   const attendanceRate = "85%";
   const mostPopularService = "Zumba Classes";
 
-  // Donut: "Revenue by Source"
+  // ----------------- CHART DATA -----------------
+  // Donut: Revenue by Source
   const revenueBySourceData = {
     labels: ["Memberships", "Facility Bookings", "Coaching", "Retail"],
     datasets: [
@@ -153,7 +199,7 @@ export default function Reports() {
     maintainAspectRatio: false
   };
 
-  // Line: "Revenue Trends"
+  // Line: Revenue Trends
   const revenueTrendsData = {
     labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
     datasets: [
@@ -174,7 +220,7 @@ export default function Reports() {
     maintainAspectRatio: false
   };
 
-  // Export menu for table
+  // ----------------- EXPORT MENU -----------------
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
   const openExportMenu = Boolean(exportAnchorEl);
   const handleExportMenuOpen = (event) => {
@@ -183,29 +229,170 @@ export default function Reports() {
   const handleExportMenuClose = () => {
     setExportAnchorEl(null);
   };
-
   const handleExportCSV = () => {
     handleExportMenuClose();
   };
   const handleExportPDF = () => {
     handleExportMenuClose();
     const doc = new jsPDF();
-    doc.text("Example Table Export", 14, 10);
-    doc.save("Reports.pdf");
+    doc.text("Daily Cashflow Report", 14, 10);
+    const bodyData = filteredCashFlowRecords.map((row) => [
+      row.CashFlowID,
+      row.Date,
+      row.BranchID,
+      row.BusinessType,
+      row.CashSales.toFixed(2),
+      row.GCashSales.toFixed(2),
+      row.BPISales.toFixed(2),
+      row.OtherSales.toFixed(2),
+      row.TotalSales.toFixed(2),
+      row.PettyCash.toFixed(2),
+      row.DepositedAmount.toFixed(2),
+      row.Remarks
+    ]);
+    doc.autoTable({
+      head: [
+        [
+          "ID",
+          "Date",
+          "BranchID",
+          "Business Type",
+          "Cash Sales",
+          "GCash Sales",
+          "BPI Sales",
+          "Other Sales",
+          "Total Sales",
+          "Petty Cash",
+          "Deposited",
+          "Remarks"
+        ]
+      ],
+      body: bodyData,
+      startY: 20,
+      margin: { horizontal: 10 },
+      styles: { fontSize: 8, cellPadding: 3 },
+      headStyles: { fillColor: [22, 160, 133] }
+    });
+    doc.save("DailyCashflow.pdf");
   };
 
-  // Table columns
-  const revenueTableColumns = [
-    { field: "source", headerName: "Revenue Source", width: 180 },
+  // ----------------- DAILY CASHFLOW TABLE -----------------
+  const [cashFlowRecords, setCashFlowRecords] = useState(sampleDailyCashFlow);
+  // Daily Cashflow Branch Filter state
+  const [selectedCashFlowBranch, setSelectedCashFlowBranch] = useState("All Branches");
+  const filteredCashFlowRecords =
+    selectedCashFlowBranch === "All Branches"
+      ? cashFlowRecords
+      : cashFlowRecords.filter((rec) => rec.branch === selectedCashFlowBranch);
+
+  const dailyCashFlowColumns = [
+    { field: "CashFlowID", headerName: "ID", width: 70 },
+    { field: "Date", headerName: "Date", width: 120 },
+    { field: "BranchID", headerName: "Branch ID", width: 100 },
+    { field: "BusinessType", headerName: "Business Type", width: 150 },
     {
-      field: "amount",
-      headerName: "Amount",
+      field: "CashSales",
+      headerName: "Cash Sales",
+      width: 130,
+      renderCell: (params) => `₱${params.value.toFixed(2)}`
+    },
+    {
+      field: "GCashSales",
+      headerName: "GCash Sales",
+      width: 130,
+      renderCell: (params) => `₱${params.value.toFixed(2)}`
+    },
+    {
+      field: "BPISales",
+      headerName: "BPI Sales",
+      width: 130,
+      renderCell: (params) => `₱${params.value.toFixed(2)}`
+    },
+    {
+      field: "OtherSales",
+      headerName: "Other Sales",
+      width: 130,
+      renderCell: (params) => `₱${params.value.toFixed(2)}`
+    },
+    {
+      field: "TotalSales",
+      headerName: "Total Sales",
+      width: 130,
+      renderCell: (params) => `₱${params.value.toFixed(2)}`
+    },
+    {
+      field: "PettyCash",
+      headerName: "Petty Cash",
       width: 120,
-      renderCell: (params) => `₱${params.value.toLocaleString()}`
+      renderCell: (params) => `₱${params.value.toFixed(2)}`
+    },
+    {
+      field: "DepositedAmount",
+      headerName: "Deposited",
+      width: 130,
+      renderCell: (params) => `₱${params.value.toFixed(2)}`
+    },
+    { field: "Remarks", headerName: "Remarks", width: 150 },
+    {
+      field: "actions",
+      headerName: "Actions",
+      width: 120,
+      sortable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 0.5 }}>
+          <IconButton color="success" onClick={() => handleViewCashFlow(params.row)}>
+            <VisibilityIcon fontSize="small" />
+          </IconButton>
+          <IconButton color="primary" onClick={() => handleEditCashFlow(params.row)}>
+            <EditIcon fontSize="small" />
+          </IconButton>
+          <IconButton color="error" onClick={() => handleDeleteCashFlow(params.row.CashFlowID)}>
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      )
     }
   ];
 
-  // MEMBERSHIP REPORTS
+  // ----------------- Daily Cashflow Actions -----------------
+  const [selectedCashFlow, setSelectedCashFlow] = useState(null);
+  const [isViewCashFlowOpen, setViewCashFlowOpen] = useState(false);
+  const [isEditCashFlowOpen, setEditCashFlowOpen] = useState(false);
+
+  const handleViewCashFlow = (record) => {
+    setSelectedCashFlow(record);
+    setViewCashFlowOpen(true);
+  };
+
+  const handleEditCashFlow = (record) => {
+    setSelectedCashFlow(record);
+    setEditCashFlowOpen(true);
+  };
+
+  const handleDeleteCashFlow = (cashFlowID) => {
+    const updated = cashFlowRecords.filter((c) => c.CashFlowID !== cashFlowID);
+    setCashFlowRecords(updated);
+  };
+
+  const handleCloseViewCashFlow = () => {
+    setViewCashFlowOpen(false);
+    setSelectedCashFlow(null);
+  };
+
+  const handleCloseEditCashFlow = () => {
+    setEditCashFlowOpen(false);
+    setSelectedCashFlow(null);
+  };
+
+  const handleSaveCashFlowEdits = () => {
+    const updatedRecords = cashFlowRecords.map((c) =>
+      c.CashFlowID === selectedCashFlow.CashFlowID ? selectedCashFlow : c
+    );
+    setCashFlowRecords(updatedRecords);
+    setEditCashFlowOpen(false);
+  };
+
+  // ----------------- MEMBERSHIP REPORTS -----------------
   const membershipDistData = {
     labels: sampleMembershipTable.map((m) => m.planName),
     datasets: [
@@ -228,8 +415,7 @@ export default function Reports() {
     maintainAspectRatio: false
   };
 
-  // ATTENDANCE ANALYTICS
-  // 1) Bar: Session Attendance
+  // ----------------- ATTENDANCE ANALYTICS -----------------
   const attendanceBarData = {
     labels: sampleAttendanceTable.map((a) => a.sessionType),
     datasets: [
@@ -247,7 +433,6 @@ export default function Reports() {
     maintainAspectRatio: false
   };
 
-  // 2) Line: Attendance Over Time
   const attendanceOverTimeOptions = {
     responsive: true,
     plugins: { legend: { display: false } },
@@ -255,7 +440,7 @@ export default function Reports() {
     maintainAspectRatio: false
   };
 
-  // STAFF PERFORMANCE
+  // ----------------- STAFF PERFORMANCE -----------------
   const staffNames = sampleStaffPerformance.map((s) => s.staffName);
   const staffTasks = sampleStaffPerformance.map((s) => s.tasksCompleted);
   const staffPerformanceBarData = {
@@ -290,7 +475,7 @@ export default function Reports() {
     maintainAspectRatio: false
   };
 
-  // BOOKING & SESSION REPORTS
+  // ----------------- BOOKING & SESSION REPORTS -----------------
   const bookingTrendsData = {
     labels: sampleBookingData.map((b) => b.month),
     datasets: [
@@ -328,7 +513,7 @@ export default function Reports() {
     maintainAspectRatio: false
   };
 
-  // CRITICAL SYSTEM METRICS
+  // ----------------- CRITICAL SYSTEM METRICS -----------------
   const systemMetricLabels = sampleSystemMetrics.map((m) => m.metric);
   const systemMetricData = sampleSystemMetrics.map((m) => m.count);
   const systemMetricsBarData = {
@@ -368,11 +553,10 @@ export default function Reports() {
     maintainAspectRatio: false
   };
 
+  // ----------------- RENDER -----------------
   return (
     <Box sx={{ p: 3 }}>
-     
-
-      {/* Date/Time Filters */}
+      {/* Date/Time & Branch Filters */}
       <Box
         sx={{
           mb: 2,
@@ -407,6 +591,21 @@ export default function Reports() {
           value={dateTo}
           onChange={handleDateToChange}
         />
+        {/* NEW: Branch Filter for Daily Cashflow */}
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel>Cashflow Branch</InputLabel>
+          <Select
+            value={selectedCashFlowBranch}
+            label="Cashflow Branch"
+            onChange={(e) => setSelectedCashFlowBranch(e.target.value)}
+          >
+            {cashFlowBranchOptions.map((branch) => (
+              <MenuItem key={branch} value={branch}>
+                {branch}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
       </Box>
 
       {/* Overview Cards */}
@@ -489,61 +688,14 @@ export default function Reports() {
         </Grid>
       </Grid>
 
-      {/* REVENUE REPORTS */}
+      {/* Daily Cashflow Table */}
       <Typography variant="h5" gutterBottom>
-        Revenue Reports
+        Daily Cashflow
       </Typography>
       <Divider sx={{ mb: 2 }} />
-
-      {/* 2 charts: Donut + Line */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column"
-            }}
-          >
-            <Typography variant="subtitle1" gutterBottom>
-              Revenue by Source
-            </Typography>
-            <Box sx={{ flex: 1, position: "relative" }}>
-              <Doughnut data={revenueBySourceData} options={revenueBySourceOptions} />
-            </Box>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column"
-            }}
-          >
-            <Typography variant="subtitle1" gutterBottom>
-              Revenue Trends
-            </Typography>
-            <Box sx={{ flex: 1, position: "relative" }}>
-              <Line data={revenueTrendsData} options={lineOptions} />
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
-
-       {/* Title */}
-       <Typography variant="h4" gutterBottom>
-        Reports & Analytics
-      </Typography>
-      <Divider sx={{ mb: 2 }} />
-          
-      {/*(Revenue breakdown) */}
       <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-          <Typography variant="h6">Revenue Breakdown (Table)</Typography>
-
+          <Typography variant="h6">Daily Cashflow Report</Typography>
           {/* Export Buttons */}
           <Box>
             <Button variant="outlined" onClick={handleExportMenuOpen}>
@@ -557,12 +709,21 @@ export default function Reports() {
             >
               <MenuItem onClick={handleExportCSV}>
                 <CSVLink
-                  data={sampleRevenueTable}
+                  data={sampleDailyCashFlow}
                   headers={[
-                    { label: "Source", key: "source" },
-                    { label: "Amount", key: "amount" }
+                    { label: "Date", key: "Date" },
+                    { label: "BranchID", key: "BranchID" },
+                    { label: "BusinessType", key: "BusinessType" },
+                    { label: "CashSales", key: "CashSales" },
+                    { label: "GCashSales", key: "GCashSales" },
+                    { label: "BPISales", key: "BPISales" },
+                    { label: "OtherSales", key: "OtherSales" },
+                    { label: "TotalSales", key: "TotalSales" },
+                    { label: "PettyCash", key: "PettyCash" },
+                    { label: "DepositedAmount", key: "DepositedAmount" },
+                    { label: "Remarks", key: "Remarks" }
                   ]}
-                  filename="RevenueBreakdown.csv"
+                  filename="DailyCashflow.csv"
                   style={{ textDecoration: "none", color: "inherit" }}
                 >
                   Export CSV
@@ -572,34 +733,235 @@ export default function Reports() {
             </Menu>
           </Box>
         </Box>
-
         <div style={{ height: 300, width: "100%" }}>
           <DataGrid
-            rows={sampleRevenueTable}
-            columns={revenueTableColumns}
+            rows={filteredCashFlowRecords}
+            columns={dailyCashFlowColumns}
             pageSize={5}
             rowsPerPageOptions={[5]}
+            getRowId={(row) => row.CashFlowID}
           />
         </div>
       </Paper>
+
+      {/* View Daily Cashflow Dialog */}
+      <Dialog open={isViewCashFlowOpen} onClose={handleCloseViewCashFlow} maxWidth="sm" fullWidth>
+        <DialogTitle>Daily Cashflow Details</DialogTitle>
+        <DialogContent dividers>
+          {selectedCashFlow && (
+            <Box>
+              <Typography gutterBottom>
+                <strong>ID:</strong> {selectedCashFlow.CashFlowID}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Date:</strong> {selectedCashFlow.Date}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Branch ID:</strong> {selectedCashFlow.BranchID}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Business Type:</strong> {selectedCashFlow.BusinessType}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Cash Sales:</strong> ₱{selectedCashFlow.CashSales.toFixed(2)}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>GCash Sales:</strong> ₱{selectedCashFlow.GCashSales.toFixed(2)}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>BPI Sales:</strong> ₱{selectedCashFlow.BPISales.toFixed(2)}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Other Sales:</strong> ₱{selectedCashFlow.OtherSales.toFixed(2)}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Total Sales:</strong> ₱{selectedCashFlow.TotalSales.toFixed(2)}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Petty Cash:</strong> ₱{selectedCashFlow.PettyCash.toFixed(2)}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Deposited Amount:</strong> ₱{selectedCashFlow.DepositedAmount.toFixed(2)}
+              </Typography>
+              <Typography gutterBottom>
+                <strong>Remarks:</strong> {selectedCashFlow.Remarks}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseViewCashFlow}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Daily Cashflow Dialog */}
+      <Dialog open={isEditCashFlowOpen} onClose={handleCloseEditCashFlow} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Daily Cashflow</DialogTitle>
+        <DialogContent dividers>
+          {selectedCashFlow && (
+            <Box component="form" noValidate>
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Date"
+                name="Date"
+                type="date"
+                value={selectedCashFlow.Date}
+                onChange={(e) =>
+                  setSelectedCashFlow({ ...selectedCashFlow, Date: e.target.value })
+                }
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Branch ID"
+                name="BranchID"
+                type="number"
+                value={selectedCashFlow.BranchID}
+                onChange={(e) =>
+                  setSelectedCashFlow({ ...selectedCashFlow, BranchID: e.target.value })
+                }
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Business Type"
+                name="BusinessType"
+                value={selectedCashFlow.BusinessType}
+                onChange={(e) =>
+                  setSelectedCashFlow({ ...selectedCashFlow, BusinessType: e.target.value })
+                }
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Cash Sales"
+                name="CashSales"
+                type="number"
+                value={selectedCashFlow.CashSales}
+                onChange={(e) =>
+                  setSelectedCashFlow({
+                    ...selectedCashFlow,
+                    CashSales: parseFloat(e.target.value) || 0
+                  })
+                }
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="GCash Sales"
+                name="GCashSales"
+                type="number"
+                value={selectedCashFlow.GCashSales}
+                onChange={(e) =>
+                  setSelectedCashFlow({
+                    ...selectedCashFlow,
+                    GCashSales: parseFloat(e.target.value) || 0
+                  })
+                }
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="BPI Sales"
+                name="BPISales"
+                type="number"
+                value={selectedCashFlow.BPISales}
+                onChange={(e) =>
+                  setSelectedCashFlow({
+                    ...selectedCashFlow,
+                    BPISales: parseFloat(e.target.value) || 0
+                  })
+                }
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Other Sales"
+                name="OtherSales"
+                type="number"
+                value={selectedCashFlow.OtherSales}
+                onChange={(e) =>
+                  setSelectedCashFlow({
+                    ...selectedCashFlow,
+                    OtherSales: parseFloat(e.target.value) || 0
+                  })
+                }
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Total Sales"
+                name="TotalSales"
+                type="number"
+                value={selectedCashFlow.TotalSales}
+                onChange={(e) =>
+                  setSelectedCashFlow({
+                    ...selectedCashFlow,
+                    TotalSales: parseFloat(e.target.value) || 0
+                  })
+                }
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Petty Cash"
+                name="PettyCash"
+                type="number"
+                value={selectedCashFlow.PettyCash}
+                onChange={(e) =>
+                  setSelectedCashFlow({
+                    ...selectedCashFlow,
+                    PettyCash: parseFloat(e.target.value) || 0
+                  })
+                }
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Deposited Amount"
+                name="DepositedAmount"
+                type="number"
+                value={selectedCashFlow.DepositedAmount}
+                onChange={(e) =>
+                  setSelectedCashFlow({
+                    ...selectedCashFlow,
+                    DepositedAmount: parseFloat(e.target.value) || 0
+                  })
+                }
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Remarks"
+                name="Remarks"
+                value={selectedCashFlow.Remarks}
+                onChange={(e) =>
+                  setSelectedCashFlow({ ...selectedCashFlow, Remarks: e.target.value })
+                }
+                multiline
+                rows={2}
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditCashFlow}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveCashFlowEdits}>
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* MEMBERSHIP REPORTS */}
       <Typography variant="h5" gutterBottom>
         Membership Reports
       </Typography>
       <Divider sx={{ mb: 2 }} />
-
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        {/* Doughnut: membership distribution */}
         <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column"
-            }}
-          >
+          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
             <Typography variant="subtitle1" gutterBottom>
               Membership Plan Distribution
             </Typography>
@@ -608,16 +970,8 @@ export default function Reports() {
             </Box>
           </Paper>
         </Grid>
-        {/* Line: membership growth */}
         <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column"
-            }}
-          >
+          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
             <Typography variant="subtitle1" gutterBottom>
               Membership Growth
             </Typography>
@@ -633,18 +987,9 @@ export default function Reports() {
         Attendance Analytics
       </Typography>
       <Divider sx={{ mb: 2 }} />
-
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        {/* Bar: Session Attendance */}
         <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column"
-            }}
-          >
+          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
             <Typography variant="subtitle1" gutterBottom>
               Session Attendance
             </Typography>
@@ -653,16 +998,8 @@ export default function Reports() {
             </Box>
           </Paper>
         </Grid>
-        {/* Line: Attendance Over Time */}
         <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column"
-            }}
-          >
+          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
             <Typography variant="subtitle1" gutterBottom>
               Attendance Over Time
             </Typography>
@@ -673,23 +1010,14 @@ export default function Reports() {
         </Grid>
       </Grid>
 
-      {/* STAFF PERFORMANCE (2 Charts) */}
+      {/* STAFF PERFORMANCE */}
       <Typography variant="h5" gutterBottom>
         Staff Performance
       </Typography>
       <Divider sx={{ mb: 2 }} />
-
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        {/* Bar for tasks completed */}
         <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column"
-            }}
-          >
+          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
             <Typography variant="subtitle1" gutterBottom>
               Tasks Completed
             </Typography>
@@ -698,16 +1026,8 @@ export default function Reports() {
             </Box>
           </Paper>
         </Grid>
-        {/* Doughnut for feedback scores */}
         <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column"
-            }}
-          >
+          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
             <Typography variant="subtitle1" gutterBottom>
               Average Feedback Scores
             </Typography>
@@ -718,22 +1038,14 @@ export default function Reports() {
         </Grid>
       </Grid>
 
-      {/* BOOKING & SESSION REPORTS (2 Charts) */}
+      {/* BOOKING & SESSION REPORTS */}
       <Typography variant="h5" gutterBottom>
         Booking & Session Reports
       </Typography>
       <Divider sx={{ mb: 2 }} />
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        {/* Line for booking trends */}
         <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column"
-            }}
-          >
+          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
             <Typography variant="subtitle1" gutterBottom>
               Booking Trends
             </Typography>
@@ -742,16 +1054,8 @@ export default function Reports() {
             </Box>
           </Paper>
         </Grid>
-        {/* Pie for session types */}
         <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column"
-            }}
-          >
+          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
             <Typography variant="subtitle1" gutterBottom>
               Session Type Distribution
             </Typography>
@@ -762,22 +1066,14 @@ export default function Reports() {
         </Grid>
       </Grid>
 
-      {/* CRITICAL SYSTEM METRICS (2 Charts) */}
+      {/* CRITICAL SYSTEM METRICS */}
       <Typography variant="h5" gutterBottom>
         Critical System Metrics
       </Typography>
       <Divider sx={{ mb: 2 }} />
-
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column"
-            }}
-          >
+          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
             <Typography variant="subtitle1" gutterBottom>
               System Metrics Overview
             </Typography>
@@ -787,14 +1083,7 @@ export default function Reports() {
           </Paper>
         </Grid>
         <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column"
-            }}
-          >
+          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
             <Typography variant="subtitle1" gutterBottom>
               Downtime Trend
             </Typography>

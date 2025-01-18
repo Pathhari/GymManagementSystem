@@ -223,6 +223,15 @@ export default function StaffManagement() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  // -------------- NEW: BRANCH FILTER --------------
+  const [branch, setBranch] = useState("all");
+  const branchOptions = [
+    { value: "all", label: "All Branches" },
+    { value: "1", label: "Branch 1" },
+    { value: "2", label: "Branch 2" },
+    { value: "3", label: "Branch 3" },
+  ];
+
   const handleTimePeriodChange = (event) => {
     setTimePeriod(event.target.value);
     // Insert your own logic for filtering if desired
@@ -236,6 +245,11 @@ export default function StaffManagement() {
   const handleDateToChange = (event) => {
     setDateTo(event.target.value);
     // Insert filtering logic if desired
+  };
+
+  const handleBranchChange = (event) => {
+    setBranch(event.target.value);
+    // Insert branch filtering logic if desired
   };
 
   // ------------------- ADD STAFF -------------------------
@@ -366,72 +380,30 @@ export default function StaffManagement() {
     setEditPayrollOpen(false);
   };
 
-
-  // Modals for Task and Schedule
-const [isAddTaskOpen, setAddTaskOpen] = useState(false);
-const [isAddScheduleOpen, setAddScheduleOpen] = useState(false);
-
-// For adding a new task
-const [newTask, setNewTask] = useState({
-  StaffID: "",
-  TaskDescription: "",
-  TaskDate: "",
-  Status: "Pending",
-});
-
-// For adding a new schedule
-const [newSchedule, setNewSchedule] = useState({
-  StaffID: "",
-  ShiftDate: "",
-  ShiftStart: "",
-  ShiftEnd: "",
-  RoleOverride: "",
-});
-
-// Handle Task form changes
-const handleAddTaskChange = (e) => {
-  const { name, value } = e.target;
-  setNewTask({ ...newTask, [name]: value });
-};
-
-// Handle Schedule form changes
-const handleAddScheduleChange = (e) => {
-  const { name, value } = e.target;
-  setNewSchedule({ ...newSchedule, [name]: value });
-};
-
-// Add Task submission
-const handleAddTask = () => {
-  const nextID = taskRecords.length
-    ? Math.max(...taskRecords.map((t) => t.TaskID)) + 1
-    : 1;
-
-  const newRecord = { TaskID: nextID, ...newTask };
-  setTaskRecords([...taskRecords, newRecord]);
-  setFilteredTasks([...taskRecords, newRecord]);
-
-  setNewTask({ StaffID: "", TaskDescription: "", TaskDate: "", Status: "Pending" });
-  setAddTaskOpen(false);
-};
-
-// Add Schedule submission
-const handleAddSchedule = () => {
-  const nextID = scheduleRecords.length
-    ? Math.max(...scheduleRecords.map((s) => s.ScheduleID)) + 1
-    : 1;
-
-  const newRecord = { ScheduleID: nextID, ...newSchedule };
-  setScheduleRecords([...scheduleRecords, newRecord]);
-  setFilteredSchedule([...scheduleRecords, newRecord]);
-
-  setNewSchedule({ StaffID: "", ShiftDate: "", ShiftStart: "", ShiftEnd: "", RoleOverride: "" });
-  setAddScheduleOpen(false);
-};
-
-
   // ------------------- TASK: VIEW, EDIT, DELETE -----------
+  const [isAddTaskOpen, setAddTaskOpen] = useState(false);
+  const [newTask, setNewTask] = useState({
+    StaffID: "",
+    TaskDescription: "",
+    TaskDate: "",
+    Status: "Pending",
+  });
+  const handleAddTaskChange = (e) => {
+    const { name, value } = e.target;
+    setNewTask({ ...newTask, [name]: value });
+  };
 
-  
+  const handleAddTask = () => {
+    const nextID = taskRecords.length
+      ? Math.max(...taskRecords.map((t) => t.TaskID)) + 1
+      : 1;
+    const newRecord = { TaskID: nextID, ...newTask };
+    setTaskRecords([...taskRecords, newRecord]);
+    setFilteredTasks([...taskRecords, newRecord]);
+    setNewTask({ StaffID: "", TaskDescription: "", TaskDate: "", Status: "Pending" });
+    setAddTaskOpen(false);
+  };
+
   const handleViewTask = (record) => {
     setSelectedTask(record);
     setViewTaskOpen(true);
@@ -459,6 +431,30 @@ const handleAddSchedule = () => {
   };
 
   // ------------------- SCHEDULE: VIEW, EDIT, DELETE -----------
+  const [isAddScheduleOpen, setAddScheduleOpen] = useState(false);
+  const [newSchedule, setNewSchedule] = useState({
+    StaffID: "",
+    ShiftDate: "",
+    ShiftStart: "",
+    ShiftEnd: "",
+    RoleOverride: "",
+  });
+  const handleAddScheduleChange = (e) => {
+    const { name, value } = e.target;
+    setNewSchedule({ ...newSchedule, [name]: value });
+  };
+
+  const handleAddSchedule = () => {
+    const nextID = scheduleRecords.length
+      ? Math.max(...scheduleRecords.map((s) => s.ScheduleID)) + 1
+      : 1;
+    const newRecord = { ScheduleID: nextID, ...newSchedule };
+    setScheduleRecords([...scheduleRecords, newRecord]);
+    setFilteredSchedule([...scheduleRecords, newRecord]);
+    setNewSchedule({ StaffID: "", ShiftDate: "", ShiftStart: "", ShiftEnd: "", RoleOverride: "" });
+    setAddScheduleOpen(false);
+  };
+
   const handleViewSchedule = (record) => {
     setSelectedSchedule(record);
     setViewScheduleOpen(true);
@@ -921,7 +917,6 @@ const handleAddSchedule = () => {
   // ==================================================================
   // ======================= EXPORT FUNCTIONALITY ======================
   // ==================================================================
-  // 1) anchor for Export menu
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
   const openExportMenu = Boolean(exportAnchorEl);
 
@@ -933,7 +928,6 @@ const handleAddSchedule = () => {
     setExportAnchorEl(null);
   };
 
-  // 2) CSV headers for each tab
   const staffCSVHeaders = [
     { label: "StaffID", key: "StaffID" },
     { label: "FullName", key: "FullName" },
@@ -984,11 +978,9 @@ const handleAddSchedule = () => {
     { label: "RoleOverride", key: "RoleOverride" },
   ];
 
-  // 3) Build the data/headers for CSV
   let csvData = [];
   let csvHeaders = [];
   let csvFilename = "";
-
   if (activeTab === 0) {
     csvData = rows;
     csvHeaders = staffCSVHeaders;
@@ -1012,17 +1004,14 @@ const handleAddSchedule = () => {
   }
 
   const handleExportCSV = () => {
-    // Handled by the CSVLink
     handleExportMenuClose();
   };
 
-  // PDF export
   const handleExportPDF = () => {
     handleExportMenuClose();
     const doc = new jsPDF();
 
     if (activeTab === 0) {
-      // Staff
       doc.text("Staff Export", 14, 10);
       const bodyData = rows.map((s) => [
         s.StaffID,
@@ -1058,7 +1047,6 @@ const handleAddSchedule = () => {
       });
       doc.save("Staff.pdf");
     } else if (activeTab === 1) {
-      // Attendance
       doc.text("Attendance Export", 14, 10);
       const bodyData = rows.map((a) => [
         a.AttendanceID,
@@ -1077,7 +1065,6 @@ const handleAddSchedule = () => {
       });
       doc.save("Attendance.pdf");
     } else if (activeTab === 2) {
-      // Payroll
       doc.text("Payroll Export", 14, 10);
       const bodyData = rows.map((p) => [
         p.PayrollID,
@@ -1109,7 +1096,6 @@ const handleAddSchedule = () => {
       });
       doc.save("Payroll.pdf");
     } else if (activeTab === 3) {
-      // Tasks
       doc.text("Tasks Export", 14, 10);
       const bodyData = rows.map((t) => [
         t.TaskID,
@@ -1125,7 +1111,6 @@ const handleAddSchedule = () => {
       });
       doc.save("Tasks.pdf");
     } else {
-      // Schedule
       doc.text("Schedule Export", 14, 10);
       const bodyData = rows.map((sc) => [
         sc.ScheduleID,
@@ -1144,126 +1129,9 @@ const handleAddSchedule = () => {
     }
   };
 
-  {activeTab === 3 && (
-    <Button
-      variant="contained"
-      color="primary"
-      startIcon={<AddIcon />}
-      onClick={() => setAddTaskOpen(true)}
-    >
-      Add Task
-    </Button>
-  )}
-  {activeTab === 4 && (
-    <Button
-      variant="contained"
-      color="primary"
-      startIcon={<AddIcon />}
-      onClick={() => setAddScheduleOpen(true)}
-    >
-      Add Schedule
-    </Button>
-  )}
-
-  
-  
-
   return (
     <Box sx={{ p: 4 }}>
-
-<Dialog open={isAddTaskOpen} onClose={() => setAddTaskOpen(false)}>
-  <DialogTitle>Add New Task</DialogTitle>
-  <DialogContent dividers>
-    <TextField
-      fullWidth
-      margin="normal"
-      label="Staff ID"
-      name="StaffID"
-      value={newTask.StaffID}
-      onChange={handleAddTaskChange}
-    />
-    <TextField
-      fullWidth
-      margin="normal"
-      label="Description"
-      name="TaskDescription"
-      value={newTask.TaskDescription}
-      onChange={handleAddTaskChange}
-    />
-    <TextField
-      fullWidth
-      margin="normal"
-      type="date"
-      label="Task Date"
-      name="TaskDate"
-      InputLabelProps={{ shrink: true }}
-      value={newTask.TaskDate}
-      onChange={handleAddTaskChange}
-    />
-  </DialogContent>
-  <DialogActions>
-    <Button onClick={() => setAddTaskOpen(false)}>Cancel</Button>
-    <Button onClick={handleAddTask} variant="contained" color="primary">
-      Add Task
-    </Button>
-  </DialogActions>
-</Dialog>
-
-<Dialog open={isAddScheduleOpen} onClose={() => setAddScheduleOpen(false)}>
-  <DialogTitle>Add New Schedule</DialogTitle>
-  <DialogContent dividers>
-    <TextField
-      fullWidth
-      margin="normal"
-      label="Staff ID"
-      name="StaffID"
-      value={newSchedule.StaffID}
-      onChange={handleAddScheduleChange}
-    />
-    <TextField
-      fullWidth
-      margin="normal"
-      type="date"
-      label="Shift Date"
-      name="ShiftDate"
-      InputLabelProps={{ shrink: true }}
-      value={newSchedule.ShiftDate}
-      onChange={handleAddScheduleChange}
-    />
-    <TextField
-      fullWidth
-      margin="normal"
-      label="Shift Start"
-      name="ShiftStart"
-      value={newSchedule.ShiftStart}
-      onChange={handleAddScheduleChange}
-    />
-    <TextField
-      fullWidth
-      margin="normal"
-      label="Shift End"
-      name="ShiftEnd"
-      value={newSchedule.ShiftEnd}
-      onChange={handleAddScheduleChange}
-    />
-    <TextField
-      fullWidth
-      margin="normal"
-      label="Role Override"
-      name="RoleOverride"
-      value={newSchedule.RoleOverride}
-      onChange={handleAddScheduleChange}
-    />
-  </DialogContent>
-  <DialogActions>
-    <Button onClick={() => setAddScheduleOpen(false)}>Cancel</Button>
-    <Button onClick={handleAddSchedule} variant="contained" color="primary">
-      Add Schedule
-    </Button>
-  </DialogActions>
-</Dialog>
-
-      {/* -------------- TIME PERIOD + FROM-TO DATE FILTERS -------------- */}
+      {/* ------------------- TIME PERIOD, DATE & BRANCH FILTERS ------------------- */}
       <Box
         sx={{
           mb: 3,
@@ -1275,7 +1143,11 @@ const handleAddSchedule = () => {
       >
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Time Period</InputLabel>
-          <Select value={timePeriod} label="Time Period" onChange={handleTimePeriodChange}>
+          <Select
+            value={timePeriod}
+            label="Time Period"
+            onChange={handleTimePeriodChange}
+          >
             <MenuItem value="daily">Daily</MenuItem>
             <MenuItem value="weekly">Weekly</MenuItem>
             <MenuItem value="monthly">Monthly</MenuItem>
@@ -1298,9 +1170,20 @@ const handleAddSchedule = () => {
           value={dateTo}
           onChange={handleDateToChange}
         />
+        {/* New Branch Filter */}
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel>Branch</InputLabel>
+          <Select value={branch} label="Branch" onChange={handleBranchChange}>
+            {branchOptions.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
       </Box>
 
-      {/* ---------------- FOUR OVERVIEW CARDS ---------------- */}
+      {/* ------------------- FOUR OVERVIEW CARDS ------------------- */}
       <Box sx={{ mb: 3 }}>
         <Grid container spacing={2}>
           {/* 1. Total Staff */}
@@ -1319,13 +1202,15 @@ const handleAddSchedule = () => {
                 <Typography variant="h6" gutterBottom>
                   Total Staff
                 </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
-                  {totalStaff}
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
+                >
+                  {staffRecords.length}
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-
           {/* 2. Trainers */}
           <Grid item xs={12} sm={6} md={3}>
             <Card
@@ -1342,14 +1227,16 @@ const handleAddSchedule = () => {
                 <Typography variant="h6" gutterBottom>
                   Trainers
                 </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
+                >
                   {trainersCount}
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-
-          {/* 3. Admins */}
+          {/* 3. Managers */}
           <Grid item xs={12} sm={6} md={3}>
             <Card
               sx={{
@@ -1365,13 +1252,15 @@ const handleAddSchedule = () => {
                 <Typography variant="h6" gutterBottom>
                   Managers
                 </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
+                >
                   {adminsCount}
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-
           {/* 4. Recent Hires */}
           <Grid item xs={12} sm={6} md={3}>
             <Card
@@ -1386,9 +1275,12 @@ const handleAddSchedule = () => {
               <CleanHandsIcon sx={{ fontSize: 40, color: "blue", mr: 2 }} />
               <CardContent>
                 <Typography variant="h6" gutterBottom>
-                  House Keeping
+                  Recent Hires
                 </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
+                >
                   {recentHiresCount}
                 </Typography>
               </CardContent>
@@ -1397,7 +1289,7 @@ const handleAddSchedule = () => {
         </Grid>
       </Box>
 
-      {/* ---------------- Title and Tabs ---------------- */}
+      {/* ------------------- Title and Tabs ------------------- */}
       <Box
         sx={{
           display: "flex",
@@ -1422,7 +1314,7 @@ const handleAddSchedule = () => {
         </Tabs>
       </Box>
 
-      {/* ---------------- DataGrid & Search ---------------- */}
+      {/* ------------------- DataGrid & Search ------------------- */}
       <Paper elevation={2} sx={{ mt: 3, p: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
           <TextField
@@ -1436,15 +1328,14 @@ const handleAddSchedule = () => {
 
           {/* Export + Add Buttons */}
           <Box sx={{ display: "flex", gap: 1 }}>
-            {/* Export Menu (CSV/PDF) */}
             <Button
-  variant="outlined"
-  startIcon={<FileDownloadIcon />} // Add the icon here
-  onClick={handleExportMenuOpen}
-  sx={{ textTransform: "none" }}
->
-  Export
-</Button>
+              variant="outlined"
+              startIcon={<FileDownloadIcon />}
+              onClick={handleExportMenuOpen}
+              sx={{ textTransform: "none" }}
+            >
+              Export
+            </Button>
             <Menu
               anchorEl={exportAnchorEl}
               open={openExportMenu}
@@ -1463,8 +1354,6 @@ const handleAddSchedule = () => {
               </MenuItem>
               <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
             </Menu>
-
-            {/* Add Staff button only if Staff tab, or show on all if desired */}
             {activeTab === 0 && (
               <Button
                 variant="contained"
@@ -1477,7 +1366,6 @@ const handleAddSchedule = () => {
             )}
           </Box>
         </Box>
-
         <div style={{ height: 420, width: "100%" }}>
           <DataGrid
             rows={rows}

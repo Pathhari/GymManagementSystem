@@ -11,6 +11,10 @@ import {
   TextField,
   Divider,
   IconButton,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
 } from "@mui/material";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import AddIcon from "@mui/icons-material/Add";
@@ -21,6 +25,7 @@ import BuildCircleIcon from "@mui/icons-material/BuildCircle"; // "InMaintenance
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline"; // "OutOfService"
 
 // ---------- SAMPLE DATA -----------
+// Added a "branch" property for each equipment item.
 const initialEquipment = [
   {
     id: "eq-1001",
@@ -28,6 +33,7 @@ const initialEquipment = [
     name: "Treadmill Model X",
     serialNumber: "SN12345X",
     status: "Available",
+    branch: "New York",
   },
   {
     id: "eq-1002",
@@ -35,6 +41,7 @@ const initialEquipment = [
     name: "Bench Press",
     serialNumber: "SN5678A",
     status: "InMaintenance",
+    branch: "Los Angeles",
   },
   {
     id: "eq-1003",
@@ -42,8 +49,12 @@ const initialEquipment = [
     name: "Elliptical Machine",
     serialNumber: "SN9999E",
     status: "OutOfService",
+    branch: "New York",
   },
 ];
+
+// Branch options (plus an "All Branches" option)
+const branchOptions = ["All Branches", "New York", "Los Angeles", "Chicago"];
 
 // Helper: reorder array items within the same column
 const reorder = (list, startIndex, endIndex) => {
@@ -103,10 +114,19 @@ export default function MaintenanceEquip() {
   // Activity logs (most recent on top)
   const [logs, setLogs] = useState([]);
 
-  // Derived lists for the 3 columns
-  const availableEquip = equipment.filter((eq) => eq.status === "Available");
-  const maintenanceEquip = equipment.filter((eq) => eq.status === "InMaintenance");
-  const outOfServiceEquip = equipment.filter((eq) => eq.status === "OutOfService");
+  // ------------- Branch Filter State -------------
+  const [selectedBranch, setSelectedBranch] = useState("All Branches");
+
+  // Filter equipment based on the selected branch.
+  const filteredEquipment =
+    selectedBranch === "All Branches"
+      ? equipment
+      : equipment.filter((eq) => eq.branch === selectedBranch);
+
+  // Derived lists for the 3 columns (from filtered equipment)
+  const availableEquip = filteredEquipment.filter((eq) => eq.status === "Available");
+  const maintenanceEquip = filteredEquipment.filter((eq) => eq.status === "InMaintenance");
+  const outOfServiceEquip = filteredEquipment.filter((eq) => eq.status === "OutOfService");
 
   // ============ ADD EQUIPMENT DIALOG ============
   const [isAddOpen, setAddOpen] = useState(false);
@@ -114,11 +134,12 @@ export default function MaintenanceEquip() {
     equipmentId: "",
     name: "",
     serialNumber: "",
+    branch: branchOptions[1], // default to first branch option (skip "All Branches")
   });
   const [addError, setAddError] = useState("");
 
   const handleAddOpen = () => {
-    setNewEquipData({ equipmentId: "", name: "", serialNumber: "" });
+    setNewEquipData({ equipmentId: "", name: "", serialNumber: "", branch: branchOptions[1] });
     setAddError("");
     setAddOpen(true);
   };
@@ -144,10 +165,11 @@ export default function MaintenanceEquip() {
       name: newEquipData.name,
       serialNumber: newEquipData.serialNumber,
       status: "Available",
+      branch: newEquipData.branch,
     };
     setEquipment((prev) => [...prev, newItem]);
     setLogs((prev) => [
-      `Added Equipment: ${newEquipData.equipmentId} (${newEquipData.name}).`,
+      `Added Equipment: ${newEquipData.equipmentId} (${newEquipData.name}) in ${newEquipData.branch}.`,
       ...prev,
     ]);
     setAddOpen(false);
@@ -223,25 +245,16 @@ export default function MaintenanceEquip() {
     if (destination.droppableId === "maintenanceList") newStatus = "InMaintenance";
     if (destination.droppableId === "outServiceList") newStatus = "OutOfService";
 
-    // If oldStatus=Available -> newStatus=InMaintenance => open form
-    // If oldStatus=Available -> newStatus=OutOfService => open form
-    // If oldStatus=InMaintenance -> newStatus=Available => open form
-    // If oldStatus=InMaintenance -> newStatus=OutOfService => open form
-    // If oldStatus=OutOfService -> newStatus=Available => open form, etc.
-    // We'll unify all with a single "transition form."
     setModalEquipItem(movedItem);
     setModalData({
       equipmentId: movedItem.equipmentId,
       oldStatus: movedItem.status,
       newStatus: newStatus,
-      reason: "",   // user can type: "Scheduled maintenance" or "Broken part" etc.
-      date: "",     // user picks date
-      time: "",     // user picks time
+      reason: "",
+      date: "",
+      time: "",
     });
     setModalOpen(true);
-
-    // We'll hold onto the item in the "modalEquipItem" and only apply changes after user saves
-    // Meanwhile, we do NOT finalize anything in "equipment" until the user completes the form
   };
 
   const handleModalChange = (e) => {
@@ -251,9 +264,8 @@ export default function MaintenanceEquip() {
 
   const handleModalCancel = () => {
     setModalOpen(false);
-    // If user cancels, we must revert item to its original column
-    // We'll just do a forced refresh of the columns
-    setEquipment((prev) => [...prev]); // or reload from old arrays
+    // Revert equipment state if necessary.
+    setEquipment((prev) => [...prev]);
   };
 
   const handleModalSave = () => {
@@ -262,7 +274,6 @@ export default function MaintenanceEquip() {
       alert("Please specify both date and time for this status change.");
       return;
     }
-    // Now finalize the item in the new status:
     setEquipment((prev) =>
       prev.map((eq) => {
         if (eq.id === modalEquipItem.id) {
@@ -271,18 +282,9 @@ export default function MaintenanceEquip() {
         return eq;
       })
     );
-    // Re-apply occupant or not occupant if needed:
-    // e.g. if newStatus !== "InMaintenance", occupant could be cleared. It's optional.
-    // set occupant to "Maintenance log: reason" if you'd like. We'll skip occupant here.
-
-    // We'll log the reason, date, time:
     const logMsg = `Equipment #${equipmentId} changed from ${oldStatus} to ${newStatus} on ${date} at ${time}. Reason: ${reason || "N/A"}`;
     setLogs((prev) => [logMsg, ...prev]);
-
-    // Now push the item to the correct final array
-    // We do that by calling "applyAllLists" again:
     applyAllLists(availableEquip, maintenanceEquip, outOfServiceEquip);
-
     setModalOpen(false);
   };
 
@@ -307,7 +309,6 @@ export default function MaintenanceEquip() {
           {...provided.dragHandleProps}
           style={getItemStyle(snapshot.isDragging, provided.draggableProps.style)}
         >
-          {/* Remove Button */}
           <Box sx={{ textAlign: "right" }}>
             <IconButton
               size="small"
@@ -320,6 +321,8 @@ export default function MaintenanceEquip() {
           <strong>{item.equipmentId}</strong> - {item.name}
           <br />
           <small>SN: {item.serialNumber}</small>
+          <br />
+          <small>Branch: {item.branch}</small>
         </Box>
       )}
     </Draggable>
@@ -357,6 +360,22 @@ export default function MaintenanceEquip() {
     <Box sx={{ display: "flex", gap: 3, p: 4 }}>
       {/* Left side: Equipment Drag & Drop */}
       <Box flex={1}>
+        {/* Branch Filter positioned at the top */}
+        <FormControl sx={{ mb: 2, minWidth: 180 }}>
+          <InputLabel>Filter by Branch</InputLabel>
+          <Select
+            label="Filter by Branch"
+            value={selectedBranch}
+            onChange={(e) => setSelectedBranch(e.target.value)}
+          >
+            {branchOptions.map((branch) => (
+              <MenuItem key={branch} value={branch}>
+                {branch}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
         <Typography variant="h4" gutterBottom>
           Equipment Management
         </Typography>
@@ -531,6 +550,23 @@ export default function MaintenanceEquip() {
             value={newEquipData.serialNumber}
             onChange={handleAddEquipChange}
           />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Select Branch</InputLabel>
+            <Select
+              label="Select Branch"
+              name="branch"
+              value={newEquipData.branch}
+              onChange={handleAddEquipChange}
+            >
+              {branchOptions
+                .filter((branch) => branch !== "All Branches")
+                .map((branch) => (
+                  <MenuItem key={branch} value={branch}>
+                    {branch}
+                  </MenuItem>
+                ))}
+            </Select>
+          </FormControl>
           {addError && (
             <Typography variant="body2" color="error" sx={{ mt: 1 }}>
               {addError}
@@ -593,12 +629,7 @@ export default function MaintenanceEquip() {
       </Dialog>
 
       {/* DIALOG: Edit Log Entry */}
-      <Dialog
-        open={editLogIndex !== null}
-        onClose={handleCancelLogEdit}
-        fullWidth
-        maxWidth="sm"
-      >
+      <Dialog open={editLogIndex !== null} onClose={handleCancelLogEdit} fullWidth maxWidth="sm">
         <DialogTitle>Edit Activity Log</DialogTitle>
         <DialogContent dividers>
           <TextField

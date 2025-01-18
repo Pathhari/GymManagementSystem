@@ -19,6 +19,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import { AppProvider } from '@toolpad/core/AppProvider';
 import { DashboardLayout } from '@toolpad/core/DashboardLayout';
+import ApartmentIcon from '@mui/icons-material/Apartment';
 import axios from 'axios';
 import { Inertia } from '@inertiajs/inertia-react'; // Inertia.js import
 
@@ -26,6 +27,7 @@ import { Inertia } from '@inertiajs/inertia-react'; // Inertia.js import
 import DashboardContent from './DashboardContent';
 import MembershipManagement from './MembershipManagement';
 import StaffManagement from './StaffManagement';
+import BranchManagement from './BranchManagement';
 import Payments from './Payments';
 import BookingsSessions from './BookingsSessions';
 import LockerManagement from './LockerManagement';
@@ -41,6 +43,7 @@ const NAVIGATION = [
   { segment: 'dashboard', title: 'Dashboard', icon: <DashboardIcon /> },
   { segment: 'membership-management', title: 'Membership Management', icon: <PeopleIcon /> },
   { segment: 'staff-management', title: 'Staff Management', icon: <Diversity3Icon /> },
+  { segment: 'branch-management', title: 'Branch Management', icon: <ApartmentIcon /> },
   { segment: 'payments', title: 'Payments & Invoices', icon: <PaymentsIcon /> },
   { segment: 'bookingsessions', title: 'Bookings & Sessions', icon: <EventNoteIcon /> },
   { segment: 'lockermanagement', title: 'Locker Management', icon: <LockIcon /> },
@@ -75,6 +78,8 @@ function DemoPageContent({ pathname }) {
         return <MembershipManagement />;
       case '/staff-management':
         return <StaffManagement />;
+      case '/branch-management':
+        return <BranchManagement />;
       case '/payments':
         return <Payments />;
       case '/bookingsessions':

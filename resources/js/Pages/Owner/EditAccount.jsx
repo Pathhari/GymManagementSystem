@@ -19,27 +19,16 @@ import {
   InputAdornment,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 
-/**
- * Demo roles (for staff creation).
- * In real usage, you might fetch from server, e.g. ['Staff', 'Admin', 'Owner'].
- */
 const roleOptions = ["Staff", "Admin", "Owner"];
+const branchOptions = ["Branch 1", "Branch 2"]; // Example branches
 
 export default function EditProfile() {
-  // -----------------------------------------
-  // SECTION 1: MY ACCOUNT (CURRENT USER)
-  // -----------------------------------------
   const [userEmail, setUserEmail] = useState("john.doe@example.com");
-
-  // Removed "currentPassword"; we only have new & confirm password
   const [newPassword, setNewPassword] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
-
-  // Control password visibility (new + confirm)
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
@@ -47,41 +36,36 @@ export default function EditProfile() {
   const handleToggleShowConfirmPass = () => setShowConfirmPass((prev) => !prev);
 
   const handleSaveMyAccount = () => {
-    // If a new password is entered, ensure it matches the confirm
     if (newPassword && newPassword !== confirmPass) {
       alert("New Password and Confirm Password do not match!");
       return;
     }
-    // API call or context update to save changes...
     alert("Your account changes saved!");
   };
 
-  // -----------------------------------------
-  // SECTION 2: ADD STAFF
-  // -----------------------------------------
   const [isAddStaffOpen, setAddStaffOpen] = useState(false);
   const [staffEmail, setStaffEmail] = useState("");
   const [staffPassword, setStaffPassword] = useState("");
-  const [staffRole, setStaffRole] = useState("Staff"); // default to Staff
+  const [staffRole, setStaffRole] = useState("Staff");
   const [staffName, setStaffName] = useState("");
+  const [staffBranch, setStaffBranch] = useState(""); // New state for branch selection
 
   const handleOpenAddStaff = () => {
-    // Clear fields
     setStaffEmail("");
     setStaffPassword("");
     setStaffRole("Staff");
     setStaffName("");
+    setStaffBranch(""); // Reset branch
     setAddStaffOpen(true);
   };
 
   const handleAddStaff = () => {
-    if (!staffName || !staffEmail || !staffPassword) {
-      alert("Please fill out name, email, and password for staff.");
+    if (!staffName || !staffEmail || !staffPassword || !staffBranch) {
+      alert("Please fill out all fields for the staff.");
       return;
     }
-    // Suppose you call an API to create staff user ...
     alert(
-      `Staff created!\nName: ${staffName}\nEmail: ${staffEmail}\nRole: ${staffRole}`
+      `Staff created!\nName: ${staffName}\nEmail: ${staffEmail}\nRole: ${staffRole}\nBranch: ${staffBranch}`
     );
     setAddStaffOpen(false);
   };
@@ -93,13 +77,11 @@ export default function EditProfile() {
       </Typography>
       <Divider sx={{ mb: 3 }} />
 
-      {/* MY ACCOUNT SECTION */}
       <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
         <Typography variant="h6" gutterBottom>
           My Account
         </Typography>
         <Grid container spacing={2}>
-          {/* Email */}
           <Grid item xs={12} sm={6}>
             <TextField
               label="Email Address"
@@ -110,8 +92,6 @@ export default function EditProfile() {
               sx={{ mt: 1 }}
             />
           </Grid>
-
-          {/* New Password */}
           <Grid item xs={12} sm={6}>
             <TextField
               label="New Password"
@@ -132,8 +112,6 @@ export default function EditProfile() {
               }}
             />
           </Grid>
-
-          {/* Confirm New Password */}
           <Grid item xs={12} sm={6}>
             <TextField
               label="Confirm New Password"
@@ -158,8 +136,6 @@ export default function EditProfile() {
             />
           </Grid>
         </Grid>
-
-        {/* SAVE BUTTON */}
         <Box sx={{ textAlign: "right", mt: 2 }}>
           <Button
             variant="contained"
@@ -171,7 +147,6 @@ export default function EditProfile() {
         </Box>
       </Paper>
 
-      {/* ADD STAFF SECTION */}
       <Paper elevation={2} sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>
           Add New Staff Account Credentials
@@ -188,7 +163,6 @@ export default function EditProfile() {
         </Button>
       </Paper>
 
-      {/* ADD STAFF DIALOG */}
       <Dialog
         open={isAddStaffOpen}
         onClose={() => setAddStaffOpen(false)}
@@ -236,6 +210,20 @@ export default function EditProfile() {
               ))}
             </Select>
           </FormControl>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Branch</InputLabel>
+            <Select
+              label="Branch"
+              value={staffBranch}
+              onChange={(e) => setStaffBranch(e.target.value)}
+            >
+              {branchOptions.map((b) => (
+                <MenuItem key={b} value={b}>
+                  {b}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddStaffOpen(false)}>Cancel</Button>
@@ -247,12 +235,6 @@ export default function EditProfile() {
     </Box>
   );
 }
-
-
-
-
-
-
 
 
 

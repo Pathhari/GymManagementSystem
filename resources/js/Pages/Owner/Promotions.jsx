@@ -68,6 +68,7 @@ ChartJS.register(
 );
 
 // ---------- SAMPLE PROMOTIONS DATA -----------
+// Added a "branch" property to each promotion object.
 const samplePromotions = [
   {
     promotionId: "PROMO-1001",
@@ -78,7 +79,8 @@ const samplePromotions = [
     endDate: "2025-06-30",
     status: "Active",
     redemptions: 50,
-    notes: "Applies to membership plans"
+    notes: "Applies to membership plans",
+    branch: "New York"
   },
   {
     promotionId: "PROMO-1002",
@@ -89,7 +91,8 @@ const samplePromotions = [
     endDate: "2025-09-15",
     status: "Upcoming",
     redemptions: 0,
-    notes: "Coaching sessions only"
+    notes: "Coaching sessions only",
+    branch: "Los Angeles"
   },
   {
     promotionId: "PROMO-1003",
@@ -100,16 +103,29 @@ const samplePromotions = [
     endDate: "2025-01-05",
     status: "Expired",
     redemptions: 40,
-    notes: "Ended last Jan. 5"
+    notes: "Ended last Jan. 5",
+    branch: "Chicago"
   }
 ];
+
+// Branch filter options (including an "All Branches" option)
+const branchOptions = ["All Branches", "New York", "Los Angeles", "Chicago"];
 
 export default function PromotionsSegments() {
   // ------------------- STATE & DATA -------------------
   const [searchTerm, setSearchTerm] = useState("");
   const [promotions, setPromotions] = useState(samplePromotions);
 
-  const filteredPromotions = promotions.filter((p) =>
+  // New: Branch Filter state
+  const [selectedBranch, setSelectedBranch] = useState("All Branches");
+
+  // Filter promotions by branch first, then apply search filter.
+  const branchFilteredPromotions =
+    selectedBranch === "All Branches"
+      ? promotions
+      : promotions.filter((p) => p.branch === selectedBranch);
+
+  const filteredPromotions = branchFilteredPromotions.filter((p) =>
     Object.values(p).some((val) => String(val).toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
@@ -138,6 +154,7 @@ export default function PromotionsSegments() {
     { field: "endDate", headerName: "End Date", width: 110 },
     { field: "status", headerName: "Status", width: 100 },
     { field: "redemptions", headerName: "Redemptions", width: 120 },
+    { field: "branch", headerName: "Branch", width: 120 },
     {
       field: "Actions",
       headerName: "Actions",
@@ -207,7 +224,8 @@ export default function PromotionsSegments() {
     endDate: "",
     status: "Upcoming",
     redemptions: 0,
-    notes: ""
+    notes: "",
+    branch: branchOptions[1] // default to first branch option (skip "All Branches")
   });
   const [addError, setAddError] = useState("");
 
@@ -221,7 +239,8 @@ export default function PromotionsSegments() {
       endDate: "",
       status: "Upcoming",
       redemptions: 0,
-      notes: ""
+      notes: "",
+      branch: branchOptions[1]
     });
     setAddError("");
     setAddOpen(true);
@@ -301,6 +320,7 @@ export default function PromotionsSegments() {
     { label: "End Date", key: "endDate" },
     { label: "Status", key: "status" },
     { label: "Redemptions", key: "redemptions" },
+    { label: "Branch", key: "branch" },
     { label: "Notes", key: "notes" }
   ];
   const csvData = filteredPromotions;
@@ -323,10 +343,11 @@ export default function PromotionsSegments() {
       p.endDate,
       p.status,
       String(p.redemptions),
+      p.branch,
       p.notes || ""
     ]);
     doc.autoTable({
-      head: [["ID", "Name", "Type", "Discount", "Start", "End", "Status", "Redemptions", "Notes"]],
+      head: [["ID", "Name", "Type", "Discount", "Start", "End", "Status", "Redemptions", "Branch", "Notes"]],
       body: bodyData,
       startY: 20
     });
@@ -373,13 +394,12 @@ export default function PromotionsSegments() {
     plugins: {
       legend: { position: "bottom" }
     },
-    // Make the donut fill its container similarly to the line chart
     maintainAspectRatio: false
   };
 
   return (
     <Box sx={{ p: 4 }}>
-      {/* ---------- Date Period Filters on Top ---------- */}
+      {/* ---------- Date Period & Branch Filters on Top ---------- */}
       <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap", gap: 2, alignItems: "center" }}>
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Time Period</InputLabel>
@@ -406,6 +426,21 @@ export default function PromotionsSegments() {
           value={dateTo}
           onChange={handleDateToChange}
         />
+        {/* Branch Filter */}
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel>Branch</InputLabel>
+          <Select
+            value={selectedBranch}
+            label="Branch"
+            onChange={(e) => setSelectedBranch(e.target.value)}
+          >
+            {branchOptions.map((branch) => (
+              <MenuItem key={branch} value={branch}>
+                {branch}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
       </Box>
 
       {/* ---------- Overview Cards ---------- */}
@@ -488,69 +523,12 @@ export default function PromotionsSegments() {
         </Grid>
       </Grid>
 
-      {/* ---------- "Promotions & Segments" text ---------- */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-  {/* Line Graph Card */}
-  <Grid item xs={12} md={6}>
-    <Paper
-      sx={{
-        p: 2,
-        height: 400,
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <Typography variant="h6" sx={{ mb: 2 }}>
-        Promotion Usage Over Time
-      </Typography>
-      <Box
-        sx={{
-          flex: 1,
-          position: "relative",
-        }}
-      >
-        <Line
-          data={lineChartData}
-          options={{
-            ...lineChartOptions,
-            maintainAspectRatio: false,
-          }}
-        />
-      </Box>
-    </Paper>
-  </Grid>
-
-  {/* Donut Graph Card */}
-  <Grid item xs={12} md={6}>
-    <Paper
-      sx={{
-        p: 2,
-        height: 400,
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <Typography variant="h6" sx={{ mb: 2 }}>
-        Graph Segments (Donut)
-      </Typography>
-      <Box
-        sx={{
-          flex: 1,
-          position: "relative",
-        }}
-      >
-        <Doughnut data={donutData} options={donutOptions} />
-      </Box>
-    </Paper>
-  </Grid>
-</Grid>
-
-    &nbsp;
+      {/* ---------- "Promotions & Segments" Header ---------- */}
       <Typography variant="h4" gutterBottom>
         Promotions & Segments
       </Typography>
       <Divider sx={{ mb: 3 }} />
-    
+
       {/* ---------- Search + Export + Add Buttons ---------- */}
       <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
@@ -565,33 +543,32 @@ export default function PromotionsSegments() {
 
           <Box sx={{ display: "flex", gap: 1 }}>
             {/* Export */}
-            {/* Export */}
             <Button
-  variant="outlined"
-  onClick={handleExportMenuOpen}
-  startIcon={<FileDownloadIcon />}
-  sx={{ textTransform: "none" }}
->
-  Export
-</Button>
-      <Menu
-        anchorEl={exportAnchorEl}
-        open={openExportMenu}
-        onClose={handleExportMenuClose}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-      >
-        <MenuItem onClick={handleExportCSV}>
-          <CSVLink
-            data={csvData}
-            headers={csvHeaders}
-            filename="Promotions.csv"
-            style={{ textDecoration: "none", color: "inherit" }}
-          >
-            Export CSV
-          </CSVLink>
-        </MenuItem>
-        <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
-      </Menu>
+              variant="outlined"
+              onClick={handleExportMenuOpen}
+              startIcon={<FileDownloadIcon />}
+              sx={{ textTransform: "none" }}
+            >
+              Export
+            </Button>
+            <Menu
+              anchorEl={exportAnchorEl}
+              open={openExportMenu}
+              onClose={handleExportMenuClose}
+              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+            >
+              <MenuItem onClick={handleExportCSV}>
+                <CSVLink
+                  data={csvData}
+                  headers={csvHeaders}
+                  filename="Promotions.csv"
+                  style={{ textDecoration: "none", color: "inherit" }}
+                >
+                  Export CSV
+                </CSVLink>
+              </MenuItem>
+              <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
+            </Menu>
 
             {/* Add Promotion */}
             <Button
@@ -683,6 +660,23 @@ export default function PromotionsSegments() {
             multiline
             rows={3}
           />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Select Branch</InputLabel>
+            <Select
+              label="Select Branch"
+              name="branch"
+              value={newPromo.branch}
+              onChange={handleAddChange}
+            >
+              {branchOptions
+                .filter((branch) => branch !== "All Branches")
+                .map((branch) => (
+                  <MenuItem key={branch} value={branch}>
+                    {branch}
+                  </MenuItem>
+                ))}
+            </Select>
+          </FormControl>
           {addError && (
             <Typography variant="body2" color="error" sx={{ mt: 1 }}>
               {addError}
@@ -728,6 +722,9 @@ export default function PromotionsSegments() {
                 <strong>Redemptions:</strong> {viewPromo.redemptions}
               </Typography>
               <Typography>
+                <strong>Branch:</strong> {viewPromo.branch}
+              </Typography>
+              <Typography>
                 <strong>Notes:</strong> {viewPromo.notes}
               </Typography>
             </Box>
@@ -744,29 +741,10 @@ export default function PromotionsSegments() {
         <DialogContent dividers>
           {editData && (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <TextField
-                label="Promotion ID"
-                value={editData.promotionId}
-                disabled
-              />
-              <TextField
-                label="Promotion Name"
-                name="name"
-                value={editData.name}
-                onChange={handleEditChange}
-              />
-              <TextField
-                label="Type"
-                name="type"
-                value={editData.type}
-                onChange={handleEditChange}
-              />
-              <TextField
-                label="Discount Value"
-                name="discountValue"
-                value={editData.discountValue}
-                onChange={handleEditChange}
-              />
+              <TextField label="Promotion ID" value={editData.promotionId} disabled />
+              <TextField label="Promotion Name" name="name" value={editData.name} onChange={handleEditChange} />
+              <TextField label="Type" name="type" value={editData.type} onChange={handleEditChange} />
+              <TextField label="Discount Value" name="discountValue" value={editData.discountValue} onChange={handleEditChange} />
               <TextField
                 label="Start Date"
                 name="startDate"
@@ -783,12 +761,7 @@ export default function PromotionsSegments() {
                 value={editData.endDate}
                 onChange={handleEditChange}
               />
-              <TextField
-                label="Status"
-                name="status"
-                value={editData.status}
-                onChange={handleEditChange}
-              />
+              <TextField label="Status" name="status" value={editData.status} onChange={handleEditChange} />
               <TextField
                 label="Redemptions"
                 name="redemptions"
@@ -816,8 +789,7 @@ export default function PromotionsSegments() {
       </Dialog>
 
       {/* ---------- Export Menu ---------- */}
-
-
+      {/* You can add the Export Menu code if needed */}
     </Box>
   );
 }

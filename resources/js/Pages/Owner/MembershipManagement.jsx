@@ -37,6 +37,7 @@ import GroupsIcon from "@mui/icons-material/Groups";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import WarningIcon from "@mui/icons-material/Warning";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import DirectionsWalkIcon from "@mui/icons-material/DirectionsWalk";
 
 // --------- For CSV Export ---------
 import { CSVLink } from "react-csv";
@@ -134,6 +135,40 @@ const sampleLogs = [
   },
 ];
 
+// Updated sampleWalkIns with no ModeOfPayment or AmountPaid yet
+const sampleWalkIns = [
+  {
+    WalkInID: 1,
+    FullName: "Alice Brown",
+    Phone: "123-456-7890",
+    VisitDate: "2023-12-15",
+    VisitTime: "10:30 AM",
+    Purpose: "Trial Session",
+    PaymentID: null,
+    // New fields below:
+    ModeOfPayment: "",
+    AmountPaid: 0,
+    Remarks: "Interested in membership.",
+    CreatedAt: "2023-12-15 10:00:00",
+    UpdatedAt: "2023-12-15 10:30:00",
+  },
+  {
+    WalkInID: 2,
+    FullName: "Charlie Green",
+    Phone: "987-654-3210",
+    VisitDate: "2023-12-16",
+    VisitTime: "02:00 PM",
+    Purpose: "Facility Booking",
+    PaymentID: 101,
+    // New fields below:
+    ModeOfPayment: "GCash",
+    AmountPaid: 150,
+    Remarks: "Booked a badminton court.",
+    CreatedAt: "2023-12-16 01:45:00",
+    UpdatedAt: "2023-12-16 02:00:00",
+  },
+];
+
 export default function MembershipManagement() {
   // ------------------- STATES: MEMBERSHIP TAB -------------------
   const [membershipRecords, setMembershipRecords] = useState(sampleMemberships);
@@ -162,6 +197,26 @@ export default function MembershipManagement() {
   });
   const [errors, setErrors] = useState({});
 
+  // ------------------- STATES: WALK-INS TAB -------------------
+  const [walkInRecords, setWalkInRecords] = useState(sampleWalkIns);
+  const [filteredWalkIns, setFilteredWalkIns] = useState(sampleWalkIns);
+  const [selectedWalkIn, setSelectedWalkIn] = useState(null);
+  const [isViewWalkInOpen, setViewWalkInOpen] = useState(false);
+  const [isAddWalkInOpen, setAddWalkInOpen] = useState(false);
+  const [isEditWalkInOpen, setEditWalkInOpen] = useState(false);
+  // Updated state to include new fields ModeOfPayment and AmountPaid
+  const [newWalkIn, setNewWalkIn] = useState({
+    FullName: "",
+    Phone: "",
+    VisitDate: "",
+    VisitTime: "",
+    Purpose: "",
+    PaymentID: null,
+    ModeOfPayment: "", // New field (Enum: "GCash", "Cash", "BPI")
+    AmountPaid: 0,     // New field (Decimal)
+    Remarks: "",
+  });
+
   // ------------------- STATES: FREEZES TAB --------------------
   const [freezeRecords, setFreezeRecords] = useState(sampleFreezes);
   const [filteredFreezes, setFilteredFreezes] = useState(sampleFreezes);
@@ -186,10 +241,20 @@ export default function MembershipManagement() {
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // -------------- TIME PERIOD + DATE FILTERS (like in Payments) --------------
+  // -------------- TIME PERIOD + DATE FILTERS --------------
   const [timePeriod, setTimePeriod] = useState("daily");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+
+  // -------------- NEW: BRANCH FILTER --------------
+  const [branch, setBranch] = useState("all");
+  // Dummy branch options. Replace with real data when ready.
+  const branchOptions = [
+    { value: "all", label: "All Branches" },
+    { value: "branch1", label: "Branch 1" },
+    { value: "branch2", label: "Branch 2" },
+    { value: "branch3", label: "Branch 3" },
+  ];
 
   const handleTimePeriodChange = (e) => {
     setTimePeriod(e.target.value);
@@ -202,6 +267,11 @@ export default function MembershipManagement() {
   const handleDateToChange = (e) => {
     setDateTo(e.target.value);
     // Insert your filtering logic if desired
+  };
+  // Handle Branch Filter Change
+  const handleBranchChange = (e) => {
+    setBranch(e.target.value);
+    // Insert branch-based filtering logic if desired
   };
 
   // ------------------- ADD MEMBERSHIP -------------------------
@@ -252,7 +322,7 @@ export default function MembershipManagement() {
     setAddMembershipOpen(false);
   };
 
-  // ------------------- MEMBERSHIP: VIEW, EDIT, DELETE ---------
+  // ------------------- MEMBERSHIP: VIEW, EDIT, Freeze, DELETE ---------
   const handleViewMembership = (record) => {
     setSelectedMembership(record);
     setViewMembershipOpen(true);
@@ -277,6 +347,48 @@ export default function MembershipManagement() {
       prev.map((m) => (m.MemberID === selectedMembership.MemberID ? selectedMembership : m))
     );
     setEditMembershipOpen(false);
+  };
+
+  // Add these states for Freeze Modal
+  const [isFreezeModalOpen, setFreezeModalOpen] = useState(false);
+  const [freezeForm, setFreezeForm] = useState({
+    MemberID: null,
+    FreezeStartDate: "",
+    FreezeEndDate: "",
+    Reason: "",
+    Notes: "",
+  });
+
+  const handleOpenFreezeModal = (memberID) => {
+    setFreezeForm({
+      MemberID: memberID,
+      FreezeStartDate: "",
+      FreezeEndDate: "",
+      Reason: "",
+      Notes: "",
+    });
+    setFreezeModalOpen(true);
+  };
+
+  const handleFreezeFormChange = (e) => {
+    const { name, value } = e.target;
+    setFreezeForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmitFreeze = () => {
+    const newFreeze = {
+      FreezeID: freezeRecords.length ? Math.max(...freezeRecords.map((f) => f.FreezeID)) + 1 : 1,
+      MemberID: freezeForm.MemberID,
+      FreezeStartDate: freezeForm.FreezeStartDate,
+      FreezeEndDate: freezeForm.FreezeEndDate,
+      Reason: freezeForm.Reason,
+      ApprovalStatus: "Pending",
+      Notes: freezeForm.Notes,
+    };
+
+    setFreezeRecords((prev) => [...prev, newFreeze]);
+    setFilteredFreezes((prev) => [...prev, newFreeze]);
+    setFreezeModalOpen(false);
   };
 
   // ------------------- FREEZES: VIEW, EDIT, DELETE ------------
@@ -356,11 +468,17 @@ export default function MembershipManagement() {
       );
       setFilteredMemberships(filtered);
     } else if (activeTab === 1) {
+      // Walk-Ins tab search
+      const filtered = walkInRecords.filter((item) =>
+        Object.values(item).some((val) => String(val).toLowerCase().includes(value))
+      );
+      setFilteredWalkIns(filtered);
+    } else if (activeTab === 2) {
       const filtered = renewalRecords.filter((item) =>
         Object.values(item).some((val) => String(val).toLowerCase().includes(value))
       );
       setFilteredRenewals(filtered);
-    } else if (activeTab === 2) {
+    } else if (activeTab === 3) {
       const filtered = freezeRecords.filter((item) =>
         Object.values(item).some((val) => String(val).toLowerCase().includes(value))
       );
@@ -380,8 +498,10 @@ export default function MembershipManagement() {
     if (newValue === 0) {
       setFilteredMemberships(membershipRecords);
     } else if (newValue === 1) {
-      setFilteredRenewals(renewalRecords);
+      setFilteredWalkIns(walkInRecords);
     } else if (newValue === 2) {
+      setFilteredRenewals(renewalRecords);
+    } else if (newValue === 3) {
       setFilteredFreezes(freezeRecords);
     } else {
       setFilteredLogs(activityLogs);
@@ -405,7 +525,6 @@ export default function MembershipManagement() {
     return endDate > today && endDate <= next30;
   }).length;
 
-  // -------------- Decide columns --------------
   const membershipColumns = [
     { field: "MemberID", headerName: "Member ID", width: 100 },
     { field: "FullName", headerName: "Full Name", width: 160 },
@@ -426,16 +545,21 @@ export default function MembershipManagement() {
     {
       field: "MembershipStatus",
       headerName: "Status",
-      width: 100,
-      renderCell: (params) => (
-        <span
-          style={{
-            color: params.value === "Active" ? "limegreen" : "orange",
-          }}
-        >
-          {params.value}
-        </span>
-      ),
+      width: 120,
+      renderCell: (params) => {
+        const memberID = params.row.MemberID;
+        const isFreezed = freezeRecords.some((freeze) => {
+          const freezeStart = new Date(freeze.FreezeStartDate);
+          const freezeEnd = new Date(freeze.FreezeEndDate);
+          const today = new Date();
+          return freeze.MemberID === memberID && today >= freezeStart && today <= freezeEnd;
+        });
+        return (
+          <span style={{ color: isFreezed ? "blue" : params.value === "Active" ? "limegreen" : "orange" }}>
+            {isFreezed ? "Freezed" : params.value}
+          </span>
+        );
+      },
     },
     { field: "MembershipStartDate", headerName: "Start", width: 100 },
     { field: "MembershipEndDate", headerName: "End", width: 100 },
@@ -479,6 +603,21 @@ export default function MembershipManagement() {
               <EditIcon />
             </Button>
           </Tooltip>
+          <Tooltip title="Freeze">
+            <Button
+              variant="contained"
+              sx={{
+                backgroundColor: "#00acc1",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#008394" },
+                minWidth: "40px",
+                padding: "6px",
+              }}
+              onClick={() => handleOpenFreezeModal(params.row.MemberID)}
+            >
+              <AcUnitIcon />
+            </Button>
+          </Tooltip>
           <Tooltip title="Delete">
             <Button
               variant="contained"
@@ -498,6 +637,138 @@ export default function MembershipManagement() {
       ),
     },
   ];
+
+  // ------------------- WALK-INS: COLUMNS & ACTIONS -------------------
+  const walkInColumns = [
+    { field: "WalkInID", headerName: "Walk-In ID", width: 100 },
+    { field: "FullName", headerName: "Full Name", width: 150 },
+    { field: "Phone", headerName: "Phone", width: 130 },
+    { field: "VisitDate", headerName: "Visit Date", width: 120 },
+    { field: "VisitTime", headerName: "Visit Time", width: 120 },
+    { field: "Purpose", headerName: "Purpose", width: 150 },
+    { field: "PaymentID", headerName: "Payment ID", width: 100 },
+    { field: "ModeOfPayment", headerName: "Mode of Payment", width: 150 },
+    { field: "AmountPaid", headerName: "Amount Paid", width: 120 },
+    { field: "Remarks", headerName: "Remarks", width: 200 },
+    {
+      field: "Actions",
+      headerName: "Actions",
+      width: 300,
+      sortable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title="View">
+            <Button
+              variant="contained"
+              sx={{
+                backgroundColor: "#4caf50",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#43a047" },
+                minWidth: "40px",
+                padding: "6px",
+              }}
+              onClick={() => handleViewWalkIn(params.row)}
+            >
+              <VisibilityIcon />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Edit">
+            <Button
+              variant="contained"
+              sx={{
+                backgroundColor: "#2196f3",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#1976d2" },
+                minWidth: "40px",
+                padding: "6px",
+              }}
+              onClick={() => handleEditWalkIn(params.row)}
+            >
+              <EditIcon />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <Button
+              variant="contained"
+              sx={{
+                backgroundColor: "#f44336",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#d32f2f" },
+                minWidth: "40px",
+                padding: "6px",
+              }}
+              onClick={() => handleDeleteWalkIn(params.row.WalkInID)}
+            >
+              <DeleteIcon />
+            </Button>
+          </Tooltip>
+        </Box>
+      ),
+    },
+  ];
+
+  const handleAddWalkInChange = (e) => {
+    const { name, value } = e.target;
+    setNewWalkIn((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddWalkIn = () => {
+    const nextID = walkInRecords.length
+      ? Math.max(...walkInRecords.map((w) => w.WalkInID)) + 1
+      : 1;
+
+    const newRecord = {
+      WalkInID: nextID,
+      ...newWalkIn,
+      CreatedAt: new Date().toISOString(),
+      UpdatedAt: new Date().toISOString(),
+    };
+
+    setWalkInRecords((prev) => [...prev, newRecord]);
+    setFilteredWalkIns((prev) => [...prev, newRecord]);
+    setNewWalkIn({
+      FullName: "",
+      Phone: "",
+      VisitDate: "",
+      VisitTime: "",
+      Purpose: "",
+      PaymentID: null,
+      ModeOfPayment: "",
+      AmountPaid: 0,
+      Remarks: "",
+    });
+    setAddWalkInOpen(false);
+  };
+
+  const handleViewWalkIn = (record) => {
+    setSelectedWalkIn(record);
+    setViewWalkInOpen(true);
+  };
+
+  const handleEditWalkIn = (record) => {
+    setSelectedWalkIn(record);
+    setEditWalkInOpen(true);
+  };
+
+  const handleEditWalkInSubmit = () => {
+    setWalkInRecords((prev) =>
+      prev.map((w) =>
+        w.WalkInID === selectedWalkIn.WalkInID ? { ...selectedWalkIn } : w
+      )
+    );
+    setFilteredWalkIns((prev) =>
+      prev.map((w) =>
+        w.WalkInID === selectedWalkIn.WalkInID ? { ...selectedWalkIn } : w
+      )
+    );
+    setEditWalkInOpen(false);
+  };
+
+  const handleDeleteWalkIn = (walkInID) => {
+    const updated = walkInRecords.filter((w) => w.WalkInID !== walkInID);
+    setWalkInRecords(updated);
+    setFilteredWalkIns(updated);
+  };
 
   const renewalColumns = [
     { field: "RenewalID", headerName: "Renewal ID", width: 110 },
@@ -672,15 +943,18 @@ export default function MembershipManagement() {
     activeTab === 0
       ? membershipColumns
       : activeTab === 1
-      ? renewalColumns
+      ? walkInColumns
       : activeTab === 2
+      ? renewalColumns
+      : activeTab === 3
       ? freezeColumns
       : logColumns;
 
   const getRowId = (row) => {
     if (activeTab === 0) return row.MemberID;
-    if (activeTab === 1) return row.RenewalID;
-    if (activeTab === 2) return row.FreezeID;
+    if (activeTab === 1) return row.WalkInID;
+    if (activeTab === 2) return row.RenewalID;
+    if (activeTab === 3) return row.FreezeID;
     return row.LogID;
   };
 
@@ -688,8 +962,10 @@ export default function MembershipManagement() {
     activeTab === 0
       ? filteredMemberships
       : activeTab === 1
-      ? filteredRenewals
+      ? filteredWalkIns
       : activeTab === 2
+      ? filteredRenewals
+      : activeTab === 3
       ? filteredFreezes
       : filteredLogs;
 
@@ -697,7 +973,6 @@ export default function MembershipManagement() {
   // ======================= EXPORT FUNCTIONALITY ======================
   // ==================================================================
 
-  // 1) Create an anchor for the Export Menu
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
   const openExportMenu = Boolean(exportAnchorEl);
 
@@ -709,7 +984,6 @@ export default function MembershipManagement() {
     setExportAnchorEl(null);
   };
 
-  // 2) CSV Headers for each tab
   const membershipCSVHeaders = [
     { label: "Member ID", key: "MemberID" },
     { label: "Full Name", key: "FullName" },
@@ -753,17 +1027,13 @@ export default function MembershipManagement() {
   ];
 
   const handleExportCSV = () => {
-    // react-csv handles the actual file download via <CSVLink>
     handleExportMenuClose();
   };
 
-  // 3) PDF Export (JS PDF)
   const handleExportPDF = () => {
     handleExportMenuClose();
     const doc = new jsPDF();
-
     if (activeTab === 0) {
-      // MEMBERSHIPS
       doc.text("Memberships Export", 14, 10);
       const bodyData = filteredMemberships.map((m) => [
         m.MemberID,
@@ -802,8 +1072,7 @@ export default function MembershipManagement() {
         startY: 20,
       });
       doc.save("Memberships.pdf");
-    } else if (activeTab === 1) {
-      // RENEWALS
+    } else if (activeTab === 2) {
       doc.text("Renewals Export", 14, 10);
       const bodyData = filteredRenewals.map((r) => [
         r.RenewalID,
@@ -819,8 +1088,7 @@ export default function MembershipManagement() {
         startY: 20,
       });
       doc.save("Renewals.pdf");
-    } else if (activeTab === 2) {
-      // FREEZES
+    } else if (activeTab === 3) {
       doc.text("Freezes Export", 14, 10);
       const bodyData = filteredFreezes.map((f) => [
         f.FreezeID,
@@ -837,7 +1105,6 @@ export default function MembershipManagement() {
       });
       doc.save("Freezes.pdf");
     } else {
-      // LOGS
       doc.text("Logs Export", 14, 10);
       const bodyData = filteredLogs.map((l) => [
         l.LogID,
@@ -855,7 +1122,6 @@ export default function MembershipManagement() {
     }
   };
 
-  // Decide CSV data + headers based on active tab
   let csvData = [];
   let csvHeaders = [];
   let csvFilename = "";
@@ -863,15 +1129,15 @@ export default function MembershipManagement() {
     csvData = filteredMemberships;
     csvHeaders = membershipCSVHeaders;
     csvFilename = "Memberships.csv";
-  } else if (activeTab === 1) {
+  } else if (activeTab === 2) {
     csvData = filteredRenewals;
     csvHeaders = renewalCSVHeaders;
     csvFilename = "Renewals.csv";
-  } else if (activeTab === 2) {
+  } else if (activeTab === 3) {
     csvData = filteredFreezes;
     csvHeaders = freezeCSVHeaders;
     csvFilename = "Freezes.csv";
-  } else {
+  } else if (activeTab === 4) {
     csvData = filteredLogs;
     csvHeaders = logsCSVHeaders;
     csvFilename = "Logs.csv";
@@ -879,7 +1145,7 @@ export default function MembershipManagement() {
 
   return (
     <Box sx={{ p: 4 }}>
-      {/* ----------- TIME PERIOD & DATE FILTERS (like in Payments) ----------- */}
+      {/* TIME PERIOD, DATE & BRANCH FILTERS */}
       <Box
         sx={{
           mb: 2,
@@ -891,7 +1157,11 @@ export default function MembershipManagement() {
       >
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Time Period</InputLabel>
-          <Select value={timePeriod} label="Time Period" onChange={handleTimePeriodChange}>
+          <Select
+            value={timePeriod}
+            label="Time Period"
+            onChange={handleTimePeriodChange}
+          >
             <MenuItem value="daily">Daily</MenuItem>
             <MenuItem value="weekly">Weekly</MenuItem>
             <MenuItem value="monthly">Monthly</MenuItem>
@@ -914,12 +1184,26 @@ export default function MembershipManagement() {
           value={dateTo}
           onChange={handleDateToChange}
         />
+        {/* New Branch Filter */}
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel>Branch</InputLabel>
+          <Select
+            value={branch}
+            label="Branch"
+            onChange={handleBranchChange}
+          >
+            {branchOptions.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
       </Box>
 
-      {/* ------------------- Four Overview Cards ------------------- */}
+      {/* Overview Cards */}
       <Box sx={{ mb: 3 }}>
         <Grid container spacing={2}>
-          {/* 1. Total Members */}
           <Grid item xs={12} sm={6} md={3}>
             <Card
               sx={{
@@ -935,14 +1219,15 @@ export default function MembershipManagement() {
                 <Typography variant="h6" gutterBottom>
                   Total Members
                 </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
+                >
                   {totalMembers}
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-
-          {/* 2. Active Members */}
           <Grid item xs={12} sm={6} md={3}>
             <Card
               sx={{
@@ -953,19 +1238,22 @@ export default function MembershipManagement() {
                 p: 2,
               }}
             >
-              <CheckCircleIcon sx={{ fontSize: 40, color: "limegreen", mr: 2 }} />
+              <DirectionsWalkIcon
+                sx={{ fontSize: 40, color: "primary", mr: 2 }}
+              />
               <CardContent>
                 <Typography variant="h6" gutterBottom>
-                  Active Members
+                  Walk-Ins
                 </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
-                  {activeMembers}
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
+                >
+                  {walkInRecords.length}
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-
-          {/* 3. Expired Memberships */}
           <Grid item xs={12} sm={6} md={3}>
             <Card
               sx={{
@@ -981,14 +1269,15 @@ export default function MembershipManagement() {
                 <Typography variant="h6" gutterBottom>
                   Expired Memberships
                 </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
+                >
                   {expiredMemberships}
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-
-          {/* 4. Upcoming Expirations */}
           <Grid item xs={12} sm={6} md={3}>
             <Card
               sx={{
@@ -1004,7 +1293,10 @@ export default function MembershipManagement() {
                 <Typography variant="h6" gutterBottom>
                   Upcoming Expirations
                 </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
+                >
                   {upcomingExpirations}
                 </Typography>
               </CardContent>
@@ -1013,7 +1305,7 @@ export default function MembershipManagement() {
         </Grid>
       </Box>
 
-      {/* ---------------- Title and Tabs ---------------- */}
+      {/* Title and Tabs */}
       <Box
         sx={{
           display: "flex",
@@ -1031,16 +1323,16 @@ export default function MembershipManagement() {
           sx={{ flexWrap: "wrap", justifyContent: "flex-end" }}
         >
           <Tab icon={<PeopleIcon />} label="Memberships" />
+          <Tab icon={<PeopleIcon />} label="Walk-Ins" />
           <Tab icon={<AutorenewIcon />} label="Renewals" />
           <Tab icon={<AcUnitIcon />} label="Freezes" />
           <Tab icon={<HistoryIcon />} label="Activity Logs" />
         </Tabs>
       </Box>
 
-      {/* ---------------- DataGrid & Search ---------------- */}
+      {/* DataGrid & Search */}
       <Paper elevation={2} sx={{ mt: 3, p: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-          {/* Search box */}
           <TextField
             placeholder="Search"
             value={searchTerm}
@@ -1049,18 +1341,15 @@ export default function MembershipManagement() {
             size="small"
             sx={{ width: "100%", maxWidth: 300 }}
           />
-
-          {/* ---------- Export & Add Buttons for ALL Tabs ---------- */}
           <Box sx={{ display: "flex", gap: 1 }}>
-            {/* Export Menu (CSV/PDF) */}
             <Button
-  variant="outlined"
-  startIcon={<FileDownloadIcon />} // Add the icon here
-  onClick={handleExportMenuOpen}
-  sx={{ textTransform: "none" }}
->
-  Export
-</Button>
+              variant="outlined"
+              startIcon={<FileDownloadIcon />}
+              onClick={handleExportMenuOpen}
+              sx={{ textTransform: "none" }}
+            >
+              Export
+            </Button>
             <Menu
               anchorEl={exportAnchorEl}
               open={openExportMenu}
@@ -1073,18 +1362,18 @@ export default function MembershipManagement() {
                   headers={
                     activeTab === 0
                       ? membershipCSVHeaders
-                      : activeTab === 1
-                      ? renewalCSVHeaders
                       : activeTab === 2
+                      ? renewalCSVHeaders
+                      : activeTab === 3
                       ? freezeCSVHeaders
                       : logsCSVHeaders
                   }
                   filename={
                     activeTab === 0
                       ? "Memberships.csv"
-                      : activeTab === 1
-                      ? "Renewals.csv"
                       : activeTab === 2
+                      ? "Renewals.csv"
+                      : activeTab === 3
                       ? "Freezes.csv"
                       : "Logs.csv"
                   }
@@ -1095,8 +1384,6 @@ export default function MembershipManagement() {
               </MenuItem>
               <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
             </Menu>
-
-            {/* (Only show Add button if it's the Membership tab; or show on all if desired) */}
             {activeTab === 0 && (
               <Button
                 variant="contained"
@@ -1107,9 +1394,18 @@ export default function MembershipManagement() {
                 Add New Membership
               </Button>
             )}
+            {activeTab === 1 && (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={() => setAddWalkInOpen(true)}
+              >
+                Add Walk-In
+              </Button>
+            )}
           </Box>
         </Box>
-
         <div style={{ height: 420, width: "100%" }}>
           <DataGrid
             rows={rows}
@@ -1122,115 +1418,448 @@ export default function MembershipManagement() {
       </Paper>
 
       {/* ========== ADD MEMBERSHIP DIALOG ========== */}
-      <Dialog open={isAddMembershipOpen} onClose={() => setAddMembershipOpen(false)}>
+      <Dialog
+        open={isAddMembershipOpen}
+        onClose={() => setAddMembershipOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Add New Membership</DialogTitle>
         <DialogContent>
           <TextField
             fullWidth
-            margin="normal"
+            margin="dense"
             label="Full Name"
             name="FullName"
             value={newMembership.FullName}
             onChange={handleAddMembershipChange}
             error={!!errors.FullName}
             helperText={errors.FullName}
+            variant="outlined"
           />
           <TextField
             fullWidth
-            margin="normal"
+            margin="dense"
             label="Email"
             name="Email"
             value={newMembership.Email}
             onChange={handleAddMembershipChange}
             error={!!errors.Email}
             helperText={errors.Email}
+            variant="outlined"
           />
           <TextField
             fullWidth
-            margin="normal"
+            margin="dense"
             label="Phone"
             name="Phone"
             value={newMembership.Phone}
             onChange={handleAddMembershipChange}
+            variant="outlined"
           />
           <TextField
             fullWidth
-            margin="normal"
+            margin="dense"
             label="Plan ID"
             name="PlanID"
             value={newMembership.PlanID}
             onChange={handleAddMembershipChange}
+            variant="outlined"
           />
+          <FormControl fullWidth margin="dense" variant="outlined">
+            <InputLabel>Membership Card Issued?</InputLabel>
+            <Select
+              name="MembershipCardIssued"
+              value={newMembership.MembershipCardIssued}
+              onChange={handleAddMembershipChange}
+              label="Membership Card Issued?"
+            >
+              <MenuItem value={true}>Yes</MenuItem>
+              <MenuItem value={false}>No</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl fullWidth margin="dense" variant="outlined">
+            <InputLabel>Membership Status</InputLabel>
+            <Select
+              name="MembershipStatus"
+              value={newMembership.MembershipStatus}
+              onChange={handleAddMembershipChange}
+              label="Membership Status"
+            >
+              <MenuItem value="Active">Active</MenuItem>
+              <MenuItem value="Expired">Expired</MenuItem>
+              <MenuItem value="Pending">Pending</MenuItem>
+            </Select>
+          </FormControl>
           <TextField
             fullWidth
-            margin="normal"
-            label="Membership Card Number"
-            name="MembershipCardNumber"
-            value={newMembership.MembershipCardNumber}
-            onChange={handleAddMembershipChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Membership Card Issued? (true/false)"
-            name="MembershipCardIssued"
-            value={String(newMembership.MembershipCardIssued)}
-            onChange={handleAddMembershipChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Membership Status"
-            name="MembershipStatus"
-            value={newMembership.MembershipStatus}
-            onChange={handleAddMembershipChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
+            margin="dense"
             label="Membership Start Date"
             name="MembershipStartDate"
+            type="date"
+            InputLabelProps={{ shrink: true }}
             value={newMembership.MembershipStartDate}
             onChange={handleAddMembershipChange}
+            variant="outlined"
           />
           <TextField
             fullWidth
-            margin="normal"
+            margin="dense"
             label="Membership End Date"
             name="MembershipEndDate"
+            type="date"
+            InputLabelProps={{ shrink: true }}
             value={newMembership.MembershipEndDate}
             onChange={handleAddMembershipChange}
+            variant="outlined"
           />
+          <FormControl fullWidth margin="dense" variant="outlined">
+            <InputLabel>Biometrics</InputLabel>
+            <Select
+              name="Biometrics"
+              value={newMembership.Biometrics}
+              onChange={handleAddMembershipChange}
+              label="Biometrics"
+            >
+              <MenuItem value="Yes">Yes</MenuItem>
+              <MenuItem value="No">No</MenuItem>
+            </Select>
+          </FormControl>
           <TextField
             fullWidth
-            margin="normal"
-            label="Biometrics"
-            name="Biometrics"
-            value={newMembership.Biometrics}
-            onChange={handleAddMembershipChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
+            margin="dense"
             label="Free Sessions"
             name="FreeSessions"
             type="number"
             value={newMembership.FreeSessions}
             onChange={handleAddMembershipChange}
+            variant="outlined"
           />
           <TextField
             fullWidth
-            margin="normal"
+            margin="dense"
             label="Notes"
             name="Notes"
             value={newMembership.Notes}
             onChange={handleAddMembershipChange}
+            multiline
+            rows={3}
+            variant="outlined"
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddMembershipOpen(false)}>Cancel</Button>
+          <Button onClick={() => setAddMembershipOpen(false)} color="primary">
+            Cancel
+          </Button>
           <Button onClick={handleAddMembership} variant="contained" color="primary">
             Add Membership
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== ADD WALK-IN DIALOG ========== */}
+      <Dialog
+        open={isAddWalkInOpen}
+        onClose={() => setAddWalkInOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Add New Walk-In</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            margin="dense"
+            label="Full Name"
+            name="FullName"
+            value={newWalkIn.FullName}
+            onChange={handleAddWalkInChange}
+            variant="outlined"
+          />
+          <TextField
+            fullWidth
+            margin="dense"
+            label="Phone"
+            name="Phone"
+            value={newWalkIn.Phone}
+            onChange={handleAddWalkInChange}
+            variant="outlined"
+          />
+          <TextField
+            fullWidth
+            margin="dense"
+            label="Visit Date"
+            name="VisitDate"
+            type="date"
+            InputLabelProps={{ shrink: true }}
+            value={newWalkIn.VisitDate}
+            onChange={handleAddWalkInChange}
+            variant="outlined"
+          />
+          <TextField
+            fullWidth
+            margin="dense"
+            label="Visit Time"
+            name="VisitTime"
+            type="time"
+            InputLabelProps={{ shrink: true }}
+            value={newWalkIn.VisitTime}
+            onChange={handleAddWalkInChange}
+            variant="outlined"
+          />
+          <TextField
+            fullWidth
+            margin="dense"
+            label="Purpose"
+            name="Purpose"
+            value={newWalkIn.Purpose}
+            onChange={handleAddWalkInChange}
+            variant="outlined"
+          />
+          <TextField
+            fullWidth
+            margin="dense"
+            label="Payment ID"
+            name="PaymentID"
+            value={newWalkIn.PaymentID}
+            onChange={handleAddWalkInChange}
+            variant="outlined"
+          />
+          <FormControl fullWidth margin="dense" variant="outlined">
+            <InputLabel>Mode of Payment</InputLabel>
+            <Select
+              name="ModeOfPayment"
+              value={newWalkIn.ModeOfPayment}
+              onChange={handleAddWalkInChange}
+              label="Mode of Payment"
+            >
+              <MenuItem value="Cash">Cash</MenuItem>
+              <MenuItem value="GCash">GCash</MenuItem>
+              <MenuItem value="BPI">BPI</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            margin="dense"
+            label="Amount Paid"
+            name="AmountPaid"
+            type="number"
+            value={newWalkIn.AmountPaid}
+            onChange={handleAddWalkInChange}
+            variant="outlined"
+          />
+          <TextField
+            fullWidth
+            margin="dense"
+            label="Remarks"
+            name="Remarks"
+            multiline
+            rows={3}
+            value={newWalkIn.Remarks}
+            onChange={handleAddWalkInChange}
+            variant="outlined"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddWalkInOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleAddWalkIn}>
+            Add Walk-In
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== VIEW WALK-IN DIALOG ========== */}
+      <Dialog
+        open={isViewWalkInOpen}
+        onClose={() => setViewWalkInOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Walk-In Details</DialogTitle>
+        <DialogContent>
+          {selectedWalkIn && (
+            <>
+              <Typography>
+                <strong>Full Name:</strong> {selectedWalkIn.FullName}
+              </Typography>
+              <Typography>
+                <strong>Phone:</strong> {selectedWalkIn.Phone}
+              </Typography>
+              <Typography>
+                <strong>Visit Date:</strong> {selectedWalkIn.VisitDate}
+              </Typography>
+              <Typography>
+                <strong>Visit Time:</strong> {selectedWalkIn.VisitTime}
+              </Typography>
+              <Typography>
+                <strong>Purpose:</strong> {selectedWalkIn.Purpose}
+              </Typography>
+              <Typography>
+                <strong>Payment ID:</strong> {selectedWalkIn.PaymentID}
+              </Typography>
+              <Typography>
+                <strong>Mode of Payment:</strong> {selectedWalkIn.ModeOfPayment}
+              </Typography>
+              <Typography>
+                <strong>Amount Paid:</strong> {selectedWalkIn.AmountPaid}
+              </Typography>
+              <Typography>
+                <strong>Remarks:</strong> {selectedWalkIn.Remarks}
+              </Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewWalkInOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== EDIT WALK-IN DIALOG ========== */}
+      <Dialog
+        open={isEditWalkInOpen}
+        onClose={() => setEditWalkInOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Edit Walk-In</DialogTitle>
+        <DialogContent>
+          {selectedWalkIn && (
+            <>
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Full Name"
+                value={selectedWalkIn.FullName}
+                onChange={(e) =>
+                  setSelectedWalkIn((prev) => ({
+                    ...prev,
+                    FullName: e.target.value,
+                  }))
+                }
+                variant="outlined"
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Phone"
+                value={selectedWalkIn.Phone}
+                onChange={(e) =>
+                  setSelectedWalkIn((prev) => ({
+                    ...prev,
+                    Phone: e.target.value,
+                  }))
+                }
+                variant="outlined"
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Visit Date"
+                type="date"
+                InputLabelProps={{ shrink: true }}
+                value={selectedWalkIn.VisitDate}
+                onChange={(e) =>
+                  setSelectedWalkIn((prev) => ({
+                    ...prev,
+                    VisitDate: e.target.value,
+                  }))
+                }
+                variant="outlined"
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Visit Time"
+                type="time"
+                InputLabelProps={{ shrink: true }}
+                value={selectedWalkIn.VisitTime}
+                onChange={(e) =>
+                  setSelectedWalkIn((prev) => ({
+                    ...prev,
+                    VisitTime: e.target.value,
+                  }))
+                }
+                variant="outlined"
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Purpose"
+                value={selectedWalkIn.Purpose}
+                onChange={(e) =>
+                  setSelectedWalkIn((prev) => ({
+                    ...prev,
+                    Purpose: e.target.value,
+                  }))
+                }
+                variant="outlined"
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Payment ID"
+                value={selectedWalkIn.PaymentID}
+                onChange={(e) =>
+                  setSelectedWalkIn((prev) => ({
+                    ...prev,
+                    PaymentID: e.target.value,
+                  }))
+                }
+                variant="outlined"
+              />
+              <FormControl fullWidth margin="dense" variant="outlined">
+                <InputLabel>Mode of Payment</InputLabel>
+                <Select
+                  name="ModeOfPayment"
+                  value={selectedWalkIn.ModeOfPayment}
+                  onChange={(e) =>
+                    setSelectedWalkIn((prev) => ({
+                      ...prev,
+                      ModeOfPayment: e.target.value,
+                    }))
+                  }
+                  label="Mode of Payment"
+                >
+                  <MenuItem value="Cash">Cash</MenuItem>
+                  <MenuItem value="GCash">GCash</MenuItem>
+                  <MenuItem value="BPI">BPI</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Amount Paid"
+                type="number"
+                value={selectedWalkIn.AmountPaid}
+                onChange={(e) =>
+                  setSelectedWalkIn((prev) => ({
+                    ...prev,
+                    AmountPaid: parseFloat(e.target.value) || 0,
+                  }))
+                }
+                variant="outlined"
+              />
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Remarks"
+                multiline
+                rows={3}
+                value={selectedWalkIn.Remarks}
+                onChange={(e) =>
+                  setSelectedWalkIn((prev) => ({
+                    ...prev,
+                    Remarks: e.target.value,
+                  }))
+                }
+                variant="outlined"
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditWalkInOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleEditWalkInSubmit}>
+            Save Changes
           </Button>
         </DialogActions>
       </Dialog>
@@ -1257,12 +1886,10 @@ export default function MembershipManagement() {
                 <strong>PlanID:</strong> {selectedMembership.PlanID}
               </Typography>
               <Typography gutterBottom>
-                <strong>Membership Card #:</strong>{" "}
-                {selectedMembership.MembershipCardNumber}
+                <strong>Membership Card #:</strong> {selectedMembership.MembershipCardNumber}
               </Typography>
               <Typography gutterBottom>
-                <strong>Card Issued?</strong>{" "}
-                {selectedMembership.MembershipCardIssued ? "Yes" : "No"}
+                <strong>Card Issued?</strong> {selectedMembership.MembershipCardIssued ? "Yes" : "No"}
               </Typography>
               <Typography gutterBottom>
                 <strong>Status:</strong> {selectedMembership.MembershipStatus}
@@ -1362,10 +1989,7 @@ export default function MembershipManagement() {
                 label="Status"
                 value={selectedMembership.MembershipStatus}
                 onChange={(e) =>
-                  setSelectedMembership((prev) => ({
-                    ...prev,
-                    MembershipStatus: e.target.value,
-                  }))
+                  setSelectedMembership((prev) => ({ ...prev, MembershipStatus: e.target.value }))
                 }
               />
               <TextField
@@ -1374,10 +1998,7 @@ export default function MembershipManagement() {
                 label="Start Date"
                 value={selectedMembership.MembershipStartDate}
                 onChange={(e) =>
-                  setSelectedMembership((prev) => ({
-                    ...prev,
-                    MembershipStartDate: e.target.value,
-                  }))
+                  setSelectedMembership((prev) => ({ ...prev, MembershipStartDate: e.target.value }))
                 }
               />
               <TextField
@@ -1386,10 +2007,7 @@ export default function MembershipManagement() {
                 label="End Date"
                 value={selectedMembership.MembershipEndDate}
                 onChange={(e) =>
-                  setSelectedMembership((prev) => ({
-                    ...prev,
-                    MembershipEndDate: e.target.value,
-                  }))
+                  setSelectedMembership((prev) => ({ ...prev, MembershipEndDate: e.target.value }))
                 }
               />
               <TextField
@@ -1398,10 +2016,7 @@ export default function MembershipManagement() {
                 label="Biometrics"
                 value={selectedMembership.Biometrics}
                 onChange={(e) =>
-                  setSelectedMembership((prev) => ({
-                    ...prev,
-                    Biometrics: e.target.value,
-                  }))
+                  setSelectedMembership((prev) => ({ ...prev, Biometrics: e.target.value }))
                 }
               />
               <TextField
@@ -1423,10 +2038,7 @@ export default function MembershipManagement() {
                 label="Notes"
                 value={selectedMembership.Notes}
                 onChange={(e) =>
-                  setSelectedMembership((prev) => ({
-                    ...prev,
-                    Notes: e.target.value,
-                  }))
+                  setSelectedMembership((prev) => ({ ...prev, Notes: e.target.value }))
                 }
               />
             </>
@@ -1436,6 +2048,55 @@ export default function MembershipManagement() {
           <Button onClick={() => setEditMembershipOpen(false)}>Cancel</Button>
           <Button onClick={handleEditMembershipSubmit} variant="contained" color="primary">
             Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== FREEZE DIALOG ========== */}
+      <Dialog open={isFreezeModalOpen} onClose={() => setFreezeModalOpen(false)}>
+        <DialogTitle>Freeze Membership</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Start Date"
+            type="date"
+            InputLabelProps={{ shrink: true }}
+            name="FreezeStartDate"
+            value={freezeForm.FreezeStartDate}
+            onChange={handleFreezeFormChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="End Date"
+            type="date"
+            InputLabelProps={{ shrink: true }}
+            name="FreezeEndDate"
+            value={freezeForm.FreezeEndDate}
+            onChange={handleFreezeFormChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Reason"
+            name="Reason"
+            value={freezeForm.Reason}
+            onChange={handleFreezeFormChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Notes (Optional)"
+            name="Notes"
+            value={freezeForm.Notes}
+            onChange={handleFreezeFormChange}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFreezeModalOpen(false)}>Cancel</Button>
+          <Button onClick={handleSubmitFreeze} variant="contained" color="primary">
+            Submit Freeze
           </Button>
         </DialogActions>
       </Dialog>
@@ -1478,23 +2139,14 @@ export default function MembershipManagement() {
         <DialogContent>
           {selectedFreeze && (
             <>
-              <TextField
-                fullWidth
-                margin="normal"
-                label="FreezeID"
-                disabled
-                value={selectedFreeze.FreezeID}
-              />
+              <TextField fullWidth margin="normal" label="FreezeID" disabled value={selectedFreeze.FreezeID} />
               <TextField
                 fullWidth
                 margin="normal"
                 label="MemberID"
                 value={selectedFreeze.MemberID}
                 onChange={(e) =>
-                  setSelectedFreeze((prev) => ({
-                    ...prev,
-                    MemberID: e.target.value,
-                  }))
+                  setSelectedFreeze((prev) => ({ ...prev, MemberID: e.target.value }))
                 }
               />
               <TextField
@@ -1503,10 +2155,7 @@ export default function MembershipManagement() {
                 label="Freeze Start Date"
                 value={selectedFreeze.FreezeStartDate}
                 onChange={(e) =>
-                  setSelectedFreeze((prev) => ({
-                    ...prev,
-                    FreezeStartDate: e.target.value,
-                  }))
+                  setSelectedFreeze((prev) => ({ ...prev, FreezeStartDate: e.target.value }))
                 }
               />
               <TextField
@@ -1515,10 +2164,7 @@ export default function MembershipManagement() {
                 label="Freeze End Date"
                 value={selectedFreeze.FreezeEndDate}
                 onChange={(e) =>
-                  setSelectedFreeze((prev) => ({
-                    ...prev,
-                    FreezeEndDate: e.target.value,
-                  }))
+                  setSelectedFreeze((prev) => ({ ...prev, FreezeEndDate: e.target.value }))
                 }
               />
               <TextField
@@ -1527,10 +2173,7 @@ export default function MembershipManagement() {
                 label="Reason"
                 value={selectedFreeze.Reason}
                 onChange={(e) =>
-                  setSelectedFreeze((prev) => ({
-                    ...prev,
-                    Reason: e.target.value,
-                  }))
+                  setSelectedFreeze((prev) => ({ ...prev, Reason: e.target.value }))
                 }
               />
               <TextField
@@ -1539,10 +2182,7 @@ export default function MembershipManagement() {
                 label="Approval Status"
                 value={selectedFreeze.ApprovalStatus}
                 onChange={(e) =>
-                  setSelectedFreeze((prev) => ({
-                    ...prev,
-                    ApprovalStatus: e.target.value,
-                  }))
+                  setSelectedFreeze((prev) => ({ ...prev, ApprovalStatus: e.target.value }))
                 }
               />
             </>
@@ -1607,10 +2247,7 @@ export default function MembershipManagement() {
                 label="MemberID"
                 value={selectedRenewal.MemberID}
                 onChange={(e) =>
-                  setSelectedRenewal((prev) => ({
-                    ...prev,
-                    MemberID: e.target.value,
-                  }))
+                  setSelectedRenewal((prev) => ({ ...prev, MemberID: e.target.value }))
                 }
               />
               <TextField
@@ -1619,10 +2256,7 @@ export default function MembershipManagement() {
                 label="Renewal Date"
                 value={selectedRenewal.RenewalDate}
                 onChange={(e) =>
-                  setSelectedRenewal((prev) => ({
-                    ...prev,
-                    RenewalDate: e.target.value,
-                  }))
+                  setSelectedRenewal((prev) => ({ ...prev, RenewalDate: e.target.value }))
                 }
               />
               <TextField
@@ -1631,10 +2265,7 @@ export default function MembershipManagement() {
                 label="PlanID"
                 value={selectedRenewal.PlanID}
                 onChange={(e) =>
-                  setSelectedRenewal((prev) => ({
-                    ...prev,
-                    PlanID: e.target.value,
-                  }))
+                  setSelectedRenewal((prev) => ({ ...prev, PlanID: e.target.value }))
                 }
               />
               <TextField
@@ -1644,10 +2275,7 @@ export default function MembershipManagement() {
                 type="number"
                 value={selectedRenewal.RenewalAmount}
                 onChange={(e) =>
-                  setSelectedRenewal((prev) => ({
-                    ...prev,
-                    RenewalAmount: parseFloat(e.target.value) || 0,
-                  }))
+                  setSelectedRenewal((prev) => ({ ...prev, RenewalAmount: parseFloat(e.target.value) || 0 }))
                 }
               />
               <TextField
@@ -1656,10 +2284,7 @@ export default function MembershipManagement() {
                 label="Processed By"
                 value={selectedRenewal.ProcessedBy}
                 onChange={(e) =>
-                  setSelectedRenewal((prev) => ({
-                    ...prev,
-                    ProcessedBy: e.target.value,
-                  }))
+                  setSelectedRenewal((prev) => ({ ...prev, ProcessedBy: e.target.value }))
                 }
               />
             </>
@@ -1667,7 +2292,7 @@ export default function MembershipManagement() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditRenewalOpen(false)}>Cancel</Button>
-          <Button onClick={handleEditRenewalSubmit} variant="contained" color="primary">
+          <Button variant="contained" onClick={handleEditRenewalSubmit}>
             Save
           </Button>
         </DialogActions>
@@ -1691,7 +2316,6 @@ export default function MembershipManagement() {
               <Typography gutterBottom>
                 <strong>Timestamp:</strong> {selectedLog.Timestamp}
               </Typography>
-              {/* IPAddress not in sample data... */}
               <Typography gutterBottom>
                 <strong>Details:</strong> {selectedLog.Details}
               </Typography>
