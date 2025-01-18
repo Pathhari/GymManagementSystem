@@ -38,6 +38,8 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import WarningIcon from "@mui/icons-material/Warning";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import DirectionsWalkIcon from "@mui/icons-material/DirectionsWalk";
+import AddNewMemberLayout from "../../Layouts/AddNewMemberLayout";
+
 
 // --------- For CSV Export ---------
 import { CSVLink } from "react-csv";
@@ -49,6 +51,7 @@ import "jspdf-autotable";
 // ---------------------- SAMPLE DATA ----------------------
 const sampleMemberships = [
   {
+    id: 1, // Add this line
     MemberID: 1,
     FullName: "John Doe",
     Email: "john.doe@example.com",
@@ -64,6 +67,7 @@ const sampleMemberships = [
     Notes: "First time member",
   },
   {
+    id: 2, // Add this line
     MemberID: 2,
     FullName: "Jane Smith",
     Email: "jane.smith@example.com",
@@ -174,11 +178,11 @@ export default function MembershipManagement() {
   const [membershipRecords, setMembershipRecords] = useState(sampleMemberships);
   const [filteredMemberships, setFilteredMemberships] = useState(sampleMemberships);
   const [selectedMembership, setSelectedMembership] = useState(null);
+  const [isAddMembershipLayoutVisible, setAddMembershipLayoutVisible] = useState(false);
 
   // Modals for Membership
   const [isViewMembershipOpen, setViewMembershipOpen] = useState(false);
   const [isEditMembershipOpen, setEditMembershipOpen] = useState(false);
-  const [isAddMembershipOpen, setAddMembershipOpen] = useState(false);
 
   // For adding a new membership
   const [newMembership, setNewMembership] = useState({
@@ -1385,14 +1389,14 @@ export default function MembershipManagement() {
               <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
             </Menu>
             {activeTab === 0 && (
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => setAddMembershipOpen(true)}
-              >
-                Add New Membership
-              </Button>
+               <Button
+               variant="contained"
+               color="primary"
+               startIcon={<AddIcon />}
+               onClick={() => setAddMembershipLayoutVisible(true)}
+             >
+               Add New Membership
+             </Button>
             )}
             {activeTab === 1 && (
               <Button
@@ -1417,146 +1421,12 @@ export default function MembershipManagement() {
         </div>
       </Paper>
 
-      {/* ========== ADD MEMBERSHIP DIALOG ========== */}
-      <Dialog
-        open={isAddMembershipOpen}
-        onClose={() => setAddMembershipOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Add New Membership</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Full Name"
-            name="FullName"
-            value={newMembership.FullName}
-            onChange={handleAddMembershipChange}
-            error={!!errors.FullName}
-            helperText={errors.FullName}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Email"
-            name="Email"
-            value={newMembership.Email}
-            onChange={handleAddMembershipChange}
-            error={!!errors.Email}
-            helperText={errors.Email}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Phone"
-            name="Phone"
-            value={newMembership.Phone}
-            onChange={handleAddMembershipChange}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Plan ID"
-            name="PlanID"
-            value={newMembership.PlanID}
-            onChange={handleAddMembershipChange}
-            variant="outlined"
-          />
-          <FormControl fullWidth margin="dense" variant="outlined">
-            <InputLabel>Membership Card Issued?</InputLabel>
-            <Select
-              name="MembershipCardIssued"
-              value={newMembership.MembershipCardIssued}
-              onChange={handleAddMembershipChange}
-              label="Membership Card Issued?"
-            >
-              <MenuItem value={true}>Yes</MenuItem>
-              <MenuItem value={false}>No</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl fullWidth margin="dense" variant="outlined">
-            <InputLabel>Membership Status</InputLabel>
-            <Select
-              name="MembershipStatus"
-              value={newMembership.MembershipStatus}
-              onChange={handleAddMembershipChange}
-              label="Membership Status"
-            >
-              <MenuItem value="Active">Active</MenuItem>
-              <MenuItem value="Expired">Expired</MenuItem>
-              <MenuItem value="Pending">Pending</MenuItem>
-            </Select>
-          </FormControl>
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Membership Start Date"
-            name="MembershipStartDate"
-            type="date"
-            InputLabelProps={{ shrink: true }}
-            value={newMembership.MembershipStartDate}
-            onChange={handleAddMembershipChange}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Membership End Date"
-            name="MembershipEndDate"
-            type="date"
-            InputLabelProps={{ shrink: true }}
-            value={newMembership.MembershipEndDate}
-            onChange={handleAddMembershipChange}
-            variant="outlined"
-          />
-          <FormControl fullWidth margin="dense" variant="outlined">
-            <InputLabel>Biometrics</InputLabel>
-            <Select
-              name="Biometrics"
-              value={newMembership.Biometrics}
-              onChange={handleAddMembershipChange}
-              label="Biometrics"
-            >
-              <MenuItem value="Yes">Yes</MenuItem>
-              <MenuItem value="No">No</MenuItem>
-            </Select>
-          </FormControl>
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Free Sessions"
-            name="FreeSessions"
-            type="number"
-            value={newMembership.FreeSessions}
-            onChange={handleAddMembershipChange}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Notes"
-            name="Notes"
-            value={newMembership.Notes}
-            onChange={handleAddMembershipChange}
-            multiline
-            rows={3}
-            variant="outlined"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddMembershipOpen(false)} color="primary">
-            Cancel
-          </Button>
-          <Button onClick={handleAddMembership} variant="contained" color="primary">
-            Add Membership
-          </Button>
-        </DialogActions>
-      </Dialog>
-
+  {/* Add New Membership Layout */}
+  {isAddMembershipLayoutVisible && (
+        <AddNewMemberLayout
+          onClose={() => setAddMembershipLayoutVisible(false)}
+        />
+      )}
       {/* ========== ADD WALK-IN DIALOG ========== */}
       <Dialog
         open={isAddWalkInOpen}
@@ -1712,6 +1582,7 @@ export default function MembershipManagement() {
           <Button onClick={() => setViewWalkInOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+
 
       {/* ========== EDIT WALK-IN DIALOG ========== */}
       <Dialog
