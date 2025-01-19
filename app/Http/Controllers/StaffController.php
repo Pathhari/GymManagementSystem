@@ -15,147 +15,127 @@ use App\Models\Branch;
 
 class StaffController extends Controller
 {
-    /* ------------------------------------------------------------------
-     * AA. STAFF MANAGEMENT (Staff Table)
-     * ------------------------------------------------------------------ */
-
     /**
-     * 67. Create Staff => route:Owner,Admin
-     * Show form to create a new Staff record.
-     */
-    public function createStaff()
-    {
-        // Load all branches so user can pick the staff's branch
-        $branches = Branch::orderBy('BranchName','asc')->get();
-
-        return Inertia::render('Staff/Management/Create', [
-            'branches' => $branches
-        ]);
-    }
-
-    /**
-     * Store a newly created Staff in DB.
-     */
-    public function storeStaff(Request $request)
-    {
-        // The Staff table has columns:
-        // StaffID, FullName, Role, Email, Phone, DailyRate, HourlyRate,
-        // OvertimeRate, DateHired, Notes, BranchID, password, etc.
-        $data = $request->validate([
-            'BranchID'     => 'required|exists:branches,BranchID',
-            'FullName'     => 'required|string|max:255',
-            'Role'         => 'required|string|max:50',  // e.g. 'Trainer', 'Admin', etc.
-            'Email'        => 'required|email|unique:staff,Email',
-            'Phone'        => 'nullable|string|max:50',
-            'DailyRate'    => 'nullable|numeric|min:0',
-            'HourlyRate'   => 'nullable|numeric|min:0',
-            'OvertimeRate' => 'nullable|numeric|min:0',
-            'DateHired'    => 'nullable|date',
-            'Notes'        => 'nullable|string',
-            // If you want staff to have a login password:
-             'password' => 'sometimes|required|min:8|confirmed',
-        ]);
-
-        // Insert staff record
-        Staff::create($data);
-
-        return redirect()
-            ->route('staff.index')
-            ->with('success','Staff created successfully.');
-    }
-
-    /**
-     * 70. View Staff => route:All (but staff partial)
-     * Display a list of staff. Possibly partial data for staff role.
+     * Display a listing of staff members
+     *  => route: e.g. GET /staff
      */
     public function indexStaff()
     {
-        // If staff sees partial data, do a role check here:
-        $user = auth()->user(); 
-        // For demonstration, we load all data:
-        $staff = Staff::with('branch')
-            ->orderBy('StaffID','desc')
-            ->get();
+        // Load staff + their assigned branches
+        // If you want to see the pivot fields as well, use ->with('branches')
+        $staff = Staff::with('branches')->orderBy('StaffID','desc')->get();
 
         return Inertia::render('Staff/Management/Index', [
-            'staff' => $staff
+            'staff' => $staff,
         ]);
     }
 
     /**
-     * 68. Edit/Update => route:Owner,Admin
-     * Show form to edit an existing Staff record.
+     * Show form for creating new staff
+     * => route: GET /staff/create
+     */
+    public function createStaff()
+    {
+        // Possibly load all branches so user can select which branches to assign
+        $branches = Branch::orderBy('BranchName')->get();
+        return Inertia::render('Staff/Management/Create', compact('branches'));
+    }
+
+    /**
+     * Store new staff in the DB.
+     * => route: POST /staff
+     */
+    public function storeStaff(Request $request)
+    {
+        $data = $request->validate([
+            'FullName'     => 'required|string|max:255',
+            'Role'         => 'required|string|max:50',
+            'Email'        => 'required|email|unique:staff,Email',
+            'Phone'        => 'nullable|string|max:50',
+            // ...
+            'password'     => 'sometimes|required|min:8|confirmed',
+
+            // If user picks multiple branches from front end, e.g. an array:
+            'BranchIDs'    => 'nullable|array',
+            'BranchIDs.*'  => 'exists:branches,BranchID',
+        ]);
+
+        // We'll remove BranchIDs from $data so we can create staff first
+        $branchIDs = $data['BranchIDs'] ?? [];
+        unset($data['BranchIDs']);
+
+        $staff = Staff::create($data);
+
+        // Attach the staff to multiple branches in pivot table
+        if (!empty($branchIDs)) {
+            $staff->branches()->attach($branchIDs);
+        }
+
+        return redirect()->route('staff.index')->with('success','Staff created successfully.');
+    }
+
+    /**
+     * Edit staff => GET /staff/{id}/edit
      */
     public function editStaff($id)
     {
-        $staff    = Staff::findOrFail($id);
-        $branches = Branch::orderBy('BranchName','asc')->get();
+        $staff = Staff::with('branches')->findOrFail($id);
+        $allBranches = Branch::orderBy('BranchName')->get();
 
         return Inertia::render('Staff/Management/Edit', [
-            'staff'    => $staff,
-            'branches' => $branches
+            'staff'      => $staff,
+            'branches'   => $allBranches,
         ]);
     }
 
     /**
-     * Update an existing Staff record.
+     * Update staff => PUT /staff/{id}
      */
     public function updateStaff(Request $request, $id)
     {
         $staff = Staff::findOrFail($id);
 
         $data = $request->validate([
-            'BranchID'     => 'required|exists:branches,BranchID',
             'FullName'     => 'required|string|max:255',
             'Role'         => 'required|string|max:50',
             'Email'        => 'required|email|unique:staff,Email,'.$staff->StaffID.',StaffID',
             'Phone'        => 'nullable|string|max:50',
-            'DailyRate'    => 'nullable|numeric|min:0',
-            'HourlyRate'   => 'nullable|numeric|min:0',
-            'OvertimeRate' => 'nullable|numeric|min:0',
-            'DateHired'    => 'nullable|date',
-            'Notes'        => 'nullable|string',
+            // ...
+            'password'     => 'sometimes|nullable|min:8|confirmed',
 
-            // If staff can have a password changed here, you'd add it:
-            // 'password' => 'sometimes|nullable|min:8|confirmed',
+            'BranchIDs'    => 'nullable|array',
+            'BranchIDs.*'  => 'exists:branches,BranchID',
         ]);
+
+        $branchIDs = $data['BranchIDs'] ?? [];
+        unset($data['BranchIDs']);
 
         $staff->update($data);
 
-        return redirect()
-            ->route('staff.index')
-            ->with('success','Staff updated successfully.');
+        // Sync the pivot table
+        // This replaces all existing branch assignments with the new array
+        $staff->branches()->sync($branchIDs);
+
+        return redirect()->route('staff.index')->with('success','Staff updated successfully.');
     }
 
     /**
-     * 69. Deactivate Staff => route:Owner,Admin
-     * Optionally just set a 'Status' column or something if you don't want to fully delete.
+     * Deactivate staff => e.g. sets role to 'Inactive'
      */
     public function deactivateStaff($id)
     {
         $staff = Staff::findOrFail($id);
-
-        // Example: set a 'Role' to 'Inactive' or set an 'Active' boolean = false:
         $staff->update(['Role' => 'Inactive']);
 
-        return redirect()
-            ->back()
-            ->with('success','Staff deactivated.');
+        return redirect()->back()->with('success','Staff deactivated.');
     }
 
-    /**
-     * Delete a staff record entirely.
-     */
     public function destroyStaff($id)
     {
         $staff = Staff::findOrFail($id);
         $staff->delete();
-
-        return redirect()
-            ->back()
-            ->with('success','Staff record removed.');
+        return redirect()->back()->with('success','Staff record removed.');
     }
-
 
     /* ------------------------------------------------------------------
      * V. ATTENDANCE (Attendance Table)

@@ -258,62 +258,41 @@ use App\Http\Controllers\MembershipController;
 
 Route::prefix('membership')->group(function() {
 
-    // G) Member Table
-    Route::get('members/create', [MembershipController::class, 'createMember'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('membership.members.create');
-    Route::post('members', [MembershipController::class, 'storeMember'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('membership.members.store');
-    Route::get('members', [MembershipController::class, 'indexMembers'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('membership.members.index');
-    Route::get('members/{id}/edit', [MembershipController::class, 'editMember'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('membership.members.edit');
-    Route::put('members/{id}', [MembershipController::class, 'updateMember'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('membership.members.update');
-    Route::delete('members/{id}', [MembershipController::class, 'destroyMember'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('membership.members.destroy');
+    // 1) Members
+    Route::get('members', [MembershipController::class, 'apiIndex'])
+        ->name('membership.members.apiIndex'); // or rename as you prefer
+    Route::post('members', [MembershipController::class, 'apiStoreMember'])
+        ->name('membership.members.apiStoreMember');
+    Route::put('members/{id}', [MembershipController::class, 'apiUpdateMember'])
+        ->name('membership.members.apiUpdateMember');
+    Route::delete('members/{id}', [MembershipController::class, 'apiDestroyMember'])
+        ->name('membership.members.apiDestroyMember');
 
-    // H) MembershipPlan
+    // 2) Plans
     Route::get('plans', [MembershipController::class, 'indexPlans'])
         ->middleware('multiGuard:owner,admin')
-        ->name('membership.plans.index');
+        ->name('membership.plans.indexPlans');
     Route::post('plans', [MembershipController::class, 'storePlan'])
         ->middleware('multiGuard:owner,admin')
-        ->name('membership.plans.store');
+        ->name('membership.plans.storePlan');
     Route::put('plans/{id}', [MembershipController::class, 'updatePlan'])
         ->middleware('multiGuard:owner,admin')
-        ->name('membership.plans.update');
+        ->name('membership.plans.updatePlan');
     Route::delete('plans/{id}', [MembershipController::class, 'destroyPlan'])
         ->middleware('multiGuard:owner,admin')
-        ->name('membership.plans.destroy');
+        ->name('membership.plans.destroyPlan');
 
-    // I) MembershipRenewal
-    Route::get('renewals/create', [MembershipController::class, 'createRenewal'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('membership.renewals.create');
+    // 3) Renewals
     Route::post('renewals', [MembershipController::class, 'storeRenewal'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('membership.renewals.store');
-    Route::get('renewals/logs', [MembershipController::class, 'renewalLogs'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('membership.renewals.logs');
 
-    // J) MembershipFreeze
-    Route::get('freezes/create', [MembershipController::class, 'createFreeze'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('membership.freezes.create');
+    // 4) Freezes
     Route::post('freezes', [MembershipController::class, 'storeFreeze'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('membership.freezes.store');
-    Route::get('freezes', [MembershipController::class, 'indexFreezes'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('membership.freezes.index');
 });
+
 
 /* 
 |--------------------------------------------------------------------------
@@ -478,6 +457,34 @@ Route::prefix('staff')->group(function() {
 */
 use App\Http\Controllers\OperationsController;
 
+
+// Walk-Ins
+Route::get('walk-ins', [OperationsController::class, 'indexWalkIns'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('operations.walkins.index');
+
+Route::get('walk-ins/create', [OperationsController::class, 'createWalkIn'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('operations.walkins.create');
+
+Route::post('walk-ins', [OperationsController::class, 'storeWalkIn'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('operations.walkins.store');
+
+Route::get('walk-ins/{id}/edit', [OperationsController::class, 'editWalkIn'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('operations.walkins.edit');
+
+Route::put('walk-ins/{id}', [OperationsController::class, 'updateWalkIn'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('operations.walkins.update');
+
+Route::delete('walk-ins/{id}', [OperationsController::class, 'destroyWalkIn'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('operations.walkins.destroy');
+
+
+
 Route::prefix('operations')->group(function() {
 
     // Inventory
@@ -521,6 +528,19 @@ Route::prefix('operations')->group(function() {
     Route::post('equipment/maintenance', [OperationsController::class, 'addMaintenanceLog'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('operations.equipment.maintenance');
+    
+        Route::get('maintenance-logs', [OperationsController::class, 'indexMaintenanceLogs'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('operations.maintenanceLogs.index');
+
+        Route::put('maintenance-logs/{id}', [OperationsController::class, 'updateMaintenanceLog'])
+     ->middleware('multiGuard:owner,admin,staff')
+     ->name('operations.maintenanceLogs.update');
+
+Route::delete('maintenance-logs/{id}', [OperationsController::class, 'destroyMaintenanceLog'])
+     ->middleware('multiGuard:owner,admin,staff')
+     ->name('operations.maintenanceLogs.delete');
+
 
     // Member Visits
     Route::get('visits/create', [OperationsController::class, 'createVisit'])
@@ -548,6 +568,19 @@ Route::prefix('operations')->group(function() {
 use App\Http\Controllers\FinanceController;
 
 Route::prefix('finance')->group(function() {
+
+    Route::get('summary', [FinanceController::class, 'indexSummary'])
+     ->middleware('multiGuard:owner,admin,staff')
+     ->name('finance.summary.index');
+
+Route::put('summary/{id}', [FinanceController::class, 'updateSummary'])
+     ->middleware('multiGuard:owner,admin')
+     ->name('finance.summary.update');
+
+Route::delete('summary/{id}', [FinanceController::class, 'destroySummary'])
+     ->middleware('multiGuard:owner,admin')
+     ->name('finance.summary.destroy');
+
 
     // DailyCashFlow
     Route::get('cashflow/create', [FinanceController::class, 'createCashFlow'])
@@ -614,3 +647,13 @@ Route::prefix('system')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('system.reports');
 });
+
+/* 
+|--------------------------------------------------------------------------
+| 9) BranchController
+|--------------------------------------------------------------------------
+*/
+Route::get('/owner/branches', [BranchController::class, 'indexJson']);
+Route::post('/owner/branches', [BranchController::class, 'storeJson']);
+Route::put('/owner/branches/{id}', [BranchController::class, 'updateJson']);
+Route::delete('/owner/branches/{id}', [BranchController::class, 'destroyJson']);

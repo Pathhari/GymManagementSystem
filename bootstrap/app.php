@@ -14,8 +14,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         // If you have multiple middleware aliases:
         $middleware->alias([
-            'multiGuard' => \App\Http\Middleware\MultiGuard::class,
-            'role'       => \App\Http\Middleware\CheckRole::class,
+            'multiGuard' => MultiGuardMiddleware::class,
+            'role'       => CheckRole::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

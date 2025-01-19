@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import axios from "axios";
 import {
   Box,
   Typography,
@@ -21,10 +22,10 @@ import {
   MenuItem,
   Menu,
   useTheme,
-  Divider, // Add this import
+  Divider,
 } from "@mui/material";
-
 import { DataGrid } from "@mui/x-data-grid";
+
 import AddIcon from "@mui/icons-material/Add";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import PeopleIcon from "@mui/icons-material/People";
@@ -36,116 +37,75 @@ import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import DeleteIcon from "@mui/icons-material/Delete";
 
-// For CSV Export
 import { CSVLink } from "react-csv";
-// For PDF Export
 import jsPDF from "jspdf";
 import "jspdf-autotable";
-
-// ---------------------- SAMPLE DATA ----------------------
-const sampleBranches = [
-  {
-    BranchID: 1,
-    BranchName: "Downtown Gym",
-    Location: "New York, NY",
-    Status: "Active",
-    Contact: "123-456-7890",
-  },
-  {
-    BranchID: 2,
-    BranchName: "Uptown Fitness",
-    Location: "San Francisco, CA",
-    Status: "Active",
-    Contact: "987-654-3210",
-  },
-  {
-    BranchID: 3,
-    BranchName: "Westside Yoga",
-    Location: "Los Angeles, CA",
-    Status: "Deactivated",
-    Contact: "555-123-4567",
-  },
-];
-
-const sampleStaffAssignment = [
-  {
-    AssignmentID: 1,
-    BranchName: "Downtown Gym",
-    StaffName: "John Doe",
-    Role: "Trainer",
-    Contact: "123-456-7890",
-  },
-  {
-    AssignmentID: 2,
-    BranchName: "Uptown Fitness",
-    StaffName: "Jane Smith",
-    Role: "Manager",
-    Contact: "987-654-3210",
-  },
-];
-
-const sampleMaintenanceLog = [
-  {
-    LogID: 1,
-    BranchName: "Downtown Gym",
-    Task: "Treadmill repair",
-    Status: "Pending",
-    DueDate: "2025-01-20",
-  },
-  {
-    LogID: 2,
-    BranchName: "Uptown Fitness",
-    Task: "HVAC system maintenance",
-    Status: "In Progress",
-    DueDate: "2025-01-22",
-  },
-];
-
-const sampleFinancialSummary = [
-  {
-    SummaryID: 1,
-    BranchName: "Downtown Gym",
-    CashSales: 1500,
-    GCashSales: 500,
-    BPISales: 300,
-    TotalRevenue: 2300,
-  },
-  {
-    SummaryID: 2,
-    BranchName: "Uptown Fitness",
-    CashSales: 2000,
-    GCashSales: 700,
-    BPISales: 500,
-    TotalRevenue: 3200,
-  },
-];
 
 export default function BranchManagement() {
   const theme = useTheme();
 
-  // ---------------- State for Data ----------------
-  const [branches, setBranches] = useState(sampleBranches);
-  const [staffAssignments, setStaffAssignments] = useState(sampleStaffAssignment);
-  const [maintenanceLogs, setMaintenanceLogs] = useState(sampleMaintenanceLog);
-  const [financialSummaries, setFinancialSummaries] = useState(sampleFinancialSummary);
+  // ==================== State: Data from Back End ====================
+  const [branches, setBranches] = useState([]);
+  const [staff, setStaff] = useState([]);
+  const [maintenanceLogs, setMaintenanceLogs] = useState([]);
+  const [financials, setFinancials] = useState([]);
 
-  // Overview Cards Data
-  const [totalBranches] = useState(branches.filter((b) => b.Status === "Active").length);
+  // ==================== Lifecycle: Load data once on mount ====================
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      // 1) Branch Directory
+      const branchRes = await axios.get("/owner/branches");
+      setBranches(branchRes.data.branches || []);
+
+      // 2) Staff (for Staff Assignment tab)
+      const staffRes = await axios.get("/staff");
+      // The response likely has { staff: [...] }
+      setStaff(staffRes.data.staff || []);
+
+      // 3) Maintenance Logs
+      // This route is assumed; you may need to define or rename it:
+      // e.g. GET /operations/maintenance-logs => { logs: [...] }
+      const maintRes = await axios.get("/operations/maintenance-logs");
+      setMaintenanceLogs(maintRes.data.logs || []);
+
+      // 4) Financial Summaries
+      // Also assumed: GET /finance/summary => { summaries: [...] }
+      const finRes = await axios.get("/finance/summary");
+      setFinancials(finRes.data.summaries || []);
+    } catch (err) {
+      console.error("Failed to load data from server:", err);
+    }
+  };
+
+  // ==================== Overview Card Counts (example placeholders) ====================
+  const totalBranches = branches.filter((b) => b.Status === "Active").length;
+  // For demonstration
   const [totalRevenue] = useState(5500);
   const [membersPerBranch] = useState(250);
   const [pendingMaintenance] = useState(5);
 
-  // Tabs: 0 = Branch Directory, 1 = Staff Assignment, 2 = Maintenance Log, 3 = Financial Summary
+  // ==================== Tab & Search & Export ====================
+  // 0 = Branch Directory, 1 = Staff Assignment, 2 = Maintenance Log, 3 = Financial
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
 
-  // Date Filters (for display purposes)
-  const [timePeriod, setTimePeriod] = useState("daily");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const handleTabChange = (e, newVal) => {
+    setActiveTab(newVal);
+    setSearchTerm("");
+  };
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value.toLowerCase());
+  };
 
-  // ---------------- Modal State for Add forms ----------------
+  const handleExportMenuOpen = (event) => setExportAnchorEl(event.currentTarget);
+  const handleExportMenuClose = () => setExportAnchorEl(null);
+
+  // ==================== ADD: Branch & Staff ====================
   const [isAddBranchOpen, setAddBranchOpen] = useState(false);
   const [newBranch, setNewBranch] = useState({
     BranchName: "",
@@ -153,153 +113,186 @@ export default function BranchManagement() {
     Status: "Active",
     Contact: "",
   });
-  const [isAddStaffAssignOpen, setAddStaffAssignOpen] = useState(false);
-  const [newStaffAssign, setNewStaffAssign] = useState({
-    BranchName: "",
-    StaffName: "",
-    Role: "",
-    Contact: "",
+
+  const [isAddStaffOpen, setAddStaffOpen] = useState(false);
+  const [newStaff, setNewStaff] = useState({
+    FullName: "",
+    Role: "Staff",
+    Email: "",
+    Phone: "",
+    // etc.
   });
 
-  // ---------------- Modal State for Edit forms ----------------
+  // ==================== EDIT: Branch, Staff, Maintenance, Financial ====================
   const [isEditBranchOpen, setEditBranchOpen] = useState(false);
   const [editBranch, setEditBranch] = useState(null);
-  const [isEditStaffAssignOpen, setEditStaffAssignOpen] = useState(false);
-  const [editStaffAssign, setEditStaffAssign] = useState(null);
+
+  const [isEditStaffOpen, setEditStaffOpen] = useState(false);
+  const [editStaffData, setEditStaffData] = useState(null);
+
   const [isEditMaintenanceOpen, setEditMaintenanceOpen] = useState(false);
   const [editMaintenance, setEditMaintenance] = useState(null);
+
   const [isEditFinancialOpen, setEditFinancialOpen] = useState(false);
   const [editFinancial, setEditFinancial] = useState(null);
 
-  // ---------------- Modal State for View forms ----------------
+  // ==================== VIEW: Branch, Staff, Maintenance, Financial ====================
   const [isViewBranchOpen, setViewBranchOpen] = useState(false);
   const [viewBranch, setViewBranch] = useState(null);
-  const [isViewStaffAssignOpen, setViewStaffAssignOpen] = useState(false);
-  const [viewStaffAssign, setViewStaffAssign] = useState(null);
+
+  const [isViewStaffOpen, setViewStaffOpen] = useState(false);
+  const [viewStaffData, setViewStaffData] = useState(null);
+
   const [isViewMaintenanceOpen, setViewMaintenanceOpen] = useState(false);
-  const [viewMaintenance, setViewMaintenance] = useState(null);
+  const [viewMaintenanceData, setViewMaintenanceData] = useState(null);
+
   const [isViewFinancialOpen, setViewFinancialOpen] = useState(false);
-  const [viewFinancial, setViewFinancial] = useState(null);
+  const [viewFinancialData, setViewFinancialData] = useState(null);
 
-  // -------------------- Date Filter Handlers --------------------
-  const handleTimePeriodChange = (e) => setTimePeriod(e.target.value);
-  const handleDateFromChange = (e) => setDateFrom(e.target.value);
-  const handleDateToChange = (e) => setDateTo(e.target.value);
-
-  // -------------------- Export Handlers --------------------
-  const handleExportMenuOpen = (event) => setExportAnchorEl(event.currentTarget);
-  const handleExportMenuClose = () => setExportAnchorEl(null);
-
-  // CSV Headers
-  const branchCSVHeaders = [
-    { label: "Branch ID", key: "BranchID" },
-    { label: "Branch Name", key: "BranchName" },
-    { label: "Location", key: "Location" },
-    { label: "Status", key: "Status" },
-    { label: "Contact", key: "Contact" },
-  ];
-  const staffCSVHeaders = [
-    { label: "Assignment ID", key: "AssignmentID" },
-    { label: "Branch Name", key: "BranchName" },
-    { label: "Staff Name", key: "StaffName" },
-    { label: "Role", key: "Role" },
-    { label: "Contact", key: "Contact" },
-  ];
-  const maintenanceCSVHeaders = [
-    { label: "Log ID", key: "LogID" },
-    { label: "Branch Name", key: "BranchName" },
-    { label: "Task", key: "Task" },
-    { label: "Status", key: "Status" },
-    { label: "Due Date", key: "DueDate" },
-  ];
-  const financialCSVHeaders = [
-    { label: "Summary ID", key: "SummaryID" },
-    { label: "Branch Name", key: "BranchName" },
-    { label: "Cash Sales", key: "CashSales" },
-    { label: "GCash Sales", key: "GCashSales" },
-    { label: "BPI Sales", key: "BPISales" },
-    { label: "Total Revenue", key: "TotalRevenue" },
-  ];
-
-  const handleExportCSV = () => handleExportMenuClose();
-  const handleExportPDF = () => {
-    handleExportMenuClose();
-    const doc = new jsPDF();
-    if (activeTab === 0) {
-      doc.text("Branch Directory Export", 14, 10);
-      const bodyData = branches.map((b) => [
-        b.BranchID,
-        b.BranchName,
-        b.Location,
-        b.Status,
-        b.Contact,
-      ]);
-      doc.autoTable({
-        head: [["Branch ID", "Branch Name", "Location", "Status", "Contact"]],
-        body: bodyData,
-        startY: 20,
+  // ==================== Branch CRUD (Create / Edit / Delete) ====================
+  const handleCreateBranch = async () => {
+    try {
+      await axios.post("/owner/branches", {
+        BranchName: newBranch.BranchName,
+        Location: newBranch.Location,
+        Status: newBranch.Status,
+        Contact: newBranch.Contact,
       });
-      doc.save("BranchDirectory.pdf");
-    } else if (activeTab === 1) {
-      doc.text("Staff Assignment Export", 14, 10);
-      const bodyData = staffAssignments.map((s) => [
-        s.AssignmentID,
-        s.BranchName,
-        s.StaffName,
-        s.Role,
-        s.Contact,
-      ]);
-      doc.autoTable({
-        head: [["Assignment ID", "Branch Name", "Staff Name", "Role", "Contact"]],
-        body: bodyData,
-        startY: 20,
-      });
-      doc.save("StaffAssignment.pdf");
-    } else if (activeTab === 2) {
-      doc.text("Maintenance Log Export", 14, 10);
-      const bodyData = maintenanceLogs.map((m) => [
-        m.LogID,
-        m.BranchName,
-        m.Task,
-        m.Status,
-        m.DueDate,
-      ]);
-      doc.autoTable({
-        head: [["Log ID", "Branch Name", "Task", "Status", "Due Date"]],
-        body: bodyData,
-        startY: 20,
-      });
-      doc.save("MaintenanceLog.pdf");
-    } else if (activeTab === 3) {
-      doc.text("Financial Summary Export", 14, 10);
-      const bodyData = financialSummaries.map((f) => [
-        f.SummaryID,
-        f.BranchName,
-        f.CashSales,
-        f.GCashSales,
-        f.BPISales,
-        f.TotalRevenue,
-      ]);
-      doc.autoTable({
-        head: [
-          [
-            "Summary ID",
-            "Branch Name",
-            "Cash Sales",
-            "GCash Sales",
-            "BPI Sales",
-            "Total Revenue",
-          ],
-        ],
-        body: bodyData,
-        startY: 20,
-      });
-      doc.save("FinancialSummary.pdf");
+      setAddBranchOpen(false);
+      setNewBranch({ BranchName: "", Location: "", Status: "Active", Contact: "" });
+      fetchData();
+    } catch (err) {
+      console.error("Failed to create branch:", err);
     }
   };
 
-  // -------------------- Column Definitions --------------------
-  // Branch Directory Table
+  const handleUpdateBranch = async () => {
+    try {
+      if (!editBranch?.BranchID) return;
+      await axios.put(`/owner/branches/${editBranch.BranchID}`, {
+        BranchName: editBranch.BranchName,
+        Location: editBranch.Location,
+        Status: editBranch.Status,
+        Contact: editBranch.Contact,
+      });
+      setEditBranchOpen(false);
+      fetchData();
+    } catch (err) {
+      console.error("Failed to update branch:", err);
+    }
+  };
+
+  const handleDeleteBranch = async (branchID) => {
+    if (!window.confirm("Delete this branch?")) return;
+    try {
+      await axios.delete(`/owner/branches/${branchID}`);
+      fetchData();
+    } catch (err) {
+      console.error("Failed to delete branch:", err);
+    }
+  };
+
+  // ==================== Staff CRUD (Create / Edit / Delete) ====================
+  const handleCreateStaff = async () => {
+    try {
+      await axios.post("/staff", {
+        FullName: newStaff.FullName,
+        Role: newStaff.Role,
+        Email: newStaff.Email,
+        Phone: newStaff.Phone,
+      });
+      setAddStaffOpen(false);
+      setNewStaff({ FullName: "", Role: "Staff", Email: "", Phone: "" });
+      fetchData();
+    } catch (err) {
+      console.error("Failed to create staff:", err);
+    }
+  };
+
+  const handleUpdateStaff = async () => {
+    try {
+      if (!editStaffData?.StaffID) return;
+      await axios.put(`/staff/${editStaffData.StaffID}`, {
+        FullName: editStaffData.FullName,
+        Role: editStaffData.Role,
+        Email: editStaffData.Email,
+        Phone: editStaffData.Phone,
+      });
+      setEditStaffOpen(false);
+      fetchData();
+    } catch (err) {
+      console.error("Failed to update staff:", err);
+    }
+  };
+
+  const handleDeleteStaff = async (staffID) => {
+    if (!window.confirm("Delete this staff record?")) return;
+    try {
+      await axios.delete(`/staff/${staffID}`);
+      fetchData();
+    } catch (err) {
+      console.error("Failed to delete staff record:", err);
+    }
+  };
+
+  // ==================== Maintenance CRUD ====================
+  // Adjust if your route is different, e.g. /operations/maintenance-logs
+  const handleUpdateMaintenance = async () => {
+    try {
+      if (!editMaintenance?.MaintenanceLogID) return;
+      await axios.put(`/operations/maintenance-logs/${editMaintenance.MaintenanceLogID}`, {
+        Task: editMaintenance.Task,
+        Status: editMaintenance.Status,
+        DueDate: editMaintenance.DueDate,
+        // etc. if you have more fields
+      });
+      setEditMaintenanceOpen(false);
+      fetchData();
+    } catch (err) {
+      console.error("Failed to update maintenance:", err);
+    }
+  };
+
+  const handleDeleteMaintenance = async (logID) => {
+    if (!window.confirm("Delete this maintenance log?")) return;
+    try {
+      await axios.delete(`/operations/maintenance-logs/${logID}`);
+      fetchData();
+    } catch (err) {
+      console.error("Failed to delete maintenance log:", err);
+    }
+  };
+
+  // ==================== Financial CRUD ====================
+  // Suppose your route is /finance/summary
+  const handleUpdateFinancial = async () => {
+    try {
+      if (!editFinancial?.SummaryID) return;
+      await axios.put(`/finance/summary/${editFinancial.SummaryID}`, {
+        BranchName: editFinancial.BranchName,
+        CashSales: editFinancial.CashSales,
+        GCashSales: editFinancial.GCashSales,
+        BPISales: editFinancial.BPISales,
+        TotalRevenue: editFinancial.TotalRevenue,
+      });
+      setEditFinancialOpen(false);
+      fetchData();
+    } catch (err) {
+      console.error("Failed to update financial summary:", err);
+    }
+  };
+
+  const handleDeleteFinancial = async (summaryID) => {
+    if (!window.confirm("Delete this financial summary?")) return;
+    try {
+      await axios.delete(`/finance/summary/${summaryID}`);
+      fetchData();
+    } catch (err) {
+      console.error("Failed to delete financial summary:", err);
+    }
+  };
+
+  // ==================== Column definitions & CSV/PDF ====================
   const branchColumns = [
     { field: "BranchID", headerName: "Branch ID", width: 100 },
     { field: "BranchName", headerName: "Branch Name", width: 180 },
@@ -314,56 +307,47 @@ export default function BranchManagement() {
         </span>
       ),
     },
-    { field: "Contact", headerName: "Contact", width: 150 },
+    { field: "Contact", headerName: "Contact", width: 130 },
     {
       field: "Actions",
       headerName: "Actions",
-      width: 300,
+      width: 240,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
           <Tooltip title="View Branch">
             <Button
-              variant="contained"
+              variant="outlined"
               size="small"
+              color="success"
               onClick={() => {
                 setViewBranch(params.row);
                 setViewBranchOpen(true);
               }}
-              sx={{
-                backgroundColor: "#4caf50",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#43a047" },
-              }}
             >
-              <VisibilityIcon />
+              <VisibilityIcon fontSize="small" />
             </Button>
           </Tooltip>
           <Tooltip title="Edit Branch">
             <Button
-              variant="contained"
+              variant="outlined"
               size="small"
               onClick={() => {
-                setEditBranch(params.row);
+                setEditBranch({ ...params.row });
                 setEditBranchOpen(true);
               }}
-              sx={{
-                backgroundColor: "#2196f3",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#1976d2" },
-              }}
             >
-              <EditIcon  />
+              <EditIcon fontSize="small" />
             </Button>
           </Tooltip>
           <Tooltip title="Delete Branch">
             <Button
-              variant="contained"
+              variant="outlined"
               size="small"
               color="error"
-              onClick={() => handleDeleteBranch(params.row)}
+              onClick={() => handleDeleteBranch(params.row.BranchID)}
             >
-              <DeleteIcon/>
+              <DeleteIcon fontSize="small" />
             </Button>
           </Tooltip>
         </Box>
@@ -371,62 +355,52 @@ export default function BranchManagement() {
     },
   ];
 
-  // Staff Assignment Table
   const staffColumns = [
-    { field: "AssignmentID", headerName: "Assignment ID", width: 120 },
-    { field: "BranchName", headerName: "Branch Name", width: 180 },
-    { field: "StaffName", headerName: "Staff Name", width: 180 },
-    { field: "Role", headerName: "Role", width: 140 },
-    { field: "Contact", headerName: "Contact", width: 150 },
+    { field: "StaffID", headerName: "Staff ID", width: 100 },
+    { field: "FullName", headerName: "Staff Name", width: 180 },
+    { field: "Role", headerName: "Role", width: 120 },
+    { field: "Email", headerName: "Email", width: 180 },
+    { field: "Phone", headerName: "Phone", width: 140 },
     {
       field: "Actions",
       headerName: "Actions",
-      width: 300,
+      width: 240,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
-          <Tooltip title="View Assignment">
+          <Tooltip title="View Staff">
             <Button
-              variant="contained"
+              variant="outlined"
               size="small"
+              color="success"
               onClick={() => {
-                setViewStaffAssign(params.row);
-                setViewStaffAssignOpen(true);
-              }}
-              sx={{
-                backgroundColor: "#4caf50",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#43a047" },
+                setViewStaffData(params.row);
+                setViewStaffOpen(true);
               }}
             >
-              <VisibilityIcon  />
+              <VisibilityIcon fontSize="small" />
             </Button>
           </Tooltip>
-          <Tooltip title="Edit Assignment">
+          <Tooltip title="Edit Staff">
             <Button
-              variant="contained"
+              variant="outlined"
               size="small"
               onClick={() => {
-                setEditStaffAssign(params.row);
-                setEditStaffAssignOpen(true);
-              }}
-              sx={{
-                backgroundColor: "#2196f3",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#1976d2" },
+                setEditStaffData({ ...params.row });
+                setEditStaffOpen(true);
               }}
             >
-              <EditIcon  />
+              <EditIcon fontSize="small" />
             </Button>
           </Tooltip>
-          <Tooltip title="Delete Assignment">
+          <Tooltip title="Delete Staff">
             <Button
-              variant="contained"
+              variant="outlined"
               size="small"
               color="error"
-              onClick={() => handleDeleteStaffAssign(params.row)}
+              onClick={() => handleDeleteStaff(params.row.StaffID)}
             >
-              <DeleteIcon />
+              <DeleteIcon fontSize="small" />
             </Button>
           </Tooltip>
         </Box>
@@ -434,73 +408,51 @@ export default function BranchManagement() {
     },
   ];
 
-  // Maintenance Log Table
-  const maintenanceColumns = [
-    { field: "LogID", headerName: "Log ID", width: 100 },
-    { field: "BranchName", headerName: "Branch Name", width: 180 },
-    { field: "Task", headerName: "Task", width: 200 },
-    {
-      field: "Status",
-      headerName: "Status",
-      width: 130,
-      renderCell: (params) => {
-        let color;
-        if (params.value === "Pending") color = "red";
-        else if (params.value === "In Progress") color = "goldenrod";
-        else if (params.value === "Completed") color = "green";
-        return <span style={{ color }}>{params.value}</span>;
-      },
-    },
-    { field: "DueDate", headerName: "Due Date", width: 150 },
+  const maintColumns = [
+    { field: "MaintenanceLogID", headerName: "Log ID", width: 100 },
+    { field: "Task", headerName: "Task", width: 180 },
+    { field: "Status", headerName: "Status", width: 130 },
+    { field: "DueDate", headerName: "Due Date", width: 130 },
     {
       field: "Actions",
       headerName: "Actions",
-      width: 300,
+      width: 240,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
           <Tooltip title="View Log">
             <Button
-              variant="contained"
+              variant="outlined"
               size="small"
+              color="success"
               onClick={() => {
-                setViewMaintenance(params.row);
+                setViewMaintenanceData(params.row);
                 setViewMaintenanceOpen(true);
               }}
-              sx={{
-                backgroundColor: "#4caf50",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#43a047" },
-              }}
             >
-              <VisibilityIcon />
+              <VisibilityIcon fontSize="small" />
             </Button>
           </Tooltip>
           <Tooltip title="Edit Log">
             <Button
-              variant="contained"
+              variant="outlined"
               size="small"
               onClick={() => {
-                setEditMaintenance(params.row);
+                setEditMaintenance({ ...params.row });
                 setEditMaintenanceOpen(true);
               }}
-              sx={{
-                backgroundColor: "#2196f3",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#1976d2" },
-              }}
             >
-              <EditIcon />
+              <EditIcon fontSize="small" />
             </Button>
           </Tooltip>
           <Tooltip title="Delete Log">
             <Button
-              variant="contained"
+              variant="outlined"
               size="small"
               color="error"
-              onClick={() => handleDeleteMaintenance(params.row)}
+              onClick={() => handleDeleteMaintenance(params.row.MaintenanceLogID)}
             >
-              <DeleteIcon />
+              <DeleteIcon fontSize="small" />
             </Button>
           </Tooltip>
         </Box>
@@ -508,63 +460,53 @@ export default function BranchManagement() {
     },
   ];
 
-  // Financial Summary Table
   const financialColumns = [
-    { field: "SummaryID", headerName: "Summary ID", width: 120 },
-    { field: "BranchName", headerName: "Branch Name", width: 180 },
-    { field: "CashSales", headerName: "Cash Sales", width: 120 },
-    { field: "GCashSales", headerName: "GCash Sales", width: 120 },
-    { field: "BPISales", headerName: "BPI Sales", width: 120 },
-    { field: "TotalRevenue", headerName: "Total Revenue", width: 140 },
+    { field: "SummaryID", headerName: "Summary ID", width: 100 },
+    { field: "BranchName", headerName: "Branch Name", width: 150 },
+    { field: "CashSales", headerName: "Cash Sales", width: 130 },
+    { field: "GCashSales", headerName: "GCash Sales", width: 130 },
+    { field: "BPISales", headerName: "BPI Sales", width: 130 },
+    { field: "TotalRevenue", headerName: "Total Revenue", width: 130 },
     {
       field: "Actions",
       headerName: "Actions",
-      width: 300,
+      width: 240,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
-          <Tooltip title="View Summary">
+          <Tooltip title="View Financial">
             <Button
-              variant="contained"
+              variant="outlined"
               size="small"
+              color="success"
               onClick={() => {
-                setViewFinancial(params.row);
+                setViewFinancialData(params.row);
                 setViewFinancialOpen(true);
               }}
-              sx={{
-                backgroundColor: "#4caf50",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#43a047" },
-              }}
             >
-              <VisibilityIcon  />
+              <VisibilityIcon fontSize="small" />
             </Button>
           </Tooltip>
           <Tooltip title="Edit Summary">
             <Button
-              variant="contained"
+              variant="outlined"
               size="small"
               onClick={() => {
-                setEditFinancial(params.row);
+                setEditFinancial({ ...params.row });
                 setEditFinancialOpen(true);
               }}
-              sx={{
-                backgroundColor: "#2196f3",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#1976d2" },
-              }}
             >
-              <EditIcon  />
+              <EditIcon fontSize="small" />
             </Button>
           </Tooltip>
           <Tooltip title="Delete Summary">
             <Button
-              variant="contained"
+              variant="outlined"
               size="small"
               color="error"
-              onClick={() => handleDeleteFinancial(params.row)}
+              onClick={() => handleDeleteFinancial(params.row.SummaryID)}
             >
-              <DeleteIcon />
+              <DeleteIcon fontSize="small" />
             </Button>
           </Tooltip>
         </Box>
@@ -572,124 +514,124 @@ export default function BranchManagement() {
     },
   ];
 
-  // -------------------- Choose Table Data, CSV Headers, Filename --------------------
+  // Pick columns & rows based on active tab
   let tableColumns = [];
   let tableRows = [];
-  let exportCSVHeaders = [];
-  let exportCSVFilename = "";
+  let csvHeaders = [];
+  let csvFilename = "";
   if (activeTab === 0) {
     tableColumns = branchColumns;
     tableRows = branches;
-    exportCSVHeaders = branchCSVHeaders;
-    exportCSVFilename = "BranchDirectory.csv";
+    csvHeaders = [
+      { label: "BranchID", key: "BranchID" },
+      { label: "BranchName", key: "BranchName" },
+      { label: "Location", key: "Location" },
+      { label: "Status", key: "Status" },
+      { label: "Contact", key: "Contact" },
+    ];
+    csvFilename = "BranchDirectory.csv";
   } else if (activeTab === 1) {
     tableColumns = staffColumns;
-    tableRows = staffAssignments;
-    exportCSVHeaders = staffCSVHeaders;
-    exportCSVFilename = "StaffAssignment.csv";
+    tableRows = staff;
+    csvHeaders = [
+      { label: "StaffID", key: "StaffID" },
+      { label: "FullName", key: "FullName" },
+      { label: "Role", key: "Role" },
+      { label: "Email", key: "Email" },
+      { label: "Phone", key: "Phone" },
+    ];
+    csvFilename = "StaffAssignment.csv";
   } else if (activeTab === 2) {
-    tableColumns = maintenanceColumns;
+    tableColumns = maintColumns;
     tableRows = maintenanceLogs;
-    exportCSVHeaders = maintenanceCSVHeaders;
-    exportCSVFilename = "MaintenanceLog.csv";
+    csvHeaders = [
+      { label: "MaintenanceLogID", key: "MaintenanceLogID" },
+      { label: "Task", key: "Task" },
+      { label: "Status", key: "Status" },
+      { label: "DueDate", key: "DueDate" },
+    ];
+    csvFilename = "MaintenanceLog.csv";
   } else if (activeTab === 3) {
     tableColumns = financialColumns;
-    tableRows = financialSummaries;
-    exportCSVHeaders = financialCSVHeaders;
-    exportCSVFilename = "FinancialSummary.csv";
+    tableRows = financials;
+    csvHeaders = [
+      { label: "SummaryID", key: "SummaryID" },
+      { label: "BranchName", key: "BranchName" },
+      { label: "CashSales", key: "CashSales" },
+      { label: "GCashSales", key: "GCashSales" },
+      { label: "BPISales", key: "BPISales" },
+      { label: "TotalRevenue", key: "TotalRevenue" },
+    ];
+    csvFilename = "FinancialSummary.csv";
   }
 
-  // Filter table rows based on searchTerm
-  const filteredTableRows = tableRows.filter((row) =>
+  // Filter rows by searchTerm
+  const filteredRows = tableRows.filter((row) =>
     Object.values(row).join(" ").toLowerCase().includes(searchTerm)
   );
 
-  // -------------------- Handlers for Adding --------------------
-  const handleAddBranchChange = (e) => {
-    const { name, value } = e.target;
-    setNewBranch({ ...newBranch, [name]: value });
-  };
-  const handleAddBranch = () => {
-    const nextBranchID = branches.length
-      ? Math.max(...branches.map((b) => b.BranchID)) + 1
-      : 1;
-    const newRecord = { BranchID: nextBranchID, ...newBranch };
-    setBranches([...branches, newRecord]);
-    setAddBranchOpen(false);
-    setNewBranch({ BranchName: "", Location: "", Status: "Active", Contact: "" });
-  };
+  // ==================== PDF Export logic ====================
+  const handleExportPDF = () => {
+    handleExportMenuClose();
+    const doc = new jsPDF();
 
-  const handleAddStaffAssignChange = (e) => {
-    const { name, value } = e.target;
-    setNewStaffAssign({ ...newStaffAssign, [name]: value });
-  };
-  const handleAddStaffAssign = () => {
-    const nextAssignmentID = staffAssignments.length
-      ? Math.max(...staffAssignments.map((s) => s.AssignmentID)) + 1
-      : 1;
-    const newRecord = { AssignmentID: nextAssignmentID, ...newStaffAssign };
-    setStaffAssignments([...staffAssignments, newRecord]);
-    setAddStaffAssignOpen(false);
-    setNewStaffAssign({ BranchName: "", StaffName: "", Role: "", Contact: "" });
-  };
-
-  // -------------------- Delete Handlers --------------------
-  const handleDeleteBranch = (row) => {
-    if (window.confirm(`Delete branch "${row.BranchName}"?`)) {
-      setBranches(branches.filter((b) => b.BranchID !== row.BranchID));
+    if (activeTab === 0) {
+      doc.text("Branch Directory Export", 14, 10);
+      const body = branches.map((b) => [b.BranchID, b.BranchName, b.Location, b.Status, b.Contact]);
+      doc.autoTable({
+        head: [["ID", "Name", "Location", "Status", "Contact"]],
+        body,
+        startY: 20,
+      });
+      doc.save("BranchDirectory.pdf");
+    } else if (activeTab === 1) {
+      doc.text("Staff Export", 14, 10);
+      const body = staff.map((s) => [s.StaffID, s.FullName, s.Role, s.Email, s.Phone]);
+      doc.autoTable({
+        head: [["ID", "FullName", "Role", "Email", "Phone"]],
+        body,
+        startY: 20,
+      });
+      doc.save("StaffAssignment.pdf");
+    } else if (activeTab === 2) {
+      doc.text("Maintenance Log Export", 14, 10);
+      const body = maintenanceLogs.map((m) => [
+        m.MaintenanceLogID,
+        m.Task,
+        m.Status,
+        m.DueDate,
+      ]);
+      doc.autoTable({
+        head: [["LogID", "Task", "Status", "DueDate"]],
+        body,
+        startY: 20,
+      });
+      doc.save("MaintenanceLog.pdf");
+    } else if (activeTab === 3) {
+      doc.text("Financial Summary Export", 14, 10);
+      const body = financials.map((f) => [
+        f.SummaryID,
+        f.BranchName,
+        f.CashSales,
+        f.GCashSales,
+        f.BPISales,
+        f.TotalRevenue,
+      ]);
+      doc.autoTable({
+        head: [
+          ["SummaryID", "Branch", "CashSales", "GCashSales", "BPISales", "TotalRevenue"],
+        ],
+        body,
+        startY: 20,
+      });
+      doc.save("FinancialSummary.pdf");
     }
   };
-  const handleDeleteStaffAssign = (row) => {
-    if (window.confirm(`Delete staff assignment "${row.AssignmentID}"?`)) {
-      setStaffAssignments(staffAssignments.filter((s) => s.AssignmentID !== row.AssignmentID));
-    }
-  };
-  const handleDeleteMaintenance = (row) => {
-    if (window.confirm(`Delete maintenance log "${row.LogID}"?`)) {
-      setMaintenanceLogs(maintenanceLogs.filter((m) => m.LogID !== row.LogID));
-    }
-  };
-  const handleDeleteFinancial = (row) => {
-    if (window.confirm(`Delete financial summary "${row.SummaryID}"?`)) {
-      setFinancialSummaries(financialSummaries.filter((f) => f.SummaryID !== row.SummaryID));
-    }
-  };
 
-  // -------------------- Modal Edit Handlers --------------------
-  const handleEditBranchSubmit = () => {
-    setBranches(
-      branches.map((b) => (b.BranchID === editBranch.BranchID ? editBranch : b))
-    );
-    setEditBranchOpen(false);
-  };
-  const handleEditStaffAssignSubmit = () => {
-    setStaffAssignments(
-      staffAssignments.map((s) =>
-        s.AssignmentID === editStaffAssign.AssignmentID ? editStaffAssign : s
-      )
-    );
-    setEditStaffAssignOpen(false);
-  };
-  const handleEditMaintenanceSubmit = () => {
-    setMaintenanceLogs(
-      maintenanceLogs.map((m) =>
-        m.LogID === editMaintenance.LogID ? editMaintenance : m
-      )
-    );
-    setEditMaintenanceOpen(false);
-  };
-  const handleEditFinancialSubmit = () => {
-    setFinancialSummaries(
-      financialSummaries.map((f) =>
-        f.SummaryID === editFinancial.SummaryID ? editFinancial : f
-      )
-    );
-    setEditFinancialOpen(false);
-  };
-
+  // ==================== Render ====================
   return (
     <Box sx={{ p: 4 }}>
-      {/* Date Period & From-To Filters */}
+      {/* Date Period & Filters */}
       <Box
         sx={{
           mb: 2,
@@ -701,7 +643,11 @@ export default function BranchManagement() {
       >
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Time Period</InputLabel>
-          <Select value={timePeriod} label="Time Period" onChange={handleTimePeriodChange}>
+          <Select
+            value={timePeriod}
+            label="Time Period"
+            onChange={(e) => setTimePeriod(e.target.value)}
+          >
             <MenuItem value="daily">Daily</MenuItem>
             <MenuItem value="weekly">Weekly</MenuItem>
             <MenuItem value="monthly">Monthly</MenuItem>
@@ -714,7 +660,7 @@ export default function BranchManagement() {
           label="From"
           InputLabelProps={{ shrink: true }}
           value={dateFrom}
-          onChange={handleDateFromChange}
+          onChange={(e) => setDateFrom(e.target.value)}
         />
         <TextField
           type="date"
@@ -722,22 +668,14 @@ export default function BranchManagement() {
           label="To"
           InputLabelProps={{ shrink: true }}
           value={dateTo}
-          onChange={handleDateToChange}
+          onChange={(e) => setDateTo(e.target.value)}
         />
       </Box>
 
       {/* Overview Cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              p: 2,
-              display: "flex",
-              alignItems: "center",
-              bgcolor: "text.primary",
-              color: "background.paper",
-            }}
-          >
+          <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
             <BusinessIcon sx={{ fontSize: 40, mr: 2, color: "steelblue" }} />
             <CardContent>
               <Typography variant="subtitle1">Total Branches</Typography>
@@ -748,15 +686,7 @@ export default function BranchManagement() {
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              p: 2,
-              display: "flex",
-              alignItems: "center",
-              bgcolor: "text.primary",
-              color: "background.paper",
-            }}
-          >
+          <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
             <MonetizationOnIcon sx={{ fontSize: 40, mr: 2, color: "green" }} />
             <CardContent>
               <Typography variant="subtitle1">Total Revenue</Typography>
@@ -767,14 +697,7 @@ export default function BranchManagement() {
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              p: 2,
-              display: "flex",
-              bgcolor: "text.primary",
-              color: "background.paper",
-            }}
-          >
+          <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
             <GroupIcon sx={{ fontSize: 40, mr: 2, color: "purple" }} />
             <CardContent>
               <Typography variant="subtitle1">Members Per Branch</Typography>
@@ -785,15 +708,7 @@ export default function BranchManagement() {
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              p: 2,
-              display: "flex",
-              alignItems: "center",
-              bgcolor: "text.primary",
-              color: "background.paper",
-            }}
-          >
+          <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
             <BuildIcon sx={{ fontSize: 40, mr: 2, color: "orangered" }} />
             <CardContent>
               <Typography variant="subtitle1">Pending Maintenance</Typography>
@@ -818,11 +733,7 @@ export default function BranchManagement() {
         <Typography variant="h4" gutterBottom>
           Branch Management
         </Typography>
-        <Tabs
-          value={activeTab}
-          onChange={(event, newValue) => setActiveTab(newValue)}
-          sx={{ flexWrap: "wrap", justifyContent: "flex-end" }}
-        >
+        <Tabs value={activeTab} onChange={handleTabChange}>
           <Tab label="Branch Directory" icon={<BusinessIcon />} />
           <Tab label="Staff Assignment" icon={<PeopleIcon />} />
           <Tab label="Maintenance Log" icon={<BuildIcon />} />
@@ -830,13 +741,13 @@ export default function BranchManagement() {
         </Tabs>
       </Box>
 
-      {/* Search, Export & Add Buttons */}
+      {/* Search, Export, & Add Buttons */}
       <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
         <TextField
           placeholder="Search..."
           size="small"
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value.toLowerCase())}
+          onChange={handleSearchChange}
           sx={{ width: "100%", maxWidth: 300 }}
         />
         <Box sx={{ display: "flex", gap: 1 }}>
@@ -854,11 +765,11 @@ export default function BranchManagement() {
             onClose={handleExportMenuClose}
             anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
           >
-            <MenuItem onClick={handleExportCSV}>
+            <MenuItem>
               <CSVLink
-                data={filteredTableRows}
-                headers={exportCSVHeaders}
-                filename={exportCSVFilename}
+                data={filteredRows}
+                headers={csvHeaders}
+                filename={csvFilename}
                 style={{ textDecoration: "none", color: "inherit" }}
               >
                 Export CSV
@@ -867,23 +778,13 @@ export default function BranchManagement() {
             <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
           </Menu>
           {activeTab === 0 && (
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={() => setAddBranchOpen(true)}
-            >
+            <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddBranchOpen(true)}>
               Add Branch
             </Button>
           )}
           {activeTab === 1 && (
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={() => setAddStaffAssignOpen(true)}
-            >
-              Add Staff Assignment
+            <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddStaffOpen(true)}>
+              Add Staff
             </Button>
           )}
         </Box>
@@ -892,51 +793,46 @@ export default function BranchManagement() {
       {/* Main DataGrid */}
       <Paper elevation={2} sx={{ width: "100%", height: 420 }}>
         <DataGrid
-          rows={filteredTableRows}
+          rows={filteredRows}
           columns={tableColumns}
           pageSize={5}
           rowsPerPageOptions={[5, 10]}
           getRowId={(row) => {
             if (activeTab === 0) return row.BranchID;
-            if (activeTab === 1) return row.AssignmentID;
-            if (activeTab === 2) return row.LogID;
+            if (activeTab === 1) return row.StaffID;
+            if (activeTab === 2) return row.MaintenanceLogID;
             if (activeTab === 3) return row.SummaryID;
             return row.id;
           }}
         />
       </Paper>
 
-      {/* -------------------- Add/Edit & View Modal Forms -------------------- */}
+      {/* ===================== DIALOGS ===================== */}
 
-      {/* Add Branch Dialog */}
+      {/* 1) ADD BRANCH */}
       <Dialog open={isAddBranchOpen} onClose={() => setAddBranchOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add New Branch</DialogTitle>
-        <DialogContent>
+        <DialogContent dividers>
           <TextField
             fullWidth
             margin="dense"
             label="Branch Name"
-            name="BranchName"
             value={newBranch.BranchName}
-            onChange={handleAddBranchChange}
-            variant="outlined"
+            onChange={(e) => setNewBranch({ ...newBranch, BranchName: e.target.value })}
           />
           <TextField
             fullWidth
             margin="dense"
             label="Location"
-            name="Location"
             value={newBranch.Location}
-            onChange={handleAddBranchChange}
-            variant="outlined"
+            onChange={(e) => setNewBranch({ ...newBranch, Location: e.target.value })}
           />
-          <FormControl fullWidth margin="dense" variant="outlined">
+          <FormControl margin="dense" fullWidth>
             <InputLabel>Status</InputLabel>
             <Select
-              name="Status"
               value={newBranch.Status}
-              onChange={handleAddBranchChange}
               label="Status"
+              onChange={(e) => setNewBranch({ ...newBranch, Status: e.target.value })}
             >
               <MenuItem value="Active">Active</MenuItem>
               <MenuItem value="Deactivated">Deactivated</MenuItem>
@@ -946,605 +842,413 @@ export default function BranchManagement() {
             fullWidth
             margin="dense"
             label="Contact"
-            name="Contact"
             value={newBranch.Contact}
-            onChange={handleAddBranchChange}
-            variant="outlined"
+            onChange={(e) => setNewBranch({ ...newBranch, Contact: e.target.value })}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddBranchOpen(false)} color="primary">
-            Cancel
-          </Button>
-          <Button onClick={handleAddBranch} variant="contained" color="primary">
-            Add Branch
+          <Button onClick={() => setAddBranchOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreateBranch}>
+            Save
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Edit Branch Dialog */}
+      {/* 2) EDIT BRANCH */}
       <Dialog open={isEditBranchOpen} onClose={() => setEditBranchOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Edit Branch</DialogTitle>
-        <DialogContent>
+        <DialogContent dividers>
           {editBranch && (
-            <>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <TextField
-                fullWidth
-                margin="dense"
                 label="Branch Name"
-                name="BranchName"
                 value={editBranch.BranchName}
-                onChange={(e) =>
-                  setEditBranch({ ...editBranch, BranchName: e.target.value })
-                }
-                variant="outlined"
+                onChange={(e) => setEditBranch({ ...editBranch, BranchName: e.target.value })}
               />
               <TextField
-                fullWidth
-                margin="dense"
                 label="Location"
-                name="Location"
                 value={editBranch.Location}
-                onChange={(e) =>
-                  setEditBranch({ ...editBranch, Location: e.target.value })
-                }
-                variant="outlined"
+                onChange={(e) => setEditBranch({ ...editBranch, Location: e.target.value })}
               />
-              <FormControl fullWidth margin="dense" variant="outlined">
+              <FormControl>
                 <InputLabel>Status</InputLabel>
                 <Select
-                  name="Status"
-                  value={editBranch.Status}
-                  onChange={(e) =>
-                    setEditBranch({ ...editBranch, Status: e.target.value })
-                  }
+                  value={editBranch.Status || "Active"}
                   label="Status"
+                  onChange={(e) => setEditBranch({ ...editBranch, Status: e.target.value })}
                 >
                   <MenuItem value="Active">Active</MenuItem>
                   <MenuItem value="Deactivated">Deactivated</MenuItem>
                 </Select>
               </FormControl>
               <TextField
-                fullWidth
-                margin="dense"
                 label="Contact"
-                name="Contact"
-                value={editBranch.Contact}
-                onChange={(e) =>
-                  setEditBranch({ ...editBranch, Contact: e.target.value })
-                }
-                variant="outlined"
+                value={editBranch.Contact || ""}
+                onChange={(e) => setEditBranch({ ...editBranch, Contact: e.target.value })}
               />
-            </>
+            </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditBranchOpen(false)} color="primary">
-            Cancel
-          </Button>
-          <Button onClick={handleEditBranchSubmit} variant="contained" color="primary">
-            Save Changes
+          <Button onClick={() => setEditBranchOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpdateBranch}>
+            Save
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* View Branch Dialog */}
-      <Dialog
-  open={isViewBranchOpen}
-  onClose={() => setViewBranchOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Branch Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {viewBranch && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-           
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Branch ID:
-            </Typography>
-            <Typography variant="body1">{viewBranch.BranchID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Branch Name:
-            </Typography>
-            <Typography variant="body1">{viewBranch.BranchName}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Location:
-            </Typography>
-            <Typography variant="body1">{viewBranch.Location}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Status:
-            </Typography>
-            <Typography variant="body1">{viewBranch.Status}</Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="body2" color="textSecondary">
-              Contact:
-            </Typography>
-            <Typography variant="body1">{viewBranch.Contact}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewBranchOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
-
-      {/* Add Staff Assignment Dialog */}
-      <Dialog open={isAddStaffAssignOpen} onClose={() => setAddStaffAssignOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add New Staff Assignment</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Branch Name"
-            name="BranchName"
-            value={newStaffAssign.BranchName}
-            onChange={handleAddStaffAssignChange}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Staff Name"
-            name="StaffName"
-            value={newStaffAssign.StaffName}
-            onChange={handleAddStaffAssignChange}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Role"
-            name="Role"
-            value={newStaffAssign.Role}
-            onChange={handleAddStaffAssignChange}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Contact"
-            name="Contact"
-            value={newStaffAssign.Contact}
-            onChange={handleAddStaffAssignChange}
-            variant="outlined"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddStaffAssignOpen(false)} color="primary">
-            Cancel
-          </Button>
-          <Button onClick={handleAddStaffAssign} variant="contained" color="primary">
-            Add Staff Assignment
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Edit Staff Assignment Dialog */}
-      <Dialog open={isEditStaffAssignOpen} onClose={() => setEditStaffAssignOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Staff Assignment</DialogTitle>
-        <DialogContent>
-          {editStaffAssign && (
-            <>
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Branch Name"
-                name="BranchName"
-                value={editStaffAssign.BranchName}
-                onChange={(e) =>
-                  setEditStaffAssign({ ...editStaffAssign, BranchName: e.target.value })
-                }
-                variant="outlined"
-              />
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Staff Name"
-                name="StaffName"
-                value={editStaffAssign.StaffName}
-                onChange={(e) =>
-                  setEditStaffAssign({ ...editStaffAssign, StaffName: e.target.value })
-                }
-                variant="outlined"
-              />
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Role"
-                name="Role"
-                value={editStaffAssign.Role}
-                onChange={(e) =>
-                  setEditStaffAssign({ ...editStaffAssign, Role: e.target.value })
-                }
-                variant="outlined"
-              />
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Contact"
-                name="Contact"
-                value={editStaffAssign.Contact}
-                onChange={(e) =>
-                  setEditStaffAssign({ ...editStaffAssign, Contact: e.target.value })
-                }
-                variant="outlined"
-              />
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditStaffAssignOpen(false)} color="primary">
-            Cancel
-          </Button>
-          <Button onClick={handleEditStaffAssignSubmit} variant="contained" color="primary">
-            Save Changes
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* View Staff Assignment Dialog */}
-      <Dialog
-  open={isViewStaffAssignOpen}
-  onClose={() => setViewStaffAssignOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Staff Assignment Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {viewStaffAssign && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Assignment ID:
-            </Typography>
-            <Typography variant="body1">{viewStaffAssign.AssignmentID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Branch Name:
-            </Typography>
-            <Typography variant="body1">{viewStaffAssign.BranchName}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Staff Name:
-            </Typography>
-            <Typography variant="body1">{viewStaffAssign.StaffName}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Role:
-            </Typography>
-            <Typography variant="body1">{viewStaffAssign.Role}</Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="body2" color="textSecondary">
-              Contact:
-            </Typography>
-            <Typography variant="body1">{viewStaffAssign.Contact}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewStaffAssignOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
-
-      {/* Edit Maintenance Log Dialog */}
-      <Dialog open={isEditMaintenanceOpen} onClose={() => setEditMaintenanceOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Maintenance Log</DialogTitle>
-        <DialogContent>
-          {editMaintenance && (
-            <>
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Branch Name"
-                name="BranchName"
-                value={editMaintenance.BranchName}
-                onChange={(e) =>
-                  setEditMaintenance({ ...editMaintenance, BranchName: e.target.value })
-                }
-                variant="outlined"
-              />
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Task"
-                name="Task"
-                value={editMaintenance.Task}
-                onChange={(e) =>
-                  setEditMaintenance({ ...editMaintenance, Task: e.target.value })
-                }
-                variant="outlined"
-              />
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Status"
-                name="Status"
-                value={editMaintenance.Status}
-                onChange={(e) =>
-                  setEditMaintenance({ ...editMaintenance, Status: e.target.value })
-                }
-                variant="outlined"
-              />
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Due Date"
-                name="DueDate"
-                type="date"
-                InputLabelProps={{ shrink: true }}
-                value={editMaintenance.DueDate}
-                onChange={(e) =>
-                  setEditMaintenance({ ...editMaintenance, DueDate: e.target.value })
-                }
-                variant="outlined"
-              />
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditMaintenanceOpen(false)} color="primary">
-            Cancel
-          </Button>
-          <Button onClick={handleEditMaintenanceSubmit} variant="contained" color="primary">
-            Save Changes
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* View Maintenance Log Dialog */}
-            <Dialog
-        open={isViewMaintenanceOpen}
-        onClose={() => setViewMaintenanceOpen(false)}
-        fullWidth
-        maxWidth="sm"
-      >
+      {/* 3) VIEW BRANCH */}
+      <Dialog open={isViewBranchOpen} onClose={() => setViewBranchOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
           <Typography variant="h6" color="primary">
-            Maintenance Log Details
+            Branch Details
           </Typography>
         </DialogTitle>
         <DialogContent dividers>
-          {viewMaintenance && (
+          {viewBranch && (
             <Box sx={{ p: 2 }}>
               <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  
-                </Grid>
                 <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Log ID:
+                  <Typography variant="body2" color="text.secondary">
+                    Branch ID:
                   </Typography>
-                  <Typography variant="body1">{viewMaintenance.LogID}</Typography>
+                  <Typography>{viewBranch.BranchID}</Typography>
                 </Grid>
                 <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Branch Name:
+                  <Typography variant="body2" color="text.secondary">
+                    Name:
                   </Typography>
-                  <Typography variant="body1">{viewMaintenance.BranchName}</Typography>
+                  <Typography>{viewBranch.BranchName}</Typography>
                 </Grid>
                 <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Task:
+                  <Typography variant="body2" color="text.secondary">
+                    Location:
                   </Typography>
-                  <Typography variant="body1">{viewMaintenance.Task}</Typography>
+                  <Typography>{viewBranch.Location}</Typography>
                 </Grid>
                 <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
+                  <Typography variant="body2" color="text.secondary">
                     Status:
                   </Typography>
-                  <Typography variant="body1">{viewMaintenance.Status}</Typography>
+                  <Typography>{viewBranch.Status}</Typography>
                 </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Due Date:
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="text.secondary">
+                    Contact:
                   </Typography>
-                  <Typography variant="body1">{viewMaintenance.DueDate}</Typography>
+                  <Typography>{viewBranch.Contact}</Typography>
                 </Grid>
               </Grid>
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button
-            onClick={() => setViewMaintenanceOpen(false)}
-            variant="contained"
-            color="primary"
-          >
+          <Button onClick={() => setViewBranchOpen(false)} variant="contained" color="primary">
             Close
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Edit Financial Summary Dialog */}
-      <Dialog open={isEditFinancialOpen} onClose={() => setEditFinancialOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Financial Summary</DialogTitle>
-        <DialogContent>
-          {editFinancial && (
-            <>
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Branch Name"
-                name="BranchName"
-                value={editFinancial.BranchName}
-                onChange={(e) =>
-                  setEditFinancial({ ...editFinancial, BranchName: e.target.value })
-                }
-                variant="outlined"
-              />
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Cash Sales"
-                name="CashSales"
-                type="number"
-                value={editFinancial.CashSales}
-                onChange={(e) =>
-                  setEditFinancial({ ...editFinancial, CashSales: Number(e.target.value) })
-                }
-                variant="outlined"
-              />
-              <TextField
-                fullWidth
-                margin="dense"
-                label="GCash Sales"
-                name="GCashSales"
-                type="number"
-                value={editFinancial.GCashSales}
-                onChange={(e) =>
-                  setEditFinancial({ ...editFinancial, GCashSales: Number(e.target.value) })
-                }
-                variant="outlined"
-              />
-              <TextField
-                fullWidth
-                margin="dense"
-                label="BPI Sales"
-                name="BPISales"
-                type="number"
-                value={editFinancial.BPISales}
-                onChange={(e) =>
-                  setEditFinancial({ ...editFinancial, BPISales: Number(e.target.value) })
-                }
-                variant="outlined"
-              />
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Total Revenue"
-                name="TotalRevenue"
-                type="number"
-                value={editFinancial.TotalRevenue}
-                onChange={(e) =>
-                  setEditFinancial({ ...editFinancial, TotalRevenue: Number(e.target.value) })
-                }
-                variant="outlined"
-              />
-            </>
-          )}
+      {/* 4) ADD STAFF */}
+      <Dialog open={isAddStaffOpen} onClose={() => setAddStaffOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Add New Staff</DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            label="Full Name"
+            fullWidth
+            margin="dense"
+            value={newStaff.FullName}
+            onChange={(e) => setNewStaff({ ...newStaff, FullName: e.target.value })}
+          />
+          <TextField
+            label="Role"
+            fullWidth
+            margin="dense"
+            value={newStaff.Role}
+            onChange={(e) => setNewStaff({ ...newStaff, Role: e.target.value })}
+          />
+          <TextField
+            label="Email"
+            fullWidth
+            margin="dense"
+            value={newStaff.Email}
+            onChange={(e) => setNewStaff({ ...newStaff, Email: e.target.value })}
+          />
+          <TextField
+            label="Phone"
+            fullWidth
+            margin="dense"
+            value={newStaff.Phone}
+            onChange={(e) => setNewStaff({ ...newStaff, Phone: e.target.value })}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditFinancialOpen(false)} color="primary">
-            Cancel
-          </Button>
-          <Button onClick={handleEditFinancialSubmit} variant="contained" color="primary">
-            Save Changes
+          <Button onClick={() => setAddStaffOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreateStaff}>
+            Save
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* View Financial Summary Dialog */}
-      <Dialog
-  open={isViewFinancialOpen}
-  onClose={() => setViewFinancialOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Financial Summary Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {viewFinancial && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Summary ID:
-            </Typography>
-            <Typography variant="body1">{viewFinancial.SummaryID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Branch Name:
-            </Typography>
-            <Typography variant="body1">{viewFinancial.BranchName}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Cash Sales:
-            </Typography>
-            <Typography variant="body1">₱{viewFinancial.CashSales}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              GCash Sales:
-            </Typography>
-            <Typography variant="body1">₱{viewFinancial.GCashSales}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              BPI Sales:
-            </Typography>
-            <Typography variant="body1">₱{viewFinancial.BPISales}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Total Revenue:
-            </Typography>
-            <Typography variant="body1">₱{viewFinancial.TotalRevenue}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewFinancialOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
+      {/* 5) EDIT STAFF */}
+      <Dialog open={isEditStaffOpen} onClose={() => setEditStaffOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Staff</DialogTitle>
+        <DialogContent dividers>
+          {editStaffData && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <TextField
+                label="Full Name"
+                value={editStaffData.FullName || ""}
+                onChange={(e) => setEditStaffData({ ...editStaffData, FullName: e.target.value })}
+              />
+              <TextField
+                label="Role"
+                value={editStaffData.Role || ""}
+                onChange={(e) => setEditStaffData({ ...editStaffData, Role: e.target.value })}
+              />
+              <TextField
+                label="Email"
+                value={editStaffData.Email || ""}
+                onChange={(e) => setEditStaffData({ ...editStaffData, Email: e.target.value })}
+              />
+              <TextField
+                label="Phone"
+                value={editStaffData.Phone || ""}
+                onChange={(e) => setEditStaffData({ ...editStaffData, Phone: e.target.value })}
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditStaffOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpdateStaff}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
 
+      {/* 6) VIEW STAFF */}
+      <Dialog open={isViewStaffOpen} onClose={() => setViewStaffOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Staff Details</DialogTitle>
+        <DialogContent dividers>
+          {viewStaffData && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Staff ID:
+                  </Typography>
+                  <Typography>{viewStaffData.StaffID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    FullName:
+                  </Typography>
+                  <Typography>{viewStaffData.FullName}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Role:
+                  </Typography>
+                  <Typography>{viewStaffData.Role}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Email:
+                  </Typography>
+                  <Typography>{viewStaffData.Email}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Phone:
+                  </Typography>
+                  <Typography>{viewStaffData.Phone}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewStaffOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 7) EDIT MAINTENANCE */}
+      <Dialog open={isEditMaintenanceOpen} onClose={() => setEditMaintenanceOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Maintenance Log</DialogTitle>
+        <DialogContent dividers>
+          {editMaintenance && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <TextField
+                label="Task"
+                value={editMaintenance.Task || ""}
+                onChange={(e) => setEditMaintenance({ ...editMaintenance, Task: e.target.value })}
+              />
+              <TextField
+                label="Status"
+                value={editMaintenance.Status || ""}
+                onChange={(e) => setEditMaintenance({ ...editMaintenance, Status: e.target.value })}
+              />
+              <TextField
+                label="Due Date"
+                type="date"
+                value={editMaintenance.DueDate || ""}
+                onChange={(e) => setEditMaintenance({ ...editMaintenance, DueDate: e.target.value })}
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditMaintenanceOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpdateMaintenance}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 8) VIEW MAINTENANCE */}
+      <Dialog open={isViewMaintenanceOpen} onClose={() => setViewMaintenanceOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Maintenance Log Details</DialogTitle>
+        <DialogContent dividers>
+          {viewMaintenanceData && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    LogID:
+                  </Typography>
+                  <Typography>{viewMaintenanceData.MaintenanceLogID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Task:
+                  </Typography>
+                  <Typography>{viewMaintenanceData.Task}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Status:
+                  </Typography>
+                  <Typography>{viewMaintenanceData.Status}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Due Date:
+                  </Typography>
+                  <Typography>{viewMaintenanceData.DueDate}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewMaintenanceOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 9) EDIT FINANCIAL */}
+      <Dialog open={isEditFinancialOpen} onClose={() => setEditFinancialOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Financial Summary</DialogTitle>
+        <DialogContent dividers>
+          {editFinancial && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <TextField
+                label="Branch Name"
+                value={editFinancial.BranchName || ""}
+                onChange={(e) => setEditFinancial({ ...editFinancial, BranchName: e.target.value })}
+              />
+              <TextField
+                label="Cash Sales"
+                type="number"
+                value={editFinancial.CashSales || 0}
+                onChange={(e) => setEditFinancial({ ...editFinancial, CashSales: Number(e.target.value) })}
+              />
+              <TextField
+                label="GCash Sales"
+                type="number"
+                value={editFinancial.GCashSales || 0}
+                onChange={(e) => setEditFinancial({ ...editFinancial, GCashSales: Number(e.target.value) })}
+              />
+              <TextField
+                label="BPI Sales"
+                type="number"
+                value={editFinancial.BPISales || 0}
+                onChange={(e) => setEditFinancial({ ...editFinancial, BPISales: Number(e.target.value) })}
+              />
+              <TextField
+                label="Total Revenue"
+                type="number"
+                value={editFinancial.TotalRevenue || 0}
+                onChange={(e) => setEditFinancial({ ...editFinancial, TotalRevenue: Number(e.target.value) })}
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditFinancialOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpdateFinancial}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 10) VIEW FINANCIAL */}
+      <Dialog open={isViewFinancialOpen} onClose={() => setViewFinancialOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Financial Summary Details</DialogTitle>
+        <DialogContent dividers>
+          {viewFinancialData && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    SummaryID:
+                  </Typography>
+                  <Typography>{viewFinancialData.SummaryID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Branch:
+                  </Typography>
+                  <Typography>{viewFinancialData.BranchName}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    CashSales:
+                  </Typography>
+                  <Typography>₱{viewFinancialData.CashSales}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    GCashSales:
+                  </Typography>
+                  <Typography>₱{viewFinancialData.GCashSales}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    BPISales:
+                  </Typography>
+                  <Typography>₱{viewFinancialData.BPISales}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    TotalRevenue:
+                  </Typography>
+                  <Typography>₱{viewFinancialData.TotalRevenue}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewFinancialOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

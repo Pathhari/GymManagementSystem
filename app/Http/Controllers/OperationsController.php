@@ -330,7 +330,7 @@ class OperationsController extends Controller
     }
 
 
-    /* ------------------------------------------------------------------
+  /* ------------------------------------------------------------------
      * Q. EQUIPMENT & MAINTENANCE
      * ------------------------------------------------------------------ */
 
@@ -341,13 +341,14 @@ class OperationsController extends Controller
     {
         $staff = auth('staff')->user();
 
+        // If staff is logged in, show equipment specific to their branch.
+        // Otherwise (admin/owner), show all.
         if ($staff) {
-            $equipment = Equipment::where('BranchID',$staff->BranchID)
-                ->orderBy('Name','asc')
+            $equipment = Equipment::where('BranchID', $staff->BranchID)
+                ->orderBy('Name', 'asc')
                 ->get();
         } else {
-            // Admin/Owner => all
-            $equipment = Equipment::orderBy('Name','asc')->get();
+            $equipment = Equipment::orderBy('Name', 'asc')->get();
         }
 
         return Inertia::render('Operations/Equipment/Index', [
@@ -372,26 +373,29 @@ class OperationsController extends Controller
             'BranchID'            => 'nullable|exists:branches,BranchID',
         ]);
 
+        // If staff, ensure equipment is always assigned to staff's branch.
         if ($staff) {
             $data['BranchID'] = $staff->BranchID;
         }
 
         if (!empty($data['EquipmentID'])) {
+            // Update existing
             $eq = Equipment::findOrFail($data['EquipmentID']);
 
-            // staff => must match eq->BranchID
+            // Staff: must match eq->BranchID
             if ($staff && $eq->BranchID != $staff->BranchID) {
-                abort(403,'Cannot update equipment of another branch.');
+                abort(403, 'Cannot update equipment of another branch.');
             }
 
             $eq->update($data);
         } else {
+            // Create new
             Equipment::create($data);
         }
 
         return redirect()
             ->route('operations.equipment.index')
-            ->with('success','Equipment saved successfully.');
+            ->with('success', 'Equipment saved successfully.');
     }
 
     /**
@@ -402,31 +406,45 @@ class OperationsController extends Controller
         $staff = auth('staff')->user();
 
         $data = $request->validate([
-            'EquipmentID'        => 'required|exists:equipment,EquipmentID',
-            'MaintenanceDate'    => 'required|date',
-            'IssueDescription'   => 'nullable|string|max:255',
-            'Resolution'         => 'nullable|string|max:255',
-            'MaintainedBy'       => 'nullable|integer',
-            'NextMaintenanceDate'=> 'nullable|date|after_or_equal:MaintenanceDate',
-            'Notes'              => 'nullable|string',
+            'EquipmentID'         => 'required|exists:equipment,EquipmentID',
+            'MaintenanceDate'     => 'required|date',
+            'IssueDescription'    => 'nullable|string|max:255',
+            'Resolution'          => 'nullable|string|max:255',
+            'MaintainedBy'        => 'nullable|integer',
+            'NextMaintenanceDate' => 'nullable|date|after_or_equal:MaintenanceDate',
+            'Notes'               => 'nullable|string',
         ]);
 
-        // staff => check eq->BranchID
+        // Staff => check equipment branch
         if ($staff) {
-            $eqCheck = Equipment::where('EquipmentID',$data['EquipmentID'])
-                ->where('BranchID',$staff->BranchID)
+            $eqCheck = Equipment::where('EquipmentID', $data['EquipmentID'])
+                ->where('BranchID', $staff->BranchID)
                 ->first();
+
             if (!$eqCheck) {
-                abort(403,'Cannot log maintenance for another branch’s equipment.');
+                abort(403, 'Cannot log maintenance for another branch’s equipment.');
             }
         }
 
         MaintenanceLog::create($data);
 
-        return redirect()->back()->with('success','Maintenance log recorded successfully.');
+        return redirect()->back()->with('success', 'Maintenance log recorded successfully.');
     }
 
+    /**
+     * Fetch all maintenance logs (example).
+     */
+    public function indexMaintenanceLogs()
+    {
+        // You can filter by branch if desired:
+        // e.g., $logs = MaintenanceLog::whereHas('equipment', function($q) use ($staff) {
+        //     if ($staff) $q->where('BranchID', $staff->BranchID);
+        // })->with('equipment')->get();
 
+        $logs = MaintenanceLog::with('equipment')->get();
+        return response()->json(['logs' => $logs], 200);
+    }
+    
     /* ------------------------------------------------------------------
      * S. MEMBERVISIT
      * ------------------------------------------------------------------ */
@@ -534,4 +552,161 @@ class OperationsController extends Controller
             ->route('operations.visits.index')
             ->with('success','Visit updated successfully.');
     }
+
+
+
+       /**
+     * Display a listing of Walk-In records.
+     * route: operations.walkins.index
+     */
+    public function indexWalkIns()
+    {
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+
+        // Staff sees only their own branch
+        if ($staff) {
+            $walkIns = WalkIn::where('BranchID', $staff->BranchID)
+                ->orderBy('WalkInID','desc')
+                ->get();
+        } else {
+            // Admin & Owner see all branches
+            $walkIns = WalkIn::orderBy('WalkInID','desc')->get();
+        }
+
+        return Inertia::render('Operations/WalkIn/Index', [
+            'walkIns' => $walkIns
+        ]);
+    }
+
+    /**
+     * Show the form to create a new Walk-In record.
+     * route: operations.walkins.create
+     */
+    public function createWalkIn()
+    {
+        // Possibly fetch branch list if Admin/Owner can pick a branch
+        // or auto-assign if staff is logged in.
+        $staff = auth('staff')->user();
+        // E.g., staff can only create for their own branch:
+        $defaultBranchID = $staff ? $staff->BranchID : null;
+
+        return Inertia::render('Operations/WalkIn/Create', [
+            'defaultBranchID' => $defaultBranchID,
+            // anything else you want passed to the form
+        ]);
+    }
+
+    /**
+     * Store a new Walk-In record in the database.
+     * route: operations.walkins.store
+     */
+    public function storeWalkIn(Request $request)
+    {
+        $staff = auth('staff')->user();
+
+        $data = $request->validate([
+            'FullName'       => 'nullable|string|max:255',
+            'VisitDate'      => 'required|date',       // or dateTime if you want '2023-01-01 10:00'
+            'PaymentID' => 'nullable|exists:payments,id',
+            'PaymentMethod'  => 'nullable|string|max:50',  // e.g. "Cash", "GCash", etc.
+            'AmountPaid'     => 'numeric|min:0',
+            'PaymentStatus'  => 'string|in:Pending,Completed,Failed',
+            'Notes'          => 'nullable|string',
+            'BranchID'       => 'nullable|exists:branches,BranchID',
+        ]);
+
+        // If staff => force the BranchID to staff->BranchID
+        if ($staff) {
+            $data['BranchID'] = $staff->BranchID;
+        }
+
+        // If PaymentStatus isn't provided, we can set default:
+        if (!isset($data['PaymentStatus'])) {
+            $data['PaymentStatus'] = 'Pending';
+        }
+
+        WalkIn::create($data);
+
+        return redirect()
+            ->route('operations.walkins.index')
+            ->with('success','Walk-In record created.');
+    }
+
+    /**
+     * Show the edit form for an existing Walk-In.
+     * route: operations.walkins.edit
+     */
+    public function editWalkIn($id)
+    {
+        $staff = auth('staff')->user();
+        $walkIn = WalkIn::findOrFail($id);
+
+        // If staff => ensure same branch
+        if ($staff && $walkIn->BranchID != $staff->BranchID) {
+            abort(403, 'Cannot edit a walk-in from another branch.');
+        }
+
+        return Inertia::render('Operations/WalkIn/Edit', [
+            'walkIn' => $walkIn
+        ]);
+    }
+
+    /**
+     * Update the specified Walk-In record.
+     * route: operations.walkins.update
+     */
+    public function updateWalkIn(Request $request, $id)
+    {
+        $staff = auth('staff')->user();
+        $walkIn = WalkIn::findOrFail($id);
+
+        if ($staff && $walkIn->BranchID != $staff->BranchID) {
+            abort(403, 'Cannot update a walk-in from another branch.');
+        }
+
+        $data = $request->validate([
+            'FullName'       => 'nullable|string|max:255',
+            'VisitDate'      => 'required|date',
+            'PaymentID' => 'nullable|exists:payments,id',
+            'PaymentMethod'  => 'nullable|string|max:50',
+            'AmountPaid'     => 'numeric|min:0',
+            'PaymentStatus'  => 'string|in:Pending,Completed,Failed',
+            'Notes'          => 'nullable|string',
+            'BranchID'       => 'nullable|exists:branches,BranchID',
+        ]);
+
+        // staff cannot change BranchID -> enforce staff’s Branch again
+        if ($staff) {
+            $data['BranchID'] = $staff->BranchID;
+        }
+
+        $walkIn->update($data);
+
+        return redirect()
+            ->route('operations.walkins.index')
+            ->with('success','Walk-In updated.');
+    }
+
+    /**
+     * Delete a Walk-In record.
+     * route: operations.walkins.destroy
+     */
+    public function destroyWalkIn($id)
+    {
+        $staff = auth('staff')->user();
+        $walkIn = WalkIn::findOrFail($id);
+
+        if ($staff && $walkIn->BranchID != $staff->BranchID) {
+            abort(403, 'Cannot delete a walk-in from another branch.');
+        }
+
+        $walkIn->delete();
+
+        return redirect()
+            ->route('operations.walkins.index')
+            ->with('success','Walk-In record deleted.');
+    }
 }
+

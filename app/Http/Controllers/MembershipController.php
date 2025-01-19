@@ -3,207 +3,148 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use App\Models\Member;
 use App\Models\MembershipPlan;
 use App\Models\MembershipRenewal;
 use App\Models\MembershipFreeze;
-use Illuminate\Support\Facades\Gate;
 
 class MembershipController extends Controller
 {
     /* ------------------------------------------------------------------
-     * G. MEMBER TABLE (ERD #1)
+     * 1) MEMBERS
      * ------------------------------------------------------------------ */
 
     /**
-     * Show form to create a new Member.
-     * route: Owner,Admin,Staff
+     * Return JSON with members (and optionally walkIns, renewals, etc. if needed).
+     * GET /membership/members
      */
-    public function createMember()
+    public function apiIndex()
     {
+        // If staff => only their branch; otherwise all
         $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
+        if ($staff) {
+            $members = Member::where('StartedBranchID', $staff->BranchID)
+                ->orderBy('MemberID','desc')->get();
+        } else {
+            $members = Member::orderBy('MemberID','desc')->get();
+        }
 
-        // Get all membership plans for a dropdown (assuming no branch constraint on Plans)
-        $plans = MembershipPlan::orderBy('PlanName')->get();
+        // If you also want to return walkIns, etc.
+        $walkIns  = [];  // or fetch from your WalkIn model
+        $renewals = [];  // ...
+        $freezes  = [];
+        $logs     = [];
 
-        // If staff can only create members for their own branch, 
-        // we do not need to filter plans unless plan usage is branch-limited.
-        // If you want to show the "StartedBranchID" explicitly, staff can't change it.
-        // Admin/owner might pick a branch from a dropdown. Up to you.
-
-        return Inertia::render('Membership/Member/Create', compact('plans'));
+        return response()->json([
+            'members'  => $members,
+            'walkIns'  => $walkIns,
+            'renewals' => $renewals,
+            'freezes'  => $freezes,
+            'logs'     => $logs,
+        ]);
     }
 
     /**
-     * Store a new Member record in the DB.
+     * Create a new member via Axios JSON.
+     * POST /membership/members
      */
-    public function storeMember(Request $request)
+    public function apiStoreMember(Request $request)
     {
-        $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
-
-        // Validate fields based on ERD columns
         $data = $request->validate([
-            'FullName'              => 'required|string|max:255',
-            'Email'                 => 'required|email|unique:members,Email',
-            'Phone'                 => 'nullable|string|max:50',
-            'PlanID'                => 'nullable|exists:membership_plans,PlanID',
-            'MembershipCardNumber'  => 'nullable|unique:members,MembershipCardNumber',
-            'MembershipCardIssued'  => 'boolean',
-            'MembershipStatus'      => 'required|string|max:50', 
-            'MembershipStartDate'   => 'nullable|date',
-            'MembershipEndDate'     => 'nullable|date|after_or_equal:MembershipStartDate',
-            'Biometrics'            => 'nullable|string',
-            'FreeSessions'          => 'nullable|integer',
-            'Notes'                 => 'nullable|string',
+            'FullName'             => 'required|string|max:255',
+            'Email'                => 'required|email|unique:members,Email',
+            'Phone'                => 'nullable|string|max:50',
+            // PlanID from the front end might be a numeric ID or a "slug" like "1MonthBasic"
+            // If numeric, you can do 'PlanID' => 'nullable|exists:membership_plans,PlanID'
+            'PlanID'               => 'nullable|exists:membership_plans,PlanID',
+            'MembershipCardNumber' => 'nullable|unique:members,MembershipCardNumber',
+            'MembershipCardIssued' => 'boolean',
+            'MembershipStatus'     => 'required|string|max:50',
+            'MembershipStartDate'  => 'nullable|date',
+            'MembershipEndDate'    => 'nullable|date|after_or_equal:MembershipStartDate',
+            'Biometrics'           => 'nullable|string',
+            'FreeSessions'         => 'nullable|integer',
+            'Notes'                => 'nullable|string',
         ]);
 
-        // If staff => auto-assign StartedBranchID to staff->BranchID
+        // If staff => force their BranchID
+        $staff = auth('staff')->user();
         if ($staff) {
             $data['StartedBranchID'] = $staff->BranchID;
-        } 
-        // If owner/admin => they might pick "StartedBranchID" from a form or you do nothing (i.e., no assignment).
-        // e.g. $data['StartedBranchID'] = $request->input('StartedBranchID');
-
-        Member::create($data);
-
-        return redirect()
-            ->route('membership.members.index')
-            ->with('success', 'Member created successfully.');
-    }
-
-    /**
-     * Display a listing of Members (Read).
-     * Possibly allow all roles.
-     */
-    public function indexMembers()
-    {
-        $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
-
-        // If staff => only see members from their branch
-        if ($staff) {
-            $members = Member::with('plan')
-                ->where('StartedBranchID', $staff->BranchID)
-                ->orderBy('MemberID','desc')
-                ->get();
-        } else {
-            // Admin/Owner => see all
-            $members = Member::with('plan')
-                ->orderBy('MemberID','desc')
-                ->get();
         }
 
-        return Inertia::render('Membership/Member/Index', [
-            'members' => $members
-        ]);
+        $member = Member::create($data);
+        return response()->json($member, 201);
     }
 
     /**
-     * Show the edit form for a single Member.
+     * Update an existing member via Axios JSON.
+     * PUT /membership/members/{id}
      */
-    public function editMember($id)
+    public function apiUpdateMember(Request $request, $id)
     {
-        $staff = auth('staff')->user();
-
         $member = Member::findOrFail($id);
 
-        // If staff => ensure the member belongs to staff->branch
-        if ($staff && $member->StartedBranchID != $staff->BranchID) {
-            abort(403, 'You cannot edit a member from another branch.');
-        }
-
-        $plans = MembershipPlan::orderBy('PlanName')->get();
-
-        return Inertia::render('Membership/Member/Edit', [
-            'member' => $member,
-            'plans'  => $plans
-        ]);
-    }
-
-    /**
-     * Update an existing Member record.
-     */
-    public function updateMember(Request $request, $id)
-    {
+        // If staff => block updating members of another branch
         $staff = auth('staff')->user();
-
-        $member = Member::findOrFail($id);
-
-        // If staff => block if not in same branch
         if ($staff && $member->StartedBranchID != $staff->BranchID) {
-            abort(403, 'You cannot update a member from another branch.');
+            abort(403, 'Cannot update member from another branch.');
         }
 
         $data = $request->validate([
-            'FullName'              => 'required|string|max:255',
-            'Email'                 => 'required|email|unique:members,Email,'.$member->MemberID.',MemberID',
-            'Phone'                 => 'nullable|string|max:50',
-            'PlanID'                => 'nullable|exists:membership_plans,PlanID',
-            'MembershipCardNumber'  => 'nullable|unique:members,MembershipCardNumber,'.$member->MemberID.',MemberID',
-            'MembershipCardIssued'  => 'boolean',
-            'MembershipStatus'      => 'required|string|max:50',
-            'MembershipStartDate'   => 'nullable|date',
-            'MembershipEndDate'     => 'nullable|date|after_or_equal:MembershipStartDate',
-            'Biometrics'            => 'nullable|string',
-            'FreeSessions'          => 'nullable|integer',
-            'Notes'                 => 'nullable|string',
+            'FullName'             => 'required|string|max:255',
+            'Email'                => 'required|email|unique:members,Email,' . $member->MemberID . ',MemberID',
+            'Phone'                => 'nullable|string|max:50',
+            'PlanID'               => 'nullable|exists:membership_plans,PlanID',
+            'MembershipCardNumber' => 'nullable|unique:members,MembershipCardNumber,' . $member->MemberID . ',MemberID',
+            'MembershipCardIssued' => 'boolean',
+            'MembershipStatus'     => 'required|string|max:50',
+            'MembershipStartDate'  => 'nullable|date',
+            'MembershipEndDate'    => 'nullable|date|after_or_equal:MembershipStartDate',
+            'Biometrics'           => 'nullable|string',
+            'FreeSessions'         => 'nullable|integer',
+            'Notes'                => 'nullable|string',
         ]);
 
-        // Staff cannot change StartedBranchID, so we skip that. Owner/Admin could do it if you want.
-        // e.g. if you want to allow branch transfer, you'd handle that logic here.
-
         $member->update($data);
-
-        return redirect()
-            ->route('membership.members.index')
-            ->with('success','Member updated successfully.');
+        return response()->json($member, 200);
     }
 
     /**
-     * Delete or remove a Member record.
-     * Usually route:Owner,Admin only
+     * Delete a member via Axios JSON.
+     * DELETE /membership/members/{id}
      */
-    public function destroyMember($id)
+    public function apiDestroyMember($id)
     {
-        $staff = auth('staff')->user();
-
         $member = Member::findOrFail($id);
 
-        // If staff => block if not same branch
+        // If staff => block
+        $staff = auth('staff')->user();
         if ($staff && $member->StartedBranchID != $staff->BranchID) {
-            abort(403, 'You cannot delete a member from another branch.');
+            abort(403, 'Cannot delete member from another branch.');
         }
 
         $member->delete();
-
-        return redirect()->back()->with('success','Member deleted successfully.');
+        return response()->json(['message' => 'Member deleted.'], 200);
     }
 
-
     /* ------------------------------------------------------------------
-     * H. MEMBERSHIPPLAN TABLE (ERD #2)
+     * 2) MEMBERSHIP PLANS
      * ------------------------------------------------------------------ */
 
     /**
-     * Display a list of membership plans.
-     * Possibly route:Owner,Admin
+     * Return all membership plans as JSON.
+     * GET /membership/plans
      */
     public function indexPlans()
     {
-        // Usually membership plans are global, so no branch filter needed
-        $plans = MembershipPlan::orderBy('PlanName')->get();
-
-        return Inertia::render('Membership/Plan/Index', compact('plans'));
+        $plans = MembershipPlan::orderBy('PlanID')->get();
+        return response()->json($plans, 200);
     }
 
     /**
-     * Store a new MembershipPlan.
+     * Create a new plan.
+     * POST /membership/plans
      */
     public function storePlan(Request $request)
     {
@@ -211,83 +152,53 @@ class MembershipController extends Controller
             'PlanName' => 'required|string|max:255|unique:membership_plans,PlanName',
             'Price'    => 'required|numeric|min:0',
             'Duration' => 'required|string|max:50',
-            'Features' => 'nullable|string', 
+            'Features' => 'nullable|string',
         ]);
 
-        MembershipPlan::create($data);
-
-        return redirect()
-            ->route('membership.plans.index')
-            ->with('success','Membership plan created.');
+        $plan = MembershipPlan::create($data);
+        return response()->json($plan, 201);
     }
 
     /**
-     * Update an existing MembershipPlan.
+     * Update an existing plan.
+     * PUT /membership/plans/{id}
      */
     public function updatePlan(Request $request, $id)
     {
         $plan = MembershipPlan::findOrFail($id);
 
         $data = $request->validate([
-            'PlanName' => 'required|string|max:255|unique:membership_plans,PlanName,'.$plan->PlanID.',PlanID',
+            'PlanName' => 'required|string|max:255|unique:membership_plans,PlanName,' . $plan->PlanID . ',PlanID',
             'Price'    => 'required|numeric|min:0',
             'Duration' => 'required|string|max:50',
             'Features' => 'nullable|string',
         ]);
 
         $plan->update($data);
-
-        return redirect()
-            ->route('membership.plans.index')
-            ->with('success','Membership plan updated.');
+        return response()->json($plan, 200);
     }
 
     /**
-     * Delete a MembershipPlan.
+     * Delete a plan.
+     * DELETE /membership/plans/{id}
      */
     public function destroyPlan($id)
     {
         $plan = MembershipPlan::findOrFail($id);
         $plan->delete();
-
-        return redirect()->back()->with('success','Membership plan deleted.');
+        return response()->json(['message' => 'Plan deleted'], 200);
     }
-
 
     /* ------------------------------------------------------------------
-     * I. MEMBERSHIPRENEWAL TABLE (ERD #3)
+     * 3) MEMBERSHIP RENEWAL
      * ------------------------------------------------------------------ */
 
-    /**
-     * Show form to create a new Membership Renewal.
-     */
-    public function createRenewal()
-    {
-        $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
+    // If you have more logic for Renewals, do similarly with JSON methods
+    // For demonstration, we show a single store method:
 
-        // If staff => only show members from staff->BranchID
-        if ($staff) {
-            $members = Member::where('StartedBranchID', $staff->BranchID)
-                ->orderBy('FullName')
-                ->get();
-        } else {
-            $members = Member::orderBy('FullName')->get();
-        }
-
-        $plans = MembershipPlan::orderBy('PlanName')->get();
-
-        return Inertia::render('Membership/Renewal/Create', compact('members','plans'));
-    }
-
-    /**
-     * Store a new MembershipRenewal record.
-     */
     public function storeRenewal(Request $request)
     {
         $staff = auth('staff')->user();
-
         $data = $request->validate([
             'MemberID'      => 'required|exists:members,MemberID',
             'RenewalDate'   => 'required|date',
@@ -295,120 +206,39 @@ class MembershipController extends Controller
             'RenewalAmount' => 'required|numeric|min:0',
         ]);
 
-        // If staff => ensure the member is in staff->branch
         if ($staff) {
             $member = Member::findOrFail($data['MemberID']);
             if ($member->StartedBranchID != $staff->BranchID) {
-                abort(403, 'You cannot renew a member from another branch.');
+                abort(403, 'Not your branch.');
             }
         }
 
-        MembershipRenewal::create($data);
-
-        return redirect()
-            ->route('membership.renewals.logs')
-            ->with('success','Renewal entry created.');
+        $renewal = MembershipRenewal::create($data);
+        return response()->json($renewal, 201);
     }
-
-    /**
-     * View Renewal Logs.
-     */
-    public function renewalLogs()
-    {
-        $staff = auth('staff')->user();
-
-        if ($staff) {
-            // Only show renewals for members in staff->BranchID
-            $renewals = MembershipRenewal::with(['member','plan'])
-                ->whereHas('member', function($q) use ($staff) {
-                    $q->where('StartedBranchID', $staff->BranchID);
-                })
-                ->orderBy('RenewalDate','desc')
-                ->get();
-        } else {
-            // admin/owner => all
-            $renewals = MembershipRenewal::with(['member','plan'])
-                ->orderBy('RenewalDate','desc')
-                ->get();
-        }
-
-        return Inertia::render('Membership/Renewal/Logs', compact('renewals'));
-    }
-
 
     /* ------------------------------------------------------------------
-     * J. MEMBERSHIPFREEZE TABLE (ERD #4)
+     * 4) MEMBERSHIP FREEZE
      * ------------------------------------------------------------------ */
 
-    /**
-     * Show form to create a Freeze record.
-     */
-    public function createFreeze()
-    {
-        $staff = auth('staff')->user();
-
-        if ($staff) {
-            $members = Member::where('StartedBranchID', $staff->BranchID)
-                ->orderBy('FullName')
-                ->get();
-        } else {
-            $members = Member::orderBy('FullName')->get();
-        }
-
-        return Inertia::render('Membership/Freeze/Create', compact('members'));
-    }
-
-    /**
-     * Store a new Freeze record.
-     */
     public function storeFreeze(Request $request)
     {
         $staff = auth('staff')->user();
-
         $data = $request->validate([
-            'MemberID'         => 'required|exists:members,MemberID',
-            'FreezeStartDate'  => 'required|date',
-            'FreezeEndDate'    => 'nullable|date|after_or_equal:FreezeStartDate',
-            'Reason'           => 'nullable|string|max:255',
+            'MemberID'        => 'required|exists:members,MemberID',
+            'FreezeStartDate' => 'required|date',
+            'FreezeEndDate'   => 'nullable|date|after_or_equal:FreezeStartDate',
+            'Reason'          => 'nullable|string|max:255',
         ]);
 
-        // If staff => ensure the member is in staff->branch
         if ($staff) {
             $member = Member::findOrFail($data['MemberID']);
             if ($member->StartedBranchID != $staff->BranchID) {
-                abort(403, 'You cannot freeze a member from another branch.');
+                abort(403, 'Not your branch.');
             }
         }
 
-        MembershipFreeze::create($data);
-
-        return redirect()
-            ->route('membership.freezes.index')
-            ->with('success','Membership freeze created.');
-    }
-
-    /**
-     * Index Freeze records.
-     */
-    public function indexFreezes()
-    {
-        $staff = auth('staff')->user();
-
-        if ($staff) {
-            // Only show freeze records for members in staff->BranchID
-            $freezes = MembershipFreeze::with('member')
-                ->whereHas('member', function($q) use ($staff) {
-                    $q->where('StartedBranchID', $staff->BranchID);
-                })
-                ->orderBy('FreezeStartDate','desc')
-                ->get();
-        } else {
-            // admin/owner => all
-            $freezes = MembershipFreeze::with('member')
-                ->orderBy('FreezeStartDate','desc')
-                ->get();
-        }
-
-        return Inertia::render('Membership/Freeze/Index', compact('freezes'));
+        $freeze = MembershipFreeze::create($data);
+        return response()->json($freeze, 201);
     }
 }

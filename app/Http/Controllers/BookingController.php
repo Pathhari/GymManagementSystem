@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use App\Models\Booking;
 use App\Models\Facility;
 use App\Models\Member;
@@ -12,33 +11,66 @@ use App\Models\SessionBooking;
 use App\Models\SessionWaitlist;
 use App\Models\SessionAttendance;
 use App\Models\Coach;
-use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
 
 class BookingController extends Controller
 {
     /* ------------------------------------------------------------------
-     * N. BOOKING (Table #6 in your ERD)
+     *  N. BOOKING (Table #6)
      * ------------------------------------------------------------------ */
 
-    public function createBooking()
+    /**
+     * Returns all Bookings in JSON form, including Branch info.
+     * Also supports staff branch-check and optional server-side ?branch= filtering.
+     */
+    public function indexBooking(Request $request)
     {
         $staff = auth('staff')->user(); 
         $admin = auth('admin')->user(); 
         $owner = auth('owner')->user();
-        
-        $members = Member::orderBy('FullName','asc')->get();
-        
+
+        // Start a query that eager-loads facility->branch
+        $query = Booking::with(['member', 'facility.branch']);
+
+        // If staff, limit to staff's branch only
         if ($staff) {
-            $facilities = Facility::where('BranchID', $staff->BranchID)
-                                  ->orderBy('Name','asc')
-                                  ->get();
-        } else {
-            $facilities = Facility::orderBy('Name','asc')->get();
+            $query->whereHas('facility', function($q) use ($staff) {
+                $q->where('BranchID', $staff->BranchID);
+            });
         }
 
-        return Inertia::render('Booking/Facility/Create', compact('members','facilities'));
+        // (Optional) server-side filter: e.g. GET /booking?branch=Branch2
+        if ($request->filled('branch')) {
+            $branchName = $request->get('branch');
+            $query->whereHas('facility.branch', function($q) use ($branchName) {
+                $q->where('BranchName', $branchName);
+            });
+        }
+
+        $bookings = $query->orderBy('BookingDate', 'desc')->get();
+
+        // Transform each booking into an array that includes "Branch"
+        $data = $bookings->map(function($b) {
+            return [
+                'BookingID'    => $b->BookingID,
+                'MemberName'   => optional($b->member)->FullName ?? '',
+                'FacilityName' => optional($b->facility)->Name ?? '',
+                'BookingDate'  => $b->BookingDate,
+                'BookingTime'  => $b->BookingTime,
+                'Duration'     => $b->Duration,
+                'Status'       => $b->Status ?? '',
+                // Pull the branch name from $b->facility->branch->BranchName
+                'Branch'       => optional(optional($b->facility)->branch)->BranchName ?? '',
+            ];
+        });
+
+        // Return JSON for your React front end
+        return response()->json(['bookings' => $data]);
     }
 
+    /**
+     * Store a new Booking.
+     */
     public function storeBooking(Request $request)
     {
         $staff = auth('staff')->user(); 
@@ -52,6 +84,7 @@ class BookingController extends Controller
             'BookingDate' => 'required|date',
             'BookingTime' => 'required|string|max:20', 
             'Duration'    => 'nullable|integer|min:1',
+            'Status'      => 'nullable|string|max:50'
         ]);
 
         if ($staff) {
@@ -60,64 +93,15 @@ class BookingController extends Controller
                 abort(403, 'You cannot create a booking for a facility outside your branch.');
             }
         }
-        
+
         Booking::create($data);
 
-        return redirect()->route('booking.index')
-            ->with('success','Booking created successfully.');
+        return response()->json(['message' => 'Booking created successfully.'], 201);
     }
 
-    public function indexBooking()
-    {
-        $staff = auth('staff')->user(); 
-        $admin = auth('admin')->user(); 
-        $owner = auth('owner')->user();
-
-        if ($staff) {
-            $bookings = Booking::with(['member','facility'])
-                ->whereHas('facility', function($q) use ($staff) {
-                    $q->where('BranchID', $staff->BranchID);
-                })
-                ->orderBy('BookingDate','desc')
-                ->get();
-        } else {
-            $bookings = Booking::with(['member','facility'])
-                ->orderBy('BookingDate','desc')
-                ->get();
-        }
-
-        return Inertia::render('Booking/Facility/Index', compact('bookings'));
-    }
-
-    public function editBooking($id)
-    {
-        $staff = auth('staff')->user(); 
-        $admin = auth('admin')->user(); 
-        $owner = auth('owner')->user();
-
-        $booking = Booking::findOrFail($id);
-
-        if ($staff && $booking->facility->BranchID != $staff->BranchID) {
-            abort(403, 'You cannot edit a booking from another branch.');
-        }
-
-        $members = Member::orderBy('FullName','asc')->get();
-
-        if ($staff) {
-            $facilities = Facility::where('BranchID', $staff->BranchID)
-                                  ->orderBy('Name','asc')
-                                  ->get();
-        } else {
-            $facilities = Facility::orderBy('Name','asc')->get();
-        }
-
-        return Inertia::render('Booking/Facility/Edit', [
-            'booking'    => $booking,
-            'members'    => $members,
-            'facilities' => $facilities
-        ]);
-    }
-
+    /**
+     * Update an existing Booking record.
+     */
     public function updateBooking(Request $request, $id)
     {
         $staff = auth('staff')->user(); 
@@ -133,6 +117,7 @@ class BookingController extends Controller
             'BookingDate' => 'required|date',
             'BookingTime' => 'required|string|max:20',
             'Duration'    => 'nullable|integer|min:1',
+            'Status'      => 'nullable|string|max:50'
         ]);
 
         if ($staff) {
@@ -144,64 +129,72 @@ class BookingController extends Controller
 
         $booking->update($data);
 
-        return redirect()->route('booking.index')
-            ->with('success','Booking updated successfully.');
+        return response()->json(['message' => 'Booking updated successfully.']);
     }
 
+    /**
+     * Cancel a booking.
+     */
     public function cancelBooking($id)
     {
         $staff = auth('staff')->user();
-
         $booking = Booking::with('facility')->findOrFail($id);
 
         if ($staff && $booking->facility->BranchID != $staff->BranchID) {
             abort(403, 'You cannot cancel a booking from another branch.');
         }
 
-        // If you store a 'Status' field in the booking table:
-        if (!isset($booking->Status) || $booking->Status !== 'Cancelled') {
+        if (empty($booking->Status) || $booking->Status !== 'Cancelled') {
             $booking->Status = 'Cancelled';
             $booking->save();
         }
 
-        return redirect()->back()->with('success','Booking cancelled.');
-    }
-
-    public function indexFacilities()
-    {
-        $staff = auth('staff')->user(); 
-        $admin = auth('admin')->user(); 
-        $owner = auth('owner')->user();
-
-        if ($staff) {
-            $facilities = Facility::where('BranchID', $staff->BranchID)
-                                  ->orderBy('Name','asc')
-                                  ->get();
-        } else {
-            $facilities = Facility::orderBy('Name','asc')->get();
-        }
-
-        return Inertia::render('Booking/Facility/All', compact('facilities'));
+        return response()->json(['message' => 'Booking cancelled.']);
     }
 
     /* ------------------------------------------------------------------
      * O. COACHING SESSIONS (Table #15)
      * ------------------------------------------------------------------ */
 
-    public function indexSessions()
+    /**
+     * Index Coaching Sessions in JSON form, with optional branch filtering if relevant.
+     */
+    public function indexSessions(Request $request)
     {
-        // If needed, filter by staff->BranchID if sessions are branch-specific.
-        $sessions = CoachingSessions::with('coach')
-            ->orderBy('StartTime','desc')
-            ->get();
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
 
-        return Inertia::render('Booking/Coaching/Index', compact('sessions'));
-    }
+        // If your sessions have a direct branch reference, you can do with('branch') or something similar.
+        // We'll just do with('coach') for now:
+        $query = CoachingSessions::with('coach');
 
-    public function createSession()
-    {
-        $coaches = Coach::orderBy('FullName','asc')->get();
-        return Inertia::render('Booking/Coaching/Create', compact('coaches'));
+        // If there's a branch param: ?branch=Branch2
+        if ($request->filled('branch')) {
+            $branchParam = $request->get('branch');
+            // If your coaching_sessions table has a 'BranchName' or 'BranchID' column:
+            // $query->where('BranchName', $branchParam);
+        }
+
+        $sessions = $query->orderBy('StartTime','desc')->get();
+
+        // Transform for JSON
+        $data = $sessions->map(function($s) {
+            return [
+                'SessionID'    => $s->SessionID,
+                'SessionName'  => $s->SessionName,
+                'CoachName'    => optional($s->coach)->FullName ?? '',
+                'StartTime'    => $s->StartTime,
+                'EndTime'      => $s->EndTime,
+                'Capacity'     => $s->Capacity,
+                'Participants' => $s->Participants ?? 0,
+                'Status'       => $s->Status ?? '',
+                // If you store BranchName or have a relationship, do:
+                'Branch'       => $s->BranchName ?? '',
+            ];
+        });
+
+        return response()->json(['sessions' => $data]);
     }
 
     public function storeSession(Request $request)
@@ -217,15 +210,14 @@ class BookingController extends Controller
             'Fee'          => 'nullable|numeric|min:0',
         ]);
 
-        CoachingSessions::create($data);
+        $session = CoachingSessions::create($data);
 
-        return redirect()->route('booking.sessions.index')
-            ->with('success','Session created successfully.');
+        return response()->json([
+            'message' => 'Session created successfully.',
+            'session' => $session
+        ], 201);
     }
 
-    /**
-     * NEW: Update an existing session
-     */
     public function updateSession(Request $request, $id)
     {
         $data = $request->validate([
@@ -237,38 +229,32 @@ class BookingController extends Controller
             'Capacity'     => 'nullable|integer|min:1',
             'Location'     => 'nullable|string|max:255',
             'Fee'          => 'nullable|numeric|min:0',
+            'Status'       => 'nullable|string|max:50',
         ]);
 
         $session = CoachingSessions::findOrFail($id);
         $session->update($data);
 
-        return redirect()->route('booking.sessions.index')
-            ->with('success','Session updated successfully.');
+        return response()->json(['message' => 'Session updated successfully.']);
     }
 
-    /**
-     * NEW: Cancel an existing session
-     */
     public function cancelSession($id)
     {
         $session = CoachingSessions::findOrFail($id);
-        // Suppose there's a "Status" column, you can mark it as "Cancelled"
-        if (!isset($session->Status) || $session->Status !== 'Cancelled') {
+
+        if (empty($session->Status) || $session->Status !== 'Cancelled') {
             $session->Status = 'Cancelled';
             $session->save();
         }
 
-        return redirect()->back()->with('success','Session cancelled.');
+        return response()->json(['message' => 'Session cancelled.']);
     }
 
     /* ------------------------------------------------------------------
      * 41. SessionBooking
      * ------------------------------------------------------------------ */
-
     public function storeSessionBooking(Request $request)
     {
-        $staff = auth('staff')->user();
-
         $data = $request->validate([
             'SessionID'    => 'required|exists:coaching_sessions,SessionID',
             'MemberID'     => 'required|exists:members,MemberID',
@@ -279,18 +265,14 @@ class BookingController extends Controller
 
         SessionBooking::create($data);
 
-        return redirect()->back()
-            ->with('success','Session booked successfully.');
+        return response()->json(['message' => 'Session booked successfully.']);
     }
 
     /* ------------------------------------------------------------------
      * 42. SessionWaitlist
      * ------------------------------------------------------------------ */
-
     public function addToWaitlist(Request $request)
     {
-        $staff = auth('staff')->user();
-
         $data = $request->validate([
             'SessionID'     => 'required|exists:coaching_sessions,SessionID',
             'MemberID'      => 'required|exists:members,MemberID',
@@ -300,18 +282,14 @@ class BookingController extends Controller
 
         SessionWaitlist::create($data);
 
-        return redirect()->back()
-            ->with('success','Added to waitlist.');
+        return response()->json(['message' => 'Added to waitlist.']);
     }
 
     /* ------------------------------------------------------------------
      * 43. SessionAttendance
      * ------------------------------------------------------------------ */
-
     public function markAttendance(Request $request)
     {
-        $staff = auth('staff')->user();
-
         $data = $request->validate([
             'SessionID'       => 'required|exists:coaching_sessions,SessionID',
             'MemberID'        => 'required|exists:members,MemberID',
@@ -320,7 +298,6 @@ class BookingController extends Controller
 
         SessionAttendance::create($data);
 
-        return redirect()->back()
-            ->with('success','Attendance marked successfully.');
+        return response()->json(['message' => 'Attendance marked successfully.']);
     }
 }

@@ -90,4 +90,16 @@ class Staff extends Authenticatable
     {
         return $this->hasMany(Expense::class, 'StaffID', 'StaffID');
     }
+
+    public function branches()
+{
+    return $this->belongsToMany(
+        Branch::class, 
+        'branch_staff', 
+        'StaffID', 
+        'BranchID', 
+        'StaffID', 
+        'BranchID'
+    );
+}
 }

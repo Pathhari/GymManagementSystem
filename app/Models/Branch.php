@@ -123,4 +123,16 @@ class Branch extends Model
     {
         return $this->hasMany(MemberVisit::class, 'BranchID', 'BranchID');
     }
+
+    public function staffAssignments()
+{
+    return $this->belongsToMany(
+        Staff::class,
+        'branch_staff',
+        'BranchID',
+        'StaffID',
+        'BranchID',
+        'StaffID'
+    );
+}
 }

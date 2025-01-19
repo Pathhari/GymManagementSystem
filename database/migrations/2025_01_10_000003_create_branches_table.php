@@ -13,7 +13,8 @@ return new class extends Migration {
             $table->id('BranchID');
             $table->string('BranchName');
             $table->string('Location')->nullable();
-            // any additional fields (contact, manager, etc.)
+            $table->string('Status', 50)->nullable()->default('Active');
+            $table->string('Contact', 255)->nullable();            
             $table->timestamps();
         });
     }

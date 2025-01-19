@@ -1,5 +1,5 @@
-// File: ./layouts/AddNewMemberLayout.jsx
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import axios from "axios";
 import {
   Box,
   Typography,
@@ -16,39 +16,64 @@ import {
   IconButton,
   useMediaQuery,
   useTheme,
+  Checkbox,
+  FormControlLabel,
 } from "@mui/material";
 import Webcam from "react-webcam";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import CloseIcon from "@mui/icons-material/Close";
 
-// Helper function to format a Date object as "YYYY-MM-DD"
+/**
+ * Helper function to format a Date object as "YYYY-MM-DD"
+ */
 const formatDate = (date) => {
   const year = date.getFullYear();
-  // Months are zero-indexed so we need to add 1 and pad with '0'
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
 
-export default function AddNewMemberLayout({ onClose }) {
-  // ---------------------- STATE ----------------------
+/**
+ * Helper to add months to a date
+ */
+const addMonths = (date, monthsToAdd) => {
+  const temp = new Date(date);
+  temp.setMonth(temp.getMonth() + monthsToAdd);
+  return temp;
+};
+
+/**
+ * A React component that pops up a Dialog for adding a new member.
+ *
+ * @param {Function} onClose - function to close this Dialog
+ */
+export default function AddNewMemberLayout({ onClose, onMemberCreated  }) {
+  // -------------------------------------------------------
+  //  STATE
+  // -------------------------------------------------------
+  const [errors, setErrors] = useState({}); // For server validation errors (422)
+  
+  // Basic fields
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [membershipPlan, setMembershipPlan] = useState("");
+  const [selectedPlanID, setSelectedPlanID] = useState("");
   const [membershipCardNumber, setMembershipCardNumber] = useState("");
+  const [membershipCardIssued, setMembershipCardIssued] = useState(false);
   const [membershipStatus, setMembershipStatus] = useState("");
+
   const [membershipStartDate, setMembershipStartDate] = useState("");
   const [membershipEndDate, setMembershipEndDate] = useState("");
-  const [biometricData, setBiometricData] = useState(null);
   const [freeSessions, setFreeSessions] = useState("");
   const [branch, setBranch] = useState("");
   const [notes, setNotes] = useState("");
+
+  // For capturing an image (webcam) / biometrics
+  const [biometricData, setBiometricData] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
-  const [errors, setErrors] = useState({});
-  const [openWebcam, setOpenWebcam] = useState(false);
 
   // For react-webcam
+  const [openWebcam, setOpenWebcam] = useState(false);
   const webcamRef = useRef(null);
   const videoConstraints = {
     width: 320,
@@ -56,100 +81,136 @@ export default function AddNewMemberLayout({ onClose }) {
     facingMode: "user",
   };
 
-  // ---------------------- MEDIA QUERY ----------------------
+  // Plans from DB
+  const [plans, setPlans] = useState([]);
+
+  // For Material-UI responsive
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
-  // ---------------------- DROPDOWN OPTIONS ----------------------
-  const membershipPlanOptions = [
-    { value: "1MonthBasic", label: "1 Month Basic Plan" },
-    { value: "annualPremium", label: "Annual Premium Plan" },
-  ];
-  const membershipStatusOptions = [
-    { value: "Active", label: "Active" },
-    { value: "Expired", label: "Expired" },
-    { value: "Pending", label: "Pending" },
-  ];
-  const branchOptions = [
-    { value: "branch1", label: "Branch 1" },
-    { value: "branch2", label: "Branch 2" },
-    { value: "branch3", label: "Branch 3" },
-  ];
+  // -------------------------------------------------------
+  //  FETCH MEMBERSHIP PLANS
+  // -------------------------------------------------------
+  useEffect(() => {
+    axios
+      .get("/membership/plans")
+      .then((res) => {
+        setPlans(res.data || []);
+      })
+      .catch((err) => {
+        console.error("Error fetching plans:", err);
+      });
+  }, []);
 
-  // ---------------------- VALIDATION FUNCTIONS ----------------------
-  const validateEmail = (email) => /\S+@\S+\.\S+/.test(email);
-  const validatePhoneNumber = (number) => /^\d{3}-\d{3}-\d{4}$/.test(number);
+  // -------------------------------------------------------
+  //  BASIC FRONT-END VALIDATION
+  // -------------------------------------------------------
+  const validateEmail = (str) => /\S+@\S+\.\S+/.test(str);
+  const validatePhoneNumber = (str) => {
+    const phRegex = /^(\+63|0)9\d{2}-\d{3}-\d{4}$/; 
+    return phRegex.test(str);
+  };
 
+  /**
+   * A small front-end check: are all required fields filled,
+   * do they match expected format, etc. 
+   * (We still rely on server validation for final check.)
+   */
   const validateForm = () => {
     const newErrors = {};
-    if (!fullName.trim()) newErrors.fullName = "Full Name is required";
+
+    if (!fullName.trim()) {
+      newErrors.FullName = ["Full Name is required"];
+    }
     if (!email.trim()) {
-      newErrors.email = "Email is required";
+      newErrors.Email = ["Email is required"];
     } else if (!validateEmail(email)) {
-      newErrors.email = "Invalid email format";
+      newErrors.Email = ["Invalid email format"];
     }
     if (!phoneNumber.trim()) {
-      newErrors.phoneNumber = "Phone Number is required";
+      newErrors.Phone = ["Phone Number is required"];
     } else if (!validatePhoneNumber(phoneNumber)) {
-      newErrors.phoneNumber = "Format: 123-456-7890";
+      newErrors.Phone = [
+        "Phone number must be 09xx-xxx-xxxx or +639xx-xxx-xxxx",
+      ];
     }
-    if (!membershipPlan) newErrors.membershipPlan = "Membership Plan is required";
-    if (!membershipCardNumber.trim())
-      newErrors.membershipCardNumber = "Membership Card Number is required";
-    if (!membershipStatus)
-      newErrors.membershipStatus = "Membership Status is required";
-    if (!membershipStartDate)
-      newErrors.membershipStartDate = "Start Date is required";
-    if (!membershipEndDate)
-      newErrors.membershipEndDate = "End Date is required";
-    if (!freeSessions) newErrors.freeSessions = "Free Sessions is required";
-    if (!branch) newErrors.branch = "Branch is required";
+    if (!selectedPlanID) {
+      newErrors.PlanID = ["Membership Plan is required"];
+    }
+    if (!membershipCardNumber.trim()) {
+      newErrors.MembershipCardNumber = ["Membership Card Number is required"];
+    }
+    if (!membershipStatus) {
+      newErrors.MembershipStatus = ["Membership Status is required"];
+    }
+    if (!membershipStartDate) {
+      newErrors.MembershipStartDate = ["Start Date is required"];
+    }
+    if (!membershipEndDate) {
+      newErrors.MembershipEndDate = ["End Date is required"];
+    }
+    if (freeSessions === "") {
+      newErrors.FreeSessions = ["Free Sessions is required"];
+    }
+    if (!branch) {
+      newErrors.BranchID = ["Branch is required"];
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // ---------------------- AUTO-DATE CALCULATION ----------------------
-  // Update start and end dates automatically based on the selected membership plan.
-  useEffect(() => {
-    if (membershipPlan) {
-      // Use current date as the start date.
-      const today = new Date();
-      const startDate = formatDate(today);
-      let endDate;
+  // -------------------------------------------------------
+  //  EVENT HANDLERS
+  // -------------------------------------------------------
 
-      if (membershipPlan === "1MonthBasic") {
-        // One month later: Create a new Date, set month + 1.
-        const temp = new Date(today);
-        temp.setMonth(temp.getMonth() + 1);
-        endDate = formatDate(temp);
-      } else if (membershipPlan === "annualPremium") {
-        // One year later.
-        const temp = new Date(today);
-        temp.setFullYear(temp.getFullYear() + 1);
-        endDate = formatDate(temp);
+  /**
+   * Called when user picks a plan from the dropdown
+   * => auto-calc membershipStartDate (today)
+   * => parse plan.Duration to add months
+   */
+  const handlePlanChange = (e) => {
+    const planID = e.target.value;
+    setSelectedPlanID(planID);
+
+    const foundPlan = plans.find((p) => p.PlanID === planID);
+    if (foundPlan) {
+      const today = new Date();
+      setMembershipStartDate(formatDate(today));
+
+      let monthsToAdd = 0;
+      const match = foundPlan.Duration.match(/^(\d+)\s+month/i);
+      if (match) {
+        monthsToAdd = parseInt(match[1], 10);
       }
-      setMembershipStartDate(startDate);
-      setMembershipEndDate(endDate);
+
+      let endDate = today;
+      if (monthsToAdd > 0) {
+        endDate = addMonths(today, monthsToAdd);
+      }
+      setMembershipEndDate(formatDate(endDate));
     } else {
-      // Clear the dates if no plan is selected.
       setMembershipStartDate("");
       setMembershipEndDate("");
     }
-  }, [membershipPlan]);
+  };
 
-  // ---------------------- HANDLERS ----------------------
+  /**
+   * Handles the file upload for biometrics
+   */
   const handleBiometricUpload = (e) => {
-    setBiometricData(e.target.files[0]);
+    if (e.target.files && e.target.files[0]) {
+      setBiometricData(e.target.files[0]);
+    }
   };
 
-  const handleOpenWebcam = () => {
-    setOpenWebcam(true);
-  };
+  // Webcam open/close
+  const handleOpenWebcam = () => setOpenWebcam(true);
+  const handleCloseWebcam = () => setOpenWebcam(false);
 
-  const handleCloseWebcam = () => {
-    setOpenWebcam(false);
-  };
-
+  /**
+   * Captures image from webcam
+   */
   const captureImage = useCallback(() => {
     if (webcamRef.current) {
       const imageSrc = webcamRef.current.getScreenshot();
@@ -158,32 +219,61 @@ export default function AddNewMemberLayout({ onClose }) {
     }
   }, []);
 
+  /**
+   * Submits form data to /membership/members via Axios
+   * => handles local validation 
+   * => handles server 422 validation error 
+   * => calls onClose if success
+   */
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      console.log("Member Details:", {
-        fullName,
-        email,
-        phoneNumber,
-        membershipPlan,
-        membershipCardNumber,
-        membershipStatus,
-        membershipStartDate,
-        membershipEndDate,
-        biometricData,
-        freeSessions,
-        branch,
-        notes,
-        capturedImage,
-      });
-      alert("Member registration submitted!");
-      if (onClose) onClose();
-    } else {
+
+    // 1) Run local front-end checks
+    if (!validateForm()) {
       alert("Please fix the errors before submitting.");
+      return;
     }
+
+    // 2) Build payload
+    const payload = {
+      FullName: fullName,
+      Email: email,
+      Phone: phoneNumber,
+      PlanID: selectedPlanID,
+      MembershipCardNumber: membershipCardNumber,
+      MembershipCardIssued: membershipCardIssued,
+      MembershipStatus: membershipStatus,
+      MembershipStartDate: membershipStartDate,
+      MembershipEndDate: membershipEndDate,
+      FreeSessions: parseInt(freeSessions, 10) || 0,
+      Notes: notes,
+      BranchID: branch,
+      // If you want to pass biometrics as a file in the same request,
+      // you'd need FormData. For demonstration, we skip that here.
+    };
+
+    // 3) POST to your server
+    axios.post("/membership/members", payload)
+      .then((res) => {
+        console.log("New member created:", res.data);
+        // 1) call parent's callback if provided:
+        if (onMemberCreated) {
+          onMemberCreated(res.data);        }
+        // 2) close the dialog
+        if (onClose) onClose();
+      })
+      .catch((error) => {
+        if (error.response && error.response.status === 422) {
+          setErrors(error.response.data.errors || {});
+        } else {
+          console.error("Error creating member:", error);
+        }
+      });
   };
 
-  // ---------------------- RENDER ----------------------
+  // -------------------------------------------------------
+  //  RENDER
+  // -------------------------------------------------------
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="lg">
       <DialogTitle sx={{ p: 2 }}>
@@ -194,23 +284,22 @@ export default function AddNewMemberLayout({ onClose }) {
           </IconButton>
         </Box>
       </DialogTitle>
+
       <DialogContent dividers>
         <Box sx={{ p: 2 }}>
           <Divider sx={{ mb: 3 }} />
 
           <form onSubmit={handleSubmit}>
-            <Grid
-              container
-              spacing={3}
-              direction={isMobile ? "column" : "row"}
-            >
-              {/* Left Section or Top Section */}
+            <Grid container spacing={3} direction={isMobile ? "column" : "row"}>
+              {/* Left/Top Section */}
               <Grid
                 item
                 xs={12}
                 md={6}
                 sx={{
-                  backgroundColor: isMobile ? "transparent" : "rgba(0, 0, 0, 0.02)",
+                  backgroundColor: isMobile
+                    ? "transparent"
+                    : "rgba(0, 0, 0, 0.02)",
                   p: 2,
                   borderRadius: 2,
                 }}
@@ -218,6 +307,7 @@ export default function AddNewMemberLayout({ onClose }) {
                 <Typography variant="subtitle1" sx={{ mb: 2 }}>
                   Personal & Membership Details
                 </Typography>
+
                 <Grid container spacing={2}>
                   {/* Full Name */}
                   <Grid item xs={12}>
@@ -225,13 +315,14 @@ export default function AddNewMemberLayout({ onClose }) {
                       label="Full Name"
                       variant="outlined"
                       fullWidth
+                      required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      error={!!errors.fullName}
-                      helperText={errors.fullName}
-                      required
+                      error={!!errors.FullName}
+                      helperText={errors.FullName && errors.FullName[0]}
                     />
                   </Grid>
+
                   {/* Email */}
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -239,46 +330,52 @@ export default function AddNewMemberLayout({ onClose }) {
                       variant="outlined"
                       type="email"
                       fullWidth
+                      required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      error={!!errors.email}
-                      helperText={errors.email}
-                      required
+                      error={!!errors.Email}
+                      helperText={errors.Email && errors.Email[0]}
                     />
                   </Grid>
+
                   {/* Phone Number */}
                   <Grid item xs={12} sm={6}>
                     <TextField
                       label="Phone Number"
                       variant="outlined"
                       fullWidth
+                      required
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value)}
-                      error={!!errors.phoneNumber}
-                      helperText={errors.phoneNumber || "Format: 123-456-7890"}
-                      required
+                      error={!!errors.Phone}
+                      helperText={errors.Phone && errors.Phone[0]}
                     />
                   </Grid>
-                  {/* Membership Plan */}
+
+                  {/* Plan Selection */}
                   <Grid item xs={12} sm={6}>
                     <TextField
                       select
                       label="Membership Plan"
                       variant="outlined"
                       fullWidth
-                      value={membershipPlan}
-                      onChange={(e) => setMembershipPlan(e.target.value)}
-                      error={!!errors.membershipPlan}
-                      helperText={errors.membershipPlan}
                       required
+                      value={selectedPlanID}
+                      onChange={handlePlanChange}
+                      error={!!errors.PlanID}
+                      helperText={errors.PlanID && errors.PlanID[0]}
                     >
-                      {membershipPlanOptions.map((option) => (
-                        <MenuItem key={option.value} value={option.value}>
-                          {option.label}
+                      <MenuItem value="">
+                        <em>-- Select a Plan --</em>
+                      </MenuItem>
+                      {plans.map((plan) => (
+                        <MenuItem key={plan.PlanID} value={plan.PlanID}>
+                          {plan.PlanName}
                         </MenuItem>
                       ))}
                     </TextField>
                   </Grid>
+
                   {/* Membership Status */}
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -286,32 +383,54 @@ export default function AddNewMemberLayout({ onClose }) {
                       label="Membership Status"
                       variant="outlined"
                       fullWidth
+                      required
                       value={membershipStatus}
                       onChange={(e) => setMembershipStatus(e.target.value)}
-                      error={!!errors.membershipStatus}
-                      helperText={errors.membershipStatus}
-                      required
+                      error={!!errors.MembershipStatus}
+                      helperText={
+                        errors.MembershipStatus && errors.MembershipStatus[0]
+                      }
                     >
-                      {membershipStatusOptions.map((option) => (
-                        <MenuItem key={option.value} value={option.value}>
-                          {option.label}
-                        </MenuItem>
-                      ))}
+                      <MenuItem value="Active">Active</MenuItem>
+                      <MenuItem value="Pending">Pending</MenuItem>
+                      <MenuItem value="Expired">Expired</MenuItem>
                     </TextField>
                   </Grid>
+
                   {/* Membership Card Number */}
                   <Grid item xs={12}>
                     <TextField
                       label="Membership Card Number"
                       variant="outlined"
                       fullWidth
-                      value={membershipCardNumber}
-                      onChange={(e) => setMembershipCardNumber(e.target.value)}
-                      error={!!errors.membershipCardNumber}
-                      helperText={errors.membershipCardNumber}
                       required
+                      value={membershipCardNumber}
+                      onChange={(e) =>
+                        setMembershipCardNumber(e.target.value)
+                      }
+                      error={!!errors.MembershipCardNumber}
+                      helperText={
+                        errors.MembershipCardNumber &&
+                        errors.MembershipCardNumber[0]
+                      }
                     />
                   </Grid>
+
+                  {/* Card Issued (bool) */}
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={membershipCardIssued}
+                          onChange={(e) =>
+                            setMembershipCardIssued(e.target.checked)
+                          }
+                        />
+                      }
+                      label="Membership Card Issued?"
+                    />
+                  </Grid>
+
                   {/* Free Sessions */}
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -319,14 +438,17 @@ export default function AddNewMemberLayout({ onClose }) {
                       variant="outlined"
                       type="number"
                       fullWidth
+                      required
                       value={freeSessions}
                       onChange={(e) => setFreeSessions(e.target.value)}
-                      error={!!errors.freeSessions}
-                      helperText={errors.freeSessions}
-                      required
+                      error={!!errors.FreeSessions}
+                      helperText={
+                        errors.FreeSessions && errors.FreeSessions[0]
+                      }
                       InputProps={{ inputProps: { min: 0 } }}
                     />
                   </Grid>
+
                   {/* Branch */}
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -334,29 +456,30 @@ export default function AddNewMemberLayout({ onClose }) {
                       label="Branch"
                       variant="outlined"
                       fullWidth
+                      required
                       value={branch}
                       onChange={(e) => setBranch(e.target.value)}
-                      error={!!errors.branch}
-                      helperText={errors.branch}
-                      required
+                      error={!!errors.BranchID}
+                      helperText={errors.BranchID && errors.BranchID[0]}
                     >
-                      {branchOptions.map((option) => (
-                        <MenuItem key={option.value} value={option.value}>
-                          {option.label}
-                        </MenuItem>
-                      ))}
+                      <MenuItem value="">-- Select Branch --</MenuItem>
+                      <MenuItem value="branch1">Branch 1</MenuItem>
+                      <MenuItem value="branch2">Branch 2</MenuItem>
+                      <MenuItem value="branch3">Branch 3</MenuItem>
                     </TextField>
                   </Grid>
                 </Grid>
               </Grid>
 
-              {/* Right Section or Bottom Section */}
+              {/* Right/Bottom Section */}
               <Grid
                 item
                 xs={12}
                 md={6}
                 sx={{
-                  backgroundColor: isMobile ? "transparent" : "rgba(0, 0, 0, 0.02)",
+                  backgroundColor: isMobile
+                    ? "transparent"
+                    : "rgba(0, 0, 0, 0.02)",
                   p: 2,
                   borderRadius: 2,
                 }}
@@ -364,6 +487,7 @@ export default function AddNewMemberLayout({ onClose }) {
                 <Typography variant="subtitle1" sx={{ mb: 2 }}>
                   Dates, Biometric & Additional Info
                 </Typography>
+
                 <Grid container spacing={2}>
                   {/* Membership Start Date */}
                   <Grid item xs={12} sm={6}>
@@ -372,14 +496,18 @@ export default function AddNewMemberLayout({ onClose }) {
                       label="Membership Start Date"
                       variant="outlined"
                       fullWidth
+                      required
                       InputLabelProps={{ shrink: true }}
                       value={membershipStartDate}
                       onChange={(e) => setMembershipStartDate(e.target.value)}
-                      error={!!errors.membershipStartDate}
-                      helperText={errors.membershipStartDate}
-                      required
+                      error={!!errors.MembershipStartDate}
+                      helperText={
+                        errors.MembershipStartDate &&
+                        errors.MembershipStartDate[0]
+                      }
                     />
                   </Grid>
+
                   {/* Membership End Date */}
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -387,14 +515,18 @@ export default function AddNewMemberLayout({ onClose }) {
                       label="Membership End Date"
                       variant="outlined"
                       fullWidth
+                      required
                       InputLabelProps={{ shrink: true }}
                       value={membershipEndDate}
                       onChange={(e) => setMembershipEndDate(e.target.value)}
-                      error={!!errors.membershipEndDate}
-                      helperText={errors.membershipEndDate}
-                      required
+                      error={!!errors.MembershipEndDate}
+                      helperText={
+                        errors.MembershipEndDate &&
+                        errors.MembershipEndDate[0]
+                      }
                     />
                   </Grid>
+
                   {/* Biometric Data Upload */}
                   <Grid item xs={12} sm={6}>
                     <Button
@@ -416,6 +548,7 @@ export default function AddNewMemberLayout({ onClose }) {
                       </Typography>
                     )}
                   </Grid>
+
                   {/* Notes */}
                   <Grid item xs={12}>
                     <TextField
@@ -428,7 +561,8 @@ export default function AddNewMemberLayout({ onClose }) {
                       onChange={(e) => setNotes(e.target.value)}
                     />
                   </Grid>
-                  {/* Captured Image Preview */}
+
+                  {/* Captured Image Preview (from webcam) */}
                   {capturedImage && (
                     <Grid item xs={12}>
                       <Typography variant="subtitle1" gutterBottom>
@@ -476,7 +610,7 @@ export default function AddNewMemberLayout({ onClose }) {
             </Box>
           </form>
 
-          {/* ---------------- Webcam Dialog ---------------- */}
+          {/* Webcam Dialog */}
           <Dialog open={openWebcam} onClose={handleCloseWebcam} maxWidth="sm" fullWidth>
             <DialogTitle sx={{ m: 0, p: 2 }}>
               Capture Profile Picture
@@ -493,6 +627,7 @@ export default function AddNewMemberLayout({ onClose }) {
                 <CloseIcon />
               </IconButton>
             </DialogTitle>
+
             <DialogContent dividers sx={{ textAlign: "center" }}>
               <Webcam
                 audio={false}
@@ -503,6 +638,7 @@ export default function AddNewMemberLayout({ onClose }) {
                 videoConstraints={videoConstraints}
               />
             </DialogContent>
+
             <DialogActions>
               <Button onClick={handleCloseWebcam} color="secondary">
                 Cancel

@@ -24,39 +24,11 @@ import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank";
 import BuildCircleIcon from "@mui/icons-material/BuildCircle"; // "InMaintenance"
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline"; // "OutOfService"
 
-// ---------- SAMPLE DATA -----------
-// Added a "branch" property for each equipment item.
-const initialEquipment = [
-  {
-    id: "eq-1001",
-    equipmentId: "EQ-1001",
-    name: "Treadmill Model X",
-    serialNumber: "SN12345X",
-    status: "Available",
-    branch: "New York",
-  },
-  {
-    id: "eq-1002",
-    equipmentId: "EQ-1002",
-    name: "Bench Press",
-    serialNumber: "SN5678A",
-    status: "InMaintenance",
-    branch: "Los Angeles",
-  },
-  {
-    id: "eq-1003",
-    equipmentId: "EQ-1003",
-    name: "Elliptical Machine",
-    serialNumber: "SN9999E",
-    status: "OutOfService",
-    branch: "New York",
-  },
-];
+////////////////////////////////////////////////////////////////////////////////
+// Utility functions
+////////////////////////////////////////////////////////////////////////////////
 
-// Branch options (plus an "All Branches" option)
-const branchOptions = ["All Branches", "New York", "Los Angeles", "Chicago"];
-
-// Helper: reorder array items within the same column
+// Reorder items in the same list
 const reorder = (list, startIndex, endIndex) => {
   const result = Array.from(list);
   const [removed] = result.splice(startIndex, 1);
@@ -66,9 +38,9 @@ const reorder = (list, startIndex, endIndex) => {
 
 // Decide background color for each column
 const droppableBackground = {
-  availableList: "#A6AEBF",    // light green
-  maintenanceList: "#F4DEB3", // light yellow
-  outServiceList: "#C96868",  // light red/pink
+  availableList: "#A6AEBF",
+  maintenanceList: "#F4DEB3",
+  outServiceList: "#C96868",
 };
 
 // Draggable item styling
@@ -97,8 +69,13 @@ const getListStyle = (droppableId, isDraggingOver) => ({
   transition: "background 0.2s",
 });
 
+////////////////////////////////////////////////////////////////////////////////
+// The main component
+////////////////////////////////////////////////////////////////////////////////
 export default function MaintenanceEquip() {
-  // ------------------- Real-Time Clock -------------------
+  // --------------------------------------------------------------------------
+  // 1) Real-Time Clock (just for display)
+  // --------------------------------------------------------------------------
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
     const timer = setInterval(() => {
@@ -106,105 +83,173 @@ export default function MaintenanceEquip() {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-  const clockString = currentTime.toLocaleTimeString(); // e.g. "10:05:23 AM"
+  const clockString = currentTime.toLocaleTimeString();
 
-  // Main equipment state
-  const [equipment, setEquipment] = useState(initialEquipment);
+  // --------------------------------------------------------------------------
+  // 2) Equipment State & Fetching
+  // --------------------------------------------------------------------------
+  const [equipment, setEquipment] = useState([]);
+  
+  // You may have actual numeric IDs or different branches in your DB.
+  // If you want a drop-down for branches, define them here:
+  const branchOptions = ["All Branches", "1", "2", "3"];
 
-  // Activity logs (most recent on top)
+  // Fetch equipment from /operations/equipment
+  useEffect(() => {
+    fetch("/operations/equipment", { method: "GET" })
+      .then((res) => res.json()) 
+      .then((data) => {
+        // Depending on how you return data from Laravel:
+        //   - If using Inertia, you might need data.props.equipment
+        //   - If returning plain JSON, it might just be data.equipment
+        const eq = data.equipment || data.props?.equipment || [];
+        setEquipment(eq);
+      })
+      .catch((err) => console.error("Error fetching equipment:", err));
+  }, []);
+
+  // --------------------------------------------------------------------------
+  // 3) Maintenance Logs State & Fetching
+  // --------------------------------------------------------------------------
   const [logs, setLogs] = useState([]);
 
-  // ------------- Branch Filter State -------------
+  // Fetch logs from /operations/maintenance-logs
+  useEffect(() => {
+    fetch("/operations/maintenance-logs", { method: "GET" })
+      .then((res) => res.json())
+      .then((data) => {
+        // data.logs might be the array
+        const logsArray = data.logs || [];
+        setLogs(logsArray);
+      })
+      .catch((err) => console.error("Error fetching maintenance logs:", err));
+  }, []);
+
+  // --------------------------------------------------------------------------
+  // 4) Branch Filter (for columns)
+  // --------------------------------------------------------------------------
   const [selectedBranch, setSelectedBranch] = useState("All Branches");
 
-  // Filter equipment based on the selected branch.
+  // Filter equipment if branch != "All Branches"
   const filteredEquipment =
     selectedBranch === "All Branches"
       ? equipment
-      : equipment.filter((eq) => eq.branch === selectedBranch);
+      : equipment.filter(
+          (eq) => String(eq.BranchID) === String(selectedBranch)
+        );
 
-  // Derived lists for the 3 columns (from filtered equipment)
-  const availableEquip = filteredEquipment.filter((eq) => eq.status === "Available");
-  const maintenanceEquip = filteredEquipment.filter((eq) => eq.status === "InMaintenance");
-  const outOfServiceEquip = filteredEquipment.filter((eq) => eq.status === "OutOfService");
+  // Separate columns by status
+  const availableEquip = filteredEquipment.filter((eq) => eq.Status === "Available");
+  const maintenanceEquip = filteredEquipment.filter((eq) => eq.Status === "InMaintenance");
+  const outOfServiceEquip = filteredEquipment.filter((eq) => eq.Status === "OutOfService");
 
-  // ============ ADD EQUIPMENT DIALOG ============
+  // --------------------------------------------------------------------------
+  // 5) Add Equipment Dialog
+  // --------------------------------------------------------------------------
   const [isAddOpen, setAddOpen] = useState(false);
   const [newEquipData, setNewEquipData] = useState({
-    equipmentId: "",
-    name: "",
-    serialNumber: "",
-    branch: branchOptions[1], // default to first branch option (skip "All Branches")
+    // If EquipmentID is auto-increment in your DB, omit it
+    Name: "",
+    SerialNumber: "",
+    BranchID: "", // or 0 if numeric
   });
   const [addError, setAddError] = useState("");
 
   const handleAddOpen = () => {
-    setNewEquipData({ equipmentId: "", name: "", serialNumber: "", branch: branchOptions[1] });
+    setNewEquipData({ Name: "", SerialNumber: "", BranchID: "" });
     setAddError("");
     setAddOpen(true);
   };
+
   const handleAddEquipChange = (e) => {
     const { name, value } = e.target;
     setNewEquipData((prev) => ({ ...prev, [name]: value }));
   };
-  const handleAddEquipSubmit = () => {
-    // Minimal validation
-    if (!newEquipData.equipmentId || !newEquipData.name || !newEquipData.serialNumber) {
-      setAddError("Please fill out all fields.");
-      return;
-    }
-    // Check duplicates
-    if (equipment.some((eq) => eq.equipmentId === newEquipData.equipmentId)) {
-      setAddError("That equipment ID already exists!");
-      return;
-    }
-    // Add new item
-    const newItem = {
-      id: `eq-${Date.now()}`,
-      equipmentId: newEquipData.equipmentId,
-      name: newEquipData.name,
-      serialNumber: newEquipData.serialNumber,
-      status: "Available",
-      branch: newEquipData.branch,
-    };
-    setEquipment((prev) => [...prev, newItem]);
-    setLogs((prev) => [
-      `Added Equipment: ${newEquipData.equipmentId} (${newEquipData.name}) in ${newEquipData.branch}.`,
-      ...prev,
-    ]);
-    setAddOpen(false);
+
+  const refetchEquipment = () => {
+    fetch("/operations/equipment", { method: "GET" })
+      .then((res) => res.json())
+      .then((data) => {
+        const eq = data.equipment || data.props?.equipment || [];
+        setEquipment(eq);
+      })
+      .catch((err) => console.error("Error refetching equipment:", err));
   };
 
-  // ============== DRAG & DROP LOGIC ==============
+  const handleAddEquipSubmit = () => {
+    if (!newEquipData.Name || !newEquipData.SerialNumber) {
+      setAddError("Please fill out required fields (Name, SerialNumber).");
+      return;
+    }
+
+    // Building payload to match your "storeEquipment" method
+    const payload = {
+      // If your EquipmentID is auto-increment, do NOT include it here
+      Name: newEquipData.Name,
+      SerialNumber: newEquipData.SerialNumber,
+      Status: "Available", // newly added equipment defaults to Available
+      BranchID: newEquipData.BranchID || null,
+    };
+
+    fetch("/operations/equipment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": window.csrfToken, // or however you handle CSRF
+      },
+      body: JSON.stringify(payload),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Could not save equipment.");
+        return res;
+      })
+      .then(() => {
+        // Refresh the list from the server so we see the new item
+        refetchEquipment();
+        setAddOpen(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setAddError("Error saving new equipment.");
+      });
+  };
+
+  // --------------------------------------------------------------------------
+  // 6) Drag & Drop Logic
+  // --------------------------------------------------------------------------
   const onDragEnd = (result) => {
     const { source, destination } = result;
     if (!destination) return;
 
-    // Same-list reordering
-    if (source.droppableId === destination.droppableId && source.index !== destination.index) {
-      let updated = [];
+    // Same column reorder
+    if (
+      source.droppableId === destination.droppableId &&
+      source.index !== destination.index
+    ) {
+      let updatedList = [];
       if (source.droppableId === "availableList") {
-        updated = reorder(availableEquip, source.index, destination.index);
-        applyReorderToEquipment(updated, "Available");
+        updatedList = reorder(availableEquip, source.index, destination.index);
+        applyReorderToEquipment(updatedList, "Available");
       } else if (source.droppableId === "maintenanceList") {
-        updated = reorder(maintenanceEquip, source.index, destination.index);
-        applyReorderToEquipment(updated, "InMaintenance");
+        updatedList = reorder(maintenanceEquip, source.index, destination.index);
+        applyReorderToEquipment(updatedList, "InMaintenance");
       } else if (source.droppableId === "outServiceList") {
-        updated = reorder(outOfServiceEquip, source.index, destination.index);
-        applyReorderToEquipment(updated, "OutOfService");
+        updatedList = reorder(outOfServiceEquip, source.index, destination.index);
+        applyReorderToEquipment(updatedList, "OutOfService");
       }
       return;
     }
 
-    // Different-list drop
+    // Different column => change status
     if (source.droppableId !== destination.droppableId) {
       handleChangeStatus(source, destination);
     }
   };
 
+  // Rebuild the equipment array in state after reordering
   const applyReorderToEquipment = (newArr, status) => {
-    const other = equipment.filter((eq) => eq.status !== status);
-    const final = [...other, ...newArr.map((item) => ({ ...item, status }))];
+    const others = equipment.filter((eq) => eq.Status !== status);
+    const final = [...others, ...newArr.map((item) => ({ ...item, Status: status }))];
     setEquipment(final);
   };
 
@@ -214,19 +259,12 @@ export default function MaintenanceEquip() {
     return outOfServiceEquip;
   };
 
-  const applyAllLists = (availArr, maintArr, outArr) => {
-    const final = [
-      ...availArr.map((eq) => ({ ...eq, status: "Available" })),
-      ...maintArr.map((eq) => ({ ...eq, status: "InMaintenance" })),
-      ...outArr.map((eq) => ({ ...eq, status: "OutOfService" })),
-    ];
-    setEquipment(final);
-  };
-
-  // -------------- Status-Change Form Logic --------------
+  // --------------------------------------------------------------------------
+  // 7) Status-Change (Modal)
+  // --------------------------------------------------------------------------
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState({
-    equipmentId: "",
+    EquipmentID: null,
     oldStatus: "",
     newStatus: "",
     reason: "",
@@ -235,10 +273,8 @@ export default function MaintenanceEquip() {
   });
   const [modalEquipItem, setModalEquipItem] = useState(null);
 
-  // This function is invoked when we drag from one column to another
   const handleChangeStatus = (source, destination) => {
     const srcList = getListFromDroppable(source.droppableId);
-    const destList = getListFromDroppable(destination.droppableId);
     const [movedItem] = srcList.splice(source.index, 1);
 
     let newStatus = "Available";
@@ -247,9 +283,9 @@ export default function MaintenanceEquip() {
 
     setModalEquipItem(movedItem);
     setModalData({
-      equipmentId: movedItem.equipmentId,
-      oldStatus: movedItem.status,
-      newStatus: newStatus,
+      EquipmentID: movedItem.EquipmentID,
+      oldStatus: movedItem.Status,
+      newStatus,
       reason: "",
       date: "",
       time: "",
@@ -264,44 +300,217 @@ export default function MaintenanceEquip() {
 
   const handleModalCancel = () => {
     setModalOpen(false);
-    // Revert equipment state if necessary.
-    setEquipment((prev) => [...prev]);
+    // Re-fetch or revert local changes if needed. 
   };
 
   const handleModalSave = () => {
-    const { equipmentId, oldStatus, newStatus, reason, date, time } = modalData;
-    if (!date || !time) {
-      alert("Please specify both date and time for this status change.");
+    const { EquipmentID, oldStatus, newStatus, reason, date, time } = modalData;
+    if (!EquipmentID || !date || !time) {
+      alert("Please specify date/time for the status change.");
       return;
     }
-    setEquipment((prev) =>
-      prev.map((eq) => {
-        if (eq.id === modalEquipItem.id) {
-          return { ...eq, status: newStatus };
+
+    // 1) Update the equipment status via /operations/equipment
+    // We'll fetch the old record from local state to fill in missing fields:
+    const eq = modalEquipItem || {};
+    const payload = {
+      EquipmentID: eq.EquipmentID,
+      Name: eq.Name,
+      SerialNumber: eq.SerialNumber,
+      Status: newStatus,
+      BranchID: eq.BranchID,
+    };
+
+    fetch("/operations/equipment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": window.csrfToken,
+      },
+      body: JSON.stringify(payload),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to update equipment status.");
+        return res;
+      })
+      .then(() => {
+        // 2) Optionally add a maintenance log if moving to InMaintenance or OutOfService
+        if (newStatus === "InMaintenance" || newStatus === "OutOfService") {
+          const logPayload = {
+            EquipmentID: eq.EquipmentID,
+            MaintenanceDate: date, // could combine date/time if you prefer
+            IssueDescription: reason,
+            Resolution: "",
+            MaintainedBy: null,
+            NextMaintenanceDate: null,
+            Notes: `Status changed from ${oldStatus} to ${newStatus} at ${time}.`,
+          };
+
+          return fetch("/operations/equipment/maintenance", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRF-TOKEN": window.csrfToken,
+            },
+            body: JSON.stringify(logPayload),
+          });
         }
-        return eq;
+      })
+      .then(() => {
+        // Local state update
+        setEquipment((prev) =>
+          prev.map((item) => {
+            if (item.EquipmentID === EquipmentID) {
+              return { ...item, Status: newStatus };
+            }
+            return item;
+          })
+        );
+        // Also refresh logs from the server so we see the new entry
+        refetchLogs();
+        setModalOpen(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        alert("Error updating status or adding maintenance log.");
+      });
+  };
+
+  const refetchLogs = () => {
+    fetch("/operations/maintenance-logs")
+      .then((res) => res.json())
+      .then((data) => {
+        setLogs(data.logs || []);
+      })
+      .catch((err) => console.error(err));
+  };
+
+  // --------------------------------------------------------------------------
+  // 8) Remove (Delete) an Equipment (if you want)
+  //    You do NOT have an explicit DELETE route for equipment in your snippet,
+  //    so this is optional or depends on your setup.
+  // --------------------------------------------------------------------------
+  const removeEquipment = (EquipmentID) => {
+    if (!window.confirm("Are you sure you want to delete this equipment?")) return;
+
+    // If you have a DELETE route for equipment, call it here.
+    // Otherwise, you can just remove from local state (but not from DB).
+    setEquipment((prev) => prev.filter((eq) => eq.EquipmentID !== EquipmentID));
+  };
+
+  // --------------------------------------------------------------------------
+  // 9) Activity Logs (Server-Synced) - Editing and Deleting
+  //    The logs we have in `logs` come from the server. We'll show them in
+  //    a list and allow editing (PUT) or deleting (DELETE).
+  // --------------------------------------------------------------------------
+  // For editing a single log:
+  const [editLogIndex, setEditLogIndex] = useState(null);
+  const [editLogText, setEditLogText] = useState("");
+
+  const handleEditLog = (logItem, idx) => {
+    setEditLogIndex(idx);
+    // We'll store the entire log JSON as text, or just the relevant part.
+    // For simplicity, let's store the "IssueDescription" or "Notes" in a big text field.
+    // Or store them combined. That’s up to you.
+    const combined = `Issue: ${logItem.IssueDescription}\nResolution: ${logItem.Resolution}\nNotes: ${logItem.Notes}`;
+    setEditLogText(combined);
+  };
+
+  const handleSaveLogEdit = () => {
+    if (editLogIndex == null) return;
+
+    // We need the log's ID to update on the server:
+    const logToEdit = logs[editLogIndex];
+    if (!logToEdit) {
+      setEditLogIndex(null);
+      return;
+    }
+
+    // For a more robust solution, you'd parse `editLogText` into fields again.
+    // Example: we might set IssueDescription, Resolution, or Notes from the text.
+    // For a simpler example, let's assume we only want to update `Notes`.
+    const updatedLog = { ...logToEdit, Notes: editLogText };
+
+    fetch(`/operations/maintenance-logs/${logToEdit.MaintenanceLogID}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": window.csrfToken,
+      },
+      body: JSON.stringify(updatedLog),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to update maintenance log.");
+        return res.json();
+      })
+      .then(() => {
+        // Re-fetch logs or update local state
+        refetchLogs();
+        setEditLogIndex(null);
+        setEditLogText("");
+      })
+      .catch((err) => {
+        console.error(err);
+      });
+  };
+
+  const handleCancelLogEdit = () => {
+    setEditLogIndex(null);
+    setEditLogText("");
+  };
+
+  // For deleting a log
+  const deleteLog = (logId) => {
+    if (!window.confirm("Are you sure you want to delete this log entry?")) return;
+
+    fetch(`/operations/maintenance-logs/${logId}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": window.csrfToken,
+      },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Error deleting log.");
+        // Re-fetch
+        refetchLogs();
+      })
+      .catch((err) => console.error(err));
+  };
+
+  // Clear all logs (a naive approach: iterate and delete)
+  const clearAllLogs = () => {
+    if (!window.confirm("Really delete all logs?")) return;
+    // Delete each log from the server
+    const promises = logs.map((log) =>
+      fetch(`/operations/maintenance-logs/${log.MaintenanceLogID}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-TOKEN": window.csrfToken,
+        },
       })
     );
-    const logMsg = `Equipment #${equipmentId} changed from ${oldStatus} to ${newStatus} on ${date} at ${time}. Reason: ${reason || "N/A"}`;
-    setLogs((prev) => [logMsg, ...prev]);
-    applyAllLists(availableEquip, maintenanceEquip, outOfServiceEquip);
-    setModalOpen(false);
+
+    Promise.all(promises)
+      .then(() => {
+        refetchLogs();
+      })
+      .catch((err) => console.error("Failed clearing all logs:", err));
   };
 
-  // -------------- Remove (Delete) an Equipment --------------
-  const removeEquipment = (id) => {
-    const itemToRemove = equipment.find((eq) => eq.id === id);
-    if (!itemToRemove) return;
-    setEquipment((prev) => prev.filter((eq) => eq.id !== id));
-    setLogs((prev) => [
-      `Removed Equipment #${itemToRemove.equipmentId} (${itemToRemove.name}) from system.`,
-      ...prev,
-    ]);
-  };
+  // Limit logs displayed if you want
+  const truncatedLogs = logs.slice(0, 15);
 
-  // =============== DRAGGABLE RENDER ===============
+  // --------------------------------------------------------------------------
+  // 10) Rendering the Draggable Items
+  // --------------------------------------------------------------------------
   const renderDraggableItem = (item, index) => (
-    <Draggable key={item.id} draggableId={item.id} index={index}>
+    <Draggable
+      key={String(item.EquipmentID)}
+      draggableId={String(item.EquipmentID)}
+      index={index}
+    >
       {(provided, snapshot) => (
         <Box
           ref={provided.innerRef}
@@ -312,55 +521,30 @@ export default function MaintenanceEquip() {
           <Box sx={{ textAlign: "right" }}>
             <IconButton
               size="small"
-              onClick={() => removeEquipment(item.id)}
+              onClick={() => removeEquipment(item.EquipmentID)}
               sx={{ color: "#f44336" }}
             >
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Box>
-          <strong>{item.equipmentId}</strong> - {item.name}
+          <strong>{item.EquipmentID}</strong> - {item.Name}
           <br />
-          <small>SN: {item.serialNumber}</small>
+          <small>SN: {item.SerialNumber}</small>
           <br />
-          <small>Branch: {item.branch}</small>
+          <small>Branch: {item.BranchID}</small>
         </Box>
       )}
     </Draggable>
   );
 
-  // =============== LOG EDITING ===============
-  const [editLogIndex, setEditLogIndex] = useState(null);
-  const [editLogText, setEditLogText] = useState("");
-
-  const handleEditLog = (idx) => {
-    setEditLogIndex(idx);
-    setEditLogText(logs[idx]);
-  };
-  const handleSaveLogEdit = () => {
-    if (editLogIndex !== null) {
-      const updated = [...logs];
-      updated[editLogIndex] = editLogText;
-      setLogs(updated);
-    }
-    setEditLogIndex(null);
-    setEditLogText("");
-  };
-  const handleCancelLogEdit = () => {
-    setEditLogIndex(null);
-    setEditLogText("");
-  };
-
-  // Show only 15 logs
-  const truncatedLogs = logs.slice(0, 15);
-
-  // CLEAR ALL
-  const clearAllLogs = () => setLogs([]);
-
+  // --------------------------------------------------------------------------
+  // 11) Final Return (JSX Layout)
+  // --------------------------------------------------------------------------
   return (
-    <Box sx={{ display: "flex", gap: 3, p: 4 }}>
+    <Box sx={{ display: "flex", gap: 3, p: 4, flexWrap: "wrap" }}>
       {/* Left side: Equipment Drag & Drop */}
-      <Box flex={1}>
-        {/* Branch Filter positioned at the top */}
+      <Box flex={1} minWidth={600}>
+        {/* Branch Filter */}
         <FormControl sx={{ mb: 2, minWidth: 180 }}>
           <InputLabel>Filter by Branch</InputLabel>
           <Select
@@ -368,9 +552,9 @@ export default function MaintenanceEquip() {
             value={selectedBranch}
             onChange={(e) => setSelectedBranch(e.target.value)}
           >
-            {branchOptions.map((branch) => (
-              <MenuItem key={branch} value={branch}>
-                {branch}
+            {branchOptions.map((branchVal) => (
+              <MenuItem key={branchVal} value={branchVal}>
+                {branchVal}
               </MenuItem>
             ))}
           </Select>
@@ -390,6 +574,7 @@ export default function MaintenanceEquip() {
           Add Equipment
         </Button>
 
+        {/* Drag & Drop Columns */}
         <DragDropContext onDragEnd={onDragEnd}>
           <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
             {/* Available */}
@@ -449,7 +634,7 @@ export default function MaintenanceEquip() {
         </DragDropContext>
       </Box>
 
-      {/* Right side: Activity & Real-Time Clock */}
+      {/* Right side: Activity Logs & Clock */}
       <Box sx={{ width: 320, maxWidth: "100%" }}>
         {/* Real-Time Clock */}
         <Paper
@@ -496,7 +681,7 @@ export default function MaintenanceEquip() {
           ) : (
             truncatedLogs.map((log, idx) => (
               <Box
-                key={idx}
+                key={String(log.MaintenanceLogID)}
                 sx={{
                   display: "flex",
                   alignItems: "center",
@@ -505,16 +690,37 @@ export default function MaintenanceEquip() {
                   pb: 1,
                 }}
               >
-                <Typography variant="body2" sx={{ flex: 1, fontSize: "0.9rem" }}>
-                  {log}
-                </Typography>
+                {/* Show a short summary of the log. Adjust as you wish. */}
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="body2" sx={{ fontSize: "0.9rem" }}>
+                    <strong>Log #{log.MaintenanceLogID}</strong>
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontSize: "0.8rem" }}>
+                    Equipment #{log.EquipmentID} | Date: {log.MaintenanceDate}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontSize: "0.8rem" }}>
+                    Issue: {log.IssueDescription} | Resolution: {log.Resolution}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontSize: "0.8rem" }}>
+                    Notes: {log.Notes}
+                  </Typography>
+                </Box>
+
                 <IconButton
                   size="small"
                   color="inherit"
-                  onClick={() => handleEditLog(idx)}
+                  onClick={() => handleEditLog(log, idx)}
                   sx={{ ml: 1 }}
                 >
                   <EditIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  color="inherit"
+                  onClick={() => deleteLog(log.MaintenanceLogID)}
+                  sx={{ ml: 1, color: "red" }}
+                >
+                  <DeleteIcon fontSize="small" />
                 </IconButton>
               </Box>
             ))
@@ -522,47 +728,39 @@ export default function MaintenanceEquip() {
         </Paper>
       </Box>
 
-      {/* DIALOG: Add Equipment */}
+      {/* Dialog: Add Equipment */}
       <Dialog open={isAddOpen} onClose={() => setAddOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Add Equipment</DialogTitle>
         <DialogContent dividers>
           <TextField
-            label="Equipment ID"
-            name="equipmentId"
-            fullWidth
-            margin="normal"
-            value={newEquipData.equipmentId}
-            onChange={handleAddEquipChange}
-          />
-          <TextField
             label="Name"
-            name="name"
+            name="Name"
             fullWidth
             margin="normal"
-            value={newEquipData.name}
+            value={newEquipData.Name}
             onChange={handleAddEquipChange}
           />
           <TextField
             label="Serial Number"
-            name="serialNumber"
+            name="SerialNumber"
             fullWidth
             margin="normal"
-            value={newEquipData.serialNumber}
+            value={newEquipData.SerialNumber}
             onChange={handleAddEquipChange}
           />
           <FormControl fullWidth margin="normal">
             <InputLabel>Select Branch</InputLabel>
             <Select
               label="Select Branch"
-              name="branch"
-              value={newEquipData.branch}
+              name="BranchID"
+              value={newEquipData.BranchID}
               onChange={handleAddEquipChange}
             >
               {branchOptions
-                .filter((branch) => branch !== "All Branches")
-                .map((branch) => (
-                  <MenuItem key={branch} value={branch}>
-                    {branch}
+                .filter((b) => b !== "All Branches")
+                .map((b) => (
+                  <MenuItem key={b} value={b}>
+                    {b}
                   </MenuItem>
                 ))}
             </Select>
@@ -581,12 +779,13 @@ export default function MaintenanceEquip() {
         </DialogActions>
       </Dialog>
 
-      {/* DIALOG: Status Transition Form */}
+      {/* Dialog: Status Transition Form */}
       <Dialog open={modalOpen} onClose={handleModalCancel} fullWidth maxWidth="sm">
         <DialogTitle>Change Status</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" gutterBottom>
-            Equipment: {modalData.equipmentId} <br />
+            Equipment: {modalData.EquipmentID}
+            <br />
             Changing from "{modalData.oldStatus}" to "{modalData.newStatus}".
           </Typography>
           <TextField
@@ -628,9 +827,14 @@ export default function MaintenanceEquip() {
         </DialogActions>
       </Dialog>
 
-      {/* DIALOG: Edit Log Entry */}
-      <Dialog open={editLogIndex !== null} onClose={handleCancelLogEdit} fullWidth maxWidth="sm">
-        <DialogTitle>Edit Activity Log</DialogTitle>
+      {/* Dialog: Edit Log Entry */}
+      <Dialog
+        open={editLogIndex !== null}
+        onClose={handleCancelLogEdit}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Edit Maintenance Log</DialogTitle>
         <DialogContent dividers>
           <TextField
             fullWidth

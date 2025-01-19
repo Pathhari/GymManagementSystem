@@ -41,81 +41,76 @@ class FinanceController extends Controller
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
-
-        // Validation of daily cash flow fields
+    
         $data = $request->validate([
-            'Date'              => 'required|date',
-            'BusinessType'      => 'required|string|max:100',  
-            'CashSales'         => 'nullable|numeric|min:0',
-            'GCashSales'        => 'nullable|numeric|min:0',
-            'BPISales'          => 'nullable|numeric|min:0',
-            'WalkInCashSales'   => 'nullable|numeric|min:0',
-            'WalkInGCashSales'  => 'nullable|numeric|min:0',
-            'WalkInBPISales'    => 'nullable|numeric|min:0',
-            'PettyCash'         => 'nullable|numeric|min:0',
-            'DepositedAmount'   => 'nullable|numeric|min:0',
-            'Remarks'           => 'nullable|string',
+            'BranchID'         => 'required|exists:branches,BranchID',  // always pick a branch
+            'Date'             => 'required|date',
+            'BusinessType'     => 'required|string|max:100',
+            'CashSales'        => 'nullable|numeric|min:0',
+            'GCashSales'       => 'nullable|numeric|min:0',
+            'BPISales'         => 'nullable|numeric|min:0',
+            'WalkInCashSales'  => 'nullable|numeric|min:0',
+            'WalkInGCashSales' => 'nullable|numeric|min:0',
+            'WalkInBPISales'   => 'nullable|numeric|min:0',
+            'PettyCash'        => 'nullable|numeric|min:0',
+            'DepositedAmount'  => 'nullable|numeric|min:0',
+            'Remarks'          => 'nullable|string',
         ]);
-
+    
         // Auto-compute total
-        $total  = 0;
-        $total += $data['CashSales']         ?? 0;
-        $total += $data['GCashSales']        ?? 0;
-        $total += $data['BPISales']          ?? 0;
-        $total += $data['WalkInCashSales']   ?? 0;
-        $total += $data['WalkInGCashSales']  ?? 0;
-        $total += $data['WalkInBPISales']    ?? 0;
+        $total = 0;
+        $total += $data['CashSales']        ?? 0;
+        $total += $data['GCashSales']       ?? 0;
+        $total += $data['BPISales']         ?? 0;
+        $total += $data['WalkInCashSales']  ?? 0;
+        $total += $data['WalkInGCashSales'] ?? 0;
+        $total += $data['WalkInBPISales']   ?? 0;
         $data['TotalSales'] = $total;
-
-        // If staff, auto-assign their BranchID
+    
+        // If staff is logged in, ensure the selected BranchID is one they have access to
         if ($staff) {
-            $data['BranchID'] = $staff->BranchID;
+            // If staff is multi-branch assigned, verify that $request->BranchID is in their pivot
+            $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
+            if (! in_array($data['BranchID'], $staffBranchIDs)) {
+                abort(403, 'You cannot create a Cash Flow for a branch you are not assigned to.');
+            }
         } 
-        // If owner or admin can pick a branch from the form, you'd do:
-        // else if ($admin || $owner) { $data['BranchID'] = $request->BranchID; }
-
+        // If admin/owner => we trust the incoming BranchID is valid
+    
         DailyCashFlow::create($data);
-
+    
         return redirect()
             ->route('finance.cashflow.index')
             ->with('success','Cash flow recorded successfully.');
     }
-
-    /**
-     * 62. View => route:Owner,Admin,Staff
-     * Possibly partial data for Staff (per your example).
-     */
+    
     public function indexCashFlow()
     {
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
-
-        // Staff can only see daily cash flow for their branch
+    
         if ($staff) {
+            // If staff => show only branches they have
+            $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
             // Possibly partial columns
-            $flows = DailyCashFlow::select(
-                'CashFlowID','Date','BusinessType','TotalSales','Remarks'
-            )
-            ->where('BranchID', $staff->BranchID)
-            ->orderBy('Date','desc')
-            ->get();
-        } elseif ($admin) {
-            // Admin sees full columns from all branches (assuming multi-branch)
-            // Or if an admin is pinned to a single branch, filter here as well
-            $flows = DailyCashFlow::orderBy('Date','desc')->get();
-        } elseif ($owner) {
-            // Owner sees everything
+            $flows = DailyCashFlow::select('CashFlowID','Date','BusinessType','TotalSales','Remarks')
+                ->whereIn('BranchID', $staffBranchIDs)
+                ->orderBy('Date','desc')
+                ->get();
+        } elseif ($admin || $owner) {
+            // Admin/Owner => see everything
             $flows = DailyCashFlow::orderBy('Date','desc')->get();
         } else {
-            // If user is not recognized, or for universal logic
-            $flows = DailyCashFlow::orderBy('Date','desc')->get();
+            // If no auth => maybe show none or handle differently
+            $flows = collect([]);
         }
-
+    
         return Inertia::render('Finance/CashFlow/Index', [
             'flows' => $flows
         ]);
     }
+    
 
     /* ------------------------------------------------------------------
      * AE. EXPENSES TABLE (#81–84 in ERD)
@@ -140,136 +135,114 @@ class FinanceController extends Controller
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
-
+    
         $data = $request->validate([
-            'ExpenseDate'     => 'required|date',
-            'ExpenseCategory' => 'required|string|max:100',
-            'Amount'          => 'required|numeric|min:0',
-            'PaymentMethod'   => 'nullable|string|max:50',
-            'StaffID'         => 'nullable|exists:staff,StaffID',
-            'Notes'           => 'nullable|string',
+            'BranchID'       => 'required|exists:branches,BranchID',
+            'ExpenseDate'    => 'required|date',
+            'ExpenseCategory'=> 'required|string|max:100',
+            'Amount'         => 'required|numeric|min:0',
+            'PaymentMethod'  => 'nullable|string|max:50',
+            'StaffID'        => 'nullable|exists:staff,StaffID',
+            'Notes'          => 'nullable|string',
         ]);
-
-        // If staff, auto-assign BranchID
+    
         if ($staff) {
-            $data['BranchID'] = $staff->BranchID;
-        } 
-        // If admin/owner can choose a branch from the form:
-        // else if ($admin || $owner) { $data['BranchID'] = $request->BranchID; }
-
+            // If staff => check if BranchID is among staff->branches
+            $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
+            if (! in_array($data['BranchID'], $staffBranchIDs)) {
+                abort(403, 'You cannot create an Expense for a branch you are not assigned to.');
+            }
+        }
+    
         Expense::create($data);
-
-        return redirect()
-            ->route('finance.expenses.index')
+    
+        return redirect()->route('finance.expenses.index')
             ->with('success','Expense created successfully.');
     }
-
-    /**
-     * 82. Read => route:All (Staff partial?)
-     */
+    
     public function indexExpenses()
     {
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
-
-        // If staff => filter by staff->BranchID
+    
         if ($staff) {
-            // staff sees partial columns + only their branch
+            $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
+            // Staff sees partial columns + only branches in $staffBranchIDs
             $expenses = Expense::with('staff')
                 ->select('ExpenseID','ExpenseDate','ExpenseCategory','Amount','Notes','StaffID','BranchID')
-                ->where('BranchID', $staff->BranchID)
+                ->whereIn('BranchID', $staffBranchIDs)
                 ->orderBy('ExpenseDate','desc')
                 ->get();
         } elseif ($admin || $owner) {
-            // admin/owner => see all branches, all columns
+            // admin/owner => see all
             $expenses = Expense::with('staff')
                 ->orderBy('ExpenseDate','desc')
                 ->get();
         } else {
-            // fallback => maybe no data
             $expenses = collect([]);
         }
-
+    
         return Inertia::render('Finance/Expenses/Index', [
             'expenses' => $expenses
         ]);
     }
-
-    /**
-     * 83. Update => route:Owner,Admin
-     * Show form to edit existing expense.
-     */
-    public function editExpense($id)
-    {
-        $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
-
-        $expense = Expense::findOrFail($id);
-
-        // If staff, ensure it’s in their branch
-        if ($staff && $expense->BranchID != $staff->BranchID) {
-            abort(403, 'Cannot edit an expense from another branch.');
-        }
-
-        return Inertia::render('Finance/Expenses/Edit', [
-            'expense' => $expense
-        ]);
-    }
-
+    
     public function updateExpense(Request $request, $id)
     {
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
-
+    
         $expense = Expense::findOrFail($id);
-
-        // staff => check branch
-        if ($staff && $expense->BranchID != $staff->BranchID) {
-            abort(403, 'Cannot update an expense from another branch.');
-        }
-
+    
         $data = $request->validate([
-            'ExpenseDate'     => 'required|date',
-            'ExpenseCategory' => 'required|string|max:100',
-            'Amount'          => 'required|numeric|min:0',
-            'PaymentMethod'   => 'nullable|string|max:50',
-            'StaffID'         => 'nullable|exists:staff,StaffID',
-            'Notes'           => 'nullable|string',
+            'BranchID'       => 'required|exists:branches,BranchID',
+            'ExpenseDate'    => 'required|date',
+            'ExpenseCategory'=> 'required|string|max:100',
+            'Amount'         => 'required|numeric|min:0',
+            'PaymentMethod'  => 'nullable|string|max:50',
+            'StaffID'        => 'nullable|exists:staff,StaffID',
+            'Notes'          => 'nullable|string',
         ]);
-
-        // If staff => keep existing expense->BranchID (cannot change)
-        // If admin/owner => could allow $data['BranchID'] = $request->BranchID if you want
-
+    
+        // Staff => check pivot
+        if ($staff) {
+            $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
+            // Also ensure the existing expense belongs to one of staff's branches
+            // AND the new BranchID is also allowed
+            if (! in_array($expense->BranchID, $staffBranchIDs)) {
+                abort(403, 'Cannot update expense from a branch you are not assigned to.');
+            }
+            if (! in_array($data['BranchID'], $staffBranchIDs)) {
+                abort(403, 'Cannot change expense to a branch you are not assigned to.');
+            }
+        }
+    
         $expense->update($data);
-
-        return redirect()
-            ->route('finance.expenses.index')
+    
+        return redirect()->route('finance.expenses.index')
             ->with('success','Expense updated successfully.');
     }
-
-    /**
-     * 84. Delete => route:Owner,Admin
-     */
+    
     public function destroyExpense($id)
     {
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
-
+    
         $expense = Expense::findOrFail($id);
-
-        // staff => block if belongs to another branch
-        if ($staff && $expense->BranchID != $staff->BranchID) {
-            abort(403, 'Cannot delete an expense from another branch.');
+    
+        if ($staff) {
+            $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
+            if (! in_array($expense->BranchID, $staffBranchIDs)) {
+                abort(403, 'Cannot delete an expense from a branch you are not assigned to.');
+            }
         }
-
+    
         $expense->delete();
-
-        return redirect()
-            ->route('finance.expenses.index')
+    
+        return redirect()->route('finance.expenses.index')
             ->with('success','Expense deleted successfully.');
     }
 
