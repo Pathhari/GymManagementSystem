@@ -39,11 +39,11 @@ import WarningIcon from "@mui/icons-material/Warning";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import DirectionsWalkIcon from "@mui/icons-material/DirectionsWalk";
 import AddNewMemberLayout from "../../Layouts/AddNewMemberLayout";
-
+// Import the shared Add Walk-In layout
+import AddWalkInLayout from "../../Layouts/AddWalkInLayout";
 
 // --------- For CSV Export ---------
 import { CSVLink } from "react-csv";
-
 // --------- For PDF Export ---------
 import jsPDF from "jspdf";
 import "jspdf-autotable";
@@ -51,7 +51,7 @@ import "jspdf-autotable";
 // ---------------------- SAMPLE DATA ----------------------
 const sampleMemberships = [
   {
-    id: 1, // Add this line
+    id: 1,
     MemberID: 1,
     FullName: "John Doe",
     Email: "john.doe@example.com",
@@ -67,7 +67,7 @@ const sampleMemberships = [
     Notes: "First time member",
   },
   {
-    id: 2, // Add this line
+    id: 2,
     MemberID: 2,
     FullName: "Jane Smith",
     Email: "jane.smith@example.com",
@@ -139,7 +139,6 @@ const sampleLogs = [
   },
 ];
 
-// Updated sampleWalkIns with no ModeOfPayment or AmountPaid yet
 const sampleWalkIns = [
   {
     WalkInID: 1,
@@ -149,7 +148,6 @@ const sampleWalkIns = [
     VisitTime: "10:30 AM",
     Purpose: "Trial Session",
     PaymentID: null,
-    // New fields below:
     ModeOfPayment: "",
     AmountPaid: 0,
     Remarks: "Interested in membership.",
@@ -164,7 +162,6 @@ const sampleWalkIns = [
     VisitTime: "02:00 PM",
     Purpose: "Facility Booking",
     PaymentID: 101,
-    // New fields below:
     ModeOfPayment: "GCash",
     AmountPaid: 150,
     Remarks: "Booked a badminton court.",
@@ -179,12 +176,9 @@ export default function MembershipManagement() {
   const [filteredMemberships, setFilteredMemberships] = useState(sampleMemberships);
   const [selectedMembership, setSelectedMembership] = useState(null);
   const [isAddMembershipLayoutVisible, setAddMembershipLayoutVisible] = useState(false);
-
-  // Modals for Membership
   const [isViewMembershipOpen, setViewMembershipOpen] = useState(false);
   const [isEditMembershipOpen, setEditMembershipOpen] = useState(false);
 
-  // For adding a new membership
   const [newMembership, setNewMembership] = useState({
     FullName: "",
     Email: "",
@@ -208,7 +202,6 @@ export default function MembershipManagement() {
   const [isViewWalkInOpen, setViewWalkInOpen] = useState(false);
   const [isAddWalkInOpen, setAddWalkInOpen] = useState(false);
   const [isEditWalkInOpen, setEditWalkInOpen] = useState(false);
-  // Updated state to include new fields ModeOfPayment and AmountPaid
   const [newWalkIn, setNewWalkIn] = useState({
     FullName: "",
     Phone: "",
@@ -216,8 +209,8 @@ export default function MembershipManagement() {
     VisitTime: "",
     Purpose: "",
     PaymentID: null,
-    ModeOfPayment: "", // New field (Enum: "GCash", "Cash", "BPI")
-    AmountPaid: 0,     // New field (Decimal)
+    ModeOfPayment: "",
+    AmountPaid: 0,
     Remarks: "",
   });
 
@@ -252,7 +245,6 @@ export default function MembershipManagement() {
 
   // -------------- NEW: BRANCH FILTER --------------
   const [branch, setBranch] = useState("all");
-  // Dummy branch options. Replace with real data when ready.
   const branchOptions = [
     { value: "all", label: "All Branches" },
     { value: "branch1", label: "Branch 1" },
@@ -262,20 +254,15 @@ export default function MembershipManagement() {
 
   const handleTimePeriodChange = (e) => {
     setTimePeriod(e.target.value);
-    // Insert your filtering logic if desired
   };
   const handleDateFromChange = (e) => {
     setDateFrom(e.target.value);
-    // Insert your filtering logic if desired
   };
   const handleDateToChange = (e) => {
     setDateTo(e.target.value);
-    // Insert your filtering logic if desired
   };
-  // Handle Branch Filter Change
   const handleBranchChange = (e) => {
     setBranch(e.target.value);
-    // Insert branch-based filtering logic if desired
   };
 
   // ------------------- ADD MEMBERSHIP -------------------------
@@ -306,8 +293,6 @@ export default function MembershipManagement() {
     const updated = [...membershipRecords, newRecord];
     setMembershipRecords(updated);
     setFilteredMemberships(updated);
-
-    // Reset form and close dialog
     setNewMembership({
       FullName: "",
       Email: "",
@@ -323,10 +308,10 @@ export default function MembershipManagement() {
       Notes: "",
     });
     setErrors({});
-    setAddMembershipOpen(false);
+    setAddMembershipLayoutVisible(false);
   };
 
-  // ------------------- MEMBERSHIP: VIEW, EDIT, Freeze, DELETE ---------
+  // ------------------- MEMBERSHIP VIEW, EDIT, FREEZE, DELETE --------------------
   const handleViewMembership = (record) => {
     setSelectedMembership(record);
     setViewMembershipOpen(true);
@@ -353,7 +338,7 @@ export default function MembershipManagement() {
     setEditMembershipOpen(false);
   };
 
-  // Add these states for Freeze Modal
+  // ------------------- FREEZE MODAL -------------------
   const [isFreezeModalOpen, setFreezeModalOpen] = useState(false);
   const [freezeForm, setFreezeForm] = useState({
     MemberID: null,
@@ -395,7 +380,7 @@ export default function MembershipManagement() {
     setFreezeModalOpen(false);
   };
 
-  // ------------------- FREEZES: VIEW, EDIT, DELETE ------------
+  // ------------------- FREEZE VIEW, EDIT, DELETE -------------------
   const handleViewFreeze = (record) => {
     setSelectedFreeze(record);
     setViewFreezeOpen(true);
@@ -422,7 +407,7 @@ export default function MembershipManagement() {
     setEditFreezeOpen(false);
   };
 
-  // ------------------- RENEWALS: VIEW, EDIT, DELETE -----------
+  // ------------------- RENEWALS VIEW, EDIT, DELETE -------------------
   const handleViewRenewal = (record) => {
     setSelectedRenewal(record);
     setViewRenewalOpen(true);
@@ -449,7 +434,7 @@ export default function MembershipManagement() {
     setEditRenewalOpen(false);
   };
 
-  // ------------------- LOGS: VIEW, DELETE (no Edit) -----------
+  // ------------------- LOGS VIEW, DELETE -------------------
   const handleViewLog = (record) => {
     setSelectedLog(record);
     setViewLogOpen(true);
@@ -472,7 +457,6 @@ export default function MembershipManagement() {
       );
       setFilteredMemberships(filtered);
     } else if (activeTab === 1) {
-      // Walk-Ins tab search
       const filtered = walkInRecords.filter((item) =>
         Object.values(item).some((val) => String(val).toLowerCase().includes(value))
       );
@@ -512,7 +496,7 @@ export default function MembershipManagement() {
     }
   };
 
-  // ------------------- Overview Cards: 4 Metrics -------------------
+  // ------------------- Overview Cards -------------------
   const totalMembers = membershipRecords.length;
   const activeMembers = membershipRecords.filter(
     (m) => m.MembershipStatus === "Active"
@@ -642,7 +626,6 @@ export default function MembershipManagement() {
     },
   ];
 
-  // ------------------- WALK-INS: COLUMNS & ACTIONS -------------------
   const walkInColumns = [
     { field: "WalkInID", headerName: "Walk-In ID", width: 100 },
     { field: "FullName", headerName: "Full Name", width: 150 },
@@ -671,7 +654,10 @@ export default function MembershipManagement() {
                 minWidth: "40px",
                 padding: "6px",
               }}
-              onClick={() => handleViewWalkIn(params.row)}
+              onClick={() => {
+                setViewWalkInOpen(true);
+                handleViewWalkIn(params.row);
+              }}
             >
               <VisibilityIcon />
             </Button>
@@ -686,7 +672,10 @@ export default function MembershipManagement() {
                 minWidth: "40px",
                 padding: "6px",
               }}
-              onClick={() => handleEditWalkIn(params.row)}
+              onClick={() => {
+                setEditWalkInOpen(true);
+                handleEditWalkIn(params.row);
+              }}
             >
               <EditIcon />
             </Button>
@@ -710,69 +699,6 @@ export default function MembershipManagement() {
       ),
     },
   ];
-
-  const handleAddWalkInChange = (e) => {
-    const { name, value } = e.target;
-    setNewWalkIn((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleAddWalkIn = () => {
-    const nextID = walkInRecords.length
-      ? Math.max(...walkInRecords.map((w) => w.WalkInID)) + 1
-      : 1;
-
-    const newRecord = {
-      WalkInID: nextID,
-      ...newWalkIn,
-      CreatedAt: new Date().toISOString(),
-      UpdatedAt: new Date().toISOString(),
-    };
-
-    setWalkInRecords((prev) => [...prev, newRecord]);
-    setFilteredWalkIns((prev) => [...prev, newRecord]);
-    setNewWalkIn({
-      FullName: "",
-      Phone: "",
-      VisitDate: "",
-      VisitTime: "",
-      Purpose: "",
-      PaymentID: null,
-      ModeOfPayment: "",
-      AmountPaid: 0,
-      Remarks: "",
-    });
-    setAddWalkInOpen(false);
-  };
-
-  const handleViewWalkIn = (record) => {
-    setSelectedWalkIn(record);
-    setViewWalkInOpen(true);
-  };
-
-  const handleEditWalkIn = (record) => {
-    setSelectedWalkIn(record);
-    setEditWalkInOpen(true);
-  };
-
-  const handleEditWalkInSubmit = () => {
-    setWalkInRecords((prev) =>
-      prev.map((w) =>
-        w.WalkInID === selectedWalkIn.WalkInID ? { ...selectedWalkIn } : w
-      )
-    );
-    setFilteredWalkIns((prev) =>
-      prev.map((w) =>
-        w.WalkInID === selectedWalkIn.WalkInID ? { ...selectedWalkIn } : w
-      )
-    );
-    setEditWalkInOpen(false);
-  };
-
-  const handleDeleteWalkIn = (walkInID) => {
-    const updated = walkInRecords.filter((w) => w.WalkInID !== walkInID);
-    setWalkInRecords(updated);
-    setFilteredWalkIns(updated);
-  };
 
   const renewalColumns = [
     { field: "RenewalID", headerName: "Renewal ID", width: 110 },
@@ -976,7 +902,6 @@ export default function MembershipManagement() {
   // ==================================================================
   // ======================= EXPORT FUNCTIONALITY ======================
   // ==================================================================
-
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
   const openExportMenu = Boolean(exportAnchorEl);
 
@@ -1147,6 +1072,50 @@ export default function MembershipManagement() {
     csvFilename = "Logs.csv";
   }
 
+  // ------------------- Missing Function: EDIT WALK-IN SUBMIT -------------------
+  const handleEditWalkInSubmit = () => {
+    setWalkInRecords((prev) =>
+      prev.map((w) =>
+        w.WalkInID === selectedWalkIn.WalkInID ? { ...selectedWalkIn } : w
+      )
+    );
+    setFilteredWalkIns((prev) =>
+      prev.map((w) =>
+        w.WalkInID === selectedWalkIn.WalkInID ? { ...selectedWalkIn } : w
+      )
+    );
+    setEditWalkInOpen(false);
+  };
+
+  // ------------------- NEW: ADD WALK-IN FUNCTION -------------------
+  const handleAddWalkIn = () => {
+    const nextID = walkInRecords.length
+      ? Math.max(...walkInRecords.map((w) => w.WalkInID)) + 1
+      : 1;
+
+    const newRecord = {
+      WalkInID: nextID,
+      ...newWalkIn,
+      CreatedAt: new Date().toISOString(),
+      UpdatedAt: new Date().toISOString(),
+    };
+
+    setWalkInRecords((prev) => [...prev, newRecord]);
+    setFilteredWalkIns((prev) => [...prev, newRecord]);
+    setNewWalkIn({
+      FullName: "",
+      Phone: "",
+      VisitDate: "",
+      VisitTime: "",
+      Purpose: "",
+      PaymentID: null,
+      ModeOfPayment: "",
+      AmountPaid: 0,
+      Remarks: "",
+    });
+    setAddWalkInOpen(false);
+  };
+
   return (
     <Box sx={{ p: 4 }}>
       {/* TIME PERIOD, DATE & BRANCH FILTERS */}
@@ -1161,11 +1130,7 @@ export default function MembershipManagement() {
       >
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Time Period</InputLabel>
-          <Select
-            value={timePeriod}
-            label="Time Period"
-            onChange={handleTimePeriodChange}
-          >
+          <Select value={timePeriod} label="Time Period" onChange={handleTimePeriodChange}>
             <MenuItem value="daily">Daily</MenuItem>
             <MenuItem value="weekly">Weekly</MenuItem>
             <MenuItem value="monthly">Monthly</MenuItem>
@@ -1188,14 +1153,9 @@ export default function MembershipManagement() {
           value={dateTo}
           onChange={handleDateToChange}
         />
-        {/* New Branch Filter */}
         <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel>Branch</InputLabel>
-          <Select
-            value={branch}
-            label="Branch"
-            onChange={handleBranchChange}
-          >
+          <Select value={branch} label="Branch" onChange={handleBranchChange}>
             {branchOptions.map((option) => (
               <MenuItem key={option.value} value={option.value}>
                 {option.label}
@@ -1223,11 +1183,8 @@ export default function MembershipManagement() {
                 <Typography variant="h6" gutterBottom>
                   Total Members
                 </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
-                >
-                  {totalMembers}
+                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                  {membershipRecords.length}
                 </Typography>
               </CardContent>
             </Card>
@@ -1242,17 +1199,12 @@ export default function MembershipManagement() {
                 p: 2,
               }}
             >
-              <DirectionsWalkIcon
-                sx={{ fontSize: 40, color: "primary", mr: 2 }}
-              />
+              <DirectionsWalkIcon sx={{ fontSize: 40, color: "primary", mr: 2 }} />
               <CardContent>
                 <Typography variant="h6" gutterBottom>
                   Walk-Ins
                 </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
-                >
+                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
                   {walkInRecords.length}
                 </Typography>
               </CardContent>
@@ -1273,10 +1225,7 @@ export default function MembershipManagement() {
                 <Typography variant="h6" gutterBottom>
                   Expired Memberships
                 </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
-                >
+                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
                   {expiredMemberships}
                 </Typography>
               </CardContent>
@@ -1297,10 +1246,7 @@ export default function MembershipManagement() {
                 <Typography variant="h6" gutterBottom>
                   Upcoming Expirations
                 </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
-                >
+                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
                   {upcomingExpirations}
                 </Typography>
               </CardContent>
@@ -1321,11 +1267,7 @@ export default function MembershipManagement() {
         <Typography variant="h4" gutterBottom>
           Membership Management
         </Typography>
-        <Tabs
-          value={activeTab}
-          onChange={handleTabChange}
-          sx={{ flexWrap: "wrap", justifyContent: "flex-end" }}
-        >
+        <Tabs value={activeTab} onChange={handleTabChange} sx={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Tab icon={<PeopleIcon />} label="Memberships" />
           <Tab icon={<PeopleIcon />} label="Walk-Ins" />
           <Tab icon={<AutorenewIcon />} label="Renewals" />
@@ -1346,12 +1288,7 @@ export default function MembershipManagement() {
             sx={{ width: "100%", maxWidth: 300 }}
           />
           <Box sx={{ display: "flex", gap: 1 }}>
-            <Button
-              variant="outlined"
-              startIcon={<FileDownloadIcon />}
-              onClick={handleExportMenuOpen}
-              sx={{ textTransform: "none" }}
-            >
+            <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExportMenuOpen} sx={{ textTransform: "none" }}>
               Export
             </Button>
             <Menu
@@ -1389,14 +1326,14 @@ export default function MembershipManagement() {
               <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
             </Menu>
             {activeTab === 0 && (
-               <Button
-               variant="contained"
-               color="primary"
-               startIcon={<AddIcon />}
-               onClick={() => setAddMembershipLayoutVisible(true)}
-             >
-               Add New Membership
-             </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={() => setAddMembershipLayoutVisible(true)}
+              >
+                Add New Membership
+              </Button>
             )}
             {activeTab === 1 && (
               <Button
@@ -1411,232 +1348,107 @@ export default function MembershipManagement() {
           </Box>
         </Box>
         <div style={{ height: 420, width: "100%" }}>
-          <DataGrid
-            rows={rows}
-            columns={columns}
-            getRowId={getRowId}
-            pageSize={5}
-            rowsPerPageOptions={[5, 10]}
-          />
+          <DataGrid rows={rows} columns={columns} getRowId={getRowId} pageSize={5} rowsPerPageOptions={[5, 10]} />
         </div>
       </Paper>
 
-  {/* Add New Membership Layout */}
-  {isAddMembershipLayoutVisible && (
-        <AddNewMemberLayout
-          onClose={() => setAddMembershipLayoutVisible(false)}
+      {/* Add New Membership Layout */}
+      {isAddMembershipLayoutVisible && (
+        <AddNewMemberLayout onClose={() => setAddMembershipLayoutVisible(false)} />
+      )}
+
+      {/* ========== ADD WALK-IN DIALOG VIA SHARED LAYOUT ========== */}
+      {isAddWalkInOpen && (
+        <AddWalkInLayout
+          isOpen={isAddWalkInOpen}
+          onClose={() => setAddWalkInOpen(false)}
+          walkInData={newWalkIn}
+          onChange={(e) => {
+            const { name, value } = e.target;
+            setNewWalkIn((prev) => ({ ...prev, [name]: value }));
+          }}
+          onAdd={handleAddWalkIn}
         />
       )}
-      {/* ========== ADD WALK-IN DIALOG ========== */}
-      <Dialog
-        open={isAddWalkInOpen}
-        onClose={() => setAddWalkInOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Add New Walk-In</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Full Name"
-            name="FullName"
-            value={newWalkIn.FullName}
-            onChange={handleAddWalkInChange}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Phone"
-            name="Phone"
-            value={newWalkIn.Phone}
-            onChange={handleAddWalkInChange}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Visit Date"
-            name="VisitDate"
-            type="date"
-            InputLabelProps={{ shrink: true }}
-            value={newWalkIn.VisitDate}
-            onChange={handleAddWalkInChange}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Visit Time"
-            name="VisitTime"
-            type="time"
-            InputLabelProps={{ shrink: true }}
-            value={newWalkIn.VisitTime}
-            onChange={handleAddWalkInChange}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Purpose"
-            name="Purpose"
-            value={newWalkIn.Purpose}
-            onChange={handleAddWalkInChange}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Payment ID"
-            name="PaymentID"
-            value={newWalkIn.PaymentID}
-            onChange={handleAddWalkInChange}
-            variant="outlined"
-          />
-          <FormControl fullWidth margin="dense" variant="outlined">
-            <InputLabel>Mode of Payment</InputLabel>
-            <Select
-              name="ModeOfPayment"
-              value={newWalkIn.ModeOfPayment}
-              onChange={handleAddWalkInChange}
-              label="Mode of Payment"
-            >
-              <MenuItem value="Cash">Cash</MenuItem>
-              <MenuItem value="GCash">GCash</MenuItem>
-              <MenuItem value="BPI">BPI</MenuItem>
-            </Select>
-          </FormControl>
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Amount Paid"
-            name="AmountPaid"
-            type="number"
-            value={newWalkIn.AmountPaid}
-            onChange={handleAddWalkInChange}
-            variant="outlined"
-          />
-          <TextField
-            fullWidth
-            margin="dense"
-            label="Remarks"
-            name="Remarks"
-            multiline
-            rows={3}
-            value={newWalkIn.Remarks}
-            onChange={handleAddWalkInChange}
-            variant="outlined"
-          />
+
+      {/* ========== VIEW WALK-IN DIALOG ========== */}
+      <Dialog open={isViewWalkInOpen} onClose={() => setViewWalkInOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Walk-In Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedWalkIn && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Full Name:
+                  </Typography>
+                  <Typography variant="body1">{selectedWalkIn.FullName}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Phone:
+                  </Typography>
+                  <Typography variant="body1">{selectedWalkIn.Phone}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Visit Date:
+                  </Typography>
+                  <Typography variant="body1">{selectedWalkIn.VisitDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Visit Time:
+                  </Typography>
+                  <Typography variant="body1">{selectedWalkIn.VisitTime}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Purpose:
+                  </Typography>
+                  <Typography variant="body1">{selectedWalkIn.Purpose}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Payment ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedWalkIn.PaymentID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Mode of Payment:
+                  </Typography>
+                  <Typography variant="body1">{selectedWalkIn.ModeOfPayment}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Amount Paid:
+                  </Typography>
+                  <Typography variant="body1">${selectedWalkIn.AmountPaid}</Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="textSecondary">
+                    Remarks:
+                  </Typography>
+                  <Typography variant="body1">{selectedWalkIn.Remarks}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddWalkInOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleAddWalkIn}>
-            Add Walk-In
+          <Button onClick={() => setViewWalkInOpen(false)} variant="contained" color="primary">
+            Close
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* ========== VIEW WALK-IN DIALOG ========== */}
-      <Dialog
-  open={isViewWalkInOpen}
-  onClose={() => setViewWalkInOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Walk-In Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {selectedWalkIn && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-            <Typography variant="subtitle1" color="textSecondary">
-              <strong>Visitor Information</strong>
-            </Typography>
-            <Divider sx={{ my: 1 }} />
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Full Name:
-            </Typography>
-            <Typography variant="body1">{selectedWalkIn.FullName}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Phone:
-            </Typography>
-            <Typography variant="body1">{selectedWalkIn.Phone}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Visit Date:
-            </Typography>
-            <Typography variant="body1">{selectedWalkIn.VisitDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Visit Time:
-            </Typography>
-            <Typography variant="body1">{selectedWalkIn.VisitTime}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Purpose:
-            </Typography>
-            <Typography variant="body1">{selectedWalkIn.Purpose}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Payment ID:
-            </Typography>
-            <Typography variant="body1">{selectedWalkIn.PaymentID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Mode of Payment:
-            </Typography>
-            <Typography variant="body1">{selectedWalkIn.ModeOfPayment}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Amount Paid:
-            </Typography>
-            <Typography variant="body1">${selectedWalkIn.AmountPaid}</Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="body2" color="textSecondary">
-              Remarks:
-            </Typography>
-            <Typography variant="body1">{selectedWalkIn.Remarks}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewWalkInOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
-
-
-
       {/* ========== EDIT WALK-IN DIALOG ========== */}
-      <Dialog
-        open={isEditWalkInOpen}
-        onClose={() => setEditWalkInOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
+      <Dialog open={isEditWalkInOpen} onClose={() => setEditWalkInOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Edit Walk-In</DialogTitle>
         <DialogContent>
           {selectedWalkIn && (
@@ -1647,10 +1459,7 @@ export default function MembershipManagement() {
                 label="Full Name"
                 value={selectedWalkIn.FullName}
                 onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({
-                    ...prev,
-                    FullName: e.target.value,
-                  }))
+                  setSelectedWalkIn((prev) => ({ ...prev, FullName: e.target.value }))
                 }
                 variant="outlined"
               />
@@ -1660,10 +1469,7 @@ export default function MembershipManagement() {
                 label="Phone"
                 value={selectedWalkIn.Phone}
                 onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({
-                    ...prev,
-                    Phone: e.target.value,
-                  }))
+                  setSelectedWalkIn((prev) => ({ ...prev, Phone: e.target.value }))
                 }
                 variant="outlined"
               />
@@ -1675,10 +1481,7 @@ export default function MembershipManagement() {
                 InputLabelProps={{ shrink: true }}
                 value={selectedWalkIn.VisitDate}
                 onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({
-                    ...prev,
-                    VisitDate: e.target.value,
-                  }))
+                  setSelectedWalkIn((prev) => ({ ...prev, VisitDate: e.target.value }))
                 }
                 variant="outlined"
               />
@@ -1690,10 +1493,7 @@ export default function MembershipManagement() {
                 InputLabelProps={{ shrink: true }}
                 value={selectedWalkIn.VisitTime}
                 onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({
-                    ...prev,
-                    VisitTime: e.target.value,
-                  }))
+                  setSelectedWalkIn((prev) => ({ ...prev, VisitTime: e.target.value }))
                 }
                 variant="outlined"
               />
@@ -1703,10 +1503,7 @@ export default function MembershipManagement() {
                 label="Purpose"
                 value={selectedWalkIn.Purpose}
                 onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({
-                    ...prev,
-                    Purpose: e.target.value,
-                  }))
+                  setSelectedWalkIn((prev) => ({ ...prev, Purpose: e.target.value }))
                 }
                 variant="outlined"
               />
@@ -1716,10 +1513,7 @@ export default function MembershipManagement() {
                 label="Payment ID"
                 value={selectedWalkIn.PaymentID}
                 onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({
-                    ...prev,
-                    PaymentID: e.target.value,
-                  }))
+                  setSelectedWalkIn((prev) => ({ ...prev, PaymentID: e.target.value }))
                 }
                 variant="outlined"
               />
@@ -1729,10 +1523,7 @@ export default function MembershipManagement() {
                   name="ModeOfPayment"
                   value={selectedWalkIn.ModeOfPayment}
                   onChange={(e) =>
-                    setSelectedWalkIn((prev) => ({
-                      ...prev,
-                      ModeOfPayment: e.target.value,
-                    }))
+                    setSelectedWalkIn((prev) => ({ ...prev, ModeOfPayment: e.target.value }))
                   }
                   label="Mode of Payment"
                 >
@@ -1763,10 +1554,7 @@ export default function MembershipManagement() {
                 rows={3}
                 value={selectedWalkIn.Remarks}
                 onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({
-                    ...prev,
-                    Remarks: e.target.value,
-                  }))
+                  setSelectedWalkIn((prev) => ({ ...prev, Remarks: e.target.value }))
                 }
                 variant="outlined"
               />
@@ -1782,132 +1570,107 @@ export default function MembershipManagement() {
       </Dialog>
 
       {/* ========== VIEW MEMBERSHIP DIALOG ========== */}
-      <Dialog
-  open={isViewMembershipOpen}
-  onClose={() => setViewMembershipOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Membership Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {selectedMembership && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          {/* Personal Information Section */}
-          <Grid item xs={12}>
-            <Typography variant="subtitle1" color="textSecondary">
-              <strong>Personal Information</strong>
-            </Typography>
-            <Divider sx={{ my: 1 }} />
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Member ID:
-            </Typography>
-            <Typography variant="body1">{selectedMembership.MemberID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Full Name:
-            </Typography>
-            <Typography variant="body1">{selectedMembership.FullName}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Email:
-            </Typography>
-            <Typography variant="body1">{selectedMembership.Email}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Phone:
-            </Typography>
-            <Typography variant="body1">{selectedMembership.Phone}</Typography>
-          </Grid>
-          <Divider sx={{ my: 1 }} />
-
-          {/* Membership Information Section */}
-          <Grid item xs={12}>
-            <Typography variant="subtitle1" color="textSecondary">
-              <strong>Membership Information</strong>
-            </Typography>
-            <Divider sx={{ my: 1 }} />
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Plan ID:
-            </Typography>
-            <Typography variant="body1">{selectedMembership.PlanID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Membership Card #:
-            </Typography>
-            <Typography variant="body1">{selectedMembership.MembershipCardNumber}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Card Issued?:
-            </Typography>
-            <Typography variant="body1">
-              {selectedMembership.MembershipCardIssued ? "Yes" : "No"}
-            </Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Status:
-            </Typography>
-            <Typography variant="body1">{selectedMembership.MembershipStatus}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Start Date:
-            </Typography>
-            <Typography variant="body1">{selectedMembership.MembershipStartDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              End Date:
-            </Typography>
-            <Typography variant="body1">{selectedMembership.MembershipEndDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Biometrics:
-            </Typography>
-            <Typography variant="body1">{selectedMembership.Biometrics}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Free Sessions:
-            </Typography>
-            <Typography variant="body1">{selectedMembership.FreeSessions}</Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="body2" color="textSecondary">
-              Notes:
-            </Typography>
-            <Typography variant="body1">{selectedMembership.Notes}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewMembershipOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
-
+      <Dialog open={isViewMembershipOpen} onClose={() => setViewMembershipOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Membership Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedMembership && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Member ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedMembership.MemberID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Full Name:
+                  </Typography>
+                  <Typography variant="body1">{selectedMembership.FullName}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Email:
+                  </Typography>
+                  <Typography variant="body1">{selectedMembership.Email}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Phone:
+                  </Typography>
+                  <Typography variant="body1">{selectedMembership.Phone}</Typography>
+                </Grid>
+                <Divider sx={{ my: 1 }} />
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Plan ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedMembership.PlanID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Membership Card #:
+                  </Typography>
+                  <Typography variant="body1">{selectedMembership.MembershipCardNumber}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Card Issued?:
+                  </Typography>
+                  <Typography variant="body1">
+                    {selectedMembership.MembershipCardIssued ? "Yes" : "No"}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Status:
+                  </Typography>
+                  <Typography variant="body1">{selectedMembership.MembershipStatus}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Start Date:
+                  </Typography>
+                  <Typography variant="body1">{selectedMembership.MembershipStartDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    End Date:
+                  </Typography>
+                  <Typography variant="body1">{selectedMembership.MembershipEndDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Biometrics:
+                  </Typography>
+                  <Typography variant="body1">{selectedMembership.Biometrics}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Free Sessions:
+                  </Typography>
+                  <Typography variant="body1">{selectedMembership.FreeSessions}</Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="textSecondary">
+                    Notes:
+                  </Typography>
+                  <Typography variant="body1">{selectedMembership.Notes}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewMembershipOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ========== EDIT MEMBERSHIP DIALOG ========== */}
       <Dialog open={isEditMembershipOpen} onClose={() => setEditMembershipOpen(false)}>
@@ -2094,75 +1857,62 @@ export default function MembershipManagement() {
       </Dialog>
 
       {/* ========== VIEW FREEZE DIALOG ========== */}
-      <Dialog
-  open={isViewFreezeOpen}
-  onClose={() => setViewFreezeOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Freeze Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {selectedFreeze && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          {/* Freeze Information Section */}
-          <Grid item xs={12}>
-            
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Freeze ID:
-            </Typography>
-            <Typography variant="body1">{selectedFreeze.FreezeID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Member ID:
-            </Typography>
-            <Typography variant="body1">{selectedFreeze.MemberID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Start Date:
-            </Typography>
-            <Typography variant="body1">{selectedFreeze.FreezeStartDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              End Date:
-            </Typography>
-            <Typography variant="body1">{selectedFreeze.FreezeEndDate}</Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="body2" color="textSecondary">
-              Reason:
-            </Typography>
-            <Typography variant="body1">{selectedFreeze.Reason}</Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="body2" color="textSecondary">
-              Approval Status:
-            </Typography>
-            <Typography variant="body1">{selectedFreeze.ApprovalStatus}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewFreezeOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
+      <Dialog open={isViewFreezeOpen} onClose={() => setViewFreezeOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Freeze Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedFreeze && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Freeze ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedFreeze.FreezeID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Member ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedFreeze.MemberID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Start Date:
+                  </Typography>
+                  <Typography variant="body1">{selectedFreeze.FreezeStartDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    End Date:
+                  </Typography>
+                  <Typography variant="body1">{selectedFreeze.FreezeEndDate}</Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="textSecondary">
+                    Reason:
+                  </Typography>
+                  <Typography variant="body1">{selectedFreeze.Reason}</Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="textSecondary">
+                    Approval Status:
+                  </Typography>
+                  <Typography variant="body1">{selectedFreeze.ApprovalStatus}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewFreezeOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ========== EDIT FREEZE DIALOG ========== */}
       <Dialog open={isEditFreezeOpen} onClose={() => setEditFreezeOpen(false)}>
@@ -2228,76 +1978,62 @@ export default function MembershipManagement() {
       </Dialog>
 
       {/* ========== VIEW RENEWAL DIALOG ========== */}
-      <Dialog
-  open={isViewRenewalOpen}
-  onClose={() => setViewRenewalOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Renewal Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {selectedRenewal && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          {/* Renewal Information Section */}
-          <Grid item xs={12}>
-          
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Renewal ID:
-            </Typography>
-            <Typography variant="body1">{selectedRenewal.RenewalID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Member ID:
-            </Typography>
-            <Typography variant="body1">{selectedRenewal.MemberID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Renewal Date:
-            </Typography>
-            <Typography variant="body1">{selectedRenewal.RenewalDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Plan ID:
-            </Typography>
-            <Typography variant="body1">{selectedRenewal.PlanID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Renewal Amount:
-            </Typography>
-            <Typography variant="body1">${selectedRenewal.RenewalAmount}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Processed By:
-            </Typography>
-            <Typography variant="body1">{selectedRenewal.ProcessedBy}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewRenewalOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
-
+      <Dialog open={isViewRenewalOpen} onClose={() => setViewRenewalOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Renewal Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedRenewal && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Renewal ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedRenewal.RenewalID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Member ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedRenewal.MemberID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Renewal Date:
+                  </Typography>
+                  <Typography variant="body1">{selectedRenewal.RenewalDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Plan ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedRenewal.PlanID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Renewal Amount:
+                  </Typography>
+                  <Typography variant="body1">${selectedRenewal.RenewalAmount}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Processed By:
+                  </Typography>
+                  <Typography variant="body1">{selectedRenewal.ProcessedBy}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewRenewalOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ========== EDIT RENEWAL DIALOG ========== */}
       <Dialog open={isEditRenewalOpen} onClose={() => setEditRenewalOpen(false)}>
@@ -2305,13 +2041,7 @@ export default function MembershipManagement() {
         <DialogContent>
           {selectedRenewal && (
             <>
-              <TextField
-                fullWidth
-                margin="normal"
-                label="RenewalID"
-                disabled
-                value={selectedRenewal.RenewalID}
-              />
+              <TextField fullWidth margin="normal" label="RenewalID" disabled value={selectedRenewal.RenewalID} />
               <TextField
                 fullWidth
                 margin="normal"

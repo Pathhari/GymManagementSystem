@@ -1,54 +1,141 @@
+// File: src/Layouts/PayslipLayout.jsx
 import React from "react";
+import { Box, Typography, Divider } from "@mui/material";
 
-const Payslip = () => {
+const PayslipLayout = ({ staffData, payrollData }) => {
   return (
-    <div className="p-6 max-w-3xl mx-auto bg-gray-50 shadow-md rounded-lg">
-      <h1 className="text-2xl font-bold text-center mb-4">PAYSLIP</h1>
+    <Box
+      sx={{
+        p: 4,
+        m: "auto",
+        maxWidth: "210mm", // A4 width
+        minHeight: "297mm", // A4 height
+        backgroundColor: "#fff",
+        boxShadow: 3,
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      {/* Header */}
+      <Typography variant="h4" align="center" sx={{ fontWeight: "bold", mb: 2 }}>
+        PAYSLIP
+      </Typography>
+      <Divider sx={{ mb: 3 }} />
 
-      <div className="mb-6">
-        <p className="text-lg font-semibold">Name:</p>
-        <p className="text-lg">Continental Fitness Gym</p>
-      </div>
+      {/* Company / Gym Information */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h6" sx={{ fontWeight: "medium" }}>
+          Continental Fitness Gym
+        </Typography>
+      </Box>
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div>
-          <p className="text-lg font-semibold">Total:</p>
-        </div>
-        <div>
-          <p className="text-lg font-semibold">Tax:</p>
-        </div>
-        <div>
-          <p className="text-lg font-semibold">Subtotal:</p>
-        </div>
-      </div>
+      {/* Staff Information Section */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          Staff Information
+        </Typography>
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1 }}>
+          <Typography variant="body1">
+            <strong>Name:</strong> {staffData?.FullName || "N/A"}
+          </Typography>
+          <Typography variant="body1">
+            <strong>Email:</strong> {staffData?.Email || "N/A"}
+          </Typography>
+          <Typography variant="body1">
+            <strong>Role:</strong> {staffData?.Role || "N/A"}
+          </Typography>
+          <Typography variant="body1">
+            <strong>Phone:</strong> {staffData?.Phone || "N/A"}
+          </Typography>
+        </Box>
+      </Box>
 
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold">Computation of Salary</h2>
-        <div className="grid grid-cols-2 gap-4 mt-4">
-          <div>
-            <p className="text-lg">Daily Rate:</p>
-            <p className="text-lg">No. of hours worked:</p>
-            <p className="text-lg">No. of days absent:</p>
-            <p className="text-lg">No. of tardiness:</p>
-            <p className="text-lg">Deductions:</p>
-          </div>
-          <div>
-            <p className="text-lg">Date issued:</p>
-            <p className="text-lg">Salary for the month of:</p>
-          </div>
-        </div>
-      </div>
+      {/* Payroll Information Section */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          Payroll Information
+        </Typography>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, 1fr)",
+            gap: 1,
+          }}
+        >
+          <Typography variant="body1">
+            <strong>Period:</strong> {payrollData?.StartDate || "N/A"} -{" "}
+            {payrollData?.EndDate || "N/A"}
+          </Typography>
+          <Typography variant="body1">
+            <strong>Date Issued:</strong> {payrollData?.GeneratedDate || "N/A"}
+          </Typography>
+          <Typography variant="body1">
+            <strong>Gross Pay:</strong> ₱{payrollData?.GrossPay || "0.00"}
+          </Typography>
+          <Typography variant="body1">
+            <strong>Deductions:</strong> ₱{payrollData?.Deductions || "0.00"}
+          </Typography>
+          <Typography variant="body1" sx={{ gridColumn: "span 2" }}>
+            <strong>Net Pay:</strong> ₱{payrollData?.NetPay || "0.00"}
+          </Typography>
+          <Typography variant="body1" sx={{ gridColumn: "span 2" }}>
+            <strong>Status:</strong> {payrollData?.Status || "N/A"}
+          </Typography>
+        </Box>
+      </Box>
 
-      <div className="mt-6">
-        <p className="text-lg font-semibold">Prepared By:</p>
-        <p className="text-lg font-semibold">Received By:</p>
-        <p className="mt-4">
-          This is to certify that I, ______________________ , have received the correct amount of
+      {/* Computation Section */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          Computation of Salary
+        </Typography>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, 1fr)",
+            gap: 2,
+          }}
+        >
+          <Box>
+            <Typography variant="body1">Daily Rate: {staffData?.DailyRate || "0.00"}</Typography>
+            <Typography variant="body1">
+              No. of Hours Worked: {payrollData?.HoursWorked || "N/A"}
+            </Typography>
+            <Typography variant="body1">
+              No. of Days Absent: {payrollData?.DaysAbsent || "N/A"}
+            </Typography>
+            <Typography variant="body1">
+              No. of Tardiness: {payrollData?.Tardiness || "N/A"}
+            </Typography>
+            <Typography variant="body1">
+              Deductions: ₱{payrollData?.Deductions || "0.00"}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="body1">
+              Date Issued: {payrollData?.GeneratedDate || "N/A"}
+            </Typography>
+            <Typography variant="body1">
+              Salary for the month of: {payrollData?.StartDate || "N/A"}
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
+
+      {/* Footer Section */}
+      <Box sx={{ mt: 4 }}>
+        <Typography variant="body1" sx={{ fontWeight: "medium" }}>
+          Prepared By:
+        </Typography>
+        <Typography variant="body1" sx={{ fontWeight: "medium", mt: 1 }}>
+          Received By:
+        </Typography>
+        <Typography variant="body2" sx={{ mt: 3 }}>
+          This is to certify that I, ______________________, have received the correct amount of
           pay/salary for the month of ___________________.
-        </p>
-      </div>
-    </div>
+        </Typography>
+      </Box>
+    </Box>
   );
 };
 
-export default Payslip;
+export default PayslipLayout;

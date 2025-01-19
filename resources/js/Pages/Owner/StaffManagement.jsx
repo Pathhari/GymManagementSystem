@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+// File: StaffManagement.jsx
+import React, { useState, useRef } from "react";
 import {
   Box,
   Typography,
@@ -23,29 +24,32 @@ import {
   Divider,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import { DataGrid } from "@mui/x-data-grid";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import PeopleIcon from "@mui/icons-material/People";
 import EmojiPeopleIcon from "@mui/icons-material/EmojiPeople";
 import ReceiptIcon from "@mui/icons-material/Receipt";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import HistoryIcon from "@mui/icons-material/History";
-import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-
 import GroupsIcon from "@mui/icons-material/Groups";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import SupervisorAccountIcon from "@mui/icons-material/SupervisorAccount";
 import CleanHandsIcon from "@mui/icons-material/CleanHands";
-
-// ---------- CSV/PDF Exports ----------
+import { DataGrid } from "@mui/x-data-grid";
 import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import ReactToPrint from "react-to-print";
 
-// ---------------------- SAMPLE DATA ----------------------
+// Import external layout components (ensure they are default exported)
+import AddNewStaffLayout from "../../Layouts/AddNewStaffLayout";
+import AddPayrollLayout from "../../Layouts/AddPayrollLayout";
+import AddStaffTaskLayout from "../../Layouts/AddStaffTaskLayout";
+import PayslipLayout from "../../Layouts/Paysliplayout";
+
+// ---------- SAMPLE DATA ----------
 const sampleStaff = [
   {
     StaffID: 1,
@@ -170,21 +174,6 @@ export default function StaffManagement() {
   const [isEditStaffOpen, setEditStaffOpen] = useState(false);
   const [isAddStaffOpen, setAddStaffOpen] = useState(false);
 
-  // For adding a new staff
-  const [newStaff, setNewStaff] = useState({
-    FullName: "",
-    Email: "",
-    Phone: "",
-    Role: "",
-    BranchID: 0,
-    DateHired: "",
-    DailyRate: 0,
-    HourlyRate: 0,
-    OvertimeRate: 0,
-    Notes: "",
-  });
-  const [errors, setErrors] = useState({});
-
   // ------------------- STATES: ATTENDANCE TAB -------------------
   const [attendanceRecords, setAttendanceRecords] = useState(sampleAttendance);
   const [filteredAttendance, setFilteredAttendance] = useState(sampleAttendance);
@@ -198,6 +187,7 @@ export default function StaffManagement() {
   const [selectedPayroll, setSelectedPayroll] = useState(null);
   const [isViewPayrollOpen, setViewPayrollOpen] = useState(false);
   const [isEditPayrollOpen, setEditPayrollOpen] = useState(false);
+  const [isAddPayrollOpen, setAddPayrollOpen] = useState(false);
 
   // ------------------- STATES: TASK TAB ------------------------
   const [taskRecords, setTaskRecords] = useState(sampleTasks);
@@ -205,6 +195,7 @@ export default function StaffManagement() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [isViewTaskOpen, setViewTaskOpen] = useState(false);
   const [isEditTaskOpen, setEditTaskOpen] = useState(false);
+  const [isAddTaskOpen, setAddTaskOpen] = useState(false);
 
   // ------------------- STATES: SCHEDULE TAB --------------------
   const [scheduleRecords, setScheduleRecords] = useState(sampleSchedule);
@@ -212,6 +203,12 @@ export default function StaffManagement() {
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [isViewScheduleOpen, setViewScheduleOpen] = useState(false);
   const [isEditScheduleOpen, setEditScheduleOpen] = useState(false);
+
+  // ------------------- PRINT PAYSLIP DIALOG STATE --------------------
+  const [isPayslipOpen, setPayslipOpen] = useState(false);
+  const [payslipStaffData, setPayslipStaffData] = useState(null);
+  const [payslipPayrollData, setPayslipPayrollData] = useState(null);
+  const printRef = useRef();
 
   // ------------------- TABS & SEARCH --------------------------
   // 0 = Staff, 1 = Attendance, 2 = Payroll, 3 = Task, 4 = Schedule
@@ -234,72 +231,21 @@ export default function StaffManagement() {
 
   const handleTimePeriodChange = (event) => {
     setTimePeriod(event.target.value);
-    // Insert your own logic for filtering if desired
   };
 
   const handleDateFromChange = (event) => {
     setDateFrom(event.target.value);
-    // Insert filtering logic if desired
   };
 
   const handleDateToChange = (event) => {
     setDateTo(event.target.value);
-    // Insert filtering logic if desired
   };
 
   const handleBranchChange = (event) => {
     setBranch(event.target.value);
-    // Insert branch filtering logic if desired
   };
 
-  // ------------------- ADD STAFF -------------------------
-  const handleAddStaffChange = (e) => {
-    const { name, value } = e.target;
-    if (["BranchID", "DailyRate", "HourlyRate", "OvertimeRate"].includes(name)) {
-      setNewStaff({ ...newStaff, [name]: Number(value) || 0 });
-    } else {
-      setNewStaff({ ...newStaff, [name]: value });
-    }
-  };
-
-  const handleAddStaff = () => {
-    if (!newStaff.FullName || !newStaff.Email) {
-      setErrors({
-        FullName: newStaff.FullName ? "" : "Required",
-        Email: newStaff.Email ? "" : "Required",
-      });
-      return;
-    }
-    const nextID = staffRecords.length
-      ? Math.max(...staffRecords.map((s) => s.StaffID)) + 1
-      : 1;
-
-    const newRecord = {
-      StaffID: nextID,
-      ...newStaff,
-    };
-
-    const updated = [...staffRecords, newRecord];
-    setStaffRecords(updated);
-    setFilteredStaff(updated);
-
-    setNewStaff({
-      FullName: "",
-      Email: "",
-      Phone: "",
-      Role: "",
-      BranchID: 0,
-      DateHired: "",
-      DailyRate: 0,
-      HourlyRate: 0,
-      OvertimeRate: 0,
-      Notes: "",
-    });
-    setErrors({});
-    setAddStaffOpen(false);
-  };
-
-  // ------------------- STAFF: VIEW, EDIT, DELETE ---------
+  // ------------------- STAFF: VIEW, EDIT, DELETE -----------
   const handleViewStaff = (record) => {
     setSelectedStaff(record);
     setViewStaffOpen(true);
@@ -345,10 +291,14 @@ export default function StaffManagement() {
 
   const handleEditAttendanceSubmit = () => {
     setAttendanceRecords((prev) =>
-      prev.map((a) => (a.AttendanceID === selectedAttendance.AttendanceID ? selectedAttendance : a))
+      prev.map((a) =>
+        a.AttendanceID === selectedAttendance.AttendanceID ? selectedAttendance : a
+      )
     );
     setFilteredAttendance((prev) =>
-      prev.map((a) => (a.AttendanceID === selectedAttendance.AttendanceID ? selectedAttendance : a))
+      prev.map((a) =>
+        a.AttendanceID === selectedAttendance.AttendanceID ? selectedAttendance : a
+      )
     );
     setEditAttendanceOpen(false);
   };
@@ -381,29 +331,6 @@ export default function StaffManagement() {
   };
 
   // ------------------- TASK: VIEW, EDIT, DELETE -----------
-  const [isAddTaskOpen, setAddTaskOpen] = useState(false);
-  const [newTask, setNewTask] = useState({
-    StaffID: "",
-    TaskDescription: "",
-    TaskDate: "",
-    Status: "Pending",
-  });
-  const handleAddTaskChange = (e) => {
-    const { name, value } = e.target;
-    setNewTask({ ...newTask, [name]: value });
-  };
-
-  const handleAddTask = () => {
-    const nextID = taskRecords.length
-      ? Math.max(...taskRecords.map((t) => t.TaskID)) + 1
-      : 1;
-    const newRecord = { TaskID: nextID, ...newTask };
-    setTaskRecords([...taskRecords, newRecord]);
-    setFilteredTasks([...taskRecords, newRecord]);
-    setNewTask({ StaffID: "", TaskDescription: "", TaskDate: "", Status: "Pending" });
-    setAddTaskOpen(false);
-  };
-
   const handleViewTask = (record) => {
     setSelectedTask(record);
     setViewTaskOpen(true);
@@ -431,30 +358,6 @@ export default function StaffManagement() {
   };
 
   // ------------------- SCHEDULE: VIEW, EDIT, DELETE -----------
-  const [isAddScheduleOpen, setAddScheduleOpen] = useState(false);
-  const [newSchedule, setNewSchedule] = useState({
-    StaffID: "",
-    ShiftDate: "",
-    ShiftStart: "",
-    ShiftEnd: "",
-    RoleOverride: "",
-  });
-  const handleAddScheduleChange = (e) => {
-    const { name, value } = e.target;
-    setNewSchedule({ ...newSchedule, [name]: value });
-  };
-
-  const handleAddSchedule = () => {
-    const nextID = scheduleRecords.length
-      ? Math.max(...scheduleRecords.map((s) => s.ScheduleID)) + 1
-      : 1;
-    const newRecord = { ScheduleID: nextID, ...newSchedule };
-    setScheduleRecords([...scheduleRecords, newRecord]);
-    setFilteredSchedule([...scheduleRecords, newRecord]);
-    setNewSchedule({ StaffID: "", ShiftDate: "", ShiftStart: "", ShiftEnd: "", RoleOverride: "" });
-    setAddScheduleOpen(false);
-  };
-
   const handleViewSchedule = (record) => {
     setSelectedSchedule(record);
     setViewScheduleOpen(true);
@@ -473,12 +376,23 @@ export default function StaffManagement() {
 
   const handleEditScheduleSubmit = () => {
     setScheduleRecords((prev) =>
-      prev.map((s) => (s.ScheduleID === selectedSchedule.ScheduleID ? selectedSchedule : s))
+      prev.map((s) =>
+        s.ScheduleID === selectedSchedule.ScheduleID ? selectedSchedule : s
+      )
     );
     setFilteredSchedule((prev) =>
-      prev.map((s) => (s.ScheduleID === selectedSchedule.ScheduleID ? selectedSchedule : s))
+      prev.map((s) =>
+        s.ScheduleID === selectedSchedule.ScheduleID ? selectedSchedule : s
+      )
     );
     setEditScheduleOpen(false);
+  };
+
+  // ------------------- PRINT PAYSLIP -------------------
+  const handlePrintPayslip = (staffRecord, payrollRecord) => {
+    setPayslipStaffData(staffRecord);
+    setPayslipPayrollData(payrollRecord);
+    setPayslipOpen(true);
   };
 
   // ------------------- SEARCH & TAB SWITCHING -----------------
@@ -488,27 +402,37 @@ export default function StaffManagement() {
 
     if (activeTab === 0) {
       const filtered = staffRecords.filter((item) =>
-        Object.values(item).some((val) => String(val).toLowerCase().includes(value))
+        Object.values(item).some((val) =>
+          String(val).toLowerCase().includes(value)
+        )
       );
       setFilteredStaff(filtered);
     } else if (activeTab === 1) {
       const filtered = attendanceRecords.filter((item) =>
-        Object.values(item).some((val) => String(val).toLowerCase().includes(value))
+        Object.values(item).some((val) =>
+          String(val).toLowerCase().includes(value)
+        )
       );
       setFilteredAttendance(filtered);
     } else if (activeTab === 2) {
       const filtered = payrollRecords.filter((item) =>
-        Object.values(item).some((val) => String(val).toLowerCase().includes(value))
+        Object.values(item).some((val) =>
+          String(val).toLowerCase().includes(value)
+        )
       );
       setFilteredPayroll(filtered);
     } else if (activeTab === 3) {
       const filtered = taskRecords.filter((item) =>
-        Object.values(item).some((val) => String(val).toLowerCase().includes(value))
+        Object.values(item).some((val) =>
+          String(val).toLowerCase().includes(value)
+        )
       );
       setFilteredTasks(filtered);
     } else {
       const filtered = scheduleRecords.filter((item) =>
-        Object.values(item).some((val) => String(val).toLowerCase().includes(value))
+        Object.values(item).some((val) =>
+          String(val).toLowerCase().includes(value)
+        )
       );
       setFilteredSchedule(filtered);
     }
@@ -535,7 +459,6 @@ export default function StaffManagement() {
   const totalStaff = staffRecords.length;
   const trainersCount = staffRecords.filter((s) => s.Role === "Trainer").length;
   const adminsCount = staffRecords.filter((s) => s.Role === "Admin").length;
-
   const today = new Date();
   const last30 = new Date();
   last30.setDate(today.getDate() - 30);
@@ -883,7 +806,6 @@ export default function StaffManagement() {
     },
   ];
 
-  // Decide which columns to show based on activeTab
   const columns =
     activeTab === 0
       ? staffColumns
@@ -914,9 +836,7 @@ export default function StaffManagement() {
       ? filteredTasks
       : filteredSchedule;
 
-  // ==================================================================
   // ======================= EXPORT FUNCTIONALITY ======================
-  // ==================================================================
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
   const openExportMenu = Boolean(exportAnchorEl);
 
@@ -1010,7 +930,6 @@ export default function StaffManagement() {
   const handleExportPDF = () => {
     handleExportMenuClose();
     const doc = new jsPDF();
-
     if (activeTab === 0) {
       doc.text("Staff Export", 14, 10);
       const bodyData = rows.map((s) => [
@@ -1078,19 +997,7 @@ export default function StaffManagement() {
         p.Status,
       ]);
       doc.autoTable({
-        head: [
-          [
-            "ID",
-            "StaffID",
-            "Start",
-            "End",
-            "Gross",
-            "Deductions",
-            "NetPay",
-            "Generated",
-            "Status",
-          ],
-        ],
+        head: [["ID", "StaffID", "Start", "End", "Gross", "Deductions", "NetPay", "Generated", "Status"]],
         body: bodyData,
         startY: 20,
       });
@@ -1143,11 +1050,7 @@ export default function StaffManagement() {
       >
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Time Period</InputLabel>
-          <Select
-            value={timePeriod}
-            label="Time Period"
-            onChange={handleTimePeriodChange}
-          >
+          <Select value={timePeriod} label="Time Period" onChange={handleTimePeriodChange}>
             <MenuItem value="daily">Daily</MenuItem>
             <MenuItem value="weekly">Weekly</MenuItem>
             <MenuItem value="monthly">Monthly</MenuItem>
@@ -1170,7 +1073,6 @@ export default function StaffManagement() {
           value={dateTo}
           onChange={handleDateToChange}
         />
-        {/* New Branch Filter */}
         <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel>Branch</InputLabel>
           <Select value={branch} label="Branch" onChange={handleBranchChange}>
@@ -1183,10 +1085,9 @@ export default function StaffManagement() {
         </FormControl>
       </Box>
 
-      {/* ------------------- FOUR OVERVIEW CARDS ------------------- */}
+      {/* ------------------- OVERVIEW CARDS ------------------- */}
       <Box sx={{ mb: 3 }}>
         <Grid container spacing={2}>
-          {/* 1. Total Staff */}
           <Grid item xs={12} sm={6} md={3}>
             <Card
               sx={{
@@ -1202,16 +1103,12 @@ export default function StaffManagement() {
                 <Typography variant="h6" gutterBottom>
                   Total Staff
                 </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
-                >
+                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
                   {staffRecords.length}
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-          {/* 2. Trainers */}
           <Grid item xs={12} sm={6} md={3}>
             <Card
               sx={{
@@ -1227,16 +1124,12 @@ export default function StaffManagement() {
                 <Typography variant="h6" gutterBottom>
                   Trainers
                 </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
-                >
-                  {trainersCount}
+                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                  {/* Add trainersCount here if available */}
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-          {/* 3. Managers */}
           <Grid item xs={12} sm={6} md={3}>
             <Card
               sx={{
@@ -1252,16 +1145,12 @@ export default function StaffManagement() {
                 <Typography variant="h6" gutterBottom>
                   Managers
                 </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
-                >
-                  {adminsCount}
+                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+                  {/* Add adminsCount here if available */}
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-          {/* 4. Recent Hires */}
           <Grid item xs={12} sm={6} md={3}>
             <Card
               sx={{
@@ -1277,10 +1166,7 @@ export default function StaffManagement() {
                 <Typography variant="h6" gutterBottom>
                   Recent Hires
                 </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
-                >
+                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
                   {recentHiresCount}
                 </Typography>
               </CardContent>
@@ -1289,23 +1175,12 @@ export default function StaffManagement() {
         </Grid>
       </Box>
 
-      {/* ------------------- Title and Tabs ------------------- */}
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
+      {/* ------------------- TITLE & TABS ------------------- */}
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
         <Typography variant="h4" gutterBottom>
           Staff Management
         </Typography>
-        <Tabs
-          value={activeTab}
-          onChange={handleTabChange}
-          sx={{ flexWrap: "wrap", justifyContent: "flex-end" }}
-        >
+        <Tabs value={activeTab} onChange={handleTabChange} sx={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Tab icon={<PeopleIcon />} label="Staff" />
           <Tab icon={<EmojiPeopleIcon />} label="Attendance" />
           <Tab icon={<ReceiptIcon />} label="Payroll" />
@@ -1314,7 +1189,7 @@ export default function StaffManagement() {
         </Tabs>
       </Box>
 
-      {/* ------------------- DataGrid & Search ------------------- */}
+      {/* ------------------- DATA GRID & SEARCH ------------------- */}
       <Paper elevation={2} sx={{ mt: 3, p: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
           <TextField
@@ -1325,8 +1200,6 @@ export default function StaffManagement() {
             size="small"
             sx={{ width: "100%", maxWidth: 300 }}
           />
-
-          {/* Export + Add Buttons */}
           <Box sx={{ display: "flex", gap: 1 }}>
             <Button
               variant="outlined"
@@ -1355,359 +1228,197 @@ export default function StaffManagement() {
               <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
             </Menu>
             {activeTab === 0 && (
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => setAddStaffOpen(true)}
-              >
+              <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddStaffOpen(true)}>
                 Add New Staff
+              </Button>
+            )}
+            {activeTab === 2 && (
+              <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddPayrollOpen(true)}>
+                Add Payroll
+              </Button>
+            )}
+            {activeTab === 3 && (
+              <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddTaskOpen(true)}>
+                Add Task
               </Button>
             )}
           </Box>
         </Box>
         <div style={{ height: 420, width: "100%" }}>
-          <DataGrid
-            rows={rows}
-            columns={columns}
-            getRowId={getRowId}
-            pageSize={5}
-            rowsPerPageOptions={[5, 10]}
-          />
+          <DataGrid rows={rows} columns={columns} getRowId={getRowId} pageSize={5} rowsPerPageOptions={[5, 10]} />
         </div>
       </Paper>
 
-      {/* ------------------- ADD STAFF DIALOG ------------------- */}
-      <Dialog open={isAddStaffOpen} onClose={() => setAddStaffOpen(false)}>
-        <DialogTitle>Add New Staff</DialogTitle>
+      {/* ------------------- RENDER EXTERNAL LAYOUTS ------------------- */}
+      {isAddStaffOpen && <AddNewStaffLayout onClose={() => setAddStaffOpen(false)} />}
+      {isAddPayrollOpen && (
+        <AddPayrollLayout
+          onClose={() => setAddPayrollOpen(false)}
+          onAdd={(newPayroll) => {
+            const nextId = payrollRecords.length
+              ? Math.max(...payrollRecords.map((p) => p.PayrollID)) + 1
+              : 1;
+            const record = { PayrollID: nextId, ...newPayroll };
+            const updated = [...payrollRecords, record];
+            setPayrollRecords(updated);
+            setFilteredPayroll(updated);
+          }}
+        />
+      )}
+      {isAddTaskOpen && (
+        <AddStaffTaskLayout
+          onClose={() => setAddTaskOpen(false)}
+          onAdd={(newTask) => {
+            const nextId = taskRecords.length ? Math.max(...taskRecords.map((t) => t.TaskID)) + 1 : 1;
+            const record = { TaskID: nextId, ...newTask };
+            const updated = [...taskRecords, record];
+            setTaskRecords(updated);
+            setFilteredTasks(updated);
+          }}
+        />
+      )}
+
+      {/* ------------------- PRINT PAYSLIP DIALOG ------------------- */}
+      <Dialog open={isPayslipOpen} onClose={() => setPayslipOpen(false)} fullWidth maxWidth="lg">
+        <DialogContent>
+          <Box ref={printRef}>
+            <PayslipLayout staffData={payslipStaffData} payrollData={payslipPayrollData} />
+          </Box>
+        </DialogContent>
+        <Box sx={{ m: 2, display: "flex", justifyContent: "flex-end", gap: 2 }}>
+          <ReactToPrint
+            trigger={() => <Button variant="contained" color="primary">Print Payslip</Button>}
+            content={() => printRef.current}
+            pageStyle="@media print { @page { size: A4; margin: 20mm } }"
+          />
+          <Button variant="text" color="inherit" onClick={() => setPayslipOpen(false)}>
+            Close
+          </Button>
+        </Box>
+      </Dialog>
+
+      {/* ------------------- VIEW & EDIT DIALOGS ------------------- */}
+
+      {/* VIEW STAFF */}
+      <Dialog open={isViewStaffOpen} onClose={() => setViewStaffOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Staff Details
+          </Typography>
+        </DialogTitle>
         <DialogContent dividers>
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Full Name"
-            name="FullName"
-            value={newStaff.FullName}
-            onChange={handleAddStaffChange}
-            error={!!errors.FullName}
-            helperText={errors.FullName}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Email"
-            name="Email"
-            value={newStaff.Email}
-            onChange={handleAddStaffChange}
-            error={!!errors.Email}
-            helperText={errors.Email}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Phone"
-            name="Phone"
-            value={newStaff.Phone}
-            onChange={handleAddStaffChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Role"
-            name="Role"
-            value={newStaff.Role}
-            onChange={handleAddStaffChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Branch ID"
-            name="BranchID"
-            type="number"
-            value={newStaff.BranchID}
-            onChange={handleAddStaffChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Date Hired"
-            name="DateHired"
-            value={newStaff.DateHired}
-            onChange={handleAddStaffChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Daily Rate"
-            name="DailyRate"
-            type="number"
-            value={newStaff.DailyRate}
-            onChange={handleAddStaffChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Hourly Rate"
-            name="HourlyRate"
-            type="number"
-            value={newStaff.HourlyRate}
-            onChange={handleAddStaffChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Overtime Rate"
-            name="OvertimeRate"
-            type="number"
-            value={newStaff.OvertimeRate}
-            onChange={handleAddStaffChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Notes"
-            name="Notes"
-            value={newStaff.Notes}
-            onChange={handleAddStaffChange}
-          />
+          {selectedStaff && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle1" color="textSecondary">
+                    <strong>Personal Information</strong>
+                  </Typography>
+                  <Divider sx={{ my: 1 }} />
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Full Name:
+                  </Typography>
+                  <Typography variant="body1">{selectedStaff.FullName}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Email:
+                  </Typography>
+                  <Typography variant="body1">{selectedStaff.Email}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Phone:
+                  </Typography>
+                  <Typography variant="body1">{selectedStaff.Phone}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Role:
+                  </Typography>
+                  <Typography variant="body1">{selectedStaff.Role}</Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle1" color="textSecondary">
+                    <strong>Work Information</strong>
+                  </Typography>
+                  <Divider sx={{ my: 1 }} />
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Branch ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedStaff.BranchID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Date Hired:
+                  </Typography>
+                  <Typography variant="body1">{selectedStaff.DateHired}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Daily Rate:
+                  </Typography>
+                  <Typography variant="body1">${selectedStaff.DailyRate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Hourly Rate:
+                  </Typography>
+                  <Typography variant="body1">${selectedStaff.HourlyRate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Overtime Rate:
+                  </Typography>
+                  <Typography variant="body1">${selectedStaff.OvertimeRate}</Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="textSecondary">
+                    Notes:
+                  </Typography>
+                  <Typography variant="body1">{selectedStaff.Notes}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddStaffOpen(false)}>Cancel</Button>
-          <Button onClick={handleAddStaff} variant="contained" color="primary">
-            Add Staff
+          <Button onClick={() => setViewStaffOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+          <Button
+            onClick={() => {
+              // For printing, you may need to supply appropriate payroll data.
+              handlePrintPayslip(selectedStaff, selectedPayroll);
+            }}
+            variant="contained"
+            color="primary"
+          >
+            Print Payslip
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* ------------------- VIEW STAFF DIALOG ------------------- */}
-      <Dialog
-  open={isViewStaffOpen}
-  onClose={() => setViewStaffOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Staff Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {selectedStaff && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-            <Typography variant="subtitle1" color="textSecondary">
-              <strong>Personal Information</strong>
-            </Typography>
-            <Divider sx={{ my: 1 }} />
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Full Name:
-            </Typography>
-            <Typography variant="body1">{selectedStaff.FullName}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Email:
-            </Typography>
-            <Typography variant="body1">{selectedStaff.Email}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Phone:
-            </Typography>
-            <Typography variant="body1">{selectedStaff.Phone}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Role:
-            </Typography>
-            <Typography variant="body1">{selectedStaff.Role}</Typography>
-          </Grid>
-
-          <Grid item xs={12}>
-            <Typography variant="subtitle1" color="textSecondary">
-              <strong>Work Information</strong>
-            </Typography>
-            <Divider sx={{ my: 1 }} />
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Branch ID:
-            </Typography>
-            <Typography variant="body1">{selectedStaff.BranchID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Date Hired:
-            </Typography>
-            <Typography variant="body1">{selectedStaff.DateHired}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Daily Rate:
-            </Typography>
-            <Typography variant="body1">${selectedStaff.DailyRate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Hourly Rate:
-            </Typography>
-            <Typography variant="body1">${selectedStaff.HourlyRate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Overtime Rate:
-            </Typography>
-            <Typography variant="body1">${selectedStaff.OvertimeRate}</Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="body2" color="textSecondary">
-              Notes:
-            </Typography>
-            <Typography variant="body1">{selectedStaff.Notes}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewStaffOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-    <Button
-      onClick={() => handlePrintPayslip(selectedStaff)}
-      variant="contained"
-      color="primary"
-    >
-      Print Payslip
-    </Button>
-  </DialogActions>
-</Dialog>
-
-
-      {/* ------------------- EDIT STAFF DIALOG ------------------- */}
+      {/* EDIT STAFF */}
       <Dialog open={isEditStaffOpen} onClose={() => setEditStaffOpen(false)}>
         <DialogTitle>Edit Staff</DialogTitle>
         <DialogContent dividers>
           {selectedStaff && (
             <>
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Full Name"
-                value={selectedStaff.FullName}
-                onChange={(e) =>
-                  setSelectedStaff((prev) => ({ ...prev, FullName: e.target.value }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Email"
-                value={selectedStaff.Email}
-                onChange={(e) =>
-                  setSelectedStaff((prev) => ({ ...prev, Email: e.target.value }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Phone"
-                value={selectedStaff.Phone}
-                onChange={(e) =>
-                  setSelectedStaff((prev) => ({ ...prev, Phone: e.target.value }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Role"
-                value={selectedStaff.Role}
-                onChange={(e) =>
-                  setSelectedStaff((prev) => ({ ...prev, Role: e.target.value }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Branch ID"
-                type="number"
-                value={selectedStaff.BranchID}
-                onChange={(e) =>
-                  setSelectedStaff((prev) => ({
-                    ...prev,
-                    BranchID: Number(e.target.value) || 0,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Date Hired"
-                value={selectedStaff.DateHired}
-                onChange={(e) =>
-                  setSelectedStaff((prev) => ({
-                    ...prev,
-                    DateHired: e.target.value,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Daily Rate"
-                type="number"
-                value={selectedStaff.DailyRate}
-                onChange={(e) =>
-                  setSelectedStaff((prev) => ({
-                    ...prev,
-                    DailyRate: Number(e.target.value) || 0,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Hourly Rate"
-                type="number"
-                value={selectedStaff.HourlyRate}
-                onChange={(e) =>
-                  setSelectedStaff((prev) => ({
-                    ...prev,
-                    HourlyRate: Number(e.target.value) || 0,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Overtime Rate"
-                type="number"
-                value={selectedStaff.OvertimeRate}
-                onChange={(e) =>
-                  setSelectedStaff((prev) => ({
-                    ...prev,
-                    OvertimeRate: Number(e.target.value) || 0,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Notes"
-                value={selectedStaff.Notes}
-                onChange={(e) =>
-                  setSelectedStaff((prev) => ({
-                    ...prev,
-                    Notes: e.target.value,
-                  }))
-                }
-              />
+              <TextField fullWidth margin="normal" label="Full Name" value={selectedStaff.FullName} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, FullName: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="Email" value={selectedStaff.Email} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, Email: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="Phone" value={selectedStaff.Phone} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, Phone: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="Role" value={selectedStaff.Role} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, Role: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="Branch ID" type="number" value={selectedStaff.BranchID} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, BranchID: Number(e.target.value) || 0 }))} />
+              <TextField fullWidth margin="normal" label="Date Hired" value={selectedStaff.DateHired} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, DateHired: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="Daily Rate" type="number" value={selectedStaff.DailyRate} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, DailyRate: Number(e.target.value) || 0 }))} />
+              <TextField fullWidth margin="normal" label="Hourly Rate" type="number" value={selectedStaff.HourlyRate} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, HourlyRate: Number(e.target.value) || 0 }))} />
+              <TextField fullWidth margin="normal" label="Overtime Rate" type="number" value={selectedStaff.OvertimeRate} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, OvertimeRate: Number(e.target.value) || 0 }))} />
+              <TextField fullWidth margin="normal" label="Notes" value={selectedStaff.Notes} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, Notes: e.target.value }))} />
             </>
           )}
         </DialogContent>
@@ -1719,189 +1430,74 @@ export default function StaffManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* --------------------- VIEW ATTENDANCE --------------------- */}
-      <Dialog
-  open={isViewAttendanceOpen}
-  onClose={() => setViewAttendanceOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Attendance Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {selectedAttendance && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-          
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Attendance ID:
-            </Typography>
-            <Typography variant="body1">{selectedAttendance.AttendanceID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Staff ID:
-            </Typography>
-            <Typography variant="body1">{selectedAttendance.StaffID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Date:
-            </Typography>
-            <Typography variant="body1">{selectedAttendance.Date}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Time In:
-            </Typography>
-            <Typography variant="body1">{selectedAttendance.TimeIn}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Time Out:
-            </Typography>
-            <Typography variant="body1">{selectedAttendance.TimeOut}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Hours Worked:
-            </Typography>
-            <Typography variant="body1">{selectedAttendance.HoursWorked}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Overtime Hours:
-            </Typography>
-            <Typography variant="body1">{selectedAttendance.OvertimeHours}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Payroll ID:
-            </Typography>
-            <Typography variant="body1">{selectedAttendance.PayrollID}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewAttendanceOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
+      {/* VIEW ATTENDANCE */}
+      <Dialog open={isViewAttendanceOpen} onClose={() => setViewAttendanceOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Attendance Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedAttendance && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Attendance ID:</Typography>
+                  <Typography variant="body1">{selectedAttendance.AttendanceID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Staff ID:</Typography>
+                  <Typography variant="body1">{selectedAttendance.StaffID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Date:</Typography>
+                  <Typography variant="body1">{selectedAttendance.Date}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Time In:</Typography>
+                  <Typography variant="body1">{selectedAttendance.TimeIn}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Time Out:</Typography>
+                  <Typography variant="body1">{selectedAttendance.TimeOut}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Hours Worked:</Typography>
+                  <Typography variant="body1">{selectedAttendance.HoursWorked}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Overtime Hours:</Typography>
+                  <Typography variant="body1">{selectedAttendance.OvertimeHours}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Payroll ID:</Typography>
+                  <Typography variant="body1">{selectedAttendance.PayrollID}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewAttendanceOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-
-      {/* --------------------- EDIT ATTENDANCE --------------------- */}
+      {/* EDIT ATTENDANCE */}
       <Dialog open={isEditAttendanceOpen} onClose={() => setEditAttendanceOpen(false)}>
         <DialogTitle>Edit Attendance</DialogTitle>
         <DialogContent dividers>
           {selectedAttendance && (
             <>
-              <TextField
-                fullWidth
-                margin="normal"
-                label="AttendanceID"
-                disabled
-                value={selectedAttendance.AttendanceID}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="StaffID"
-                value={selectedAttendance.StaffID}
-                onChange={(e) =>
-                  setSelectedAttendance((prev) => ({
-                    ...prev,
-                    StaffID: e.target.value,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Date"
-                value={selectedAttendance.Date}
-                onChange={(e) =>
-                  setSelectedAttendance((prev) => ({
-                    ...prev,
-                    Date: e.target.value,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Time In"
-                value={selectedAttendance.TimeIn}
-                onChange={(e) =>
-                  setSelectedAttendance((prev) => ({
-                    ...prev,
-                    TimeIn: e.target.value,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Time Out"
-                value={selectedAttendance.TimeOut}
-                onChange={(e) =>
-                  setSelectedAttendance((prev) => ({
-                    ...prev,
-                    TimeOut: e.target.value,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Hours Worked"
-                type="number"
-                value={selectedAttendance.HoursWorked}
-                onChange={(e) =>
-                  setSelectedAttendance((prev) => ({
-                    ...prev,
-                    HoursWorked: parseFloat(e.target.value) || 0,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Overtime Hours"
-                type="number"
-                value={selectedAttendance.OvertimeHours}
-                onChange={(e) =>
-                  setSelectedAttendance((prev) => ({
-                    ...prev,
-                    OvertimeHours: parseFloat(e.target.value) || 0,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="PayrollID"
-                type="number"
-                value={selectedAttendance.PayrollID}
-                onChange={(e) =>
-                  setSelectedAttendance((prev) => ({
-                    ...prev,
-                    PayrollID: parseInt(e.target.value) || 0,
-                  }))
-                }
-              />
+              <TextField fullWidth margin="normal" label="AttendanceID" disabled value={selectedAttendance.AttendanceID} />
+              <TextField fullWidth margin="normal" label="StaffID" value={selectedAttendance.StaffID} onChange={(e) => setSelectedAttendance((prev) => ({ ...prev, StaffID: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="Date" value={selectedAttendance.Date} onChange={(e) => setSelectedAttendance((prev) => ({ ...prev, Date: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="Time In" value={selectedAttendance.TimeIn} onChange={(e) => setSelectedAttendance((prev) => ({ ...prev, TimeIn: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="Time Out" value={selectedAttendance.TimeOut} onChange={(e) => setSelectedAttendance((prev) => ({ ...prev, TimeOut: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="Hours Worked" type="number" value={selectedAttendance.HoursWorked} onChange={(e) => setSelectedAttendance((prev) => ({ ...prev, HoursWorked: parseFloat(e.target.value) || 0 }))} />
+              <TextField fullWidth margin="normal" label="Overtime Hours" type="number" value={selectedAttendance.OvertimeHours} onChange={(e) => setSelectedAttendance((prev) => ({ ...prev, OvertimeHours: parseFloat(e.target.value) || 0 }))} />
+              <TextField fullWidth margin="normal" label="PayrollID" type="number" value={selectedAttendance.PayrollID} onChange={(e) => setSelectedAttendance((prev) => ({ ...prev, PayrollID: parseInt(e.target.value) || 0 }))} />
             </>
           )}
         </DialogContent>
@@ -1913,206 +1509,79 @@ export default function StaffManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* --------------------- VIEW PAYROLL --------------------- */}
-      <Dialog
-  open={isViewPayrollOpen}
-  onClose={() => setViewPayrollOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Payroll Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {selectedPayroll && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-          
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Payroll ID:
-            </Typography>
-            <Typography variant="body1">{selectedPayroll.PayrollID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Staff ID:
-            </Typography>
-            <Typography variant="body1">{selectedPayroll.StaffID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Start Date:
-            </Typography>
-            <Typography variant="body1">{selectedPayroll.StartDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              End Date:
-            </Typography>
-            <Typography variant="body1">{selectedPayroll.EndDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Gross Pay:
-            </Typography>
-            <Typography variant="body1">${selectedPayroll.GrossPay}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Deductions:
-            </Typography>
-            <Typography variant="body1">${selectedPayroll.Deductions}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Net Pay:
-            </Typography>
-            <Typography variant="body1">${selectedPayroll.NetPay}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Generated Date:
-            </Typography>
-            <Typography variant="body1">{selectedPayroll.GeneratedDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Status:
-            </Typography>
-            <Typography variant="body1">{selectedPayroll.Status}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewPayrollOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
+      {/* VIEW PAYROLL */}
+      <Dialog open={isViewPayrollOpen} onClose={() => setViewPayrollOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Payroll Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedPayroll && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Payroll ID:</Typography>
+                  <Typography variant="body1">{selectedPayroll.PayrollID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Staff ID:</Typography>
+                  <Typography variant="body1">{selectedPayroll.StaffID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Start Date:</Typography>
+                  <Typography variant="body1">{selectedPayroll.StartDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">End Date:</Typography>
+                  <Typography variant="body1">{selectedPayroll.EndDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Gross Pay:</Typography>
+                  <Typography variant="body1">${selectedPayroll.GrossPay}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Deductions:</Typography>
+                  <Typography variant="body1">${selectedPayroll.Deductions}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Net Pay:</Typography>
+                  <Typography variant="body1">${selectedPayroll.NetPay}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Generated Date:</Typography>
+                  <Typography variant="body1">{selectedPayroll.GeneratedDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Status:</Typography>
+                  <Typography variant="body1">{selectedPayroll.Status}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewPayrollOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-      {/* --------------------- EDIT PAYROLL --------------------- */}
+      {/* EDIT PAYROLL */}
       <Dialog open={isEditPayrollOpen} onClose={() => setEditPayrollOpen(false)}>
         <DialogTitle>Edit Payroll</DialogTitle>
         <DialogContent dividers>
           {selectedPayroll && (
             <>
-              <TextField
-                fullWidth
-                margin="normal"
-                label="PayrollID"
-                disabled
-                value={selectedPayroll.PayrollID}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="StaffID"
-                value={selectedPayroll.StaffID}
-                onChange={(e) =>
-                  setSelectedPayroll((prev) => ({
-                    ...prev,
-                    StaffID: e.target.value,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Start Date"
-                value={selectedPayroll.StartDate}
-                onChange={(e) =>
-                  setSelectedPayroll((prev) => ({
-                    ...prev,
-                    StartDate: e.target.value,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="End Date"
-                value={selectedPayroll.EndDate}
-                onChange={(e) =>
-                  setSelectedPayroll((prev) => ({
-                    ...prev,
-                    EndDate: e.target.value,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="GrossPay"
-                type="number"
-                value={selectedPayroll.GrossPay}
-                onChange={(e) =>
-                  setSelectedPayroll((prev) => ({
-                    ...prev,
-                    GrossPay: parseFloat(e.target.value) || 0,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Deductions"
-                type="number"
-                value={selectedPayroll.Deductions}
-                onChange={(e) =>
-                  setSelectedPayroll((prev) => ({
-                    ...prev,
-                    Deductions: parseFloat(e.target.value) || 0,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="NetPay"
-                type="number"
-                value={selectedPayroll.NetPay}
-                onChange={(e) =>
-                  setSelectedPayroll((prev) => ({
-                    ...prev,
-                    NetPay: parseFloat(e.target.value) || 0,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="GeneratedDate"
-                value={selectedPayroll.GeneratedDate}
-                onChange={(e) =>
-                  setSelectedPayroll((prev) => ({
-                    ...prev,
-                    GeneratedDate: e.target.value,
-                  }))
-                }
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Status"
-                value={selectedPayroll.Status}
-                onChange={(e) =>
-                  setSelectedPayroll((prev) => ({
-                    ...prev,
-                    Status: e.target.value,
-                  }))
-                }
-              />
+              <TextField fullWidth margin="normal" label="PayrollID" disabled value={selectedPayroll.PayrollID} />
+              <TextField fullWidth margin="normal" label="StaffID" value={selectedPayroll.StaffID} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, StaffID: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="Start Date" value={selectedPayroll.StartDate} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, StartDate: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="End Date" value={selectedPayroll.EndDate} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, EndDate: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="GrossPay" type="number" value={selectedPayroll.GrossPay} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, GrossPay: parseFloat(e.target.value) || 0 }))} />
+              <TextField fullWidth margin="normal" label="Deductions" type="number" value={selectedPayroll.Deductions} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, Deductions: parseFloat(e.target.value) || 0 }))} />
+              <TextField fullWidth margin="normal" label="NetPay" type="number" value={selectedPayroll.NetPay} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, NetPay: parseFloat(e.target.value) || 0 }))} />
+              <TextField fullWidth margin="normal" label="GeneratedDate" value={selectedPayroll.GeneratedDate} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, GeneratedDate: e.target.value }))} />
+              <TextField fullWidth margin="normal" label="Status" value={selectedPayroll.Status} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, Status: e.target.value }))} />
             </>
           )}
         </DialogContent>
@@ -2124,131 +1593,82 @@ export default function StaffManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* --------------------- VIEW TASK --------------------- */}
-      <Dialog
-  open={isViewTaskOpen}
-  onClose={() => setViewTaskOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Task Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {selectedTask && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-        
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Task ID:
-            </Typography>
-            <Typography variant="body1">{selectedTask.TaskID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Staff ID:
-            </Typography>
-            <Typography variant="body1">{selectedTask.StaffID}</Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="body2" color="textSecondary">
-              Description:
-            </Typography>
-            <Typography variant="body1">{selectedTask.TaskDescription}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Task Date:
-            </Typography>
-            <Typography variant="body1">{selectedTask.TaskDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Status:
-            </Typography>
-            <Typography variant="body1">{selectedTask.Status}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewTaskOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
+      {/* VIEW TASK */}
+      <Dialog open={isViewTaskOpen} onClose={() => setViewTaskOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Task Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedTask && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Task ID:</Typography>
+                  <Typography variant="body1">{selectedTask.TaskID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Staff ID:</Typography>
+                  <Typography variant="body1">{selectedTask.StaffID}</Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="textSecondary">Description:</Typography>
+                  <Typography variant="body1">{selectedTask.TaskDescription}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Task Date:</Typography>
+                  <Typography variant="body1">{selectedTask.TaskDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Status:</Typography>
+                  <Typography variant="body1">{selectedTask.Status}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewTaskOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-
-      {/* --------------------- EDIT TASK --------------------- */}
+      {/* EDIT TASK */}
       <Dialog open={isEditTaskOpen} onClose={() => setEditTaskOpen(false)}>
         <DialogTitle>Edit Task</DialogTitle>
         <DialogContent dividers>
           {selectedTask && (
             <>
-              <TextField
-                fullWidth
-                margin="normal"
-                label="TaskID"
-                disabled
-                value={selectedTask.TaskID}
-              />
+              <TextField fullWidth margin="normal" label="TaskID" disabled value={selectedTask.TaskID} />
               <TextField
                 fullWidth
                 margin="normal"
                 label="StaffID"
                 value={selectedTask.StaffID}
-                onChange={(e) =>
-                  setSelectedTask((prev) => ({
-                    ...prev,
-                    StaffID: e.target.value,
-                  }))
-                }
+                onChange={(e) => setSelectedTask((prev) => ({ ...prev, StaffID: e.target.value }))}
               />
               <TextField
                 fullWidth
                 margin="normal"
-                label="TaskDescription"
+                label="Task Description"
                 value={selectedTask.TaskDescription}
-                onChange={(e) =>
-                  setSelectedTask((prev) => ({
-                    ...prev,
-                    TaskDescription: e.target.value,
-                  }))
-                }
+                onChange={(e) => setSelectedTask((prev) => ({ ...prev, TaskDescription: e.target.value }))}
               />
               <TextField
                 fullWidth
                 margin="normal"
-                label="TaskDate"
+                label="Task Date"
                 value={selectedTask.TaskDate}
-                onChange={(e) =>
-                  setSelectedTask((prev) => ({
-                    ...prev,
-                    TaskDate: e.target.value,
-                  }))
-                }
+                onChange={(e) => setSelectedTask((prev) => ({ ...prev, TaskDate: e.target.value }))}
               />
               <TextField
                 fullWidth
                 margin="normal"
                 label="Status"
                 value={selectedTask.Status}
-                onChange={(e) =>
-                  setSelectedTask((prev) => ({
-                    ...prev,
-                    Status: e.target.value,
-                  }))
-                }
+                onChange={(e) => setSelectedTask((prev) => ({ ...prev, Status: e.target.value }))}
               />
             </>
           )}
@@ -2261,149 +1681,93 @@ export default function StaffManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* --------------------- VIEW SCHEDULE --------------------- */}
-      <Dialog
-  open={isViewScheduleOpen}
-  onClose={() => setViewScheduleOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Schedule Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {selectedSchedule && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-           
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Schedule ID:
-            </Typography>
-            <Typography variant="body1">{selectedSchedule.ScheduleID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Staff ID:
-            </Typography>
-            <Typography variant="body1">{selectedSchedule.StaffID}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Date:
-            </Typography>
-            <Typography variant="body1">{selectedSchedule.ShiftDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Start:
-            </Typography>
-            <Typography variant="body1">{selectedSchedule.ShiftStart}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              End:
-            </Typography>
-            <Typography variant="body1">{selectedSchedule.ShiftEnd}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Role Override:
-            </Typography>
-            <Typography variant="body1">{selectedSchedule.RoleOverride}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewScheduleOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
+      {/* VIEW SCHEDULE */}
+      <Dialog open={isViewScheduleOpen} onClose={() => setViewScheduleOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Schedule Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedSchedule && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Schedule ID:</Typography>
+                  <Typography variant="body1">{selectedSchedule.ScheduleID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Staff ID:</Typography>
+                  <Typography variant="body1">{selectedSchedule.StaffID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Date:</Typography>
+                  <Typography variant="body1">{selectedSchedule.ShiftDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Start:</Typography>
+                  <Typography variant="body1">{selectedSchedule.ShiftStart}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">End:</Typography>
+                  <Typography variant="body1">{selectedSchedule.ShiftEnd}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">Role Override:</Typography>
+                  <Typography variant="body1">{selectedSchedule.RoleOverride}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewScheduleOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-
-      {/* --------------------- EDIT SCHEDULE --------------------- */}
+      {/* EDIT SCHEDULE */}
       <Dialog open={isEditScheduleOpen} onClose={() => setEditScheduleOpen(false)}>
         <DialogTitle>Edit Schedule</DialogTitle>
         <DialogContent dividers>
           {selectedSchedule && (
             <>
-              <TextField
-                fullWidth
-                margin="normal"
-                label="ScheduleID"
-                disabled
-                value={selectedSchedule.ScheduleID}
-              />
+              <TextField fullWidth margin="normal" label="ScheduleID" disabled value={selectedSchedule.ScheduleID} />
               <TextField
                 fullWidth
                 margin="normal"
                 label="StaffID"
                 value={selectedSchedule.StaffID}
-                onChange={(e) =>
-                  setSelectedSchedule((prev) => ({
-                    ...prev,
-                    StaffID: e.target.value,
-                  }))
-                }
+                onChange={(e) => setSelectedSchedule((prev) => ({ ...prev, StaffID: e.target.value }))}
               />
               <TextField
                 fullWidth
                 margin="normal"
-                label="ShiftDate"
+                label="Shift Date"
                 value={selectedSchedule.ShiftDate}
-                onChange={(e) =>
-                  setSelectedSchedule((prev) => ({
-                    ...prev,
-                    ShiftDate: e.target.value,
-                  }))
-                }
+                onChange={(e) => setSelectedSchedule((prev) => ({ ...prev, ShiftDate: e.target.value }))}
               />
               <TextField
                 fullWidth
                 margin="normal"
-                label="ShiftStart"
+                label="Shift Start"
                 value={selectedSchedule.ShiftStart}
-                onChange={(e) =>
-                  setSelectedSchedule((prev) => ({
-                    ...prev,
-                    ShiftStart: e.target.value,
-                  }))
-                }
+                onChange={(e) => setSelectedSchedule((prev) => ({ ...prev, ShiftStart: e.target.value }))}
               />
               <TextField
                 fullWidth
                 margin="normal"
-                label="ShiftEnd"
+                label="Shift End"
                 value={selectedSchedule.ShiftEnd}
-                onChange={(e) =>
-                  setSelectedSchedule((prev) => ({
-                    ...prev,
-                    ShiftEnd: e.target.value,
-                  }))
-                }
+                onChange={(e) => setSelectedSchedule((prev) => ({ ...prev, ShiftEnd: e.target.value }))}
               />
               <TextField
                 fullWidth
                 margin="normal"
-                label="RoleOverride"
+                label="Role Override"
                 value={selectedSchedule.RoleOverride}
-                onChange={(e) =>
-                  setSelectedSchedule((prev) => ({
-                    ...prev,
-                    RoleOverride: e.target.value,
-                  }))
-                }
+                onChange={(e) => setSelectedSchedule((prev) => ({ ...prev, RoleOverride: e.target.value }))}
               />
             </>
           )}
@@ -2414,6 +1778,25 @@ export default function StaffManagement() {
             Save Changes
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* ------------------- RENDER PRINT PAYSLIP DIALOG ------------------- */}
+      <Dialog open={isPayslipOpen} onClose={() => setPayslipOpen(false)} fullWidth maxWidth="lg">
+        <DialogContent>
+          <Box ref={printRef}>
+            <PayslipLayout staffData={payslipStaffData} payrollData={payslipPayrollData} />
+          </Box>
+        </DialogContent>
+        <Box sx={{ m: 2, display: "flex", justifyContent: "flex-end", gap: 2 }}>
+          <ReactToPrint
+            trigger={() => <Button variant="contained" color="primary">Print Payslip</Button>}
+            content={() => printRef.current}
+            pageStyle="@media print { @page { size: A4; margin: 20mm } }"
+          />
+          <Button variant="text" color="inherit" onClick={() => setPayslipOpen(false)}>
+            Close
+          </Button>
+        </Box>
       </Dialog>
     </Box>
   );
