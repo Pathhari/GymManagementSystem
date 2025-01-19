@@ -1479,51 +1479,116 @@ export default function StaffManagement() {
       </Dialog>
 
       {/* ------------------- VIEW STAFF DIALOG ------------------- */}
-      <Dialog open={isViewStaffOpen} onClose={() => setViewStaffOpen(false)}>
-        <DialogTitle>Staff Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedStaff && (
-            <>
-              <Typography gutterBottom>
-                <strong>StaffID:</strong> {selectedStaff.StaffID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Full Name:</strong> {selectedStaff.FullName}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Email:</strong> {selectedStaff.Email}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Phone:</strong> {selectedStaff.Phone}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Role:</strong> {selectedStaff.Role}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>BranchID:</strong> {selectedStaff.BranchID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Date Hired:</strong> {selectedStaff.DateHired}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Daily Rate:</strong> {selectedStaff.DailyRate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Hourly Rate:</strong> {selectedStaff.HourlyRate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Overtime Rate:</strong> {selectedStaff.OvertimeRate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Notes:</strong> {selectedStaff.Notes}
-              </Typography>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewStaffOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <Dialog
+  open={isViewStaffOpen}
+  onClose={() => setViewStaffOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Staff Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {selectedStaff && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <Typography variant="subtitle1" color="textSecondary">
+              <strong>Personal Information</strong>
+            </Typography>
+            <Divider sx={{ my: 1 }} />
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Full Name:
+            </Typography>
+            <Typography variant="body1">{selectedStaff.FullName}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Email:
+            </Typography>
+            <Typography variant="body1">{selectedStaff.Email}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Phone:
+            </Typography>
+            <Typography variant="body1">{selectedStaff.Phone}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Role:
+            </Typography>
+            <Typography variant="body1">{selectedStaff.Role}</Typography>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Typography variant="subtitle1" color="textSecondary">
+              <strong>Work Information</strong>
+            </Typography>
+            <Divider sx={{ my: 1 }} />
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Branch ID:
+            </Typography>
+            <Typography variant="body1">{selectedStaff.BranchID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Date Hired:
+            </Typography>
+            <Typography variant="body1">{selectedStaff.DateHired}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Daily Rate:
+            </Typography>
+            <Typography variant="body1">${selectedStaff.DailyRate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Hourly Rate:
+            </Typography>
+            <Typography variant="body1">${selectedStaff.HourlyRate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Overtime Rate:
+            </Typography>
+            <Typography variant="body1">${selectedStaff.OvertimeRate}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="body2" color="textSecondary">
+              Notes:
+            </Typography>
+            <Typography variant="body1">{selectedStaff.Notes}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewStaffOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+    <Button
+      onClick={() => handlePrintPayslip(selectedStaff)}
+      variant="contained"
+      color="primary"
+    >
+      Print Payslip
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
       {/* ------------------- EDIT STAFF DIALOG ------------------- */}
       <Dialog open={isEditStaffOpen} onClose={() => setEditStaffOpen(false)}>
@@ -1655,42 +1720,87 @@ export default function StaffManagement() {
       </Dialog>
 
       {/* --------------------- VIEW ATTENDANCE --------------------- */}
-      <Dialog open={isViewAttendanceOpen} onClose={() => setViewAttendanceOpen(false)}>
-        <DialogTitle>Attendance Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedAttendance && (
-            <>
-              <Typography gutterBottom>
-                <strong>AttendanceID:</strong> {selectedAttendance.AttendanceID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>StaffID:</strong> {selectedAttendance.StaffID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Date:</strong> {selectedAttendance.Date}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Time In:</strong> {selectedAttendance.TimeIn}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Time Out:</strong> {selectedAttendance.TimeOut}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Hours Worked:</strong> {selectedAttendance.HoursWorked}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Overtime Hours:</strong> {selectedAttendance.OvertimeHours}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>PayrollID:</strong> {selectedAttendance.PayrollID}
-              </Typography>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewAttendanceOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <Dialog
+  open={isViewAttendanceOpen}
+  onClose={() => setViewAttendanceOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Attendance Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {selectedAttendance && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+          
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Attendance ID:
+            </Typography>
+            <Typography variant="body1">{selectedAttendance.AttendanceID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Staff ID:
+            </Typography>
+            <Typography variant="body1">{selectedAttendance.StaffID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Date:
+            </Typography>
+            <Typography variant="body1">{selectedAttendance.Date}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Time In:
+            </Typography>
+            <Typography variant="body1">{selectedAttendance.TimeIn}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Time Out:
+            </Typography>
+            <Typography variant="body1">{selectedAttendance.TimeOut}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Hours Worked:
+            </Typography>
+            <Typography variant="body1">{selectedAttendance.HoursWorked}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Overtime Hours:
+            </Typography>
+            <Typography variant="body1">{selectedAttendance.OvertimeHours}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Payroll ID:
+            </Typography>
+            <Typography variant="body1">{selectedAttendance.PayrollID}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewAttendanceOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
       {/* --------------------- EDIT ATTENDANCE --------------------- */}
       <Dialog open={isEditAttendanceOpen} onClose={() => setEditAttendanceOpen(false)}>
@@ -1804,45 +1914,92 @@ export default function StaffManagement() {
       </Dialog>
 
       {/* --------------------- VIEW PAYROLL --------------------- */}
-      <Dialog open={isViewPayrollOpen} onClose={() => setViewPayrollOpen(false)}>
-        <DialogTitle>Payroll Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedPayroll && (
-            <>
-              <Typography gutterBottom>
-                <strong>PayrollID:</strong> {selectedPayroll.PayrollID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>StaffID:</strong> {selectedPayroll.StaffID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Start Date:</strong> {selectedPayroll.StartDate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>End Date:</strong> {selectedPayroll.EndDate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>GrossPay:</strong> {selectedPayroll.GrossPay}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Deductions:</strong> {selectedPayroll.Deductions}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>NetPay:</strong> {selectedPayroll.NetPay}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>GeneratedDate:</strong> {selectedPayroll.GeneratedDate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Status:</strong> {selectedPayroll.Status}
-              </Typography>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewPayrollOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <Dialog
+  open={isViewPayrollOpen}
+  onClose={() => setViewPayrollOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Payroll Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {selectedPayroll && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+          
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Payroll ID:
+            </Typography>
+            <Typography variant="body1">{selectedPayroll.PayrollID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Staff ID:
+            </Typography>
+            <Typography variant="body1">{selectedPayroll.StaffID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Start Date:
+            </Typography>
+            <Typography variant="body1">{selectedPayroll.StartDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              End Date:
+            </Typography>
+            <Typography variant="body1">{selectedPayroll.EndDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Gross Pay:
+            </Typography>
+            <Typography variant="body1">${selectedPayroll.GrossPay}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Deductions:
+            </Typography>
+            <Typography variant="body1">${selectedPayroll.Deductions}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Net Pay:
+            </Typography>
+            <Typography variant="body1">${selectedPayroll.NetPay}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Generated Date:
+            </Typography>
+            <Typography variant="body1">{selectedPayroll.GeneratedDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Status:
+            </Typography>
+            <Typography variant="body1">{selectedPayroll.Status}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewPayrollOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
 
       {/* --------------------- EDIT PAYROLL --------------------- */}
       <Dialog open={isEditPayrollOpen} onClose={() => setEditPayrollOpen(false)}>
@@ -1968,33 +2125,69 @@ export default function StaffManagement() {
       </Dialog>
 
       {/* --------------------- VIEW TASK --------------------- */}
-      <Dialog open={isViewTaskOpen} onClose={() => setViewTaskOpen(false)}>
-        <DialogTitle>Task Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedTask && (
-            <>
-              <Typography gutterBottom>
-                <strong>TaskID:</strong> {selectedTask.TaskID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>StaffID:</strong> {selectedTask.StaffID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Description:</strong> {selectedTask.TaskDescription}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>TaskDate:</strong> {selectedTask.TaskDate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Status:</strong> {selectedTask.Status}
-              </Typography>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewTaskOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <Dialog
+  open={isViewTaskOpen}
+  onClose={() => setViewTaskOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Task Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {selectedTask && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+        
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Task ID:
+            </Typography>
+            <Typography variant="body1">{selectedTask.TaskID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Staff ID:
+            </Typography>
+            <Typography variant="body1">{selectedTask.StaffID}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="body2" color="textSecondary">
+              Description:
+            </Typography>
+            <Typography variant="body1">{selectedTask.TaskDescription}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Task Date:
+            </Typography>
+            <Typography variant="body1">{selectedTask.TaskDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Status:
+            </Typography>
+            <Typography variant="body1">{selectedTask.Status}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewTaskOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
       {/* --------------------- EDIT TASK --------------------- */}
       <Dialog open={isEditTaskOpen} onClose={() => setEditTaskOpen(false)}>
@@ -2069,36 +2262,75 @@ export default function StaffManagement() {
       </Dialog>
 
       {/* --------------------- VIEW SCHEDULE --------------------- */}
-      <Dialog open={isViewScheduleOpen} onClose={() => setViewScheduleOpen(false)}>
-        <DialogTitle>Schedule Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedSchedule && (
-            <>
-              <Typography gutterBottom>
-                <strong>ScheduleID:</strong> {selectedSchedule.ScheduleID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>StaffID:</strong> {selectedSchedule.StaffID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Date:</strong> {selectedSchedule.ShiftDate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Start:</strong> {selectedSchedule.ShiftStart}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>End:</strong> {selectedSchedule.ShiftEnd}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Role Override:</strong> {selectedSchedule.RoleOverride}
-              </Typography>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewScheduleOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <Dialog
+  open={isViewScheduleOpen}
+  onClose={() => setViewScheduleOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Schedule Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {selectedSchedule && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+           
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Schedule ID:
+            </Typography>
+            <Typography variant="body1">{selectedSchedule.ScheduleID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Staff ID:
+            </Typography>
+            <Typography variant="body1">{selectedSchedule.StaffID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Date:
+            </Typography>
+            <Typography variant="body1">{selectedSchedule.ShiftDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Start:
+            </Typography>
+            <Typography variant="body1">{selectedSchedule.ShiftStart}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              End:
+            </Typography>
+            <Typography variant="body1">{selectedSchedule.ShiftEnd}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Role Override:
+            </Typography>
+            <Typography variant="body1">{selectedSchedule.RoleOverride}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewScheduleOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
       {/* --------------------- EDIT SCHEDULE --------------------- */}
       <Dialog open={isEditScheduleOpen} onClose={() => setEditScheduleOpen(false)}>

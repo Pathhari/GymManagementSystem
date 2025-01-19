@@ -336,21 +336,58 @@ export default function Reports() {
     {
       field: "actions",
       headerName: "Actions",
-      width: 120,
+      width: 200,
       sortable: false,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", gap: 0.5 }}>
-          <IconButton color="success" onClick={() => handleViewCashFlow(params.row)}>
-            <VisibilityIcon fontSize="small" />
-          </IconButton>
-          <IconButton color="primary" onClick={() => handleEditCashFlow(params.row)}>
-            <EditIcon fontSize="small" />
-          </IconButton>
-          <IconButton color="error" onClick={() => handleDeleteCashFlow(params.row.CashFlowID)}>
-            <DeleteIcon fontSize="small" />
-          </IconButton>
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title="View">
+            <Button
+              variant="contained"
+              sx={{
+                backgroundColor: "#4caf50",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#43a047" },
+                minWidth: "40px",
+                padding: "6px",
+              }}
+              onClick={() => handleViewCashFlow(params.row)}
+            >
+              <VisibilityIcon />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Edit">
+            <Button
+              variant="contained"
+              sx={{
+                backgroundColor: "#2196f3",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#1976d2" },
+                minWidth: "40px",
+                padding: "6px",
+              }}
+              onClick={() => handleEditCashFlow(params.row)}
+            >
+              <EditIcon />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <Button
+              variant="contained"
+              sx={{
+                backgroundColor: "#f44336",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#d32f2f" },
+                minWidth: "40px",
+                padding: "6px",
+              }}
+              onClick={() => handleDeleteCashFlow(params.row.CashFlowID)}
+            >
+              <DeleteIcon />
+            </Button>
+          </Tooltip>
         </Box>
       )
+      
     }
   ];
 
@@ -745,54 +782,111 @@ export default function Reports() {
       </Paper>
 
       {/* View Daily Cashflow Dialog */}
-      <Dialog open={isViewCashFlowOpen} onClose={handleCloseViewCashFlow} maxWidth="sm" fullWidth>
-        <DialogTitle>Daily Cashflow Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedCashFlow && (
-            <Box>
-              <Typography gutterBottom>
-                <strong>ID:</strong> {selectedCashFlow.CashFlowID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Date:</strong> {selectedCashFlow.Date}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Branch ID:</strong> {selectedCashFlow.BranchID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Business Type:</strong> {selectedCashFlow.BusinessType}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Cash Sales:</strong> ₱{selectedCashFlow.CashSales.toFixed(2)}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>GCash Sales:</strong> ₱{selectedCashFlow.GCashSales.toFixed(2)}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>BPI Sales:</strong> ₱{selectedCashFlow.BPISales.toFixed(2)}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Other Sales:</strong> ₱{selectedCashFlow.OtherSales.toFixed(2)}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Total Sales:</strong> ₱{selectedCashFlow.TotalSales.toFixed(2)}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Petty Cash:</strong> ₱{selectedCashFlow.PettyCash.toFixed(2)}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Deposited Amount:</strong> ₱{selectedCashFlow.DepositedAmount.toFixed(2)}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Remarks:</strong> {selectedCashFlow.Remarks}
-              </Typography>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseViewCashFlow}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <Dialog
+  open={isViewCashFlowOpen}
+  onClose={handleCloseViewCashFlow}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Daily Cashflow Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {selectedCashFlow && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+          
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              ID:
+            </Typography>
+            <Typography variant="body1">{selectedCashFlow.CashFlowID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Date:
+            </Typography>
+            <Typography variant="body1">{selectedCashFlow.Date}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Branch ID:
+            </Typography>
+            <Typography variant="body1">{selectedCashFlow.BranchID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Business Type:
+            </Typography>
+            <Typography variant="body1">{selectedCashFlow.BusinessType}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Cash Sales:
+            </Typography>
+            <Typography variant="body1">₱{selectedCashFlow.CashSales.toFixed(2)}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              GCash Sales:
+            </Typography>
+            <Typography variant="body1">₱{selectedCashFlow.GCashSales.toFixed(2)}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              BPI Sales:
+            </Typography>
+            <Typography variant="body1">₱{selectedCashFlow.BPISales.toFixed(2)}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Other Sales:
+            </Typography>
+            <Typography variant="body1">₱{selectedCashFlow.OtherSales.toFixed(2)}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Total Sales:
+            </Typography>
+            <Typography variant="body1">₱{selectedCashFlow.TotalSales.toFixed(2)}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Petty Cash:
+            </Typography>
+            <Typography variant="body1">₱{selectedCashFlow.PettyCash.toFixed(2)}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Deposited Amount:
+            </Typography>
+            <Typography variant="body1">₱{selectedCashFlow.DepositedAmount.toFixed(2)}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="body2" color="textSecondary">
+              Remarks:
+            </Typography>
+            <Typography variant="body1">{selectedCashFlow.Remarks}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={handleCloseViewCashFlow}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
       {/* Edit Daily Cashflow Dialog */}
       <Dialog open={isEditCashFlowOpen} onClose={handleCloseEditCashFlow} maxWidth="sm" fullWidth>

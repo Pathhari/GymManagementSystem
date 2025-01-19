@@ -22,6 +22,7 @@ import {
   Divider,
   Menu,
   MenuItem,
+  Pagination, // <-- Import Pagination
 } from "@mui/material";
 
 import { DataGrid } from "@mui/x-data-grid";
@@ -41,7 +42,7 @@ import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 
-/** Combine Bookings & Sessions for the calendar. Adjust fields as needed. */
+// Combine Bookings & Sessions for the calendar. Adjust fields as needed.
 function createCalendarEvents(bookings, sessions) {
   const bookingEvents = bookings.map((b) => ({
     id: b.BookingID,
@@ -66,6 +67,10 @@ export default function BookingsSessions() {
 
   // ------------------ New: Branch Filter State ------------------
   const [branchFilter, setBranchFilter] = useState("");
+
+  // ------------------ Pagination State for Event List ------------------
+  const eventsPerPage = 6;
+  const [eventPage, setEventPage] = useState(1);
 
   // ------------------ Load data from the server on mount ------------------
   useEffect(() => {
@@ -103,7 +108,6 @@ export default function BookingsSessions() {
   };
 
   // ------------------ Filter the table data ------------------
-  // The branch filter is applied only if a branch is selected.
   const filteredBookings = bookings.filter((b) => {
     const branchMatches = branchFilter ? b.Branch === branchFilter : true;
     const searchMatches = Object.values(b).some((val) =>
@@ -202,9 +206,7 @@ export default function BookingsSessions() {
   };
   const handleCancelBooking = async (bookingId) => {
     try {
-      // POST /booking/{id}/cancel => booking.cancel
       await axios.post(`/booking/${bookingId}/cancel`);
-      // Remove from local state
       setBookings((prev) => prev.filter((b) => b.BookingID !== bookingId));
       setCalendarEvents((prev) => prev.filter((ev) => ev.id !== bookingId));
     } catch (err) {
@@ -233,9 +235,7 @@ export default function BookingsSessions() {
   };
   const handleCancelSession = async (sessionId) => {
     try {
-      // POST /booking/sessions/{id}/cancel => booking.sessions.cancel
       await axios.post(`/booking/sessions/${sessionId}/cancel`);
-      // Remove from local state
       setSessions((prev) => prev.filter((s) => s.SessionID !== sessionId));
       setCalendarEvents((prev) => prev.filter((ev) => ev.id !== sessionId));
     } catch (err) {
@@ -502,7 +502,6 @@ export default function BookingsSessions() {
   const handleUpdateSession = async () => {
     if (!selectedSession) return;
     try {
-      // PUT /booking/sessions/{id}
       await axios.put(`/booking/sessions/${selectedSession.SessionID}`, {
         SessionName: selectedSession.SessionName,
         SessionType: selectedSession.SessionType,
@@ -518,6 +517,17 @@ export default function BookingsSessions() {
     } catch (err) {
       console.error("Failed to update session:", err);
     }
+  };
+
+  // ------------------ Pagination for Event List ------------------
+  // Calculate the events to display on the current page:
+  const indexOfLastEvent = eventPage * eventsPerPage;
+  const indexOfFirstEvent = indexOfLastEvent - eventsPerPage;
+  const currentEvents = calendarEvents.slice(indexOfFirstEvent, indexOfLastEvent);
+
+  // Change page handler for Pagination component
+  const handleEventPageChange = (event, value) => {
+    setEventPage(value);
   };
 
   // ------------------ Render ------------------
@@ -563,7 +573,7 @@ export default function BookingsSessions() {
                   />
                 </ListItem>
               ) : (
-                calendarEvents.map((ev) => (
+                currentEvents.map((ev) => (
                   <Paper
                     key={ev.id}
                     variant="outlined"
@@ -578,10 +588,7 @@ export default function BookingsSessions() {
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="Delete Event">
-                            <IconButton
-                              onClick={() => handleDeleteEvent(ev.id)}
-                              sx={{ ml: 1 }}
-                            >
+                            <IconButton onClick={() => handleDeleteEvent(ev.id)} sx={{ ml: 1 }}>
                               <DeleteIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
@@ -591,10 +598,7 @@ export default function BookingsSessions() {
                     >
                       <ListItemText
                         primary={ev.title}
-                        primaryTypographyProps={{
-                          fontWeight: 600,
-                          fontSize: "0.95rem",
-                        }}
+                        primaryTypographyProps={{ fontWeight: 600, fontSize: "0.95rem" }}
                         secondary={`Date: ${ev.date}`}
                       />
                     </ListItem>
@@ -602,6 +606,17 @@ export default function BookingsSessions() {
                 ))
               )}
             </List>
+            {/* Pagination Controls */}
+            {calendarEvents.length > eventsPerPage && (
+              <Box sx={{ mt: 2, display: "flex", justifyContent: "center" }}>
+                <Pagination
+                  count={Math.ceil(calendarEvents.length / eventsPerPage)}
+                  page={eventPage}
+                  onChange={handleEventPageChange}
+                  size="small"
+                />
+              </Box>
+            )}
           </Paper>
         </Grid>
       </Grid>
@@ -627,7 +642,7 @@ export default function BookingsSessions() {
       <Paper sx={{ p: 2, mb: 3 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
           <Box sx={{ display: "flex", gap: 2 }}>
-            {/* New: Branch Filter Dropdown */}
+            {/* Branch Filter Dropdown */}
             <TextField
               select
               label="Branch"
@@ -755,57 +770,43 @@ export default function BookingsSessions() {
               label="Member ID"
               size="small"
               value={newBooking.MemberID}
-              onChange={(e) =>
-                setNewBooking({ ...newBooking, MemberID: e.target.value })
-              }
+              onChange={(e) => setNewBooking({ ...newBooking, MemberID: e.target.value })}
             />
             <TextField
               label="Facility ID"
               size="small"
               value={newBooking.FacilityID}
-              onChange={(e) =>
-                setNewBooking({ ...newBooking, FacilityID: e.target.value })
-              }
+              onChange={(e) => setNewBooking({ ...newBooking, FacilityID: e.target.value })}
             />
             <TextField
               label="Booking Date (YYYY-MM-DD)"
               size="small"
               value={newBooking.BookingDate}
-              onChange={(e) =>
-                setNewBooking({ ...newBooking, BookingDate: e.target.value })
-              }
+              onChange={(e) => setNewBooking({ ...newBooking, BookingDate: e.target.value })}
             />
             <TextField
               label="Booking Time (HH:MM)"
               size="small"
               value={newBooking.BookingTime}
-              onChange={(e) =>
-                setNewBooking({ ...newBooking, BookingTime: e.target.value })
-              }
+              onChange={(e) => setNewBooking({ ...newBooking, BookingTime: e.target.value })}
             />
             <TextField
               label="Duration"
               size="small"
               value={newBooking.Duration}
-              onChange={(e) =>
-                setNewBooking({ ...newBooking, Duration: e.target.value })
-              }
+              onChange={(e) => setNewBooking({ ...newBooking, Duration: e.target.value })}
             />
             <TextField
               label="Payment ID (optional)"
               size="small"
               value={newBooking.PaymentID || ""}
-              onChange={(e) =>
-                setNewBooking({ ...newBooking, PaymentID: e.target.value })
-              }
+              onChange={(e) => setNewBooking({ ...newBooking, PaymentID: e.target.value })}
             />
             <TextField
               label="Status"
               size="small"
               value={newBooking.Status}
-              onChange={(e) =>
-                setNewBooking({ ...newBooking, Status: e.target.value })
-              }
+              onChange={(e) => setNewBooking({ ...newBooking, Status: e.target.value })}
             />
           </Box>
         </DialogContent>
@@ -831,67 +832,51 @@ export default function BookingsSessions() {
               label="Session Name"
               size="small"
               value={newSession.SessionName}
-              onChange={(e) =>
-                setNewSession({ ...newSession, SessionName: e.target.value })
-              }
+              onChange={(e) => setNewSession({ ...newSession, SessionName: e.target.value })}
             />
             <TextField
               label="Session Type"
               size="small"
               value={newSession.SessionType}
-              onChange={(e) =>
-                setNewSession({ ...newSession, SessionType: e.target.value })
-              }
+              onChange={(e) => setNewSession({ ...newSession, SessionType: e.target.value })}
             />
             <TextField
               label="Coach ID"
               size="small"
               value={newSession.CoachID}
-              onChange={(e) =>
-                setNewSession({ ...newSession, CoachID: e.target.value })
-              }
+              onChange={(e) => setNewSession({ ...newSession, CoachID: e.target.value })}
             />
             <TextField
               label="Start Time (YYYY-MM-DDTHH:MM)"
               size="small"
               value={newSession.StartTime}
-              onChange={(e) =>
-                setNewSession({ ...newSession, StartTime: e.target.value })
-              }
+              onChange={(e) => setNewSession({ ...newSession, StartTime: e.target.value })}
             />
             <TextField
               label="End Time (YYYY-MM-DDTHH:MM)"
               size="small"
               value={newSession.EndTime}
-              onChange={(e) =>
-                setNewSession({ ...newSession, EndTime: e.target.value })
-              }
+              onChange={(e) => setNewSession({ ...newSession, EndTime: e.target.value })}
             />
             <TextField
               label="Capacity"
               type="number"
               size="small"
               value={newSession.Capacity}
-              onChange={(e) =>
-                setNewSession({ ...newSession, Capacity: e.target.value })
-              }
+              onChange={(e) => setNewSession({ ...newSession, Capacity: e.target.value })}
             />
             <TextField
               label="Location"
               size="small"
               value={newSession.Location}
-              onChange={(e) =>
-                setNewSession({ ...newSession, Location: e.target.value })
-              }
+              onChange={(e) => setNewSession({ ...newSession, Location: e.target.value })}
             />
             <TextField
               label="Fee"
               type="number"
               size="small"
               value={newSession.Fee}
-              onChange={(e) =>
-                setNewSession({ ...newSession, Fee: e.target.value })
-              }
+              onChange={(e) => setNewSession({ ...newSession, Fee: e.target.value })}
             />
           </Box>
         </DialogContent>
@@ -995,36 +980,66 @@ export default function BookingsSessions() {
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>Booking Details</DialogTitle>
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Booking Details
+          </Typography>
+        </DialogTitle>
         <DialogContent dividers>
           {selectedBooking && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <Typography>
-                <strong>Booking ID:</strong> {selectedBooking.BookingID}
-              </Typography>
-              <Typography>
-                <strong>Member Name:</strong> {selectedBooking.MemberName}
-              </Typography>
-              <Typography>
-                <strong>Facility Name:</strong> {selectedBooking.FacilityName}
-              </Typography>
-              <Typography>
-                <strong>Date:</strong> {selectedBooking.BookingDate}
-              </Typography>
-              <Typography>
-                <strong>Time:</strong> {selectedBooking.BookingTime}
-              </Typography>
-              <Typography>
-                <strong>Duration:</strong> {selectedBooking.Duration}
-              </Typography>
-              <Typography>
-                <strong>Status:</strong> {selectedBooking.Status}
-              </Typography>
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12}></Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Booking ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedBooking.BookingID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Member Name:
+                  </Typography>
+                  <Typography variant="body1">{selectedBooking.MemberName}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Facility Name:
+                  </Typography>
+                  <Typography variant="body1">{selectedBooking.FacilityName}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Date:
+                  </Typography>
+                  <Typography variant="body1">{selectedBooking.BookingDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Time:
+                  </Typography>
+                  <Typography variant="body1">{selectedBooking.BookingTime}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Duration:
+                  </Typography>
+                  <Typography variant="body1">{selectedBooking.Duration}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Status:
+                  </Typography>
+                  <Typography variant="body1">{selectedBooking.Status}</Typography>
+                </Grid>
+              </Grid>
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setViewBookingModal(false)}>Close</Button>
+          <Button onClick={() => setViewBookingModal(false)} variant="contained" color="primary">
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -1044,10 +1059,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedBooking.MemberName}
                 onChange={(e) =>
-                  setSelectedBooking({
-                    ...selectedBooking,
-                    MemberName: e.target.value,
-                  })
+                  setSelectedBooking({ ...selectedBooking, MemberName: e.target.value })
                 }
               />
               <TextField
@@ -1055,10 +1067,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedBooking.FacilityName}
                 onChange={(e) =>
-                  setSelectedBooking({
-                    ...selectedBooking,
-                    FacilityName: e.target.value,
-                  })
+                  setSelectedBooking({ ...selectedBooking, FacilityName: e.target.value })
                 }
               />
               <TextField
@@ -1066,10 +1075,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedBooking.BookingDate}
                 onChange={(e) =>
-                  setSelectedBooking({
-                    ...selectedBooking,
-                    BookingDate: e.target.value,
-                  })
+                  setSelectedBooking({ ...selectedBooking, BookingDate: e.target.value })
                 }
               />
               <TextField
@@ -1077,10 +1083,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedBooking.BookingTime}
                 onChange={(e) =>
-                  setSelectedBooking({
-                    ...selectedBooking,
-                    BookingTime: e.target.value,
-                  })
+                  setSelectedBooking({ ...selectedBooking, BookingTime: e.target.value })
                 }
               />
               <TextField
@@ -1088,10 +1091,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedBooking.Duration}
                 onChange={(e) =>
-                  setSelectedBooking({
-                    ...selectedBooking,
-                    Duration: e.target.value,
-                  })
+                  setSelectedBooking({ ...selectedBooking, Duration: e.target.value })
                 }
               />
               <TextField
@@ -1099,10 +1099,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedBooking.Status}
                 onChange={(e) =>
-                  setSelectedBooking({
-                    ...selectedBooking,
-                    Status: e.target.value,
-                  })
+                  setSelectedBooking({ ...selectedBooking, Status: e.target.value })
                 }
               />
             </Box>
@@ -1123,39 +1120,72 @@ export default function BookingsSessions() {
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>Session Details</DialogTitle>
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Session Details
+          </Typography>
+        </DialogTitle>
         <DialogContent dividers>
           {selectedSession && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <Typography>
-                <strong>Session ID:</strong> {selectedSession.SessionID}
-              </Typography>
-              <Typography>
-                <strong>Session Name:</strong> {selectedSession.SessionName}
-              </Typography>
-              <Typography>
-                <strong>Coach Name:</strong> {selectedSession.CoachName}
-              </Typography>
-              <Typography>
-                <strong>Start Time:</strong> {selectedSession.StartTime}
-              </Typography>
-              <Typography>
-                <strong>End Time:</strong> {selectedSession.EndTime}
-              </Typography>
-              <Typography>
-                <strong>Capacity:</strong> {selectedSession.Capacity}
-              </Typography>
-              <Typography>
-                <strong>Participants:</strong> {selectedSession.Participants}
-              </Typography>
-              <Typography>
-                <strong>Status:</strong> {selectedSession.Status}
-              </Typography>
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12}></Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Session ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedSession.SessionID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Session Name:
+                  </Typography>
+                  <Typography variant="body1">{selectedSession.SessionName}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Coach Name:
+                  </Typography>
+                  <Typography variant="body1">{selectedSession.CoachName}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Start Time:
+                  </Typography>
+                  <Typography variant="body1">{selectedSession.StartTime}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    End Time:
+                  </Typography>
+                  <Typography variant="body1">{selectedSession.EndTime}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Capacity:
+                  </Typography>
+                  <Typography variant="body1">{selectedSession.Capacity}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Participants:
+                  </Typography>
+                  <Typography variant="body1">{selectedSession.Participants}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Status:
+                  </Typography>
+                  <Typography variant="body1">{selectedSession.Status}</Typography>
+                </Grid>
+              </Grid>
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setViewSessionModal(false)}>Close</Button>
+          <Button onClick={() => setViewSessionModal(false)} variant="contained" color="primary">
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -1175,10 +1205,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedSession.SessionName}
                 onChange={(e) =>
-                  setSelectedSession({
-                    ...selectedSession,
-                    SessionName: e.target.value,
-                  })
+                  setSelectedSession({ ...selectedSession, SessionName: e.target.value })
                 }
               />
               <TextField
@@ -1186,10 +1213,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedSession.SessionType}
                 onChange={(e) =>
-                  setSelectedSession({
-                    ...selectedSession,
-                    SessionType: e.target.value,
-                  })
+                  setSelectedSession({ ...selectedSession, SessionType: e.target.value })
                 }
               />
               <TextField
@@ -1197,10 +1221,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedSession.CoachName}
                 onChange={(e) =>
-                  setSelectedSession({
-                    ...selectedSession,
-                    CoachName: e.target.value,
-                  })
+                  setSelectedSession({ ...selectedSession, CoachName: e.target.value })
                 }
               />
               <TextField
@@ -1208,10 +1229,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedSession.StartTime}
                 onChange={(e) =>
-                  setSelectedSession({
-                    ...selectedSession,
-                    StartTime: e.target.value,
-                  })
+                  setSelectedSession({ ...selectedSession, StartTime: e.target.value })
                 }
               />
               <TextField
@@ -1219,10 +1237,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedSession.EndTime}
                 onChange={(e) =>
-                  setSelectedSession({
-                    ...selectedSession,
-                    EndTime: e.target.value,
-                  })
+                  setSelectedSession({ ...selectedSession, EndTime: e.target.value })
                 }
               />
               <TextField
@@ -1230,10 +1245,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedSession.Capacity}
                 onChange={(e) =>
-                  setSelectedSession({
-                    ...selectedSession,
-                    Capacity: e.target.value,
-                  })
+                  setSelectedSession({ ...selectedSession, Capacity: e.target.value })
                 }
               />
               <TextField
@@ -1241,10 +1253,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedSession.Location}
                 onChange={(e) =>
-                  setSelectedSession({
-                    ...selectedSession,
-                    Location: e.target.value,
-                  })
+                  setSelectedSession({ ...selectedSession, Location: e.target.value })
                 }
               />
               <TextField
@@ -1252,10 +1261,7 @@ export default function BookingsSessions() {
                 size="small"
                 value={selectedSession.Fee}
                 onChange={(e) =>
-                  setSelectedSession({
-                    ...selectedSession,
-                    Fee: e.target.value,
-                  })
+                  setSelectedSession({ ...selectedSession, Fee: e.target.value })
                 }
               />
             </Box>
@@ -1271,3 +1277,4 @@ export default function BookingsSessions() {
     </Box>
   );
 }
+  

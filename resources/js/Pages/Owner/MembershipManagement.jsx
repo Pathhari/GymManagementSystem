@@ -1539,49 +1539,95 @@ export default function MembershipManagement() {
 
       {/* ========== VIEW WALK-IN DIALOG ========== */}
       <Dialog
-        open={isViewWalkInOpen}
-        onClose={() => setViewWalkInOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Walk-In Details</DialogTitle>
-        <DialogContent>
-          {selectedWalkIn && (
-            <>
-              <Typography>
-                <strong>Full Name:</strong> {selectedWalkIn.FullName}
-              </Typography>
-              <Typography>
-                <strong>Phone:</strong> {selectedWalkIn.Phone}
-              </Typography>
-              <Typography>
-                <strong>Visit Date:</strong> {selectedWalkIn.VisitDate}
-              </Typography>
-              <Typography>
-                <strong>Visit Time:</strong> {selectedWalkIn.VisitTime}
-              </Typography>
-              <Typography>
-                <strong>Purpose:</strong> {selectedWalkIn.Purpose}
-              </Typography>
-              <Typography>
-                <strong>Payment ID:</strong> {selectedWalkIn.PaymentID}
-              </Typography>
-              <Typography>
-                <strong>Mode of Payment:</strong> {selectedWalkIn.ModeOfPayment}
-              </Typography>
-              <Typography>
-                <strong>Amount Paid:</strong> {selectedWalkIn.AmountPaid}
-              </Typography>
-              <Typography>
-                <strong>Remarks:</strong> {selectedWalkIn.Remarks}
-              </Typography>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewWalkInOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+  open={isViewWalkInOpen}
+  onClose={() => setViewWalkInOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Walk-In Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {selectedWalkIn && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <Typography variant="subtitle1" color="textSecondary">
+              <strong>Visitor Information</strong>
+            </Typography>
+            <Divider sx={{ my: 1 }} />
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Full Name:
+            </Typography>
+            <Typography variant="body1">{selectedWalkIn.FullName}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Phone:
+            </Typography>
+            <Typography variant="body1">{selectedWalkIn.Phone}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Visit Date:
+            </Typography>
+            <Typography variant="body1">{selectedWalkIn.VisitDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Visit Time:
+            </Typography>
+            <Typography variant="body1">{selectedWalkIn.VisitTime}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Purpose:
+            </Typography>
+            <Typography variant="body1">{selectedWalkIn.Purpose}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Payment ID:
+            </Typography>
+            <Typography variant="body1">{selectedWalkIn.PaymentID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Mode of Payment:
+            </Typography>
+            <Typography variant="body1">{selectedWalkIn.ModeOfPayment}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Amount Paid:
+            </Typography>
+            <Typography variant="body1">${selectedWalkIn.AmountPaid}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="body2" color="textSecondary">
+              Remarks:
+            </Typography>
+            <Typography variant="body1">{selectedWalkIn.Remarks}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewWalkInOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
 
       {/* ========== EDIT WALK-IN DIALOG ========== */}
@@ -1736,57 +1782,132 @@ export default function MembershipManagement() {
       </Dialog>
 
       {/* ========== VIEW MEMBERSHIP DIALOG ========== */}
-      <Dialog open={isViewMembershipOpen} onClose={() => setViewMembershipOpen(false)}>
-        <DialogTitle>Membership Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedMembership && (
-            <>
-              <Typography gutterBottom>
-                <strong>MemberID:</strong> {selectedMembership.MemberID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Full Name:</strong> {selectedMembership.FullName}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Email:</strong> {selectedMembership.Email}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Phone:</strong> {selectedMembership.Phone}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>PlanID:</strong> {selectedMembership.PlanID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Membership Card #:</strong> {selectedMembership.MembershipCardNumber}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Card Issued?</strong> {selectedMembership.MembershipCardIssued ? "Yes" : "No"}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Status:</strong> {selectedMembership.MembershipStatus}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Start Date:</strong> {selectedMembership.MembershipStartDate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>End Date:</strong> {selectedMembership.MembershipEndDate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Biometrics:</strong> {selectedMembership.Biometrics}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Free Sessions:</strong> {selectedMembership.FreeSessions}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Notes:</strong> {selectedMembership.Notes}
-              </Typography>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewMembershipOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <Dialog
+  open={isViewMembershipOpen}
+  onClose={() => setViewMembershipOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Membership Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {selectedMembership && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          {/* Personal Information Section */}
+          <Grid item xs={12}>
+            <Typography variant="subtitle1" color="textSecondary">
+              <strong>Personal Information</strong>
+            </Typography>
+            <Divider sx={{ my: 1 }} />
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Member ID:
+            </Typography>
+            <Typography variant="body1">{selectedMembership.MemberID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Full Name:
+            </Typography>
+            <Typography variant="body1">{selectedMembership.FullName}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Email:
+            </Typography>
+            <Typography variant="body1">{selectedMembership.Email}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Phone:
+            </Typography>
+            <Typography variant="body1">{selectedMembership.Phone}</Typography>
+          </Grid>
+          <Divider sx={{ my: 1 }} />
+
+          {/* Membership Information Section */}
+          <Grid item xs={12}>
+            <Typography variant="subtitle1" color="textSecondary">
+              <strong>Membership Information</strong>
+            </Typography>
+            <Divider sx={{ my: 1 }} />
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Plan ID:
+            </Typography>
+            <Typography variant="body1">{selectedMembership.PlanID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Membership Card #:
+            </Typography>
+            <Typography variant="body1">{selectedMembership.MembershipCardNumber}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Card Issued?:
+            </Typography>
+            <Typography variant="body1">
+              {selectedMembership.MembershipCardIssued ? "Yes" : "No"}
+            </Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Status:
+            </Typography>
+            <Typography variant="body1">{selectedMembership.MembershipStatus}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Start Date:
+            </Typography>
+            <Typography variant="body1">{selectedMembership.MembershipStartDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              End Date:
+            </Typography>
+            <Typography variant="body1">{selectedMembership.MembershipEndDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Biometrics:
+            </Typography>
+            <Typography variant="body1">{selectedMembership.Biometrics}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Free Sessions:
+            </Typography>
+            <Typography variant="body1">{selectedMembership.FreeSessions}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="body2" color="textSecondary">
+              Notes:
+            </Typography>
+            <Typography variant="body1">{selectedMembership.Notes}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewMembershipOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
       {/* ========== EDIT MEMBERSHIP DIALOG ========== */}
       <Dialog open={isEditMembershipOpen} onClose={() => setEditMembershipOpen(false)}>
@@ -1973,36 +2094,75 @@ export default function MembershipManagement() {
       </Dialog>
 
       {/* ========== VIEW FREEZE DIALOG ========== */}
-      <Dialog open={isViewFreezeOpen} onClose={() => setViewFreezeOpen(false)}>
-        <DialogTitle>Freeze Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedFreeze && (
-            <>
-              <Typography gutterBottom>
-                <strong>FreezeID:</strong> {selectedFreeze.FreezeID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>MemberID:</strong> {selectedFreeze.MemberID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Start:</strong> {selectedFreeze.FreezeStartDate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>End:</strong> {selectedFreeze.FreezeEndDate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Reason:</strong> {selectedFreeze.Reason}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Approval Status:</strong> {selectedFreeze.ApprovalStatus}
-              </Typography>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewFreezeOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <Dialog
+  open={isViewFreezeOpen}
+  onClose={() => setViewFreezeOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Freeze Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {selectedFreeze && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          {/* Freeze Information Section */}
+          <Grid item xs={12}>
+            
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Freeze ID:
+            </Typography>
+            <Typography variant="body1">{selectedFreeze.FreezeID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Member ID:
+            </Typography>
+            <Typography variant="body1">{selectedFreeze.MemberID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Start Date:
+            </Typography>
+            <Typography variant="body1">{selectedFreeze.FreezeStartDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              End Date:
+            </Typography>
+            <Typography variant="body1">{selectedFreeze.FreezeEndDate}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="body2" color="textSecondary">
+              Reason:
+            </Typography>
+            <Typography variant="body1">{selectedFreeze.Reason}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="body2" color="textSecondary">
+              Approval Status:
+            </Typography>
+            <Typography variant="body1">{selectedFreeze.ApprovalStatus}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewFreezeOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
 
       {/* ========== EDIT FREEZE DIALOG ========== */}
       <Dialog open={isEditFreezeOpen} onClose={() => setEditFreezeOpen(false)}>
@@ -2068,36 +2228,76 @@ export default function MembershipManagement() {
       </Dialog>
 
       {/* ========== VIEW RENEWAL DIALOG ========== */}
-      <Dialog open={isViewRenewalOpen} onClose={() => setViewRenewalOpen(false)}>
-        <DialogTitle>Renewal Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedRenewal && (
-            <>
-              <Typography gutterBottom>
-                <strong>RenewalID:</strong> {selectedRenewal.RenewalID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>MemberID:</strong> {selectedRenewal.MemberID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Renewal Date:</strong> {selectedRenewal.RenewalDate}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>PlanID:</strong> {selectedRenewal.PlanID}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Renewal Amount:</strong> {selectedRenewal.RenewalAmount}
-              </Typography>
-              <Typography gutterBottom>
-                <strong>Processed By:</strong> {selectedRenewal.ProcessedBy}
-              </Typography>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewRenewalOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <Dialog
+  open={isViewRenewalOpen}
+  onClose={() => setViewRenewalOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Renewal Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {selectedRenewal && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          {/* Renewal Information Section */}
+          <Grid item xs={12}>
+          
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Renewal ID:
+            </Typography>
+            <Typography variant="body1">{selectedRenewal.RenewalID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Member ID:
+            </Typography>
+            <Typography variant="body1">{selectedRenewal.MemberID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Renewal Date:
+            </Typography>
+            <Typography variant="body1">{selectedRenewal.RenewalDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Plan ID:
+            </Typography>
+            <Typography variant="body1">{selectedRenewal.PlanID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Renewal Amount:
+            </Typography>
+            <Typography variant="body1">${selectedRenewal.RenewalAmount}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Processed By:
+            </Typography>
+            <Typography variant="body1">{selectedRenewal.ProcessedBy}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewRenewalOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
       {/* ========== EDIT RENEWAL DIALOG ========== */}
       <Dialog open={isEditRenewalOpen} onClose={() => setEditRenewalOpen(false)}>

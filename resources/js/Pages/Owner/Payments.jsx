@@ -130,6 +130,10 @@ export default function PaymentsAndInvoices() {
   const [isEditPaymentOpen, setEditPaymentOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState(null);
 
+  // For the "View Payment" modal
+  const [isViewPaymentOpen, setViewPaymentOpen] = useState(false);
+  const [viewPayment, setViewPayment] = useState(null);
+
   // For the "Add Payment" form
   const [newPayment, setNewPayment] = useState({
     paymentId: "",
@@ -157,6 +161,10 @@ export default function PaymentsAndInvoices() {
   const [isAddInvoiceOpen, setAddInvoiceOpen] = useState(false);
   const [isEditInvoiceOpen, setEditInvoiceOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+
+  // For the "View Invoice" modal
+  const [isViewInvoiceOpen, setViewInvoiceOpen] = useState(false);
+  const [viewInvoice, setViewInvoice] = useState(null);
 
   // For the "Add Invoice" form
   const [newInvoice, setNewInvoice] = useState({
@@ -239,6 +247,12 @@ export default function PaymentsAndInvoices() {
     setEditPaymentOpen(false);
   };
 
+  // New: Handle viewing payment details
+  const handleViewPaymentOpen = (row) => {
+    setViewPayment(row);
+    setViewPaymentOpen(true);
+  };
+
   // ------------------ Invoice Handlers ------------------
   const handleAddInvoiceChange = (e) => {
     const { name, value } = e.target;
@@ -280,6 +294,12 @@ export default function PaymentsAndInvoices() {
     setEditInvoiceOpen(false);
   };
 
+  // New: Handle viewing invoice details
+  const handleViewInvoiceOpen = (row) => {
+    setViewInvoice(row);
+    setViewInvoiceOpen(true);
+  };
+
   // -------------- Compute Overview Panel Stats --------------
   const totalRevenue = payments
     .filter((p) => p.status === "Completed")
@@ -292,7 +312,6 @@ export default function PaymentsAndInvoices() {
   const completedInvoices = invoices.filter((inv) => inv.status === "Paid").length;
 
   // -------------- DATE FILTERS for Summary Cards --------------
-  // (Reusing the same state names for time period, dateFrom, dateTo)
   const [timePeriod, setTimePeriod] = useState("daily");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -335,7 +354,7 @@ export default function PaymentsAndInvoices() {
     {
       field: "Actions",
       headerName: "Actions",
-      width: 220,
+      width: 250,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
@@ -349,7 +368,7 @@ export default function PaymentsAndInvoices() {
                 minWidth: "40px",
                 padding: "6px",
               }}
-              onClick={() => alert(`View Payment: ${params.row.paymentId}`)}
+              onClick={() => handleViewPaymentOpen(params.row)}
             >
               <VisibilityIcon />
             </Button>
@@ -406,7 +425,7 @@ export default function PaymentsAndInvoices() {
     {
       field: "Actions",
       headerName: "Actions",
-      width: 220,
+      width: 250,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
@@ -420,7 +439,7 @@ export default function PaymentsAndInvoices() {
                 minWidth: "40px",
                 padding: "6px",
               }}
-              onClick={() => alert(`View Invoice: ${params.row.invoiceId}`)}
+              onClick={() => handleViewInvoiceOpen(params.row)}
             >
               <VisibilityIcon />
             </Button>
@@ -925,6 +944,85 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
+      {/* ============ VIEW Payment Dialog ============ */}
+      <Dialog
+  open={isViewPaymentOpen}
+  onClose={() => setViewPaymentOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Payment Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {viewPayment && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+           
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Payment ID:
+            </Typography>
+            <Typography variant="body1">{viewPayment.paymentId}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Member Name:
+            </Typography>
+            <Typography variant="body1">{viewPayment.memberName}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Payment Date:
+            </Typography>
+            <Typography variant="body1">{viewPayment.paymentDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Amount Paid:
+            </Typography>
+            <Typography variant="body1">${viewPayment.amountPaid}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Method:
+            </Typography>
+            <Typography variant="body1">{viewPayment.method}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Status:
+            </Typography>
+            <Typography variant="body1">{viewPayment.status}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Linked Invoice ID:
+            </Typography>
+            <Typography variant="body1">
+              {viewPayment.linkedInvoiceId || "—"}
+            </Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewPaymentOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
+
       {/* ============ ADD Invoice Dialog ============ */}
       <Dialog open={isAddInvoiceOpen} onClose={() => setAddInvoiceOpen(false)}>
         <DialogTitle>Add Invoice</DialogTitle>
@@ -1077,6 +1175,85 @@ export default function PaymentsAndInvoices() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ============ VIEW Invoice Dialog ============ */}
+      <Dialog
+  open={isViewInvoiceOpen}
+  onClose={() => setViewInvoiceOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Invoice Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {viewInvoice && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Invoice ID:
+            </Typography>
+            <Typography variant="body1">{viewInvoice.invoiceId}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Member Name:
+            </Typography>
+            <Typography variant="body1">{viewInvoice.memberName}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Invoice Date:
+            </Typography>
+            <Typography variant="body1">{viewInvoice.invoiceDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Due Date:
+            </Typography>
+            <Typography variant="body1">{viewInvoice.dueDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Total Amount:
+            </Typography>
+            <Typography variant="body1">${viewInvoice.totalAmount}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Status:
+            </Typography>
+            <Typography variant="body1">{viewInvoice.status}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Linked Payment ID:
+            </Typography>
+            <Typography variant="body1">
+              {viewInvoice.linkedPaymentId || "—"}
+            </Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewInvoiceOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
     </Box>
   );
 }

@@ -692,48 +692,99 @@ export default function PromotionsSegments() {
       </Dialog>
 
       {/* ---------- View Promotion Dialog ---------- */}
-      <Dialog open={isViewOpen} onClose={() => setViewOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Promotion Details</DialogTitle>
-        <DialogContent dividers>
-          {viewPromo && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <Typography>
-                <strong>ID:</strong> {viewPromo.promotionId}
-              </Typography>
-              <Typography>
-                <strong>Name:</strong> {viewPromo.name}
-              </Typography>
-              <Typography>
-                <strong>Type:</strong> {viewPromo.type}
-              </Typography>
-              <Typography>
-                <strong>Discount:</strong> {viewPromo.discountValue}
-              </Typography>
-              <Typography>
-                <strong>Start:</strong> {viewPromo.startDate}
-              </Typography>
-              <Typography>
-                <strong>End:</strong> {viewPromo.endDate}
-              </Typography>
-              <Typography>
-                <strong>Status:</strong> {viewPromo.status}
-              </Typography>
-              <Typography>
-                <strong>Redemptions:</strong> {viewPromo.redemptions}
-              </Typography>
-              <Typography>
-                <strong>Branch:</strong> {viewPromo.branch}
-              </Typography>
-              <Typography>
-                <strong>Notes:</strong> {viewPromo.notes}
-              </Typography>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <Dialog
+  open={isViewOpen}
+  onClose={() => setViewOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Promotion Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {viewPromo && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+           
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              ID:
+            </Typography>
+            <Typography variant="body1">{viewPromo.promotionId}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Name:
+            </Typography>
+            <Typography variant="body1">{viewPromo.name}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Type:
+            </Typography>
+            <Typography variant="body1">{viewPromo.type}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Discount:
+            </Typography>
+            <Typography variant="body1">{viewPromo.discountValue}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Start:
+            </Typography>
+            <Typography variant="body1">{viewPromo.startDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              End:
+            </Typography>
+            <Typography variant="body1">{viewPromo.endDate}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Status:
+            </Typography>
+            <Typography variant="body1">{viewPromo.status}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Redemptions:
+            </Typography>
+            <Typography variant="body1">{viewPromo.redemptions}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Branch:
+            </Typography>
+            <Typography variant="body1">{viewPromo.branch}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="body2" color="textSecondary">
+              Notes:
+            </Typography>
+            <Typography variant="body1">{viewPromo.notes}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
       {/* ---------- Edit Promotion Dialog ---------- */}
       <Dialog open={isEditOpen} onClose={() => setEditOpen(false)} fullWidth maxWidth="sm">

@@ -598,45 +598,94 @@ export default function SystemLogs() {
       </Paper>
 
       {/* ---------- View Log Dialog ---------- */}
-      <Dialog open={viewOpen} onClose={() => setViewOpen(false)} fullWidth maxWidth="md">
-        <DialogTitle>Log Details</DialogTitle>
-        <DialogContent dividers>
-          {viewLogData && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <Typography>
-                <strong>Log ID:</strong> {viewLogData.logId}
-              </Typography>
-              <Typography>
-                <strong>Timestamp:</strong> {viewLogData.timestamp}
-              </Typography>
-              <Typography>
-                <strong>User:</strong> {viewLogData.user}
-              </Typography>
-              <Typography>
-                <strong>Action:</strong> {viewLogData.actionDesc}
-              </Typography>
-              <Typography>
-                <strong>Module:</strong> {viewLogData.module}
-              </Typography>
-              <Typography>
-                <strong>Log Type:</strong> {viewLogData.logType}
-              </Typography>
-              <Typography>
-                <strong>Details:</strong> {viewLogData.details}
-              </Typography>
-              <Typography>
-                <strong>IP Address:</strong> {viewLogData.ipAddress || "N/A"}
-              </Typography>
-              <Typography>
-                <strong>Branch:</strong> {viewLogData.branch}
-              </Typography>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <Dialog
+  open={viewOpen}
+  onClose={() => setViewOpen(false)}
+  fullWidth
+  maxWidth="md"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Log Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {viewLogData && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Log ID:
+            </Typography>
+            <Typography variant="body1">{viewLogData.logId}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Timestamp:
+            </Typography>
+            <Typography variant="body1">{viewLogData.timestamp}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              User:
+            </Typography>
+            <Typography variant="body1">{viewLogData.user}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Action:
+            </Typography>
+            <Typography variant="body1">{viewLogData.actionDesc}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Module:
+            </Typography>
+            <Typography variant="body1">{viewLogData.module}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Log Type:
+            </Typography>
+            <Typography variant="body1">{viewLogData.logType}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="body2" color="textSecondary">
+              Details:
+            </Typography>
+            <Typography variant="body1">{viewLogData.details}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              IP Address:
+            </Typography>
+            <Typography variant="body1">
+              {viewLogData.ipAddress || "N/A"}
+            </Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Branch:
+            </Typography>
+            <Typography variant="body1">{viewLogData.branch}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
       {/* ---------- Confirm Archive Dialog ---------- */}
       <Dialog

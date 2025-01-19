@@ -21,7 +21,9 @@ import {
   MenuItem,
   Menu,
   useTheme,
+  Divider, // Add this import
 } from "@mui/material";
+
 import { DataGrid } from "@mui/x-data-grid";
 import AddIcon from "@mui/icons-material/Add";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
@@ -121,10 +123,14 @@ const sampleFinancialSummary = [
 export default function BranchManagement() {
   const theme = useTheme();
 
-  // Overview Cards Data (for example purposes)
-  const [totalBranches] = useState(
-    sampleBranches.filter((b) => b.Status === "Active").length
-  );
+  // ---------------- State for Data ----------------
+  const [branches, setBranches] = useState(sampleBranches);
+  const [staffAssignments, setStaffAssignments] = useState(sampleStaffAssignment);
+  const [maintenanceLogs, setMaintenanceLogs] = useState(sampleMaintenanceLog);
+  const [financialSummaries, setFinancialSummaries] = useState(sampleFinancialSummary);
+
+  // Overview Cards Data
+  const [totalBranches] = useState(branches.filter((b) => b.Status === "Active").length);
   const [totalRevenue] = useState(5500);
   const [membersPerBranch] = useState(250);
   const [pendingMaintenance] = useState(5);
@@ -134,12 +140,12 @@ export default function BranchManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
 
-  // Date Filters
+  // Date Filters (for display purposes)
   const [timePeriod, setTimePeriod] = useState("daily");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  // Modal states for adding new items
+  // ---------------- Modal State for Add forms ----------------
   const [isAddBranchOpen, setAddBranchOpen] = useState(false);
   const [newBranch, setNewBranch] = useState({
     BranchName: "",
@@ -155,7 +161,7 @@ export default function BranchManagement() {
     Contact: "",
   });
 
-  // Modal states for editing items
+  // ---------------- Modal State for Edit forms ----------------
   const [isEditBranchOpen, setEditBranchOpen] = useState(false);
   const [editBranch, setEditBranch] = useState(null);
   const [isEditStaffAssignOpen, setEditStaffAssignOpen] = useState(false);
@@ -164,6 +170,16 @@ export default function BranchManagement() {
   const [editMaintenance, setEditMaintenance] = useState(null);
   const [isEditFinancialOpen, setEditFinancialOpen] = useState(false);
   const [editFinancial, setEditFinancial] = useState(null);
+
+  // ---------------- Modal State for View forms ----------------
+  const [isViewBranchOpen, setViewBranchOpen] = useState(false);
+  const [viewBranch, setViewBranch] = useState(null);
+  const [isViewStaffAssignOpen, setViewStaffAssignOpen] = useState(false);
+  const [viewStaffAssign, setViewStaffAssign] = useState(null);
+  const [isViewMaintenanceOpen, setViewMaintenanceOpen] = useState(false);
+  const [viewMaintenance, setViewMaintenance] = useState(null);
+  const [isViewFinancialOpen, setViewFinancialOpen] = useState(false);
+  const [viewFinancial, setViewFinancial] = useState(null);
 
   // -------------------- Date Filter Handlers --------------------
   const handleTimePeriodChange = (e) => setTimePeriod(e.target.value);
@@ -211,7 +227,7 @@ export default function BranchManagement() {
     const doc = new jsPDF();
     if (activeTab === 0) {
       doc.text("Branch Directory Export", 14, 10);
-      const bodyData = sampleBranches.map((b) => [
+      const bodyData = branches.map((b) => [
         b.BranchID,
         b.BranchName,
         b.Location,
@@ -226,7 +242,7 @@ export default function BranchManagement() {
       doc.save("BranchDirectory.pdf");
     } else if (activeTab === 1) {
       doc.text("Staff Assignment Export", 14, 10);
-      const bodyData = sampleStaffAssignment.map((s) => [
+      const bodyData = staffAssignments.map((s) => [
         s.AssignmentID,
         s.BranchName,
         s.StaffName,
@@ -241,7 +257,7 @@ export default function BranchManagement() {
       doc.save("StaffAssignment.pdf");
     } else if (activeTab === 2) {
       doc.text("Maintenance Log Export", 14, 10);
-      const bodyData = sampleMaintenanceLog.map((m) => [
+      const bodyData = maintenanceLogs.map((m) => [
         m.LogID,
         m.BranchName,
         m.Task,
@@ -256,7 +272,7 @@ export default function BranchManagement() {
       doc.save("MaintenanceLog.pdf");
     } else if (activeTab === 3) {
       doc.text("Financial Summary Export", 14, 10);
-      const bodyData = sampleFinancialSummary.map((f) => [
+      const bodyData = financialSummaries.map((f) => [
         f.SummaryID,
         f.BranchName,
         f.CashSales,
@@ -302,39 +318,52 @@ export default function BranchManagement() {
     {
       field: "Actions",
       headerName: "Actions",
-      width: 150,
+      width: 300,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title="View Branch">
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => {
+                setViewBranch(params.row);
+                setViewBranchOpen(true);
+              }}
+              sx={{
+                backgroundColor: "#4caf50",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#43a047" },
+              }}
+            >
+              <VisibilityIcon />
+            </Button>
+          </Tooltip>
           <Tooltip title="Edit Branch">
             <Button
-              variant="outlined"
+              variant="contained"
               size="small"
               onClick={() => {
                 setEditBranch(params.row);
                 setEditBranchOpen(true);
               }}
+              sx={{
+                backgroundColor: "#2196f3",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#1976d2" },
+              }}
             >
-              <EditIcon fontSize="small" />
+              <EditIcon  />
             </Button>
           </Tooltip>
           <Tooltip title="Delete Branch">
             <Button
-              variant="outlined"
+              variant="contained"
               size="small"
               color="error"
-              onClick={() => alert("Delete branch " + params.row.BranchID)}
+              onClick={() => handleDeleteBranch(params.row)}
             >
-              <DeleteIcon fontSize="small" />
-            </Button>
-          </Tooltip>
-          <Tooltip title="View Branch">
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => alert("View branch " + params.row.BranchID)}
-            >
-              <VisibilityIcon fontSize="small" />
+              <DeleteIcon/>
             </Button>
           </Tooltip>
         </Box>
@@ -352,41 +381,52 @@ export default function BranchManagement() {
     {
       field: "Actions",
       headerName: "Actions",
-      width: 150,
+      width: 300,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title="View Assignment">
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => {
+                setViewStaffAssign(params.row);
+                setViewStaffAssignOpen(true);
+              }}
+              sx={{
+                backgroundColor: "#4caf50",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#43a047" },
+              }}
+            >
+              <VisibilityIcon  />
+            </Button>
+          </Tooltip>
           <Tooltip title="Edit Assignment">
             <Button
-              variant="outlined"
+              variant="contained"
               size="small"
               onClick={() => {
                 setEditStaffAssign(params.row);
                 setEditStaffAssignOpen(true);
               }}
+              sx={{
+                backgroundColor: "#2196f3",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#1976d2" },
+              }}
             >
-              <EditIcon fontSize="small" />
+              <EditIcon  />
             </Button>
           </Tooltip>
           <Tooltip title="Delete Assignment">
             <Button
-              variant="outlined"
+              variant="contained"
               size="small"
               color="error"
-              onClick={() =>
-                alert("Delete assignment " + params.row.AssignmentID)
-              }
+              onClick={() => handleDeleteStaffAssign(params.row)}
             >
-              <DeleteIcon fontSize="small" />
-            </Button>
-          </Tooltip>
-          <Tooltip title="View Assignment">
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => alert("View assignment " + params.row.AssignmentID)}
-            >
-              <VisibilityIcon fontSize="small" />
+              <DeleteIcon />
             </Button>
           </Tooltip>
         </Box>
@@ -415,39 +455,52 @@ export default function BranchManagement() {
     {
       field: "Actions",
       headerName: "Actions",
-      width: 150,
+      width: 300,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title="View Log">
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => {
+                setViewMaintenance(params.row);
+                setViewMaintenanceOpen(true);
+              }}
+              sx={{
+                backgroundColor: "#4caf50",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#43a047" },
+              }}
+            >
+              <VisibilityIcon />
+            </Button>
+          </Tooltip>
           <Tooltip title="Edit Log">
             <Button
-              variant="outlined"
+              variant="contained"
               size="small"
               onClick={() => {
                 setEditMaintenance(params.row);
                 setEditMaintenanceOpen(true);
               }}
+              sx={{
+                backgroundColor: "#2196f3",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#1976d2" },
+              }}
             >
-              <EditIcon fontSize="small" />
+              <EditIcon />
             </Button>
           </Tooltip>
           <Tooltip title="Delete Log">
             <Button
-              variant="outlined"
+              variant="contained"
               size="small"
               color="error"
-              onClick={() => alert("Delete log " + params.row.LogID)}
+              onClick={() => handleDeleteMaintenance(params.row)}
             >
-              <DeleteIcon fontSize="small" />
-            </Button>
-          </Tooltip>
-          <Tooltip title="View Log">
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => alert("View log " + params.row.LogID)}
-            >
-              <VisibilityIcon fontSize="small" />
+              <DeleteIcon />
             </Button>
           </Tooltip>
         </Box>
@@ -466,39 +519,52 @@ export default function BranchManagement() {
     {
       field: "Actions",
       headerName: "Actions",
-      width: 150,
+      width: 300,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title="View Summary">
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => {
+                setViewFinancial(params.row);
+                setViewFinancialOpen(true);
+              }}
+              sx={{
+                backgroundColor: "#4caf50",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#43a047" },
+              }}
+            >
+              <VisibilityIcon  />
+            </Button>
+          </Tooltip>
           <Tooltip title="Edit Summary">
             <Button
-              variant="outlined"
+              variant="contained"
               size="small"
               onClick={() => {
                 setEditFinancial(params.row);
                 setEditFinancialOpen(true);
               }}
+              sx={{
+                backgroundColor: "#2196f3",
+                color: "#fff",
+                "&:hover": { backgroundColor: "#1976d2" },
+              }}
             >
-              <EditIcon fontSize="small" />
+              <EditIcon  />
             </Button>
           </Tooltip>
           <Tooltip title="Delete Summary">
             <Button
-              variant="outlined"
+              variant="contained"
               size="small"
               color="error"
-              onClick={() => alert("Delete summary " + params.row.SummaryID)}
+              onClick={() => handleDeleteFinancial(params.row)}
             >
-              <DeleteIcon fontSize="small" />
-            </Button>
-          </Tooltip>
-          <Tooltip title="View Summary">
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => alert("View summary " + params.row.SummaryID)}
-            >
-              <VisibilityIcon fontSize="small" />
+              <DeleteIcon />
             </Button>
           </Tooltip>
         </Box>
@@ -506,29 +572,29 @@ export default function BranchManagement() {
     },
   ];
 
-  // Decide which table to show based on activeTab
+  // -------------------- Choose Table Data, CSV Headers, Filename --------------------
   let tableColumns = [];
   let tableRows = [];
   let exportCSVHeaders = [];
   let exportCSVFilename = "";
   if (activeTab === 0) {
     tableColumns = branchColumns;
-    tableRows = sampleBranches;
+    tableRows = branches;
     exportCSVHeaders = branchCSVHeaders;
     exportCSVFilename = "BranchDirectory.csv";
   } else if (activeTab === 1) {
     tableColumns = staffColumns;
-    tableRows = sampleStaffAssignment;
+    tableRows = staffAssignments;
     exportCSVHeaders = staffCSVHeaders;
     exportCSVFilename = "StaffAssignment.csv";
   } else if (activeTab === 2) {
     tableColumns = maintenanceColumns;
-    tableRows = sampleMaintenanceLog;
+    tableRows = maintenanceLogs;
     exportCSVHeaders = maintenanceCSVHeaders;
     exportCSVFilename = "MaintenanceLog.csv";
   } else if (activeTab === 3) {
     tableColumns = financialColumns;
-    tableRows = sampleFinancialSummary;
+    tableRows = financialSummaries;
     exportCSVHeaders = financialCSVHeaders;
     exportCSVFilename = "FinancialSummary.csv";
   }
@@ -538,18 +604,19 @@ export default function BranchManagement() {
     Object.values(row).join(" ").toLowerCase().includes(searchTerm)
   );
 
-  // -------------------- Handlers for Add Branch & Staff Assignment --------------------
+  // -------------------- Handlers for Adding --------------------
   const handleAddBranchChange = (e) => {
     const { name, value } = e.target;
     setNewBranch({ ...newBranch, [name]: value });
   };
   const handleAddBranch = () => {
-    const nextBranchID = sampleBranches.length
-      ? Math.max(...sampleBranches.map((b) => b.BranchID)) + 1
+    const nextBranchID = branches.length
+      ? Math.max(...branches.map((b) => b.BranchID)) + 1
       : 1;
     const newRecord = { BranchID: nextBranchID, ...newBranch };
-    sampleBranches.push(newRecord);
+    setBranches([...branches, newRecord]);
     setAddBranchOpen(false);
+    setNewBranch({ BranchName: "", Location: "", Status: "Active", Contact: "" });
   };
 
   const handleAddStaffAssignChange = (e) => {
@@ -557,29 +624,66 @@ export default function BranchManagement() {
     setNewStaffAssign({ ...newStaffAssign, [name]: value });
   };
   const handleAddStaffAssign = () => {
-    const nextAssignmentID = sampleStaffAssignment.length
-      ? Math.max(...sampleStaffAssignment.map((s) => s.AssignmentID)) + 1
+    const nextAssignmentID = staffAssignments.length
+      ? Math.max(...staffAssignments.map((s) => s.AssignmentID)) + 1
       : 1;
     const newRecord = { AssignmentID: nextAssignmentID, ...newStaffAssign };
-    sampleStaffAssignment.push(newRecord);
+    setStaffAssignments([...staffAssignments, newRecord]);
     setAddStaffAssignOpen(false);
+    setNewStaffAssign({ BranchName: "", StaffName: "", Role: "", Contact: "" });
+  };
+
+  // -------------------- Delete Handlers --------------------
+  const handleDeleteBranch = (row) => {
+    if (window.confirm(`Delete branch "${row.BranchName}"?`)) {
+      setBranches(branches.filter((b) => b.BranchID !== row.BranchID));
+    }
+  };
+  const handleDeleteStaffAssign = (row) => {
+    if (window.confirm(`Delete staff assignment "${row.AssignmentID}"?`)) {
+      setStaffAssignments(staffAssignments.filter((s) => s.AssignmentID !== row.AssignmentID));
+    }
+  };
+  const handleDeleteMaintenance = (row) => {
+    if (window.confirm(`Delete maintenance log "${row.LogID}"?`)) {
+      setMaintenanceLogs(maintenanceLogs.filter((m) => m.LogID !== row.LogID));
+    }
+  };
+  const handleDeleteFinancial = (row) => {
+    if (window.confirm(`Delete financial summary "${row.SummaryID}"?`)) {
+      setFinancialSummaries(financialSummaries.filter((f) => f.SummaryID !== row.SummaryID));
+    }
   };
 
   // -------------------- Modal Edit Handlers --------------------
   const handleEditBranchSubmit = () => {
-    alert("Branch updated: " + JSON.stringify(editBranch));
+    setBranches(
+      branches.map((b) => (b.BranchID === editBranch.BranchID ? editBranch : b))
+    );
     setEditBranchOpen(false);
   };
   const handleEditStaffAssignSubmit = () => {
-    alert("Staff Assignment updated: " + JSON.stringify(editStaffAssign));
+    setStaffAssignments(
+      staffAssignments.map((s) =>
+        s.AssignmentID === editStaffAssign.AssignmentID ? editStaffAssign : s
+      )
+    );
     setEditStaffAssignOpen(false);
   };
   const handleEditMaintenanceSubmit = () => {
-    alert("Maintenance Log updated: " + JSON.stringify(editMaintenance));
+    setMaintenanceLogs(
+      maintenanceLogs.map((m) =>
+        m.LogID === editMaintenance.LogID ? editMaintenance : m
+      )
+    );
     setEditMaintenanceOpen(false);
   };
   const handleEditFinancialSubmit = () => {
-    alert("Financial Summary updated: " + JSON.stringify(editFinancial));
+    setFinancialSummaries(
+      financialSummaries.map((f) =>
+        f.SummaryID === editFinancial.SummaryID ? editFinancial : f
+      )
+    );
     setEditFinancialOpen(false);
   };
 
@@ -630,7 +734,8 @@ export default function BranchManagement() {
               p: 2,
               display: "flex",
               alignItems: "center",
-              backgroundColor: theme.palette.background.paper,
+              bgcolor: "text.primary",
+              color: "background.paper",
             }}
           >
             <BusinessIcon sx={{ fontSize: 40, mr: 2, color: "steelblue" }} />
@@ -648,7 +753,8 @@ export default function BranchManagement() {
               p: 2,
               display: "flex",
               alignItems: "center",
-              backgroundColor: theme.palette.background.paper,
+              bgcolor: "text.primary",
+              color: "background.paper",
             }}
           >
             <MonetizationOnIcon sx={{ fontSize: 40, mr: 2, color: "green" }} />
@@ -665,8 +771,8 @@ export default function BranchManagement() {
             sx={{
               p: 2,
               display: "flex",
-              alignItems: "center",
-              backgroundColor: theme.palette.background.paper,
+              bgcolor: "text.primary",
+              color: "background.paper",
             }}
           >
             <GroupIcon sx={{ fontSize: 40, mr: 2, color: "purple" }} />
@@ -684,7 +790,8 @@ export default function BranchManagement() {
               p: 2,
               display: "flex",
               alignItems: "center",
-              backgroundColor: theme.palette.background.paper,
+              bgcolor: "text.primary",
+              color: "background.paper",
             }}
           >
             <BuildIcon sx={{ fontSize: 40, mr: 2, color: "orangered" }} />
@@ -799,7 +906,7 @@ export default function BranchManagement() {
         />
       </Paper>
 
-      {/* -------------------- Add/Edit Modal Forms -------------------- */}
+      {/* -------------------- Add/Edit & View Modal Forms -------------------- */}
 
       {/* Add Branch Dialog */}
       <Dialog open={isAddBranchOpen} onClose={() => setAddBranchOpen(false)} maxWidth="sm" fullWidth>
@@ -921,6 +1028,70 @@ export default function BranchManagement() {
         </DialogActions>
       </Dialog>
 
+      {/* View Branch Dialog */}
+      <Dialog
+  open={isViewBranchOpen}
+  onClose={() => setViewBranchOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Branch Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {viewBranch && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+           
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Branch ID:
+            </Typography>
+            <Typography variant="body1">{viewBranch.BranchID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Branch Name:
+            </Typography>
+            <Typography variant="body1">{viewBranch.BranchName}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Location:
+            </Typography>
+            <Typography variant="body1">{viewBranch.Location}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Status:
+            </Typography>
+            <Typography variant="body1">{viewBranch.Status}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="body2" color="textSecondary">
+              Contact:
+            </Typography>
+            <Typography variant="body1">{viewBranch.Contact}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewBranchOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
       {/* Add Staff Assignment Dialog */}
       <Dialog open={isAddStaffAssignOpen} onClose={() => setAddStaffAssignOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add New Staff Assignment</DialogTitle>
@@ -1035,6 +1206,69 @@ export default function BranchManagement() {
         </DialogActions>
       </Dialog>
 
+      {/* View Staff Assignment Dialog */}
+      <Dialog
+  open={isViewStaffAssignOpen}
+  onClose={() => setViewStaffAssignOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Staff Assignment Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {viewStaffAssign && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Assignment ID:
+            </Typography>
+            <Typography variant="body1">{viewStaffAssign.AssignmentID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Branch Name:
+            </Typography>
+            <Typography variant="body1">{viewStaffAssign.BranchName}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Staff Name:
+            </Typography>
+            <Typography variant="body1">{viewStaffAssign.StaffName}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Role:
+            </Typography>
+            <Typography variant="body1">{viewStaffAssign.Role}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="body2" color="textSecondary">
+              Contact:
+            </Typography>
+            <Typography variant="body1">{viewStaffAssign.Contact}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewStaffAssignOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
       {/* Edit Maintenance Log Dialog */}
       <Dialog open={isEditMaintenanceOpen} onClose={() => setEditMaintenanceOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Edit Maintenance Log</DialogTitle>
@@ -1096,6 +1330,70 @@ export default function BranchManagement() {
           </Button>
           <Button onClick={handleEditMaintenanceSubmit} variant="contained" color="primary">
             Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* View Maintenance Log Dialog */}
+            <Dialog
+        open={isViewMaintenanceOpen}
+        onClose={() => setViewMaintenanceOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Maintenance Log Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {viewMaintenance && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Log ID:
+                  </Typography>
+                  <Typography variant="body1">{viewMaintenance.LogID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Branch Name:
+                  </Typography>
+                  <Typography variant="body1">{viewMaintenance.BranchName}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Task:
+                  </Typography>
+                  <Typography variant="body1">{viewMaintenance.Task}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Status:
+                  </Typography>
+                  <Typography variant="body1">{viewMaintenance.Status}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Due Date:
+                  </Typography>
+                  <Typography variant="body1">{viewMaintenance.DueDate}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setViewMaintenanceOpen(false)}
+            variant="contained"
+            color="primary"
+          >
+            Close
           </Button>
         </DialogActions>
       </Dialog>
@@ -1177,6 +1475,76 @@ export default function BranchManagement() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* View Financial Summary Dialog */}
+      <Dialog
+  open={isViewFinancialOpen}
+  onClose={() => setViewFinancialOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>
+    <Typography variant="h6" color="primary">
+      Financial Summary Details
+    </Typography>
+  </DialogTitle>
+  <DialogContent dividers>
+    {viewFinancial && (
+      <Box sx={{ p: 2 }}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Summary ID:
+            </Typography>
+            <Typography variant="body1">{viewFinancial.SummaryID}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Branch Name:
+            </Typography>
+            <Typography variant="body1">{viewFinancial.BranchName}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Cash Sales:
+            </Typography>
+            <Typography variant="body1">₱{viewFinancial.CashSales}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              GCash Sales:
+            </Typography>
+            <Typography variant="body1">₱{viewFinancial.GCashSales}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              BPI Sales:
+            </Typography>
+            <Typography variant="body1">₱{viewFinancial.BPISales}</Typography>
+          </Grid>
+          <Grid item xs={6}>
+            <Typography variant="body2" color="textSecondary">
+              Total Revenue:
+            </Typography>
+            <Typography variant="body1">₱{viewFinancial.TotalRevenue}</Typography>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button
+      onClick={() => setViewFinancialOpen(false)}
+      variant="contained"
+      color="primary"
+    >
+      Close
+    </Button>
+  </DialogActions>
+</Dialog>
+
     </Box>
   );
 }
