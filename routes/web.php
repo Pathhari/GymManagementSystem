@@ -267,6 +267,10 @@ Route::prefix('membership')->group(function() {
         ->name('membership.members.apiUpdateMember');
     Route::delete('members/{id}', [MembershipController::class, 'apiDestroyMember'])
         ->name('membership.members.apiDestroyMember');
+    Route::get('statuses', [MembershipController::class, 'indexMemberStatuses'])
+    ->name('membership.statuses.index');
+
+
 
     // 2) Plans
     Route::get('plans', [MembershipController::class, 'indexPlans'])
@@ -286,11 +290,35 @@ Route::prefix('membership')->group(function() {
     Route::post('renewals', [MembershipController::class, 'storeRenewal'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('membership.renewals.store');
+    Route::delete('renewals/{id}', [MembershipController::class, 'destroyRenewal'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('membership.renewals.destroy');
+    
 
     // 4) Freezes
     Route::post('freezes', [MembershipController::class, 'storeFreeze'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('membership.freezes.store');
+
+    Route::put('freezes/{id}', [MembershipController::class, 'updateFreeze'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('membership.freezes.update');
+
+    Route::delete('freezes/{id}', [MembershipController::class, 'destroyFreeze'])
+     ->middleware('multiGuard:owner,admin,staff')
+     ->name('membership.freezes.destroy');
+
+
+    Route::post('storeLockInMembership', [MembershipController::class, 'storeLockInMembership'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('membership.lockIn.store');
+    
+    Route::post('import-lock-in', [MembershipController::class, 'importLockInMember'])
+     ->middleware('multiGuard:owner,admin,staff')
+     ->name('membership.lockIn.import');
+
+ 
+
 });
 
 
@@ -458,30 +486,6 @@ Route::prefix('staff')->group(function() {
 use App\Http\Controllers\OperationsController;
 
 
-// Walk-Ins
-Route::get('walk-ins', [OperationsController::class, 'indexWalkIns'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('operations.walkins.index');
-
-Route::get('walk-ins/create', [OperationsController::class, 'createWalkIn'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('operations.walkins.create');
-
-Route::post('walk-ins', [OperationsController::class, 'storeWalkIn'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('operations.walkins.store');
-
-Route::get('walk-ins/{id}/edit', [OperationsController::class, 'editWalkIn'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('operations.walkins.edit');
-
-Route::put('walk-ins/{id}', [OperationsController::class, 'updateWalkIn'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('operations.walkins.update');
-
-Route::delete('walk-ins/{id}', [OperationsController::class, 'destroyWalkIn'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('operations.walkins.destroy');
 
 
 
@@ -540,6 +544,32 @@ Route::prefix('operations')->group(function() {
 Route::delete('maintenance-logs/{id}', [OperationsController::class, 'destroyMaintenanceLog'])
      ->middleware('multiGuard:owner,admin,staff')
      ->name('operations.maintenanceLogs.delete');
+
+
+    // Walk-Ins
+    Route::get('walk-ins', [OperationsController::class, 'indexWalkIns'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('operations.walkins.index');
+
+    Route::get('walk-ins/create', [OperationsController::class, 'createWalkIn'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('operations.walkins.create');
+
+    Route::post('walk-ins', [OperationsController::class, 'storeWalkIn'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('operations.walkins.store');
+
+    Route::get('walk-ins/{id}/edit', [OperationsController::class, 'editWalkIn'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('operations.walkins.edit');
+
+    Route::put('walk-ins/{id}', [OperationsController::class, 'updateWalkIn'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('operations.walkins.update');
+
+    Route::delete('walk-ins/{id}', [OperationsController::class, 'destroyWalkIn'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('operations.walkins.destroy');
 
 
     // Member Visits
@@ -649,11 +679,20 @@ Route::prefix('system')->group(function() {
 });
 
 /* 
-|--------------------------------------------------------------------------
+|-------------------------------------------------------------------------- 
 | 9) BranchController
-|--------------------------------------------------------------------------
+|-------------------------------------------------------------------------- 
 */
-Route::get('/owner/branches', [BranchController::class, 'indexJson']);
-Route::post('/owner/branches', [BranchController::class, 'storeJson']);
-Route::put('/owner/branches/{id}', [BranchController::class, 'updateJson']);
-Route::delete('/owner/branches/{id}', [BranchController::class, 'destroyJson']);
+use App\Http\Controllers\BranchController;
+
+// 1) READ branches: open to owner, admin, or staff
+Route::middleware(['multiGuard:owner,admin,staff'])->group(function () {
+    Route::get('/branches', [BranchController::class, 'indexJson'])->name('branches.index');
+});
+
+// 2) CREATE / UPDATE / DELETE branches: only owner or admin
+Route::middleware(['multiGuard:owner,admin'])->group(function () {
+    Route::post('/branches', [BranchController::class, 'storeJson'])->name('branches.store');
+    Route::put('/branches/{id}', [BranchController::class, 'updateJson'])->name('branches.update');
+    Route::delete('/branches/{id}', [BranchController::class, 'destroyJson'])->name('branches.destroy');
+});

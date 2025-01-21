@@ -18,6 +18,7 @@ return new class extends Migration
             $table->unsignedBigInteger('MemberID')->nullable();
             $table->unsignedBigInteger('PromotionID')->nullable();
             $table->dateTime('InvoiceDate')->nullable();
+            $table->date('DueDate')->nullable();
             $table->decimal('InvoiceTotal', 10, 2)->default(0);
         
             $table->timestamps();

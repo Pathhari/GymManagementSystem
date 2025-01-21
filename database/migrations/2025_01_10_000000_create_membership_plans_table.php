@@ -12,14 +12,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('membership_plans', function (Blueprint $table) {
-            $table->id('PlanID');              // PK
+            $table->id('PlanID');
             $table->string('PlanName');
-            $table->decimal('Price', 10, 2);   // adjust precision as needed
-            $table->string('Duration');        // or integer if you store months/days
-            $table->text('Features')->nullable();
-        
+            $table->decimal('Price', 10, 2);
+            $table->integer('Duration');   // store, e.g., 30 for 30 days
+            // "LockInMonths" => 3 means locked for 3 months
+             $table->integer('LockInMonths')->nullable();
+            // Possibly "BillingMode" => "half-month" or "fixed-days" 
+            // if you have different billing modes for different plans
+             $table->string('BillingMode')->nullable(); 
+          
             $table->timestamps();
-        });
+          });          
         
     }
 

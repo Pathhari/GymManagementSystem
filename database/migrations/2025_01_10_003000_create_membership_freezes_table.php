@@ -17,7 +17,8 @@ return new class extends Migration
             $table->date('FreezeStartDate');
             $table->date('FreezeEndDate')->nullable();
             $table->string('Reason')->nullable();
-        
+            $table->date('OriginalEndDate')->nullable();
+            
             $table->timestamps();
         
             $table->foreign('MemberID')->references('MemberID')->on('members')->onDelete('cascade');

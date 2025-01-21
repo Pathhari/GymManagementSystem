@@ -6,14 +6,8 @@ use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    /**
-     * Seed the application's database.
-     */
-    public function run(): void
+    public function run()
     {
-        // Add your newly created seeders
-        $this->call([
-            TestDataSeeder::class,
-        ]);
+        $this->call(TestDataSeeder::class);
     }
 }

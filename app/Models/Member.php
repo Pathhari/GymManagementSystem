@@ -16,15 +16,16 @@ class Member extends Model
         'PlanID',
         'MembershipCardNumber',
         'MembershipCardIssued',
-        'MembershipStatus',
         'MembershipStartDate',
         'MembershipEndDate',
         'Biometrics',
+        'PhotoPath',
         'FreeSessions',
         'Notes',
-        'StartedBranchID',  // <--- new column
+        'StartedBranchID',
+        // Add the new status foreign key
+        'MemberStatusID',
     ];
-
     // Relationship: A member started at one branch
     public function startedBranch()
     {
@@ -102,5 +103,11 @@ class Member extends Model
     {
         return $this->hasMany(MemberVisit::class, 'MemberID', 'MemberID');
     }
+
+    public function status()
+{
+    return $this->belongsTo(MemberStatus::class, 'MemberStatusID', 'MemberStatusID');
+}
+
 
 }

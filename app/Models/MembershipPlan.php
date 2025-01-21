@@ -14,7 +14,8 @@ class MembershipPlan extends Model
         'PlanName',
         'Price',
         'Duration',
-        'Features',
+        'LockInMonths',
+        'BillingMode',
     ];
 
     // Relationship: A plan can be linked to many members

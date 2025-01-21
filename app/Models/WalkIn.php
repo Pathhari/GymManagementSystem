@@ -6,22 +6,15 @@ use Illuminate\Database\Eloquent\Model;
 
 class WalkIn extends Model
 {
-    protected $table = 'walk_in';  // Or "walk_ins" if that's your name
-    protected $primaryKey = 'WalkInID';
+    protected $table = 'walk_ins';    // if your table is named "walk_ins"
+    protected $primaryKey = 'WalkInID'; // if primary key is "WalkInID"
+    public $timestamps = true;        // if you have created_at / updated_at
 
     protected $fillable = [
         'FullName',
         'VisitDate',
-        'PaymentMethod',
-        'AmountPaid',
-        'PaymentStatus',
+        'PaymentID',
         'Notes',
-        'BranchID', // <--- new column
+        'BranchID',
     ];
-
-    // Relationship: This walk-in record belongs to a branch
-    public function branch()
-    {
-        return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');
-    }
 }

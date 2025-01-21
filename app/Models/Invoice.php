@@ -45,4 +45,9 @@ class Invoice extends Model
     return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');
 }
 
+public function invoice_line_items()
+{
+    return $this->hasMany(InvoiceLineItem::class, 'InvoiceID', 'InvoiceID');
+}
+
 }

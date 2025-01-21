@@ -30,7 +30,10 @@ class BranchController extends Controller
         });
 
         // Return JSON
-        return response()->json(['branches' => $data]);
+        return response()->json([
+            'branches' => $branches
+        ]);
+          
     }
 
     /**

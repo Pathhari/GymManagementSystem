@@ -12,6 +12,7 @@ use App\Models\Equipment;
 use App\Models\MaintenanceLog;
 use App\Models\MemberVisit;
 use App\Models\Member;
+use App\Models\WalkIn; 
 use Illuminate\Support\Facades\DB;
 
 class OperationsController extends Controller
@@ -561,25 +562,12 @@ class OperationsController extends Controller
      */
     public function indexWalkIns()
     {
-        $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
-
-        // Staff sees only their own branch
-        if ($staff) {
-            $walkIns = WalkIn::where('BranchID', $staff->BranchID)
-                ->orderBy('WalkInID','desc')
-                ->get();
-        } else {
-            // Admin & Owner see all branches
-            $walkIns = WalkIn::orderBy('WalkInID','desc')->get();
-        }
-
-        return Inertia::render('Operations/WalkIn/Index', [
-            'walkIns' => $walkIns
-        ]);
+        // however you store these
+        $walkIns = WalkIn::orderBy('WalkInID','desc')->get();
+        
+        // Return JSON so the front end can .then((res) => setWalkInRecords(res.data))
+        return response()->json($walkIns);
     }
-
     /**
      * Show the form to create a new Walk-In record.
      * route: operations.walkins.create
@@ -607,14 +595,11 @@ class OperationsController extends Controller
         $staff = auth('staff')->user();
 
         $data = $request->validate([
+            'PaymentID'      => 'nullable|exists:payments,PaymentID',
+            'BranchID'       => 'nullable|exists:branches,BranchID',
             'FullName'       => 'nullable|string|max:255',
             'VisitDate'      => 'required|date',       // or dateTime if you want '2023-01-01 10:00'
-            'PaymentID' => 'nullable|exists:payments,id',
-            'PaymentMethod'  => 'nullable|string|max:50',  // e.g. "Cash", "GCash", etc.
-            'AmountPaid'     => 'numeric|min:0',
-            'PaymentStatus'  => 'string|in:Pending,Completed,Failed',
-            'Notes'          => 'nullable|string',
-            'BranchID'       => 'nullable|exists:branches,BranchID',
+            'Notes'          => 'nullable|string',      
         ]);
 
         // If staff => force the BranchID to staff->BranchID
