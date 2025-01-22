@@ -44,14 +44,21 @@ import "jspdf-autotable";
 export default function BranchManagement() {
   const theme = useTheme();
 
-  // ==================== State: Data from Back End ====================
+  
+
+  // 1) Add these states
+  const [timePeriod, setTimePeriod] = useState("daily");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  // 2) Keep the rest of your code the same
   const [branches, setBranches] = useState([]);
   const [staff, setStaff] = useState([]);
   const [maintenanceLogs, setMaintenanceLogs] = useState([]);
   const [financials, setFinancials] = useState([]);
 
   // ==================== Lifecycle: Load data once on mount ====================
-  useEffect(() => {
+  useEffect(() => { 
     fetchData();
   }, []);
 
@@ -62,9 +69,8 @@ export default function BranchManagement() {
       setBranches(branchRes.data.branches || []);
 
       // 2) Staff (for Staff Assignment tab)
-      const staffRes = await axios.get("/staff");
-      // The response likely has { staff: [...] }
-      setStaff(staffRes.data.staff || []);
+      const staffRes = await axios.get("/staff/index-json"); // or "/staff/json"
+      setStaff(staffRes.data|| []);
 
       // 3) Maintenance Logs
       // This route is assumed; you may need to define or rename it:
@@ -192,6 +198,9 @@ export default function BranchManagement() {
     }
   };
 
+  const [selectedBranch, setSelectedBranch] = useState(null);
+  const [staffList, setStaffList] = useState([]);
+
   // ==================== Staff CRUD (Create / Edit / Delete) ====================
   const handleCreateStaff = async () => {
     try {
@@ -209,21 +218,54 @@ export default function BranchManagement() {
     }
   };
 
-  const handleUpdateStaff = async () => {
+  async function handleUpdateStaff() {
     try {
-      if (!editStaffData?.StaffID) return;
-      await axios.put(`/staff/${editStaffData.StaffID}`, {
-        FullName: editStaffData.FullName,
-        Role: editStaffData.Role,
-        Email: editStaffData.Email,
-        Phone: editStaffData.Phone,
-      });
+      const staffID = editStaffData.StaffID;
+  
+      // Build a payload object with the fields you want to update.
+      // If you support multiple branches in a pivot table, include an array BranchIDs.
+      // Otherwise, if it's one-branch-only, use BranchID.
+      const payload = {
+        FullName:     editStaffData.FullName,
+        Role:         editStaffData.Role,
+        Email:        editStaffData.Email,
+        Phone:        editStaffData.Phone,
+        DateHired:    editStaffData.DateHired,
+        DailyRate:    editStaffData.DailyRate,
+        HourlyRate:   editStaffData.HourlyRate,
+        OvertimeRate: editStaffData.OvertimeRate,
+        Notes:        editStaffData.Notes,
+        
+        // For multi-branch pivot:
+        BranchIDs:    editStaffData.BranchIDs || [],
+        
+        // If single branch:
+        // BranchID:   editStaffData.BranchID
+      };
+  
+      // Make the PUT request
+      const response = await axios.put(`/staff/${staffID}`, payload);
+  
+      // If your back end returns updated data in response.data.staff:
+      const updatedStaff = response.data.staff;
+  
+      // Update local 'staff' array
+      setStaff((prev) =>
+        prev.map((s) => (s.StaffID === staffID ? updatedStaff : s))
+      );
+  
+      // If you also have a filteredStaff or other arrays, update them too:
+      // setFilteredStaff(prev =>
+      //   prev.map(s => (s.StaffID === staffID ? updatedStaff : s))
+      // );
+  
+      // Close the edit dialog
       setEditStaffOpen(false);
-      fetchData();
-    } catch (err) {
-      console.error("Failed to update staff:", err);
+    } catch (error) {
+      console.error("Failed to update staff:", error);
     }
-  };
+  }
+  
 
   const handleDeleteStaff = async (staffID) => {
     if (!window.confirm("Delete this staff record?")) return;
@@ -356,11 +398,71 @@ export default function BranchManagement() {
   ];
 
   const staffColumns = [
-    { field: "StaffID", headerName: "Staff ID", width: 100 },
-    { field: "FullName", headerName: "Staff Name", width: 180 },
+    { field: "StaffID", headerName: "Staff ID", width: 80 },
+    { field: "FullName", headerName: "Name", width: 160 },
     { field: "Role", headerName: "Role", width: 120 },
     { field: "Email", headerName: "Email", width: 180 },
-    { field: "Phone", headerName: "Phone", width: 140 },
+    { field: "Phone", headerName: "Phone", width: 130 },
+    {
+      field: "DateHired",
+      headerName: "Hired",
+      width: 100,
+    },
+    {
+      field: "DailyRate",
+      headerName: "Daily",
+      width: 80,
+      // Optional custom render to format currency:
+      renderCell: (params) => {
+        let rate = params.value;
+        if (typeof rate !== "number") {
+          rate = Number(rate) || 0;
+        }
+        return `₱${rate.toFixed(2)}`;
+      },
+
+    },
+    {
+      field: "HourlyRate",
+      headerName: "Hourly",
+      width: 80,
+      renderCell: (params) => {
+        let rate = params.value;
+        if (typeof rate !== "number") {
+          rate = Number(rate) || 0;
+        }
+        return `₱${rate.toFixed(2)}`;
+      },
+      
+    },
+    {
+      field: "OvertimeRate",
+      headerName: "Overtime",
+      width: 90,
+      renderCell: (params) => {
+        let rate = params.value;
+        if (typeof rate !== "number") {
+          rate = Number(rate) || 0;
+        }
+        return `₱${rate.toFixed(2)}`;
+      },
+      
+    },
+    // If each staff has a single `branch` relationship:
+    // (If many-to-many, see the note below)
+    {
+      field: "branches",
+      headerName: "Branches",
+      width: 180,
+      renderCell: (params) => {
+        // An array of branches
+        const branchArray = params.row.branches || [];
+        return branchArray.length
+          ? branchArray.map((b) => b.BranchName).join(", ")
+          : "—";
+      },
+    },
+    // Actions
     {
       field: "Actions",
       headerName: "Actions",
@@ -792,18 +894,17 @@ export default function BranchManagement() {
 
       {/* Main DataGrid */}
       <Paper elevation={2} sx={{ width: "100%", height: 420 }}>
-        <DataGrid
+      <DataGrid
           rows={filteredRows}
           columns={tableColumns}
-          pageSize={5}
-          rowsPerPageOptions={[5, 10]}
           getRowId={(row) => {
             if (activeTab === 0) return row.BranchID;
             if (activeTab === 1) return row.StaffID;
             if (activeTab === 2) return row.MaintenanceLogID;
             if (activeTab === 3) return row.SummaryID;
-            return row.id;
           }}
+          pageSize={5}
+          rowsPerPageOptions={[5, 10]}
         />
       </Paper>
 

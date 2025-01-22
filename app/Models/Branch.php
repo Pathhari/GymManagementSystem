@@ -9,10 +9,15 @@ class Branch extends Model
     protected $table = 'branches';
     protected $primaryKey = 'BranchID';
 
+    // If you use incrementing integer PK:
+    public $incrementing = true;
+    protected $keyType   = 'int';
+
     protected $fillable = [
         'BranchName',
         'Location',
-        // any other columns (contact info, etc.)
+        'Status',
+        'Contact',
     ];
 
     /**
@@ -21,8 +26,9 @@ class Branch extends Model
      */
     public function staff()
     {
-        return $this->hasMany(Staff::class, 'BranchID', 'BranchID');
+        return $this->belongsToMany(Staff::class, 'branch_staff', 'BranchID', 'StaffID');
     }
+    
 
     /**
      * FACILITIES

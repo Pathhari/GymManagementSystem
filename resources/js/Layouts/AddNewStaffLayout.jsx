@@ -1,5 +1,4 @@
-// File: js/Layouts/AddNewStaffLayout.jsx
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -11,17 +10,18 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Avatar,
   IconButton,
   useMediaQuery,
   useTheme,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
-import Webcam from "react-webcam";
-import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
-import FileUploadIcon from "@mui/icons-material/FileUpload";
 import CloseIcon from "@mui/icons-material/Close";
+import axios from "axios";
+import { route } from "ziggy-js";
 
-// Define initial staff object so our state is not undefined
 const initialStaff = {
   FullName: "",
   Email: "",
@@ -35,87 +35,74 @@ const initialStaff = {
   Notes: "",
 };
 
-export default function AddNewStaffLayout({ onClose }) {
-  // Local state for new staff details
+export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
   const [newStaff, setNewStaff] = useState(initialStaff);
+  const [branches, setBranches] = useState([]); // ← hold the list from the server
   const [errors, setErrors] = useState({});
-  const [capturedPhoto, setCapturedPhoto] = useState(null);
-  const [openWebcam, setOpenWebcam] = useState(false);
 
-  // Refs for webcam and file input
-  const webcamRef = useRef(null);
-  const fileInputRef = useRef(null);
-
-  // Video constraints for webcam
-  const videoConstraints = {
-    width: 320,
-    height: 240,
-    facingMode: "user",
-  };
-
-  // Responsive settings
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
-  // Handlers for form inputs
+  // 1) Fetch the branches on mount
+  useEffect(() => {
+    axios
+      .get(route("branches.index")) // route pointing to your `indexJson`
+      .then((response) => {
+        // response.data is { branches: [ ... ] }
+        // So we want the array => response.data.branches
+        const arrayOfBranches = response.data.branches;
+        setBranches(Array.isArray(arrayOfBranches) ? arrayOfBranches : []);
+      })
+      .catch((error) => {
+        console.error("Error fetching branches:", error);
+        setBranches([]);
+      });
+  }, []);
+
+  // 2) Handle input changes
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setNewStaff((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Handler for file upload
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      // Convert file to DataURL for preview (this can be sent to backend as well)
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCapturedPhoto(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Handlers for Webcam dialog
-  const handleOpenWebcam = () => {
-    setOpenWebcam(true);
-  };
-
-  const handleCloseWebcam = () => {
-    setOpenWebcam(false);
-  };
-
-  const captureImage = useCallback(() => {
-    if (webcamRef.current) {
-      const imageSrc = webcamRef.current.getScreenshot();
-      setCapturedPhoto(imageSrc);
-      setOpenWebcam(false);
-    }
-  }, []);
-
-  // Handle form submission with basic validation
-  const handleSubmit = (e) => {
+  // 3) Submit the staff form
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Simple validation
     const newErrors = {};
-    if (!newStaff.FullName.trim())
-      newErrors.FullName = "Full Name is required";
-    if (!newStaff.Email.trim())
-      newErrors.Email = "Email is required";
-    // Set errors if any; else, proceed
+
+    if (!newStaff.FullName.trim()) newErrors.FullName = "Full Name is required";
+    if (!newStaff.Email.trim()) newErrors.Email = "Email is required";
+
     if (Object.keys(newErrors).length) {
       setErrors(newErrors);
       alert("Please fix the errors before submitting.");
       return;
     }
-    console.log("New Staff:", { ...newStaff, Photo: capturedPhoto });
-    alert("Staff registration submitted!");
-    if (onClose) onClose();
+
+    try {
+      const payload = { ...newStaff };
+      const response = await axios.post(route("staff.store"), payload);
+      const createdStaff = response.data;
+      alert("Staff registration submitted!");
+
+      if (onStaffAdded) {
+        onStaffAdded(createdStaff);
+      }
+      onClose();
+    } catch (error) {
+      console.error("Error creating staff:", error);
+      // If validation errors from backend
+      if (error.response && error.response.status === 422) {
+        setErrors(error.response.data.errors || {});
+      } else {
+        alert("An error occurred while creating the staff.");
+      }
+    }
   };
 
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="lg">
-      <DialogTitle sx={{ p: 2 }}>
+      <DialogTitle>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h5">Add New Staff</Typography>
           <IconButton onClick={onClose}>
@@ -123,25 +110,19 @@ export default function AddNewStaffLayout({ onClose }) {
           </IconButton>
         </Box>
       </DialogTitle>
+
       <DialogContent dividers>
         <Box sx={{ p: 2 }}>
           <Divider sx={{ mb: 3 }} />
+
+          {/* The Form */}
           <form onSubmit={handleSubmit}>
             <Grid container spacing={3} direction={isMobile ? "column" : "row"}>
-              {/* Left Section: Staff Information */}
-              <Grid
-                item
-                xs={12}
-                md={7}
-                sx={{
-                  backgroundColor: isMobile ? "transparent" : "rgba(0, 0, 0, 0.02)",
-                  p: 2,
-                  borderRadius: 2,
-                }}
-              >
+              <Grid item xs={12} sx={{ p: 2, borderRadius: 2 }}>
                 <Typography variant="subtitle1" sx={{ mb: 2 }}>
-                  Basic & Employment Information
+                  Basic &amp; Employment Information
                 </Typography>
+
                 <Grid container spacing={2}>
                   {/* Full Name */}
                   <Grid item xs={12} sm={6}>
@@ -157,6 +138,7 @@ export default function AddNewStaffLayout({ onClose }) {
                       required
                     />
                   </Grid>
+
                   {/* Email */}
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -172,6 +154,7 @@ export default function AddNewStaffLayout({ onClose }) {
                       required
                     />
                   </Grid>
+
                   {/* Phone */}
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -183,6 +166,7 @@ export default function AddNewStaffLayout({ onClose }) {
                       onChange={handleInputChange}
                     />
                   </Grid>
+
                   {/* Role */}
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -194,19 +178,30 @@ export default function AddNewStaffLayout({ onClose }) {
                       onChange={handleInputChange}
                     />
                   </Grid>
-                  {/* Branch ID */}
+
+                  {/* Branch Select from branches array */}
                   <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Branch ID"
-                      variant="outlined"
-                      fullWidth
-                      name="BranchID"
-                      type="number"
-                      value={newStaff.BranchID}
-                      onChange={handleInputChange}
-                    />
+                    <FormControl fullWidth variant="outlined">
+                      <InputLabel>Branch</InputLabel>
+                      <Select
+                        name="BranchID"
+                        label="Branch"
+                        value={newStaff.BranchID}
+                        onChange={handleInputChange}
+                      >
+                        <MenuItem value="">
+                          <em>-- Select Branch --</em>
+                        </MenuItem>
+                        {branches.map((branch) => (
+                          <MenuItem key={branch.BranchID} value={branch.BranchID}>
+                            {branch.BranchName}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   </Grid>
-                  {/* Date Hired */}
+
+                  {/* DateHired */}
                   <Grid item xs={12} sm={6}>
                     <TextField
                       label="Date Hired"
@@ -219,6 +214,7 @@ export default function AddNewStaffLayout({ onClose }) {
                       onChange={handleInputChange}
                     />
                   </Grid>
+
                   {/* Rates */}
                   <Grid item xs={12} sm={4}>
                     <TextField
@@ -253,6 +249,7 @@ export default function AddNewStaffLayout({ onClose }) {
                       onChange={handleInputChange}
                     />
                   </Grid>
+
                   {/* Notes */}
                   <Grid item xs={12}>
                     <TextField
@@ -267,84 +264,6 @@ export default function AddNewStaffLayout({ onClose }) {
                     />
                   </Grid>
                 </Grid>
-              </Grid>
-
-              {/* Right Section: Photo */}
-              <Grid
-                item
-                xs={12}
-                md={5}
-                sx={{
-                  backgroundColor: isMobile ? "transparent" : "rgba(0, 0, 0, 0.02)",
-                  p: 2,
-                  borderRadius: 2,
-                }}
-              >
-                <Typography variant="subtitle1" sx={{ mb: 2 }}>
-                  Photo
-                </Typography>
-                <Box
-                  display="flex"
-                  flexDirection="column"
-                  alignItems="center"
-                  justifyContent="center"
-                  sx={{
-                    p: 2,
-                    border: "1px dashed #ccc",
-                    borderRadius: 2,
-                    minHeight: 300,
-                  }}
-                >
-                  {capturedPhoto ? (
-                    <>
-                      <Typography variant="subtitle1" gutterBottom>
-                        Selected Photo
-                      </Typography>
-                      <Avatar
-                        src={capturedPhoto}
-                        alt="Captured Staff"
-                        sx={{ width: 150, height: 150, mb: 2 }}
-                      />
-                      <Button
-                        variant="outlined"
-                        onClick={() => setCapturedPhoto(null)}
-                        sx={{ mb: 1 }}
-                      >
-                        Remove Photo
-                      </Button>
-                    </>
-                  ) : (
-                    <Typography variant="subtitle1" gutterBottom>
-                      No Photo Selected
-                    </Typography>
-                  )}
-                  {/* Buttons for Upload and Capture */}
-                  <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
-                    <Button
-                      variant="contained"
-                      startIcon={<FileUploadIcon />}
-                      onClick={() =>
-                        fileInputRef.current && fileInputRef.current.click()
-                      }
-                    >
-                      Upload Photo
-                    </Button>
-                    <Button
-                      variant="contained"
-                      startIcon={<PhotoCameraIcon />}
-                      onClick={handleOpenWebcam}
-                    >
-                      Capture Photo
-                    </Button>
-                  </Box>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    ref={fileInputRef}
-                    style={{ display: "none" }}
-                    onChange={handleFileChange}
-                  />
-                </Box>
               </Grid>
             </Grid>
 
@@ -367,37 +286,6 @@ export default function AddNewStaffLayout({ onClose }) {
               </Button>
             </Box>
           </form>
-
-          {/* Webcam Dialog */}
-          <Dialog open={openWebcam} onClose={handleCloseWebcam} maxWidth="sm" fullWidth>
-            <DialogTitle sx={{ p: 2 }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Typography variant="h6">Capture Staff Photo</Typography>
-                <IconButton onClick={handleCloseWebcam}>
-                  <CloseIcon />
-                </IconButton>
-              </Box>
-            </DialogTitle>
-            <DialogContent dividers sx={{ textAlign: "center" }}>
-              <Webcam
-                audio={false}
-                ref={webcamRef}
-                screenshotFormat="image/jpeg"
-                width={isMobile ? 280 : 320}
-                height={isMobile ? 210 : 240}
-                videoConstraints={videoConstraints}
-                style={{ borderRadius: 8 }}
-              />
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={handleCloseWebcam} color="secondary">
-                Cancel
-              </Button>
-              <Button variant="contained" onClick={captureImage}>
-                Capture
-              </Button>
-            </DialogActions>
-          </Dialog>
         </Box>
       </DialogContent>
     </Dialog>

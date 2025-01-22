@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('promotions', function (Blueprint $table) {
+        Schema::create('Promotions', function (Blueprint $table) {
             $table->id('PromotionID');
             $table->string('Name');
             $table->string('DiscountType')->default('Percentage'); // or "FixedAmount"

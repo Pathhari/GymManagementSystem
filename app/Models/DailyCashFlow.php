@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class DailyCashFlow extends Model
 {
-    protected $table = 'daily_cash_flow'; // Or 'dailycashflow' if that's your name
+    protected $table = 'dailycashflow'; // Or 'dailycashflow' if that's your name
     protected $primaryKey = 'CashFlowID'; // If that's your PK
 
     protected $fillable = [

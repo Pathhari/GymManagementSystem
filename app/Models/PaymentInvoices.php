@@ -4,8 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class PaymentInvoice extends Model
+class PaymentInvoices extends Model
 {
+    protected $table = 'PaymentInvoices';
+    
     protected $primaryKey = 'PaymentInvoiceID';
 
     protected $fillable = [

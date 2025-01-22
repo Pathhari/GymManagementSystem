@@ -25,15 +25,8 @@ class Staff extends Authenticatable
         'OvertimeRate',
         'DateHired',
         'Notes',
-        'BranchID', // <--- new column
         'password',    // <— add this if you want to do Eloquent-based inserts
     ];
-
-        // Relationship: A staff belongs to one branch
-        public function branch()
-        {
-            return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');
-        }
 
     /**
      * The attributes that should be hidden for arrays.
@@ -92,14 +85,9 @@ class Staff extends Authenticatable
     }
 
     public function branches()
-{
-    return $this->belongsToMany(
-        Branch::class, 
-        'branch_staff', 
-        'StaffID', 
-        'BranchID', 
-        'StaffID', 
-        'BranchID'
-    );
-}
+    {
+        return $this->belongsToMany(Branch::class, 'branch_staff', 'StaffID', 'BranchID');
+    }
+    
+    
 }

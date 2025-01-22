@@ -1,22 +1,11 @@
-
 import React, { useState } from "react";
 import {
-  Box,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Grid,
-  TextField,
-  IconButton,
-  Typography,
-  useMediaQuery,
-  useTheme,
+  Box, Button, Dialog, DialogTitle, DialogContent,
+  DialogActions, Grid, TextField, FormControl, InputLabel,
+  Select, MenuItem, IconButton, Typography
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 
-// Define initial payroll values
 const initialPayroll = {
   StaffID: "",
   StartDate: "",
@@ -28,12 +17,13 @@ const initialPayroll = {
   Status: "",
 };
 
-export default function AddPayrollLayout({ onClose, onAdd }) {
+export default function AddPayrollLayout({
+  onClose,
+  onAdd,
+  staffOptions = [],
+}) {
   const [payrollData, setPayrollData] = useState(initialPayroll);
   const [errors, setErrors] = useState({});
-
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -42,7 +32,6 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // Example: require StaffID and GrossPay (adjust as needed)
     if (!payrollData.StaffID || !payrollData.GrossPay) {
       setErrors({
         StaffID: payrollData.StaffID ? "" : "Staff ID is required",
@@ -50,7 +39,6 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
       });
       return;
     }
-    // Pass the new payroll data upward
     onAdd(payrollData);
     onClose();
   };
@@ -65,22 +53,38 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
           </IconButton>
         </Box>
       </DialogTitle>
+
       <DialogContent dividers>
-        <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
+        <Box component="form" noValidate sx={{ mt: 1 }}>
           <Grid container spacing={2}>
+            {/* StaffID -> DropDown */}
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Staff ID"
-                name="StaffID"
-                value={payrollData.StaffID}
-                onChange={handleChange}
-                error={!!errors.StaffID}
-                helperText={errors.StaffID}
-                variant="outlined"
-                required
-              />
+              <FormControl fullWidth required error={!!errors.StaffID}>
+                <InputLabel>Staff</InputLabel>
+                <Select
+                  name="StaffID"
+                  label="Staff"
+                  value={payrollData.StaffID}
+                  onChange={handleChange}
+                >
+                  <MenuItem value="">
+                    <em>-- Select Staff --</em>
+                  </MenuItem>
+                  {staffOptions.map((staff) => (
+                    <MenuItem key={staff.value} value={staff.value}>
+                      {staff.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+                {errors.StaffID && (
+                  <Typography variant="caption" color="error">
+                    {errors.StaffID}
+                  </Typography>
+                )}
+              </FormControl>
             </Grid>
+
+            {/* StartDate */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -93,6 +97,8 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
                 variant="outlined"
               />
             </Grid>
+
+            {/* EndDate */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -105,6 +111,8 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
                 variant="outlined"
               />
             </Grid>
+
+            {/* GrossPay */}
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -119,6 +127,8 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
                 required
               />
             </Grid>
+
+            {/* Deductions */}
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -130,6 +140,8 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
                 variant="outlined"
               />
             </Grid>
+
+            {/* NetPay */}
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -141,6 +153,8 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
                 variant="outlined"
               />
             </Grid>
+
+            {/* GeneratedDate */}
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -153,6 +167,8 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
                 variant="outlined"
               />
             </Grid>
+
+            {/* Status */}
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -166,6 +182,7 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
           </Grid>
         </Box>
       </DialogContent>
+
       <DialogActions sx={{ py: 2, px: 3 }}>
         <Button onClick={onClose} color="inherit">
           Cancel

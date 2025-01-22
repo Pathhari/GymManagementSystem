@@ -1,4 +1,3 @@
-// File: src/Layouts/AddStaffTaskLayout.jsx
 import React, { useState } from "react";
 import {
   Box,
@@ -9,6 +8,10 @@ import {
   DialogActions,
   Grid,
   TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
   IconButton,
   Typography,
   useMediaQuery,
@@ -16,7 +19,6 @@ import {
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 
-// Define initial task object
 const initialTask = {
   StaffID: "",
   TaskDescription: "",
@@ -24,7 +26,11 @@ const initialTask = {
   Status: "Pending",
 };
 
-export default function AddStaffTaskLayout({ onClose, onAdd }) {
+export default function AddStaffTaskLayout({
+  onClose,
+  onAdd,
+  staffOptions = [],
+}) {
   const [taskData, setTaskData] = useState(initialTask);
   const [errors, setErrors] = useState({});
 
@@ -38,11 +44,12 @@ export default function AddStaffTaskLayout({ onClose, onAdd }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // Require StaffID and TaskDescription (adjust as needed)
     if (!taskData.StaffID || !taskData.TaskDescription) {
       setErrors({
         StaffID: taskData.StaffID ? "" : "Staff ID is required",
-        TaskDescription: taskData.TaskDescription ? "" : "Description is required",
+        TaskDescription: taskData.TaskDescription
+          ? ""
+          : "Description is required",
       });
       return;
     }
@@ -60,22 +67,37 @@ export default function AddStaffTaskLayout({ onClose, onAdd }) {
           </IconButton>
         </Box>
       </DialogTitle>
+
       <DialogContent dividers>
         <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
           <Grid container spacing={2}>
+            {/* StaffID -> Dropdown */}
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Staff ID"
-                name="StaffID"
-                value={taskData.StaffID}
-                onChange={handleChange}
-                error={!!errors.StaffID}
-                helperText={errors.StaffID}
-                variant="outlined"
-                required
-              />
+              <FormControl fullWidth required error={!!errors.StaffID}>
+                <InputLabel>Staff</InputLabel>
+                <Select
+                  name="StaffID"
+                  label="Staff"
+                  value={taskData.StaffID}
+                  onChange={handleChange}
+                >
+                  <MenuItem value="">
+                    <em>-- Select Staff --</em>
+                  </MenuItem>
+                  {staffOptions.map((staff) => (
+                    <MenuItem key={staff.value} value={staff.value}>
+                      {staff.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+                {errors.StaffID && (
+                  <Typography variant="caption" color="error">
+                    {errors.StaffID}
+                  </Typography>
+                )}
+              </FormControl>
             </Grid>
+
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -91,6 +113,7 @@ export default function AddStaffTaskLayout({ onClose, onAdd }) {
                 rows={3}
               />
             </Grid>
+
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -103,6 +126,7 @@ export default function AddStaffTaskLayout({ onClose, onAdd }) {
                 variant="outlined"
               />
             </Grid>
+
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -116,6 +140,7 @@ export default function AddStaffTaskLayout({ onClose, onAdd }) {
           </Grid>
         </Box>
       </DialogContent>
+
       <DialogActions sx={{ py: 2, px: 3 }}>
         <Button onClick={onClose} color="inherit">
           Cancel

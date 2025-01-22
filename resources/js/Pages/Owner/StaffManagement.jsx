@@ -1,5 +1,8 @@
 // File: StaffManagement.jsx
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from 'react';
+import axios from 'axios';
+import { Inertia } from '@inertiajs/inertia'; 
+import { route } from 'ziggy-js';
 import {
   Box,
   Typography,
@@ -43,209 +46,159 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 import ReactToPrint from "react-to-print";
 
+
 // Import external layout components (ensure they are default exported)
 import AddNewStaffLayout from "../../Layouts/AddNewStaffLayout";
 import AddPayrollLayout from "../../Layouts/AddPayrollLayout";
 import AddStaffTaskLayout from "../../Layouts/AddStaffTaskLayout";
 import PayslipLayout from "../../Layouts/Paysliplayout";
 
-// ---------- SAMPLE DATA ----------
-const sampleStaff = [
-  {
-    StaffID: 1,
-    FullName: "Alice Johnson",
-    Email: "alice.johnson@example.com",
-    Phone: "123-456-7890",
-    Role: "Trainer",
-    BranchID: 1,
-    DateHired: "2023-01-10",
-    DailyRate: 100,
-    HourlyRate: 15,
-    OvertimeRate: 20,
-    Notes: "Expert in cardio training",
-  },
-  {
-    StaffID: 2,
-    FullName: "Bob Williams",
-    Email: "bob.williams@example.com",
-    Phone: "987-654-3210",
-    Role: "Admin",
-    BranchID: 2,
-    DateHired: "2022-06-15",
-    DailyRate: 120,
-    HourlyRate: 18,
-    OvertimeRate: 25,
-    Notes: "Handles front desk operations",
-  },
-];
 
-const sampleAttendance = [
-  {
-    AttendanceID: 1,
-    StaffID: 1,
-    Date: "2023-08-01",
-    TimeIn: "08:00",
-    TimeOut: "16:00",
-    HoursWorked: 8,
-    OvertimeHours: 1,
-    PayrollID: 101,
-  },
-  {
-    AttendanceID: 2,
-    StaffID: 2,
-    Date: "2023-08-01",
-    TimeIn: "09:00",
-    TimeOut: "17:00",
-    HoursWorked: 8,
-    OvertimeHours: 0,
-    PayrollID: 102,
-  },
-];
 
-const samplePayroll = [
-  {
-    PayrollID: 101,
-    StaffID: 1,
-    StartDate: "2023-08-01",
-    EndDate: "2023-08-15",
-    GrossPay: 1500,
-    Deductions: 200,
-    NetPay: 1300,
-    GeneratedDate: "2023-08-16",
-    Status: "Paid",
-  },
-  {
-    PayrollID: 102,
-    StaffID: 2,
-    StartDate: "2023-08-01",
-    EndDate: "2023-08-15",
-    GrossPay: 1440,
-    Deductions: 150,
-    NetPay: 1290,
-    GeneratedDate: "2023-08-16",
-    Status: "Pending",
-  },
-];
-
-const sampleTasks = [
-  {
-    TaskID: 1,
-    StaffID: 1,
-    TaskDescription: "Conduct morning yoga session",
-    TaskDate: "2023-08-10",
-    Status: "Pending",
-  },
-  {
-    TaskID: 2,
-    StaffID: 2,
-    TaskDescription: "Update member billing info",
-    TaskDate: "2023-08-10",
-    Status: "Completed",
-  },
-];
-
-const sampleSchedule = [
-  {
-    ScheduleID: 1,
-    StaffID: 1,
-    ShiftDate: "2023-08-11",
-    ShiftStart: "08:00",
-    ShiftEnd: "16:00",
-    RoleOverride: "",
-  },
-  {
-    ScheduleID: 2,
-    StaffID: 2,
-    ShiftDate: "2023-08-11",
-    ShiftStart: "09:00",
-    ShiftEnd: "17:00",
-    RoleOverride: "Manager",
-  },
-];
-
-export default function StaffManagement() {
-  // ------------------- STATES: STAFF TAB -------------------
-  const [staffRecords, setStaffRecords] = useState(sampleStaff);
-  const [filteredStaff, setFilteredStaff] = useState(sampleStaff);
+export default function StaffManagement({ staff = [], attendance = [], payroll = [], tasks = [], schedules = [] }) {
+  // -------------- STAFF STATES -------------------
+  const [staffRecords, setStaffRecords] = useState(staff);
+  const [filteredStaff, setFilteredStaff] = useState(staff);
   const [selectedStaff, setSelectedStaff] = useState(null);
-
-  // Modals for Staff
   const [isViewStaffOpen, setViewStaffOpen] = useState(false);
   const [isEditStaffOpen, setEditStaffOpen] = useState(false);
   const [isAddStaffOpen, setAddStaffOpen] = useState(false);
 
-  // ------------------- STATES: ATTENDANCE TAB -------------------
-  const [attendanceRecords, setAttendanceRecords] = useState(sampleAttendance);
-  const [filteredAttendance, setFilteredAttendance] = useState(sampleAttendance);
+  // -------------- ATTENDANCE STATES -------------------
+  const [attendanceRecords, setAttendanceRecords] = useState(attendance);
+  const [filteredAttendance, setFilteredAttendance] = useState(attendance);
   const [selectedAttendance, setSelectedAttendance] = useState(null);
   const [isViewAttendanceOpen, setViewAttendanceOpen] = useState(false);
   const [isEditAttendanceOpen, setEditAttendanceOpen] = useState(false);
 
-  // ------------------- STATES: PAYROLL TAB ---------------------
-  const [payrollRecords, setPayrollRecords] = useState(samplePayroll);
-  const [filteredPayroll, setFilteredPayroll] = useState(samplePayroll);
+  // -------------- PAYROLL STATES -------------------
+  const [payrollRecords, setPayrollRecords] = useState(payroll);
+  const [filteredPayroll, setFilteredPayroll] = useState(payroll);
   const [selectedPayroll, setSelectedPayroll] = useState(null);
   const [isViewPayrollOpen, setViewPayrollOpen] = useState(false);
   const [isEditPayrollOpen, setEditPayrollOpen] = useState(false);
   const [isAddPayrollOpen, setAddPayrollOpen] = useState(false);
 
-  // ------------------- STATES: TASK TAB ------------------------
-  const [taskRecords, setTaskRecords] = useState(sampleTasks);
-  const [filteredTasks, setFilteredTasks] = useState(sampleTasks);
+  // -------------- TASK STATES -------------------
+  const [taskRecords, setTaskRecords] = useState(tasks);
+  const [filteredTasks, setFilteredTasks] = useState(tasks);
   const [selectedTask, setSelectedTask] = useState(null);
   const [isViewTaskOpen, setViewTaskOpen] = useState(false);
   const [isEditTaskOpen, setEditTaskOpen] = useState(false);
   const [isAddTaskOpen, setAddTaskOpen] = useState(false);
 
-  // ------------------- STATES: SCHEDULE TAB --------------------
-  const [scheduleRecords, setScheduleRecords] = useState(sampleSchedule);
-  const [filteredSchedule, setFilteredSchedule] = useState(sampleSchedule);
+  // -------------- SCHEDULE STATES -------------------
+  const [scheduleRecords, setScheduleRecords] = useState(schedules);
+  const [filteredSchedule, setFilteredSchedule] = useState(schedules);
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [isViewScheduleOpen, setViewScheduleOpen] = useState(false);
   const [isEditScheduleOpen, setEditScheduleOpen] = useState(false);
 
-  // ------------------- PRINT PAYSLIP DIALOG STATE --------------------
+  // -------------- PRINT PAYSLIP -------------------
   const [isPayslipOpen, setPayslipOpen] = useState(false);
   const [payslipStaffData, setPayslipStaffData] = useState(null);
   const [payslipPayrollData, setPayslipPayrollData] = useState(null);
   const printRef = useRef();
 
-  // ------------------- TABS & SEARCH --------------------------
-  // 0 = Staff, 1 = Attendance, 2 = Payroll, 3 = Task, 4 = Schedule
+  // -------------- TABS & FILTERS -------------------
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
-
-  // -------------- TIME PERIOD + DATE FILTERS --------------
   const [timePeriod, setTimePeriod] = useState("daily");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-
-  // -------------- NEW: BRANCH FILTER --------------
   const [branch, setBranch] = useState("all");
-  const branchOptions = [
-    { value: "all", label: "All Branches" },
-    { value: "1", label: "Branch 1" },
-    { value: "2", label: "Branch 2" },
-    { value: "3", label: "Branch 3" },
-  ];
+  const [branchOptions, setBranchOptions] = useState([]);
+  
+  useEffect(() => {
 
-  const handleTimePeriodChange = (event) => {
-    setTimePeriod(event.target.value);
-  };
+    axios
+    .get("/owner/branches") // must match the route definition
+    .then((res) => {
+      // Because indexJson returns { "branches": [ ... ] }
+      const branchData = res.data.branches; 
+      if (!branchData) {
+        console.error("No 'branches' key found in response:", res.data);
+        return;
+      }
+      
+      // Map to { value, label } objects
+      const mapped = branchData.map((b) => ({
+        value: b.BranchID,
+        label: b.BranchName,
+      }));
+      // Optionally prepend "All Branches"
+      mapped.unshift({ value: "all", label: "All Branches" });
+      
+      setBranchOptions(mapped);
+    })
+    .catch((err) => {
+      console.error("Error fetching branches:", err);
+    });
 
-  const handleDateFromChange = (event) => {
-    setDateFrom(event.target.value);
-  };
+    // 1. Staff
+    axios.get(route('staff.index.json'))
+      .then((response) => {
+        setStaffRecords(response.data);
+        setFilteredStaff(response.data);
+      })
+      .catch((err) => console.error("Error fetching staff:", err));
+    
+    // 2. Attendance
+    axios.get(route('staff.attendance.index'))
+      .then((res) => {
+        setAttendanceRecords(res.data);
+        setFilteredAttendance(res.data);
+      })
+      .catch((err) => console.error("Error fetching attendance:", err));
+  
+    // 3. Payroll
+    axios.get(route('staff.payroll.index'))
+      .then((res) => {
+        setPayrollRecords(res.data);
+        setFilteredPayroll(res.data);
+      })
+      .catch((err) => console.error("Error fetching payroll:", err));
+  
+    // 4. Tasks
+    axios.get(route('staff.tasks.index'))
+      .then((res) => {
+        setTaskRecords(res.data);
+        setFilteredTasks(res.data);
+      })
+      .catch((err) => console.error("Error fetching tasks:", err));
+  
+    // 5. Schedules
+    axios.get(route('staff.schedules.index'))
+      .then((res) => {
+        setScheduleRecords(res.data);
+        setFilteredSchedule(res.data);
+      })
+      .catch((err) => console.error("Error fetching schedules:", err));
+  }, []);
+  
 
-  const handleDateToChange = (event) => {
-    setDateTo(event.target.value);
-  };
-
-  const handleBranchChange = (event) => {
-    setBranch(event.target.value);
-  };
-
-  // ------------------- STAFF: VIEW, EDIT, DELETE -----------
+  // -------------- Filter Handlers (TimePeriod, Branch, etc.) --------------
+  const handleTimePeriodChange = (e) => setTimePeriod(e.target.value);
+  const handleDateFromChange = (e) => setDateFrom(e.target.value);
+  const handleDateToChange = (e) => setDateTo(e.target.value);
+  function handleBranchChange(e) {
+    const selected = e.target.value;
+    setBranch(selected);
+  
+    if (selected === "all") {
+      setFilteredStaff(staffRecords);
+    } else {
+      const branchID = Number(selected);
+      const filtered = staffRecords.filter((st) => {
+        // st.branches is an array
+        // check if any of st.branches has a matching BranchID
+        return st.branches.some((b) => b.BranchID === branchID);
+      });
+      setFilteredStaff(filtered);
+    }
+  }
+  
+  // -------------- STAFF CRUD --------------
   const handleViewStaff = (record) => {
     setSelectedStaff(record);
     setViewStaffOpen(true);
@@ -256,81 +209,161 @@ export default function StaffManagement() {
     setEditStaffOpen(true);
   };
 
-  const handleDeleteStaff = (staffID) => {
-    const updated = staffRecords.filter((s) => s.StaffID !== staffID);
-    setStaffRecords(updated);
-    setFilteredStaff(updated);
-  };
 
-  const handleEditStaffSubmit = () => {
-    setStaffRecords((prev) =>
-      prev.map((s) => (s.StaffID === selectedStaff.StaffID ? selectedStaff : s))
-    );
-    setFilteredStaff((prev) =>
-      prev.map((s) => (s.StaffID === selectedStaff.StaffID ? selectedStaff : s))
-    );
-    setEditStaffOpen(false);
-  };
 
-  // ------------------- ATTENDANCE: VIEW, EDIT, DELETE -----------
+
+  async function handleDeleteStaff(staffID) {
+    if (!confirm('Are you sure you want to delete this staff?')) return;
+    try {
+      await axios.delete(route('staff.destroy', staffID));
+      // Update local arrays
+      setStaffRecords((prev) => prev.filter((s) => s.StaffID !== staffID));
+      setFilteredStaff((prev) => prev.filter((s) => s.StaffID !== staffID));
+    } catch (error) {
+      console.error('Error deleting staff:', error);
+    }
+  }
+  
+  
+  async function handleEditStaffSubmit() {
+    try {
+      const staffID = selectedStaff.StaffID;
+  
+      // Build the payload you want to send.
+      // If the staff table has fields like FullName, Email, Role, etc.
+      // and BranchIDs is the array for pivot syncing:
+      const payload = {
+        FullName:      selectedStaff.FullName,
+        Email:         selectedStaff.Email,
+        Role:          selectedStaff.Role,
+        Phone:         selectedStaff.Phone,
+        DateHired:     selectedStaff.DateHired,
+        DailyRate:     selectedStaff.DailyRate,
+        HourlyRate:    selectedStaff.HourlyRate,
+        OvertimeRate:  selectedStaff.OvertimeRate,
+        Notes:         selectedStaff.Notes,
+        BranchIDs:     selectedStaff.BranchIDs || [],
+      };
+  
+      // Make the PUT request
+      const response = await axios.put(`/staff/${staffID}`, payload);
+  
+      // If your back end returns updated staff data:
+      const updatedStaff = response.data.staff;
+  
+      // Update local state, e.g. staffRecords
+      setStaffRecords((prev) =>
+        prev.map((s) => (s.StaffID === staffID ? updatedStaff : s))
+      );
+      setFilteredStaff((prev) =>
+        prev.map((s) => (s.StaffID === staffID ? updatedStaff : s))
+      );
+  
+      setEditStaffOpen(false);
+    } catch (error) {
+      console.error("Error updating staff:", error);
+    }
+  }
+  // -------------- ATTENDANCE CRUD (No official "destroy" route) --------------
   const handleViewAttendance = (record) => {
     setSelectedAttendance(record);
     setViewAttendanceOpen(true);
   };
-
   const handleEditAttendance = (record) => {
     setSelectedAttendance(record);
     setEditAttendanceOpen(true);
   };
 
-  const handleDeleteAttendance = (attendanceID) => {
-    const updated = attendanceRecords.filter((a) => a.AttendanceID !== attendanceID);
-    setAttendanceRecords(updated);
-    setFilteredAttendance(updated);
-  };
+  async function handleEditAttendanceSubmit() {
+    try {
+      const id = selectedAttendance.AttendanceID;
+      await axios.put(route('staff.attendance.update', id), selectedAttendance);
+  
+      // Update local arrays
+      setAttendanceRecords((prev) =>
+        prev.map((a) =>
+          a.AttendanceID === id ? { ...a, ...selectedAttendance } : a
+        )
+      );
+      setFilteredAttendance((prev) =>
+        prev.map((a) =>
+          a.AttendanceID === id ? { ...a, ...selectedAttendance } : a
+        )
+      );
+  
+      setEditAttendanceOpen(false);
+    } catch (error) {
+      console.error('Error updating attendance:', error);
+    }
+  }
+  
 
-  const handleEditAttendanceSubmit = () => {
-    setAttendanceRecords((prev) =>
-      prev.map((a) =>
-        a.AttendanceID === selectedAttendance.AttendanceID ? selectedAttendance : a
-      )
-    );
-    setFilteredAttendance((prev) =>
-      prev.map((a) =>
-        a.AttendanceID === selectedAttendance.AttendanceID ? selectedAttendance : a
-      )
-    );
-    setEditAttendanceOpen(false);
-  };
+  async function handleDeleteAttendance(attendanceID) {
+    if (!confirm('Are you sure?')) return;
+    try {
+      await axios.delete(route('staff.attendance.destroy', attendanceID));
+      setAttendanceRecords((prev) =>
+        prev.filter((a) => a.AttendanceID !== attendanceID)
+      );
+      setFilteredAttendance((prev) =>
+        prev.filter((a) => a.AttendanceID !== attendanceID)
+      );
+    } catch (error) {
+      console.error('Error deleting attendance:', error);
+    }
+  }
+  
+  
+// -------------- PAYROLL CRUD (No official "destroy" route) --------------
+const handleViewPayroll = (record) => {
+  setSelectedPayroll(record);
+  setViewPayrollOpen(true);
+};
+const handleEditPayroll = (record) => {
+  setSelectedPayroll(record);
+  setEditPayrollOpen(true);
+};
 
-  // ------------------- PAYROLL: VIEW, EDIT, DELETE -----------
-  const handleViewPayroll = (record) => {
-    setSelectedPayroll(record);
-    setViewPayrollOpen(true);
-  };
-
-  const handleEditPayroll = (record) => {
-    setSelectedPayroll(record);
-    setEditPayrollOpen(true);
-  };
-
-  const handleDeletePayroll = (payrollID) => {
-    const updated = payrollRecords.filter((p) => p.PayrollID !== payrollID);
-    setPayrollRecords(updated);
-    setFilteredPayroll(updated);
-  };
-
-  const handleEditPayrollSubmit = () => {
+async function handleDeletePayroll(payrollID) {
+  if (!confirm('Are you sure?')) return;
+  try {
+    await axios.delete(route('staff.payroll.destroy', payrollID));
     setPayrollRecords((prev) =>
-      prev.map((p) => (p.PayrollID === selectedPayroll.PayrollID ? selectedPayroll : p))
+      prev.filter((p) => p.PayrollID !== payrollID)
     );
     setFilteredPayroll((prev) =>
-      prev.map((p) => (p.PayrollID === selectedPayroll.PayrollID ? selectedPayroll : p))
+      prev.filter((p) => p.PayrollID !== payrollID)
     );
-    setEditPayrollOpen(false);
-  };
+  } catch (error) {
+    console.error('Error deleting payroll:', error);
+  }
+}
 
-  // ------------------- TASK: VIEW, EDIT, DELETE -----------
+async function handleEditPayrollSubmit() {
+  try {
+    const payrollID = selectedPayroll.PayrollID;
+    await axios.put(route('staff.payroll.update', payrollID), selectedPayroll);
+
+    // Update local arrays
+    setPayrollRecords((prev) =>
+      prev.map((p) =>
+        p.PayrollID === payrollID ? { ...p, ...selectedPayroll } : p
+      )
+    );
+    setFilteredPayroll((prev) =>
+      prev.map((p) =>
+        p.PayrollID === payrollID ? { ...p, ...selectedPayroll } : p
+      )
+    );
+
+    setEditPayrollOpen(false);
+  } catch (err) {
+    console.error('Error updating payroll:', err);
+  }
+}
+
+
+  // -------------- TASKS CRUD (No official "destroy" route) --------------
   const handleViewTask = (record) => {
     setSelectedTask(record);
     setViewTaskOpen(true);
@@ -341,131 +374,164 @@ export default function StaffManagement() {
     setEditTaskOpen(true);
   };
 
-  const handleDeleteTask = (taskID) => {
-    const updated = taskRecords.filter((t) => t.TaskID !== taskID);
-    setTaskRecords(updated);
-    setFilteredTasks(updated);
-  };
+  async function handleDeleteTask(taskID) {
+    if (!confirm('Are you sure?')) return;
+    try {
+      await axios.delete(route('staff.tasks.destroy', taskID));
+      setTaskRecords((prev) => prev.filter((t) => t.TaskID !== taskID));
+      setFilteredTasks((prev) => prev.filter((t) => t.TaskID !== taskID));
+    } catch (error) {
+      console.error('Error deleting task:', error);
+    }
+  }
+  
+  async function handleEditTaskSubmit() {
+    try {
+      const id = selectedTask.TaskID;
+      await axios.put(route('staff.tasks.update', id), selectedTask);
+  
+      setTaskRecords((prev) =>
+        prev.map((t) => (t.TaskID === id ? { ...t, ...selectedTask } : t))
+      );
+      setFilteredTasks((prev) =>
+        prev.map((t) => (t.TaskID === id ? { ...t, ...selectedTask } : t))
+      );
+  
+      setEditTaskOpen(false);
+    } catch (error) {
+      console.error('Error updating task:', error);
+    }
+  }
+  
 
-  const handleEditTaskSubmit = () => {
-    setTaskRecords((prev) =>
-      prev.map((t) => (t.TaskID === selectedTask.TaskID ? selectedTask : t))
-    );
-    setFilteredTasks((prev) =>
-      prev.map((t) => (t.TaskID === selectedTask.TaskID ? selectedTask : t))
-    );
-    setEditTaskOpen(false);
-  };
-
-  // ------------------- SCHEDULE: VIEW, EDIT, DELETE -----------
+ // -------------- SCHEDULE CRUD --------------
   const handleViewSchedule = (record) => {
     setSelectedSchedule(record);
     setViewScheduleOpen(true);
   };
-
   const handleEditSchedule = (record) => {
     setSelectedSchedule(record);
     setEditScheduleOpen(true);
   };
 
-  const handleDeleteSchedule = (scheduleID) => {
-    const updated = scheduleRecords.filter((s) => s.ScheduleID !== scheduleID);
-    setScheduleRecords(updated);
-    setFilteredSchedule(updated);
-  };
+  async function handleEditScheduleSubmit() {
+    try {
+      const id = selectedSchedule.ScheduleID;
+      await axios.put(route('staff.schedules.update', id), selectedSchedule);
+  
+      // Update local arrays
+      setScheduleRecords((prev) =>
+        prev.map((sc) => (sc.ScheduleID === id ? { ...sc, ...selectedSchedule } : sc))
+      );
+      setFilteredSchedule((prev) =>
+        prev.map((sc) => (sc.ScheduleID === id ? { ...sc, ...selectedSchedule } : sc))
+      );
+  
+      setEditScheduleOpen(false);
+    } catch (error) {
+      console.error('Error updating schedule:', error);
+    }
+  }
+  
 
-  const handleEditScheduleSubmit = () => {
-    setScheduleRecords((prev) =>
-      prev.map((s) =>
-        s.ScheduleID === selectedSchedule.ScheduleID ? selectedSchedule : s
+  async function handleDeleteSchedule(scheduleID) {
+    if (!confirm('Delete this schedule?')) return;
+    try {
+      await axios.delete(route('staff.schedules.destroy', scheduleID));
+  
+      setScheduleRecords((prev) =>
+        prev.filter((sc) => sc.ScheduleID !== scheduleID)
+      );
+      setFilteredSchedule((prev) =>
+        prev.filter((sc) => sc.ScheduleID !== scheduleID)
+      );
+    } catch (error) {
+      console.error(error);
+    }
+  }
+  
+
+// -------------- PRINT PAYSLIP --------------
+const handlePrintPayslip = (staffRecord, payrollRecord) => {
+  setPayslipStaffData(staffRecord);
+  setPayslipPayrollData(payrollRecord);
+  setPayslipOpen(true);
+};
+
+ // -------------- SEARCH & TAB SWITCH --------------
+ const handleSearchChange = (e) => {
+  const value = e.target.value.toLowerCase();
+  setSearchTerm(value);
+
+  if (activeTab === 0) {
+    setFilteredStaff(
+      staffRecords.filter((s) =>
+        Object.values(s).some((val) => String(val).toLowerCase().includes(value))
       )
     );
-    setFilteredSchedule((prev) =>
-      prev.map((s) =>
-        s.ScheduleID === selectedSchedule.ScheduleID ? selectedSchedule : s
+  } else if (activeTab === 1) {
+    setFilteredAttendance(
+      attendanceRecords.filter((a) =>
+        Object.values(a).some((val) => String(val).toLowerCase().includes(value))
       )
     );
-    setEditScheduleOpen(false);
-  };
+  } else if (activeTab === 2) {
+    setFilteredPayroll(
+      payrollRecords.filter((p) =>
+        Object.values(p).some((val) => String(val).toLowerCase().includes(value))
+      )
+    );
+  } else if (activeTab === 3) {
+    setFilteredTasks(
+      taskRecords.filter((t) =>
+        Object.values(t).some((val) => String(val).toLowerCase().includes(value))
+      )
+    );
+  } else {
+    setFilteredSchedule(
+      scheduleRecords.filter((sc) =>
+        Object.values(sc).some((val) => String(val).toLowerCase().includes(value))
+      )
+    );
+  }
+};
 
-  // ------------------- PRINT PAYSLIP -------------------
-  const handlePrintPayslip = (staffRecord, payrollRecord) => {
-    setPayslipStaffData(staffRecord);
-    setPayslipPayrollData(payrollRecord);
-    setPayslipOpen(true);
-  };
+const handleTabChange = (e, newValue) => {
+  setActiveTab(newValue);
+  setSearchTerm("");
+  // Reset filtered arrays
+  if (newValue === 0) setFilteredStaff(staffRecords);
+  else if (newValue === 1) setFilteredAttendance(attendanceRecords);
+  else if (newValue === 2) setFilteredPayroll(payrollRecords);
+  else if (newValue === 3) setFilteredTasks(taskRecords);
+  else setFilteredSchedule(scheduleRecords);
+};
 
-  // ------------------- SEARCH & TAB SWITCHING -----------------
-  const handleSearchChange = (e) => {
-    const value = e.target.value.toLowerCase();
-    setSearchTerm(value);
+  // -------------- OVERVIEW CARD DATA --------------
+ // 1) Basic counts
+ const totalStaff = staffRecords.length;
 
-    if (activeTab === 0) {
-      const filtered = staffRecords.filter((item) =>
-        Object.values(item).some((val) =>
-          String(val).toLowerCase().includes(value)
-        )
-      );
-      setFilteredStaff(filtered);
-    } else if (activeTab === 1) {
-      const filtered = attendanceRecords.filter((item) =>
-        Object.values(item).some((val) =>
-          String(val).toLowerCase().includes(value)
-        )
-      );
-      setFilteredAttendance(filtered);
-    } else if (activeTab === 2) {
-      const filtered = payrollRecords.filter((item) =>
-        Object.values(item).some((val) =>
-          String(val).toLowerCase().includes(value)
-        )
-      );
-      setFilteredPayroll(filtered);
-    } else if (activeTab === 3) {
-      const filtered = taskRecords.filter((item) =>
-        Object.values(item).some((val) =>
-          String(val).toLowerCase().includes(value)
-        )
-      );
-      setFilteredTasks(filtered);
-    } else {
-      const filtered = scheduleRecords.filter((item) =>
-        Object.values(item).some((val) =>
-          String(val).toLowerCase().includes(value)
-        )
-      );
-      setFilteredSchedule(filtered);
-    }
-  };
+ // 2) Trainer count
+ const trainerCount = staffRecords.filter(
+   (s) => s.Role && s.Role.toLowerCase() === "trainer"
+ ).length;
 
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-    setSearchTerm("");
+ // 3) Manager/Administrator count
+ const managerCount = staffRecords.filter(
+   (s) => s.Role && s.Role.toLowerCase() === "manager"
+ ).length;
 
-    if (newValue === 0) {
-      setFilteredStaff(staffRecords);
-    } else if (newValue === 1) {
-      setFilteredAttendance(attendanceRecords);
-    } else if (newValue === 2) {
-      setFilteredPayroll(payrollRecords);
-    } else if (newValue === 3) {
-      setFilteredTasks(taskRecords);
-    } else {
-      setFilteredSchedule(scheduleRecords);
-    }
-  };
+ // 4) Recent hires: staff hired in the past 30 days
+ const today = new Date();
+ const thirtyDaysAgo = new Date();
+ thirtyDaysAgo.setDate(today.getDate() - 30);
 
-  // ------------------- Overview Cards Data -------------------
-  const totalStaff = staffRecords.length;
-  const trainersCount = staffRecords.filter((s) => s.Role === "Trainer").length;
-  const adminsCount = staffRecords.filter((s) => s.Role === "Admin").length;
-  const today = new Date();
-  const last30 = new Date();
-  last30.setDate(today.getDate() - 30);
-  const recentHiresCount = staffRecords.filter((s) => {
-    const hireDate = new Date(s.DateHired);
-    return hireDate >= last30;
-  }).length;
+ const recentHiresCount = staffRecords.filter((s) => {
+   if (!s.DateHired) return false;
+   const hiredDate = new Date(s.DateHired);
+   return hiredDate >= thirtyDaysAgo;
+ }).length;
+
 
   // ------------------- COLUMNS: TABLES -------------------
   const staffColumns = [
@@ -474,7 +540,17 @@ export default function StaffManagement() {
     { field: "Email", headerName: "Email", width: 160 },
     { field: "Phone", headerName: "Phone", width: 120 },
     { field: "Role", headerName: "Role", width: 120 },
-    { field: "BranchID", headerName: "Branch ID", width: 100 },
+{
+  field: "Branch",
+  headerName: "Branches",
+  width: 250,
+  renderCell: (params) => {
+    // 'row.branches' is an array
+    const branches = params.row.branches || [];
+    // join them into a string
+    return branches.map((b) => b.BranchName).join(", ");
+  },
+},    
     { field: "DateHired", headerName: "Hired", width: 110 },
     { field: "DailyRate", headerName: "Daily Rate", width: 100 },
     { field: "HourlyRate", headerName: "Hourly", width: 90 },
@@ -539,7 +615,15 @@ export default function StaffManagement() {
 
   const attendanceColumns = [
     { field: "AttendanceID", headerName: "Attendance ID", width: 110 },
-    { field: "StaffID", headerName: "Staff ID", width: 80 },
+    {
+      field: "StaffID",
+      headerName: "Staff Name",
+      width: 150,
+      renderCell: (params) => {
+        // If it's eager loaded, the staff object is at row.staff
+        return params.row.staff ? params.row.staff.FullName : "N/A";
+      }
+    },
     { field: "Date", headerName: "Date", width: 100 },
     { field: "TimeIn", headerName: "Time In", width: 90 },
     { field: "TimeOut", headerName: "Time Out", width: 90 },
@@ -605,7 +689,15 @@ export default function StaffManagement() {
 
   const payrollColumns = [
     { field: "PayrollID", headerName: "Payroll ID", width: 90 },
-    { field: "StaffID", headerName: "Staff ID", width: 80 },
+    {
+      field: "StaffID",
+      headerName: "Staff Name",
+      width: 150,
+      renderCell: (params) => {
+        // If it's eager loaded, the staff object is at row.staff
+        return params.row.staff ? params.row.staff.FullName : "N/A";
+      }
+    },    
     { field: "StartDate", headerName: "Start", width: 100 },
     { field: "EndDate", headerName: "End", width: 100 },
     { field: "GrossPay", headerName: "Gross", width: 90 },
@@ -672,7 +764,15 @@ export default function StaffManagement() {
 
   const taskColumns = [
     { field: "TaskID", headerName: "Task ID", width: 80 },
-    { field: "StaffID", headerName: "Staff ID", width: 80 },
+    {
+      field: "StaffID",
+      headerName: "Staff Name",
+      width: 150,
+      renderCell: (params) => {
+        // If it's eager loaded, the staff object is at row.staff
+        return params.row.staff ? params.row.staff.FullName : "N/A";
+      }
+    },
     { field: "TaskDescription", headerName: "Description", width: 200 },
     { field: "TaskDate", headerName: "Date", width: 110 },
     {
@@ -744,7 +844,15 @@ export default function StaffManagement() {
 
   const scheduleColumns = [
     { field: "ScheduleID", headerName: "Schedule ID", width: 100 },
-    { field: "StaffID", headerName: "Staff ID", width: 80 },
+    {
+      field: "StaffID",
+      headerName: "Staff Name",
+      width: 150,
+      renderCell: (params) => {
+        // If it's eager loaded, the staff object is at row.staff
+        return params.row.staff ? params.row.staff.FullName : "N/A";
+      }
+    },    
     { field: "ShiftDate", headerName: "Date", width: 110 },
     { field: "ShiftStart", headerName: "Start", width: 90 },
     { field: "ShiftEnd", headerName: "End", width: 90 },
@@ -1075,7 +1183,11 @@ export default function StaffManagement() {
         />
         <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel>Branch</InputLabel>
-          <Select value={branch} label="Branch" onChange={handleBranchChange}>
+          <Select
+            value={branch}
+            onChange={handleBranchChange}
+            label="Branch"
+          >
             {branchOptions.map((option) => (
               <MenuItem key={option.value} value={option.value}>
                 {option.label}
@@ -1087,93 +1199,112 @@ export default function StaffManagement() {
 
       {/* ------------------- OVERVIEW CARDS ------------------- */}
       <Box sx={{ mb: 3 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card
-              sx={{
-                bgcolor: "text.primary",
-                color: "background.paper",
-                display: "flex",
-                alignItems: "center",
-                p: 2,
-              }}
-            >
-              <GroupsIcon sx={{ fontSize: 40, color: "gray", mr: 2 }} />
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Total Staff
-                </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
-                  {staffRecords.length}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card
-              sx={{
-                bgcolor: "text.primary",
-                color: "background.paper",
-                display: "flex",
-                alignItems: "center",
-                p: 2,
-              }}
-            >
-              <FitnessCenterIcon sx={{ fontSize: 40, color: "limegreen", mr: 2 }} />
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Trainers
-                </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
-                  {/* Add trainersCount here if available */}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card
-              sx={{
-                bgcolor: "text.primary",
-                color: "background.paper",
-                display: "flex",
-                alignItems: "center",
-                p: 2,
-              }}
-            >
-              <SupervisorAccountIcon sx={{ fontSize: 40, color: "gray", mr: 2 }} />
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Managers
-                </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
-                  {/* Add adminsCount here if available */}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card
-              sx={{
-                bgcolor: "text.primary",
-                color: "background.paper",
-                display: "flex",
-                alignItems: "center",
-                p: 2,
-              }}
-            >
-              <CleanHandsIcon sx={{ fontSize: 40, color: "blue", mr: 2 }} />
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Recent Hires
-                </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
-                  {recentHiresCount}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
+      <Grid container spacing={2}>
+        {/* Total Staff */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Card
+            sx={{
+              bgcolor: "text.primary",
+              color: "background.paper",
+              display: "flex",
+              alignItems: "center",
+              p: 2,
+            }}
+          >
+            <GroupsIcon sx={{ fontSize: 40, color: "gray", mr: 2 }} />
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Total Staff
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
+              >
+                {totalStaff}
+              </Typography>
+            </CardContent>
+          </Card>
         </Grid>
-      </Box>
+
+        {/* Trainers */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Card
+            sx={{
+              bgcolor: "text.primary",
+              color: "background.paper",
+              display: "flex",
+              alignItems: "center",
+              p: 2,
+            }}
+          >
+            <FitnessCenterIcon sx={{ fontSize: 40, color: "limegreen", mr: 2 }} />
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Trainers
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
+              >
+                {trainerCount}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Managers */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Card
+            sx={{
+              bgcolor: "text.primary",
+              color: "background.paper",
+              display: "flex",
+              alignItems: "center",
+              p: 2,
+            }}
+          >
+            <SupervisorAccountIcon sx={{ fontSize: 40, color: "gray", mr: 2 }} />
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Managers
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
+              >
+                {managerCount}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Recent Hires (last 30 days) */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Card
+            sx={{
+              bgcolor: "text.primary",
+              color: "background.paper",
+              display: "flex",
+              alignItems: "center",
+              p: 2,
+            }}
+          >
+            <CleanHandsIcon sx={{ fontSize: 40, color: "blue", mr: 2 }} />
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Recent Hires
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{ fontSize: "1.5rem", fontWeight: "bold" }}
+              >
+                {recentHiresCount}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
 
       {/* ------------------- TITLE & TABS ------------------- */}
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
@@ -1245,16 +1376,60 @@ export default function StaffManagement() {
           </Box>
         </Box>
         <div style={{ height: 420, width: "100%" }}>
-          <DataGrid rows={rows} columns={columns} getRowId={getRowId} pageSize={5} rowsPerPageOptions={[5, 10]} />
-        </div>
+ <DataGrid
+            rows={
+              activeTab === 0
+                ? filteredStaff
+                : activeTab === 1
+                ? filteredAttendance
+                : activeTab === 2
+                ? filteredPayroll
+                : activeTab === 3
+                ? filteredTasks
+                : filteredSchedule
+            }
+            columns={
+              activeTab === 0
+                ? staffColumns
+                : activeTab === 1
+                ? attendanceColumns
+                : activeTab === 2
+                ? payrollColumns
+                : activeTab === 3
+                ? taskColumns
+                : scheduleColumns
+            }
+            getRowId={(row) => {
+              if (activeTab === 0) return row.StaffID;
+              if (activeTab === 1) return row.AttendanceID;
+              if (activeTab === 2) return row.PayrollID;
+              if (activeTab === 3) return row.TaskID;
+              return row.ScheduleID;
+            }}
+            pageSize={5}
+            rowsPerPageOptions={[5, 10]}
+          />        </div>
       </Paper>
 
       {/* ------------------- RENDER EXTERNAL LAYOUTS ------------------- */}
-      {isAddStaffOpen && <AddNewStaffLayout onClose={() => setAddStaffOpen(false)} />}
+      {isAddStaffOpen && (
+        <AddNewStaffLayout
+          onClose={() => setAddStaffOpen(false)}
+          onStaffAdded={(createdStaff) => {
+            // either re-fetch from server
+            // Inertia.get(route('staff.index'));
+
+            // or update local state
+            setStaffRecords((prev) => [...prev, createdStaff]);
+            setFilteredStaff((prev) => [...prev, createdStaff]);
+          }}
+        />
+      )}
       {isAddPayrollOpen && (
         <AddPayrollLayout
           onClose={() => setAddPayrollOpen(false)}
           onAdd={(newPayroll) => {
+            // local state update
             const nextId = payrollRecords.length
               ? Math.max(...payrollRecords.map((p) => p.PayrollID)) + 1
               : 1;
@@ -1263,20 +1438,33 @@ export default function StaffManagement() {
             setPayrollRecords(updated);
             setFilteredPayroll(updated);
           }}
+          // Pass staff as an array of { value: StaffID, label: FullName }
+          staffOptions={staffRecords.map((staff) => ({
+            value: staff.StaffID,
+            label: staff.FullName,
+          }))}
         />
       )}
-      {isAddTaskOpen && (
-        <AddStaffTaskLayout
-          onClose={() => setAddTaskOpen(false)}
-          onAdd={(newTask) => {
-            const nextId = taskRecords.length ? Math.max(...taskRecords.map((t) => t.TaskID)) + 1 : 1;
-            const record = { TaskID: nextId, ...newTask };
-            const updated = [...taskRecords, record];
-            setTaskRecords(updated);
-            setFilteredTasks(updated);
-          }}
-        />
-      )}
+            
+            {isAddTaskOpen && (
+            <AddStaffTaskLayout
+              onClose={() => setAddTaskOpen(false)}
+              onAdd={(newTask) => {
+                const nextId = taskRecords.length
+                  ? Math.max(...taskRecords.map((t) => t.TaskID)) + 1
+                  : 1;
+                const record = { TaskID: nextId, ...newTask };
+                const updated = [...taskRecords, record];
+                setTaskRecords(updated);
+                setFilteredTasks(updated);
+              }}
+              staffOptions={staffRecords.map((s) => ({
+                value: s.StaffID,
+                label: s.FullName,
+              }))}
+            />
+          )}
+
 
       {/* ------------------- PRINT PAYSLIP DIALOG ------------------- */}
       <Dialog open={isPayslipOpen} onClose={() => setPayslipOpen(false)} fullWidth maxWidth="lg">
@@ -1409,16 +1597,126 @@ export default function StaffManagement() {
         <DialogContent dividers>
           {selectedStaff && (
             <>
-              <TextField fullWidth margin="normal" label="Full Name" value={selectedStaff.FullName} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, FullName: e.target.value }))} />
-              <TextField fullWidth margin="normal" label="Email" value={selectedStaff.Email} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, Email: e.target.value }))} />
-              <TextField fullWidth margin="normal" label="Phone" value={selectedStaff.Phone} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, Phone: e.target.value }))} />
-              <TextField fullWidth margin="normal" label="Role" value={selectedStaff.Role} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, Role: e.target.value }))} />
-              <TextField fullWidth margin="normal" label="Branch ID" type="number" value={selectedStaff.BranchID} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, BranchID: Number(e.target.value) || 0 }))} />
-              <TextField fullWidth margin="normal" label="Date Hired" value={selectedStaff.DateHired} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, DateHired: e.target.value }))} />
-              <TextField fullWidth margin="normal" label="Daily Rate" type="number" value={selectedStaff.DailyRate} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, DailyRate: Number(e.target.value) || 0 }))} />
-              <TextField fullWidth margin="normal" label="Hourly Rate" type="number" value={selectedStaff.HourlyRate} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, HourlyRate: Number(e.target.value) || 0 }))} />
-              <TextField fullWidth margin="normal" label="Overtime Rate" type="number" value={selectedStaff.OvertimeRate} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, OvertimeRate: Number(e.target.value) || 0 }))} />
-              <TextField fullWidth margin="normal" label="Notes" value={selectedStaff.Notes} onChange={(e) => setSelectedStaff((prev) => ({ ...prev, Notes: e.target.value }))} />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Full Name"
+                value={selectedStaff.FullName}
+                onChange={(e) =>
+                  setSelectedStaff((prev) => ({ ...prev, FullName: e.target.value }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Email"
+                value={selectedStaff.Email}
+                onChange={(e) =>
+                  setSelectedStaff((prev) => ({ ...prev, Email: e.target.value }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Phone"
+                value={selectedStaff.Phone}
+                onChange={(e) =>
+                  setSelectedStaff((prev) => ({ ...prev, Phone: e.target.value }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Role"
+                value={selectedStaff.Role}
+                onChange={(e) =>
+                  setSelectedStaff((prev) => ({ ...prev, Role: e.target.value }))
+                }
+              />
+
+              {/* Instead of a numeric BranchID input, use a dropdown of branches */}
+              <FormControl fullWidth margin="normal">
+                  <InputLabel>Branches</InputLabel>
+                  <Select
+                    label="Branches"
+                    multiple
+                    value={selectedStaff.BranchIDs || []} // an array
+                    onChange={(e) =>
+                      setSelectedStaff((prev) => ({
+                        ...prev,
+                        BranchIDs: e.target.value, // an array of selected branch IDs
+                      }))
+                    }
+                  >
+                    {branchOptions.map((branch) => (
+                      <MenuItem key={branch.value} value={branch.value}>
+                        {branch.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Date Hired"
+                type="date"
+                InputLabelProps={{ shrink: true }}
+                value={selectedStaff.DateHired || ""}
+                onChange={(e) =>
+                  setSelectedStaff((prev) => ({ ...prev, DateHired: e.target.value }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Daily Rate"
+                type="number"
+                value={selectedStaff.DailyRate || 0}
+                onChange={(e) =>
+                  setSelectedStaff((prev) => ({
+                    ...prev,
+                    DailyRate: Number(e.target.value) || 0,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Hourly Rate"
+                type="number"
+                value={selectedStaff.HourlyRate || 0}
+                onChange={(e) =>
+                  setSelectedStaff((prev) => ({
+                    ...prev,
+                    HourlyRate: Number(e.target.value) || 0,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Overtime Rate"
+                type="number"
+                value={selectedStaff.OvertimeRate || 0}
+                onChange={(e) =>
+                  setSelectedStaff((prev) => ({
+                    ...prev,
+                    OvertimeRate: Number(e.target.value) || 0,
+                  }))
+                }
+              />
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Notes"
+                multiline
+                rows={2}
+                value={selectedStaff.Notes || ""}
+                onChange={(e) =>
+                  setSelectedStaff((prev) => ({ ...prev, Notes: e.target.value }))
+                }
+              />
             </>
           )}
         </DialogContent>
@@ -1429,6 +1727,7 @@ export default function StaffManagement() {
           </Button>
         </DialogActions>
       </Dialog>
+
 
       {/* VIEW ATTENDANCE */}
       <Dialog open={isViewAttendanceOpen} onClose={() => setViewAttendanceOpen(false)} fullWidth maxWidth="sm">

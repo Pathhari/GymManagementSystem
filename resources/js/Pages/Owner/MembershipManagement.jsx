@@ -574,7 +574,7 @@ function fetchActivityLogs() {
     { field: "WalkInID", headerName: "Walk-In ID", width: 100 },
     { field: "FullName", headerName: "Full Name", width: 160 },
     { field: "VisitDate", headerName: "Visit Date", width: 160 },
-    { field: "PaymentID", headerName: "PayID", width: 90 },
+    { field: "PaymentID", headerName: "Payment ID", width: 90 },
     { field: "Notes", headerName: "Notes", width: 150 },
     {
       field: "Actions",
@@ -653,9 +653,27 @@ async function handleAddRenewal() {
 }
 
   const renewalColumns = [
-    { field: "MemberID", headerName: "Member ID", width: 100 },
+    {
+      field: "MemberID",
+      headerName: "Member Name",
+      width: 160,
+      renderCell: (params) => {
+        const memberId = Number(params.value);
+        // Use membershipRecords instead of members
+        const member = membershipRecords.find((m) => m.MemberID === memberId);
+        return member ? member.FullName : "N/A";
+      }
+    },    
     { field: "RenewalDate", headerName: "Renewal Date", width: 100 },    
-    { field: "PlanID", headerName: "Plan ID", width: 90 },
+    {       field: "PlanID",
+      headerName: "Plan",
+      width: 130,
+      renderCell: (params) => {
+        const pid = Number(params.value); // ensure numeric
+        const plan = plans.find((pl) => pl.PlanID === pid);
+        return plan ? plan.PlanName : "Unknown";
+      }
+    },
     { field: "RenewalAmount", headerName: "Amount", width: 100 },
     {
       field: "Actions",

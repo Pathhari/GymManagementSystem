@@ -4,10 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class CoachingSessions extends Model
+class CoachingSession extends Model
 {
     protected $primaryKey = 'SessionID';
-
     protected $fillable = [
         'SessionName',
         'SessionType',
