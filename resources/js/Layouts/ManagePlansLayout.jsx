@@ -107,7 +107,7 @@ export default function ManagePlansLayout({ onClose }) {
         const res = await axios.put(`/membership/plans/${planForm.PlanID}`, {
           PlanName: planForm.PlanName,
           Price: parseFloat(planForm.Price) || 0,
-          Duration: planForm.Duration,
+          Duration: parseInt(planForm.Duration, 10),
           Features: planForm.Features,
         });
         // Update local

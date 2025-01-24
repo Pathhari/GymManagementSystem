@@ -493,7 +493,7 @@ private function generateRemainingLockInInvoices(Member $member, $planID)
         $data = $request->validate([
             'PlanName' => 'required|string|max:255|unique:membership_plans,PlanName',
             'Price'    => 'required|numeric|min:0',
-            'Duration' => 'required|string|max:50',
+            'Duration' => 'required|integer|min:1',
             'Features' => 'nullable|string',
         ]);
 
@@ -512,7 +512,7 @@ private function generateRemainingLockInInvoices(Member $member, $planID)
         $data = $request->validate([
             'PlanName' => 'required|string|max:255|unique:membership_plans,PlanName,' . $plan->PlanID . ',PlanID',
             'Price'    => 'required|numeric|min:0',
-            'Duration' => 'required|string|max:50',
+            'Duration' => 'required|integer|min:1',
             'Features' => 'nullable|string',
         ]);
 

@@ -115,7 +115,29 @@ export default function MembershipManagement() {
       setWalkInRecords(res.data);
     })
     .catch((err) => console.error("Error fetching walk-ins:", err));
+     // 4) Fetch branches
+  axios
+  .get("/owner/branches")
+  .then((res) => {
+    // If your back end returns { branches: [...] }, do:
+    setBranches(res.data.branches || []);
+
+    // If it returns an array directly, do:
+    // setBranches(res.data);
+  })
+  .catch((err) => console.error("Error fetching branches:", err));
+
+    const intervalId = setInterval(() => {
+    axios.get("/membership/members")
+      .then((res) => setMembershipRecords(res.data.members || []))
+      .catch(console.error);
+  }, 10000); // every 10 seconds
+
+  // clear interval on unmount
+  return () => clearInterval(intervalId);
   }, []);
+
+  const [branches, setBranches] = useState([]);
 
   // Called by AddNewMemberLayout => new member created
   function handleNewMemberCreated(resData) {
@@ -123,7 +145,6 @@ export default function MembershipManagement() {
     const memberObj = resData.member;
     setMembershipRecords(prev => [memberObj, ...prev]);
     showSuccessMessage("New member added successfully!");
-    window.location.reload();
   }
   // For searching
   const handleTabChange = (e, newValue) => {
@@ -214,6 +235,18 @@ export default function MembershipManagement() {
 
    // DataGrid columns for membership
    const membershipColumns = [
+    {
+      field: "StartedBranchID",
+      headerName: "Branch",
+      flex: 1, 
+      width: 130,
+      renderCell: (params) => {
+        const startedBranchId = params.value; // the numeric ID
+        // 'branches' is your array from the backend: [ {BranchID, BranchName}, ... ]
+        const br = branches.find(b => b.BranchID === startedBranchId);
+        return br ? br.BranchName : "N/A";
+      },
+    },
     { field: "FullName", headerName: "Full Name", width: 160 },
     { field: "Email", headerName: "Email", width: 160 },
     { field: "Phone", headerName: "Phone", width: 130 },
@@ -574,7 +607,7 @@ function fetchActivityLogs() {
     { field: "WalkInID", headerName: "Walk-In ID", width: 100 },
     { field: "FullName", headerName: "Full Name", width: 160 },
     { field: "VisitDate", headerName: "Visit Date", width: 160 },
-    { field: "PaymentID", headerName: "Payment ID", width: 90 },
+    { field: "PaymentID", headerName: "Payment ID",flex: 1, width: 90 },
     { field: "Notes", headerName: "Notes", width: 150 },
     {
       field: "Actions",
@@ -667,7 +700,8 @@ async function handleAddRenewal() {
     { field: "RenewalDate", headerName: "Renewal Date", width: 100 },    
     {       field: "PlanID",
       headerName: "Plan",
-      width: 130,
+      flex: 1, 
+      width: 60,
       renderCell: (params) => {
         const pid = Number(params.value); // ensure numeric
         const plan = plans.find((pl) => pl.PlanID === pid);
@@ -712,6 +746,7 @@ async function handleAddRenewal() {
     {
       field: "MemberName",
       headerName: "Member Name",
+      flex: 1, 
       width: 160,
       // Either use valueGetter or renderCell—here we use renderCell:
       renderCell: (params) => {

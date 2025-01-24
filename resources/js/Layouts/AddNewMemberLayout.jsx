@@ -30,6 +30,7 @@ import CloseIcon from "@mui/icons-material/Close";
 
 export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   const [errors, setErrors] = useState({});
+  
 
   // Radio for membership type
   const [membershipType, setMembershipType] = useState("regular"); 
@@ -72,10 +73,11 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     // Load branches from your back end: 
     // e.g. GET /branches => returns [{ BranchID:1, BranchName:"..."}, ...]
     axios
-    .get("/branches")
+    .get("/owner/branches")
     .then((res) => {
-      // res.data should be { branches: [...] }
+      // If your server returns { branches: [...] }:
       setBranches(res.data.branches || []);
+      // If it returns an array directly, do: setBranches(res.data);
     })
     .catch((err) => console.error("Error fetching branches:", err));
   }, []);
