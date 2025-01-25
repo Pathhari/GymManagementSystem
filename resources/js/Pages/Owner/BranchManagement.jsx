@@ -126,6 +126,7 @@ const ErrorAlert = () => (
   
       // 3) Maintenance Logs
       const maintRes = await axios.get(route('maintenance.logs.index')); 
+      console.log('Maintenance logs response:', JSON.stringify(maintRes.data.logs, null, 2));
       setMaintenanceLogs(maintRes.data.logs || []);
   
       // 4) Financials
@@ -276,10 +277,12 @@ const handleDeleteStaff = async (staffID) => {
 const handleUpdateMaintenance = async () => {
   try {
     const res = await axios.put(
-      route('maintenance.logs.update', editMaintenance.MaintenanceLogID),
+      route('maintenance.logs.update', editMaintenance.MaintenanceID),
       editMaintenance
     );
-    setMaintenanceLogs(prev => prev.map(m => m.MaintenanceLogID === res.data.log.MaintenanceLogID ? res.data.log : m));
+    setMaintenanceLogs(prev => 
+      prev.map(m => m.MaintenanceID === res.data.log.MaintenanceID ? res.data.log : m)
+    );
     setEditMaintenanceOpen(false);
   } catch (err) {
     console.error("Update failed:", err);
@@ -290,7 +293,7 @@ const handleUpdateMaintenance = async () => {
 const handleDeleteMaintenance = async (logID) => {
   try {
     await axios.delete(route('maintenance.logs.destroy', logID));
-    setMaintenanceLogs(prev => prev.filter(m => m.MaintenanceLogID !== logID));
+    setMaintenanceLogs(prev => prev.filter(m => m.MaintenanceID !== logID));
   } catch (err) {
     console.error("Delete failed:", err);
   }
@@ -330,12 +333,12 @@ const handleDeleteFinancial = async (summaryID) => {
     {
       field: "Status",
       headerName: "Status",
-      width: 120,
+      width: 130,
       renderCell: (params) => (
         <span style={{ color: params.value === "Active" ? "green" : "gray" }}>
           {params.value}
         </span>
-      ),
+      )
     },
     { field: "Contact", headerName: "Contact", width: 130 },
     {
@@ -500,65 +503,62 @@ const handleDeleteFinancial = async (summaryID) => {
 
 
   const maintColumns = [
-    { 
-      field: "MaintenanceID", 
-      headerName: "Log ID", 
-      width: 100 
+    {
+      field: "MaintenanceID",
+      headerName: "Log ID",
+      width: 100
     },
-    { 
-      field: "equipment", 
-      headerName: "Equipment", 
+    {
+      field: "EquipmentName",
+      headerName: "Equipment",
       width: 180,
-      valueGetter: (params) => params?.row?.equipment?.Name || 'N/A'
+      renderCell: (params) => {
+        const eq = params.row.equipment;
+        return eq ? eq.Name : "N/A";
+      }
     },
-    { 
-      field: "IssueDescription", 
-      headerName: "Issue", 
-      width: 250 
+    {
+      field: "IssueDescription",
+      headerName: "Issue",
+      width: 250
     },
-    { 
-      field: "Status", 
-      headerName: "Status", 
+    {
+      field: "Status",
+      headerName: "Status",
       width: 130,
-      valueGetter: (params) => {
-        if (!params?.row?.NextMaintenanceDate) return 'N/A';
-        try {
-          const nextDate = new Date(params.row.NextMaintenanceDate);
-          return Date.now() > nextDate.getTime() ? 'Overdue' : 'Pending';
-        } catch {
-          return 'Invalid Date';
-        }
+      renderCell: (params) => {
+        const row = params.row;
+        if (!row.NextMaintenanceDate) return "N/A";
+        const nextDate = new Date(row.NextMaintenanceDate);
+        return Date.now() > nextDate ? "Overdue" : "Pending";
       }
     },
-    { 
-      field: "MaintenanceDate", 
-      headerName: "Date", 
+    {
+      field: "MaintenanceDate",
+      headerName: "Maintenance Date",
       width: 150,
-      valueFormatter: (params) => {
-        try {
-          return params.value ? new Date(params.value).toLocaleDateString() : 'N/A';
-        } catch {
-          return 'Invalid Date';
-        }
+      renderCell: (params) => {
+        const dateVal = params.row.MaintenanceDate;
+        return dateVal ? new Date(dateVal).toLocaleDateString() : "N/A";
       }
     },
-    { 
-      field: "NextMaintenanceDate", 
-      headerName: "Next Due", 
+    {
+      field: "NextMaintenanceDate",
+      headerName: "Next Due",
       width: 150,
-      valueFormatter: (params) => {
-        try {
-          return params.value ? new Date(params.value).toLocaleDateString() : 'N/A';
-        } catch {
-          return 'Invalid Date';
-        }
+      renderCell: (params) => {
+        const dateVal = params.row.NextMaintenanceDate;
+        return dateVal ? new Date(dateVal).toLocaleDateString() : "N/A";
       }
     },
-    { 
-      field: "maintainer", 
-      headerName: "Staff", 
+    {
+      field: "MaintainerName",
+      headerName: "Staff",
       width: 180,
-      valueGetter: (params) => params?.row?.maintainer?.FullName || 'Unknown'
+      renderCell: (params) => {
+        const staff = params.row.maintainer;
+        return staff ? staff.FullName : "Unknown";
+      }
     },
     {
       field: "Actions",
@@ -569,12 +569,47 @@ const handleDeleteFinancial = async (summaryID) => {
         if (!params?.row) return null;
         return (
           <Box sx={{ display: "flex", gap: 1 }}>
-            {/* Action buttons */}
+            <Tooltip title="View Maintenance">
+              <Button
+                variant="outlined"
+                size="small"
+                color="success"
+                onClick={() => {
+                  setViewMaintenanceData(params.row);
+                  setViewMaintenanceOpen(true);
+                }}
+              >
+                <VisibilityIcon fontSize="small" />
+              </Button>
+            </Tooltip>
+            <Tooltip title="Edit Maintenance">
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => {
+                  setEditMaintenance({ ...params.row });
+                  setEditMaintenanceOpen(true);
+                }}
+              >
+                <EditIcon fontSize="small" />
+              </Button>
+            </Tooltip>
+            <Tooltip title="Delete Maintenance">
+              <Button
+                variant="outlined"
+                size="small"
+                color="error"
+                onClick={() => handleDeleteMaintenance(params.row.MaintenanceID)}
+              >
+                <DeleteIcon fontSize="small" />
+              </Button>
+            </Tooltip>
           </Box>
-        )
+        );
       }
-    },
+    }
   ];
+  
 
   const financialColumns = [
     { field: "SummaryID", headerName: "Summary ID", width: 100 },
@@ -661,10 +696,10 @@ const handleDeleteFinancial = async (summaryID) => {
     tableColumns = maintColumns;
     tableRows = maintenanceLogs;
     csvHeaders = [
-      { label: "MaintenanceLogID", key: "MaintenanceLogID" },
-      { label: "Task", key: "Task" },
+      { label: "MaintenanceID", key: "MaintenanceID" },
+      { label: "IssueDescription", key: "IssueDescription" },
       { label: "Status", key: "Status" },
-      { label: "DueDate", key: "DueDate" },
+      { label: "NextMaintenanceDate", key: "NextMaintenanceDate" },
     ];
     csvFilename = "MaintenanceLog.csv";
   } else if (activeTab === 3) {
@@ -712,13 +747,13 @@ const handleDeleteFinancial = async (summaryID) => {
     } else if (activeTab === 2) {
       doc.text("Maintenance Log Export", 14, 10);
       const body = maintenanceLogs.map((m) => [
-        m.MaintenanceLogID,
-        m.Task,
+        m.MaintenanceID,
+        m.IssueDescription,
         m.Status,
-        m.DueDate,
+        m.NextMaintenanceDate,
       ]);
       doc.autoTable({
-        head: [["LogID", "Task", "Status", "DueDate"]],
+        head: [["LogID", "IssueDescription", "Status", "NextMaintenanceDate"]],
         body,
         startY: 20,
       });
@@ -1216,20 +1251,15 @@ const handleDeleteFinancial = async (summaryID) => {
           {editMaintenance && (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <TextField
-                label="Task"
-                value={editMaintenance.Task || ""}
-                onChange={(e) => setEditMaintenance({ ...editMaintenance, Task: e.target.value })}
-              />
-              <TextField
-                label="Status"
-                value={editMaintenance.Status || ""}
-                onChange={(e) => setEditMaintenance({ ...editMaintenance, Status: e.target.value })}
+                label="IssueDescription"
+                value={editMaintenance.IssueDescription || ""}
+                onChange={(e) => setEditMaintenance({ ...editMaintenance, IssueDescription: e.target.value })}
               />
               <TextField
                 label="Due Date"
                 type="date"
-                value={editMaintenance.DueDate || ""}
-                onChange={(e) => setEditMaintenance({ ...editMaintenance, DueDate: e.target.value })}
+                value={editMaintenance.NextMaintenanceDate || ""}
+                onChange={(e) => setEditMaintenance({ ...editMaintenance, NextMaintenanceDate: e.target.value })}
               />
             </Box>
           )}
@@ -1253,13 +1283,13 @@ const handleDeleteFinancial = async (summaryID) => {
                   <Typography variant="body2" color="text.secondary">
                     LogID:
                   </Typography>
-                  <Typography>{viewMaintenanceData.MaintenanceLogID}</Typography>
+                  <Typography>{viewMaintenanceData.MaintenanceID}</Typography>
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="text.secondary">
-                    Task:
+                    IssueDescription:
                   </Typography>
-                  <Typography>{viewMaintenanceData.Task}</Typography>
+                  <Typography>{viewMaintenanceData.IssueDescription}</Typography>
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="text.secondary">
@@ -1271,7 +1301,7 @@ const handleDeleteFinancial = async (summaryID) => {
                   <Typography variant="body2" color="text.secondary">
                     Due Date:
                   </Typography>
-                  <Typography>{viewMaintenanceData.DueDate}</Typography>
+                  <Typography>{viewMaintenanceData.NextMaintenanceDate}</Typography>
                 </Grid>
               </Grid>
             </Box>

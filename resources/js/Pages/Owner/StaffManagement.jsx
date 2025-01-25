@@ -51,7 +51,7 @@ import ReactToPrint from "react-to-print";
 import AddNewStaffLayout from "../../Layouts/AddNewStaffLayout";
 import AddPayrollLayout from "../../Layouts/AddPayrollLayout";
 import AddStaffTaskLayout from "../../Layouts/AddStaffTaskLayout";
-import PayslipLayout from "../../Layouts/Paysliplayout";
+import PayslipLayout from "../../Layouts/PayslipLayout";
 
 
 
@@ -136,7 +136,7 @@ export default function StaffManagement({ staff = [], attendance = [], payroll =
     });
 
     // 1. Staff
-    axios.get(route('staff.index.json'))
+    axios.get(route('staff.index'))
       .then((response) => {
         setStaffRecords(response.data);
         setFilteredStaff(response.data);
@@ -1316,7 +1316,6 @@ const handleTabChange = (e, newValue) => {
           <Tab icon={<EmojiPeopleIcon />} label="Attendance" />
           <Tab icon={<ReceiptIcon />} label="Payroll" />
           <Tab icon={<AssignmentIcon />} label="Task" />
-          <Tab icon={<CalendarMonthIcon />} label="Schedule" />
         </Tabs>
       </Box>
 
@@ -1462,25 +1461,6 @@ const handleTabChange = (e, newValue) => {
               }))}
             />
           )}
-
-      {/* ------------------- PRINT PAYSLIP DIALOG ------------------- */}
-      <Dialog open={isPayslipOpen} onClose={() => setPayslipOpen(false)} fullWidth maxWidth="lg">
-        <DialogContent>
-          <Box ref={printRef}>
-            <PayslipLayout staffData={payslipStaffData} payrollData={payslipPayrollData} />
-          </Box>
-        </DialogContent>
-        <Box sx={{ m: 2, display: "flex", justifyContent: "flex-end", gap: 2 }}>
-          <ReactToPrint
-            trigger={() => <Button variant="contained" color="primary">Print Payslip</Button>}
-            content={() => printRef.current}
-            pageStyle="@media print { @page { size: A4; margin: 20mm } }"
-          />
-          <Button variant="text" color="inherit" onClick={() => setPayslipOpen(false)}>
-            Close
-          </Button>
-        </Box>
-      </Dialog>
 
       {/* ------------------- VIEW & EDIT DIALOGS ------------------- */}
 
@@ -1873,9 +1853,6 @@ const handleTabChange = (e, newValue) => {
               <TextField fullWidth margin="normal" label="StaffID" value={selectedPayroll.StaffID} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, StaffID: e.target.value }))} />
               <TextField fullWidth margin="normal" label="Start Date" value={selectedPayroll.StartDate} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, StartDate: e.target.value }))} />
               <TextField fullWidth margin="normal" label="End Date" value={selectedPayroll.EndDate} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, EndDate: e.target.value }))} />
-              <TextField fullWidth margin="normal" label="GrossPay" type="number" value={selectedPayroll.GrossPay} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, GrossPay: parseFloat(e.target.value) || 0 }))} />
-              <TextField fullWidth margin="normal" label="Deductions" type="number" value={selectedPayroll.Deductions} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, Deductions: parseFloat(e.target.value) || 0 }))} />
-              <TextField fullWidth margin="normal" label="NetPay" type="number" value={selectedPayroll.NetPay} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, NetPay: parseFloat(e.target.value) || 0 }))} />
               <TextField fullWidth margin="normal" label="GeneratedDate" value={selectedPayroll.GeneratedDate} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, GeneratedDate: e.target.value }))} />
               <TextField fullWidth margin="normal" label="Status" value={selectedPayroll.Status} onChange={(e) => setSelectedPayroll((prev) => ({ ...prev, Status: e.target.value }))} />
             </>
@@ -1977,104 +1954,6 @@ const handleTabChange = (e, newValue) => {
         </DialogActions>
       </Dialog>
 
-      {/* VIEW SCHEDULE */}
-      <Dialog open={isViewScheduleOpen} onClose={() => setViewScheduleOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>
-          <Typography variant="h6" color="primary">
-            Schedule Details
-          </Typography>
-        </DialogTitle>
-        <DialogContent dividers>
-          {selectedSchedule && (
-            <Box sx={{ p: 2 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Schedule ID:</Typography>
-                  <Typography variant="body1">{selectedSchedule.ScheduleID}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Staff ID:</Typography>
-                  <Typography variant="body1">{selectedSchedule.StaffID}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Date:</Typography>
-                  <Typography variant="body1">{selectedSchedule.ShiftDate}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Start:</Typography>
-                  <Typography variant="body1">{selectedSchedule.ShiftStart}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">End:</Typography>
-                  <Typography variant="body1">{selectedSchedule.ShiftEnd}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Role Override:</Typography>
-                  <Typography variant="body1">{selectedSchedule.RoleOverride}</Typography>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewScheduleOpen(false)} variant="contained" color="primary">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* EDIT SCHEDULE */}
-      <Dialog open={isEditScheduleOpen} onClose={() => setEditScheduleOpen(false)}>
-        <DialogTitle>Edit Schedule</DialogTitle>
-        <DialogContent dividers>
-          {selectedSchedule && (
-            <>
-              <TextField fullWidth margin="normal" label="ScheduleID" disabled value={selectedSchedule.ScheduleID} />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="StaffID"
-                value={selectedSchedule.StaffID}
-                onChange={(e) => setSelectedSchedule((prev) => ({ ...prev, StaffID: e.target.value }))}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Shift Date"
-                value={selectedSchedule.ShiftDate}
-                onChange={(e) => setSelectedSchedule((prev) => ({ ...prev, ShiftDate: e.target.value }))}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Shift Start"
-                value={selectedSchedule.ShiftStart}
-                onChange={(e) => setSelectedSchedule((prev) => ({ ...prev, ShiftStart: e.target.value }))}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Shift End"
-                value={selectedSchedule.ShiftEnd}
-                onChange={(e) => setSelectedSchedule((prev) => ({ ...prev, ShiftEnd: e.target.value }))}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Role Override"
-                value={selectedSchedule.RoleOverride}
-                onChange={(e) => setSelectedSchedule((prev) => ({ ...prev, RoleOverride: e.target.value }))}
-              />
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditScheduleOpen(false)}>Cancel</Button>
-          <Button onClick={handleEditScheduleSubmit} variant="contained" color="primary">
-            Save Changes
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {/* ------------------- RENDER PRINT PAYSLIP DIALOG ------------------- */}
       <Dialog open={isPayslipOpen} onClose={() => setPayslipOpen(false)} fullWidth maxWidth="lg">

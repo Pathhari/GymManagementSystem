@@ -126,48 +126,6 @@ export default function AddPayrollLayout({
               />
             </Grid>
 
-            {/* GrossPay */}
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Gross Pay"
-                name="GrossPay"
-                type="number"
-                value={payrollData.GrossPay}
-                onChange={handleChange}
-                error={!!errors.GrossPay}
-                helperText={errors.GrossPay}
-                variant="outlined"
-                required
-              />
-            </Grid>
-
-            {/* Deductions */}
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Deductions"
-                name="Deductions"
-                type="number"
-                value={payrollData.Deductions}
-                onChange={handleChange}
-                variant="outlined"
-              />
-            </Grid>
-
-            {/* NetPay */}
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Net Pay"
-                name="NetPay"
-                type="number"
-                value={payrollData.NetPay}
-                onChange={handleChange}
-                variant="outlined"
-              />
-            </Grid>
-
             {/* GeneratedDate */}
             <Grid item xs={12}>
               <TextField

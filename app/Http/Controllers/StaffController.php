@@ -391,19 +391,64 @@ class StaffController extends Controller
     public function storePayroll(Request $request)
     {
         $data = $request->validate([
-            'StaffID'       => 'required|exists:staff,StaffID',
-            'StartDate'     => 'required|date',
-            'EndDate'       => 'required|date|after_or_equal:StartDate',
-            'GrossPay'      => 'required|numeric|min:0',
-            'Deductions'    => 'nullable|numeric|min:0',
-            'NetPay'        => 'required|numeric|min:0',
-            'GeneratedDate' => 'nullable|date',
-            'Status'        => 'nullable|string|max:50',
+            'StaffID'    => 'required|exists:staff,StaffID',
+            'StartDate'  => 'required|date',
+            'EndDate'    => 'required|date|after_or_equal:StartDate',
+            'Deductions' => 'nullable|numeric|min:0',
         ]);
     
-        $payroll = Payroll::create($data);
-        
-        // Reload with relationships
+        $staff = Staff::findOrFail($data['StaffID']);
+    
+        $dailyRate    = $staff->DailyRate ?? 0;
+        $hourlyRate   = $staff->HourlyRate ?? 0;
+        $overtimeRate = $staff->OvertimeRate ?? 0;
+    
+        // Get attendance records within the specified date range.
+        $attendances = Attendance::where('StaffID', $staff->StaffID)
+                                 ->whereBetween('Date', [$data['StartDate'], $data['EndDate']])
+                                 ->get();
+    
+        $totalRegularHours  = 0;
+        $totalOvertimeHours = 0;
+    
+        // Example logic: treat hours above 8 per day as overtime
+        foreach ($attendances as $attendance) {
+            $hours = $attendance->HoursWorked ?? 0;
+            if ($hours > 8) {
+                $totalRegularHours  += 8;
+                $totalOvertimeHours += ($hours - 8);
+            } else {
+                $totalRegularHours  += $hours;
+            }
+        }
+    
+        // Compute gross pay based on hourly or daily rates
+        $grossPay = 0;
+        if ($hourlyRate > 0) {
+            $grossPay = ($totalRegularHours * $hourlyRate)
+                      + ($totalOvertimeHours * $overtimeRate);
+        } elseif ($dailyRate > 0) {
+            // Count distinct attendance days
+            $numDays  = $attendances->unique('Date')->count();
+            $grossPay = $numDays * $dailyRate;
+        }
+    
+        $deductions = $data['Deductions'] ?? 0;
+        $netPay     = $grossPay - $deductions;
+    
+        // Create and save the payroll record
+        $payroll = Payroll::create([
+            'StaffID'       => $staff->StaffID,
+            'StartDate'     => $data['StartDate'],
+            'EndDate'       => $data['EndDate'],
+            'GrossPay'      => $grossPay,
+            'Deductions'    => $deductions,
+            'NetPay'        => $netPay,
+            'GeneratedDate' => now(),
+            'Status'        => 'Pending',
+        ]);
+    
+        // Return the newly created payroll with staff details
         $payrollWithStaff = Payroll::with(['staff' => function($query) {
             $query->select('StaffID', 'FullName');
         }])->find($payroll->PayrollID);
@@ -413,6 +458,7 @@ class StaffController extends Controller
             'payroll' => $payrollWithStaff
         ], 201);
     }
+    
     
     /**
      * Return JSON list of payrolls, including staff relationship.

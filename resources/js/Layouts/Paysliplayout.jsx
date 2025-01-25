@@ -1,4 +1,3 @@
-// File: src/Layouts/PayslipLayout.jsx
 import React from "react";
 import { Box, Typography, Divider } from "@mui/material";
 
