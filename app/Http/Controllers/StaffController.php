@@ -28,10 +28,13 @@ class StaffController extends Controller
 
     public function indexStaffJson()
     {
-        // Eager-load any relationships you need
-        $staff = Staff::with('branches')->orderBy('StaffID', 'desc')->get();
+        $staff = Staff::with(['branches' => function($query) {
+            $query->select('branches.BranchID', 'BranchName');       
+        }])->orderBy('FullName')->get();
+    
         return response()->json($staff);
     }
+    
     /**
      * (Optional) Return JSON with necessary data for creating staff,
      * like the list of branches.
@@ -254,45 +257,46 @@ class StaffController extends Controller
     /**
      * Store a new task (POST /staff/tasks), return JSON.
      */
-    public function storeTask(Request $request)
-    {
-        $data = $request->validate([
-            'StaffID'         => 'required|exists:staff,StaffID',
-            'TaskDescription' => 'required|string|max:255',
-            'TaskDate'        => 'nullable|date',
-            'Status'          => 'nullable|string|max:50',
-        ]);
+        // In your TaskController.php
+        public function storeTask(Request $request)
+        {
+            $data = $request->validate([
+                'StaffID'         => 'required|exists:staff,StaffID',
+                'TaskDescription' => 'required|string|max:255',
+                'TaskDate'        => 'nullable|date',
+                'Status'          => 'nullable|string|max:50',
+            ]);
 
-        $task = StaffTask::create($data);
+            $task = StaffTask::create($data);
+            
+            // Reload with relationships
+            $taskWithStaff = StaffTask::with(['staff' => function($query) {
+                $query->select('StaffID', 'FullName');
+            }])->find($task->TaskID);
 
-        return response()->json([
-            'message' => 'Staff task created.',
-            'task'    => $task,
-        ], 201);
-    }
+            return response()->json([
+                'message' => 'Staff task created.',
+                'task'    => $taskWithStaff
+            ], 201);
+        }
 
-    /**
-     * Update an existing task, return JSON.
-     */
-    public function updateTask(Request $request, $id)
-    {
-        $task = StaffTask::findOrFail($id);
+        public function updateTask(Request $request, $id)
+        {
+            $task = StaffTask::findOrFail($id);
+            
+            $data = $request->validate([/* ... */]);
+            $task->update($data);
 
-        $data = $request->validate([
-            'StaffID'         => 'required|exists:staff,StaffID',
-            'TaskDescription' => 'required|string|max:255',
-            'TaskDate'        => 'nullable|date',
-            'Status'          => 'nullable|string|max:50',
-        ]);
+            // Reload with relationships
+            $updatedTask = StaffTask::with(['staff' => function($query) {
+                $query->select('StaffID', 'FullName');
+            }])->find($task->TaskID);
 
-        $task->update($data);
-
-        return response()->json([
-            'message' => 'Staff task updated.',
-            'task'    => $task,
-        ]);
-    }
-
+            return response()->json([
+                'message' => 'Staff task updated.',
+                'task'    => $updatedTask
+            ]);
+        }
     /**
      * Mark a task completed, return JSON.
      */
@@ -316,7 +320,10 @@ class StaffController extends Controller
      */
     public function indexSchedules()
     {
-        $schedules = StaffSchedule::with('staff')->orderBy('ShiftDate','desc')->get();
+        $schedules = StaffSchedule::with(['staff' => function($query) {
+            $query->select('StaffID', 'FullName');
+        }])->orderBy('ShiftDate', 'desc')->get();
+        
         return response()->json($schedules);
     }
 
@@ -341,12 +348,17 @@ class StaffController extends Controller
             'ShiftEnd'    => 'nullable|date_format:H:i|after:ShiftStart',
             'RoleOverride'=> 'nullable|string|max:50',
         ]);
-
+    
         $schedule = StaffSchedule::create($data);
-
+        
+        // Reload with relationships
+        $scheduleWithStaff = StaffSchedule::with(['staff' => function($query) {
+            $query->select('StaffID', 'FullName');
+        }])->find($schedule->ScheduleID);
+    
         return response()->json([
             'message'  => 'Schedule created.',
-            'schedule' => $schedule
+            'schedule' => $scheduleWithStaff
         ], 201);
     }
 
@@ -388,23 +400,29 @@ class StaffController extends Controller
             'GeneratedDate' => 'nullable|date',
             'Status'        => 'nullable|string|max:50',
         ]);
-
+    
         $payroll = Payroll::create($data);
-
+        
+        // Reload with relationships
+        $payrollWithStaff = Payroll::with(['staff' => function($query) {
+            $query->select('StaffID', 'FullName');
+        }])->find($payroll->PayrollID);
+    
         return response()->json([
             'message' => 'Payroll created successfully.',
-            'payroll' => $payroll,
+            'payroll' => $payrollWithStaff
         ], 201);
     }
-
+    
     /**
      * Return JSON list of payrolls, including staff relationship.
      */
+    // In StaffController.php (or wherever indexPayroll is defined)
     public function indexPayroll()
     {
-        $payrolls = Payroll::with('staff')
-            ->orderBy('StartDate','desc')
-            ->get();
+        $payrolls = Payroll::with(['staff' => function ($query) {
+            $query->select('StaffID', 'FullName'); // Only fetch needed fields
+        }])->orderBy('StartDate', 'desc')->get();
 
         return response()->json($payrolls);
     }

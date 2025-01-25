@@ -310,4 +310,27 @@ class FinanceController extends Controller
         return redirect()->back()
             ->with('success','Promotion status toggled.');
     }
+
+    public function getFinancialSummary()
+    {
+        $staff = auth('staff')->user();
+        
+        $cashFlowQuery = DailyCashFlow::query();
+        $expenseQuery = Expense::query();
+        
+        if ($staff) {
+            $branchIds = $staff->branches->pluck('BranchID');
+            $cashFlowQuery->whereIn('BranchID', $branchIds);
+            $expenseQuery->whereIn('BranchID', $branchIds);
+        }
+        
+        $totalRevenue = $cashFlowQuery->sum('TotalSales');
+        $totalExpenses = $expenseQuery->sum('Amount');
+        
+        return response()->json([
+            'total_revenue' => $totalRevenue,
+            'net_profit' => $totalRevenue - $totalExpenses
+        ]);
+    }
+
 }

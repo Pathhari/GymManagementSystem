@@ -399,12 +399,32 @@ class OperationsController extends Controller
             ->with('success', 'Equipment saved successfully.');
     }
 
-    /**
-     * 47. Add MaintenanceLog => route:All
-     */
-    public function addMaintenanceLog(Request $request)
+    public function indexMaintenanceLogs()
     {
         $staff = auth('staff')->user();
+        
+        $query = MaintenanceLog::with(['equipment', 'maintainer']);
+        
+        if ($staff) {
+            $query->whereHas('equipment', function($q) use ($staff) {
+                $q->where('BranchID', $staff->BranchID);
+            });
+        }
+        
+        return response()->json([
+            'logs' => $query->latest()->get()
+        ]);
+    }
+
+/**
+ * Store a new maintenance log (RESTful version)
+ */
+public function storeMaintenanceLog(Request $request)
+{
+    try {
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
 
         $data = $request->validate([
             'EquipmentID'         => 'required|exists:equipment,EquipmentID',
@@ -416,35 +436,63 @@ class OperationsController extends Controller
             'Notes'               => 'nullable|string',
         ]);
 
-        // Staff => check equipment branch
+        // Staff-specific branch validation
         if ($staff) {
-            $eqCheck = Equipment::where('EquipmentID', $data['EquipmentID'])
-                ->where('BranchID', $staff->BranchID)
-                ->first();
-
-            if (!$eqCheck) {
-                abort(403, 'Cannot log maintenance for another branch’s equipment.');
+            $equipment = Equipment::findOrFail($data['EquipmentID']);
+            if ($equipment->BranchID !== $staff->BranchID) {
+                return response()->json([
+                    'error' => 'Unauthorized: Cannot log maintenance for equipment in another branch'
+                ], 403);
             }
         }
 
-        MaintenanceLog::create($data);
+        // Set maintained by if not provided
+        if (empty($data['MaintainedBy'])) {
+            if ($staff) {
+                $data['MaintainedBy'] = $staff->StaffID;
+            } elseif ($admin || $owner) {
+                // Set to 0 or null for admin/owner initiated maintenance
+                $data['MaintainedBy'] = null; 
+            }
+        }
 
-        return redirect()->back()->with('success', 'Maintenance log recorded successfully.');
+        $log = MaintenanceLog::create($data);
+
+        return response()->json([
+            'success' => true,
+            'log' => $log->load('equipment'),
+            'message' => 'Maintenance log recorded successfully'
+        ], 201);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        return response()->json([
+            'error' => 'Validation error',
+            'errors' => $e->errors()
+        ], 422);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Server error',
+            'message' => $e->getMessage()
+        ], 500);
     }
+}
 
-    /**
-     * Fetch all maintenance logs (example).
-     */
-    public function indexMaintenanceLogs()
-    {
-        // You can filter by branch if desired:
-        // e.g., $logs = MaintenanceLog::whereHas('equipment', function($q) use ($staff) {
-        //     if ($staff) $q->where('BranchID', $staff->BranchID);
-        // })->with('equipment')->get();
-
-        $logs = MaintenanceLog::with('equipment')->get();
-        return response()->json(['logs' => $logs], 200);
+public function getMaintenanceStats()
+{
+    $staff = auth('staff')->user();
+    
+    $query = MaintenanceLog::query();
+    
+    if ($staff) {
+        $query->whereHas('equipment', function($q) use ($staff) {
+            $q->where('BranchID', $staff->BranchID);
+        });
     }
+    
+    return response()->json([
+        'pending_maintenance' => $query->where('status', 'pending')->count()
+    ]);
+}
     
     /* ------------------------------------------------------------------
      * S. MEMBERVISIT

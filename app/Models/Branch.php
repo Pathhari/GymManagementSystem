@@ -26,8 +26,11 @@ class Branch extends Model
      */
     public function staff()
     {
-        return $this->belongsToMany(Staff::class, 'branch_staff', 'BranchID', 'StaffID');
+        return $this->belongsToMany(Staff::class, 'branch_staff', 'BranchID', 'StaffID')
+            ->withPivot('BranchID', 'StaffID')
+            ->using(BranchStaff::class);
     }
+    
     
 
     /**

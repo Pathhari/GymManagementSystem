@@ -1376,7 +1376,7 @@ const handleTabChange = (e, newValue) => {
           </Box>
         </Box>
         <div style={{ height: 420, width: "100%" }}>
- <DataGrid
+      <DataGrid
             rows={
               activeTab === 0
                 ? filteredStaff
@@ -1408,7 +1408,8 @@ const handleTabChange = (e, newValue) => {
             }}
             pageSize={5}
             rowsPerPageOptions={[5, 10]}
-          />        </div>
+          />        
+          </div>
       </Paper>
 
       {/* ------------------- RENDER EXTERNAL LAYOUTS ------------------- */}
@@ -1429,19 +1430,17 @@ const handleTabChange = (e, newValue) => {
         <AddPayrollLayout
           onClose={() => setAddPayrollOpen(false)}
           onAdd={(newPayroll) => {
-            // local state update
-            const nextId = payrollRecords.length
-              ? Math.max(...payrollRecords.map((p) => p.PayrollID)) + 1
-              : 1;
-            const record = { PayrollID: nextId, ...newPayroll };
-            const updated = [...payrollRecords, record];
-            setPayrollRecords(updated);
-            setFilteredPayroll(updated);
+            axios.post(route('staff.payroll.store'), newPayroll)
+              .then(res => {
+                // Use the full payroll object from response
+                setPayrollRecords(prev => [...prev, res.data.payroll]);
+                setFilteredPayroll(prev => [...prev, res.data.payroll]);
+              })
+              .catch(err => console.error('Error adding payroll:', err));
           }}
-          // Pass staff as an array of { value: StaffID, label: FullName }
-          staffOptions={staffRecords.map((staff) => ({
-            value: staff.StaffID,
-            label: staff.FullName,
+          staffOptions={staffRecords.map((s) => ({
+            value: s.StaffID,
+            label: s.FullName,
           }))}
         />
       )}
@@ -1450,13 +1449,12 @@ const handleTabChange = (e, newValue) => {
             <AddStaffTaskLayout
               onClose={() => setAddTaskOpen(false)}
               onAdd={(newTask) => {
-                const nextId = taskRecords.length
-                  ? Math.max(...taskRecords.map((t) => t.TaskID)) + 1
-                  : 1;
-                const record = { TaskID: nextId, ...newTask };
-                const updated = [...taskRecords, record];
-                setTaskRecords(updated);
-                setFilteredTasks(updated);
+                axios.post(route('staff.tasks.store'), newTask)
+                  .then(res => {
+                    setTaskRecords(prev => [...prev, res.data.task]);
+                    setFilteredTasks(prev => [...prev, res.data.task]);
+                  })
+                  .catch(err => console.error('Error adding task:', err));
               }}
               staffOptions={staffRecords.map((s) => ({
                 value: s.StaffID,
@@ -1464,7 +1462,6 @@ const handleTabChange = (e, newValue) => {
               }))}
             />
           )}
-
 
       {/* ------------------- PRINT PAYSLIP DIALOG ------------------- */}
       <Dialog open={isPayslipOpen} onClose={() => setPayslipOpen(false)} fullWidth maxWidth="lg">

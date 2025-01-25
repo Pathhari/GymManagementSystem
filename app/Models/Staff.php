@@ -64,11 +64,6 @@ class Staff extends Authenticatable
         return $this->hasMany(Bonus::class, 'StaffID', 'StaffID');
     }
 
-    public function maintenanceLogs()
-    {
-        return $this->hasMany(MaintenanceLog::class, 'MaintainedBy', 'StaffID');
-    }
-
     public function systemLogs()
     {
         return $this->hasMany(SystemLog::class, 'UserID', 'StaffID');
@@ -89,5 +84,8 @@ class Staff extends Authenticatable
         return $this->belongsToMany(Branch::class, 'branch_staff', 'StaffID', 'BranchID');
     }
     
-    
+        public function maintenanceLogs()
+    {
+        return $this->hasMany(MaintenanceLog::class, 'MaintainedBy', 'StaffID');
+    }
 }

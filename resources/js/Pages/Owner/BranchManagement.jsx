@@ -36,6 +36,8 @@ import BuildIcon from "@mui/icons-material/Build";
 import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import DeleteIcon from "@mui/icons-material/Delete";
+import Skeleton from '@mui/material/Skeleton';
+import Alert from '@mui/material/Alert';
 
 import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
@@ -44,8 +46,17 @@ import "jspdf-autotable";
 export default function BranchManagement() {
   const theme = useTheme();
 
-  
+// Inside your component
+const [stats, setStats] = useState({
+  totalBranches: null,
+  totalRevenue: null,
+  membersPerBranch: null,
+  pendingMaintenance: null
+});
 
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState(null);
+  
   // 1) Add these states
   const [timePeriod, setTimePeriod] = useState("daily");
   const [dateFrom, setDateFrom] = useState("");
@@ -59,40 +70,77 @@ export default function BranchManagement() {
 
   // ==================== Lifecycle: Load data once on mount ====================
   useEffect(() => { 
+    const fetchStats = async () => {
+      try {
+        setLoading(true);
+        const [branches, finance, maintenance] = await Promise.all([
+          axios.get(route('branches.stats')),
+          axios.get(route('finance.summary')),
+          axios.get(route('maintenance.stats'))
+        ]);
+  
+        setStats({
+          totalBranches: branches.data.total_branches,
+          totalRevenue: finance.data.total_revenue,
+          membersPerBranch: branches.data.members_per_branch,
+          pendingMaintenance: maintenance.data.pending_maintenance
+        });
+      } catch (err) {
+        setError('Failed to load dashboard statistics');
+        console.error('Stats fetch error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchStats();
     fetchData();
   }, []);
+
+  // Helper component for loading state
+const StatSkeleton = () => (
+  <Skeleton 
+    variant="rectangular" 
+    width="100%" 
+    height={80}
+    sx={{ borderRadius: 2 }}
+  />
+);
+
+// Error display component
+const ErrorAlert = () => (
+  <Alert severity="error" sx={{ mb: 3 }}>
+    {error} - <Button onClick={() => window.location.reload()}>Retry</Button>
+  </Alert>
+);
 
   const fetchData = async () => {
     try {
       // 1) Branch Directory
-      const branchRes = await axios.get("/owner/branches");
+      const branchRes = await axios.get(route('branches.index')); // Named route
       setBranches(branchRes.data.branches || []);
-
-      // 2) Staff (for Staff Assignment tab)
-      const staffRes = await axios.get("/staff/index-json"); // or "/staff/json"
-      setStaff(staffRes.data|| []);
-
+  
+      // 2) Staff 
+      const staffRes = await axios.get(route('staff.index')); // Named route
+      setStaff(staffRes.data || []);
+  
       // 3) Maintenance Logs
-      // This route is assumed; you may need to define or rename it:
-      // e.g. GET /operations/maintenance-logs => { logs: [...] }
-      const maintRes = await axios.get("/operations/maintenance-logs");
+      const maintRes = await axios.get(route('maintenance.logs.index')); 
       setMaintenanceLogs(maintRes.data.logs || []);
-
-      // 4) Financial Summaries
-      // Also assumed: GET /finance/summary => { summaries: [...] }
-      const finRes = await axios.get("/finance/summary");
+  
+      // 4) Financials
+      const finRes = await axios.get(route('finance.summary')); 
       setFinancials(finRes.data.summaries || []);
     } catch (err) {
-      console.error("Failed to load data from server:", err);
+      if (err.response?.status === 500) {
+        setError('Server error - please try again later');
+      } else {
+        setError('Failed to load data');
+      }
+      console.error("Data fetch error:", err);
     }
   };
 
-  // ==================== Overview Card Counts (example placeholders) ====================
-  const totalBranches = branches.filter((b) => b.Status === "Active").length;
-  // For demonstration
-  const [totalRevenue] = useState(5500);
-  const [membersPerBranch] = useState(250);
-  const [pendingMaintenance] = useState(5);
 
   // ==================== Tab & Search & Export ====================
   // 0 = Branch Directory, 1 = Staff Assignment, 2 = Maintenance Log, 3 = Financial
@@ -158,181 +206,121 @@ export default function BranchManagement() {
   // ==================== Branch CRUD (Create / Edit / Delete) ====================
   const handleCreateBranch = async () => {
     try {
-      await axios.post("/owner/branches", {
-        BranchName: newBranch.BranchName,
-        Location: newBranch.Location,
-        Status: newBranch.Status,
-        Contact: newBranch.Contact,
-      });
+      const res = await axios.post(route('branches.store'), newBranch); // Named route
+      setBranches(prev => [...prev, res.data]); // Use response data directly
       setAddBranchOpen(false);
-      setNewBranch({ BranchName: "", Location: "", Status: "Active", Contact: "" });
-      fetchData();
     } catch (err) {
-      console.error("Failed to create branch:", err);
+      console.error("Create failed:", err);
     }
   };
+  
+// Update Branch
+const handleUpdateBranch = async () => {
+  try {
+    const res = await axios.put(route('branches.update', editBranch.BranchID), editBranch);
+    setBranches(prev => prev.map(b => b.BranchID === res.data.BranchID ? res.data : b));
+    setEditBranchOpen(false);
+  } catch (err) {
+    console.error("Update failed:", err);
+  }
+};
 
-  const handleUpdateBranch = async () => {
-    try {
-      if (!editBranch?.BranchID) return;
-      await axios.put(`/owner/branches/${editBranch.BranchID}`, {
-        BranchName: editBranch.BranchName,
-        Location: editBranch.Location,
-        Status: editBranch.Status,
-        Contact: editBranch.Contact,
-      });
-      setEditBranchOpen(false);
-      fetchData();
-    } catch (err) {
-      console.error("Failed to update branch:", err);
-    }
-  };
-
-  const handleDeleteBranch = async (branchID) => {
-    if (!window.confirm("Delete this branch?")) return;
-    try {
-      await axios.delete(`/owner/branches/${branchID}`);
-      fetchData();
-    } catch (err) {
-      console.error("Failed to delete branch:", err);
-    }
-  };
+// Delete Branch
+const handleDeleteBranch = async (branchID) => {
+  try {
+    await axios.delete(route('branches.destroy', branchID)); // Named route
+    setBranches(prev => prev.filter(b => b.BranchID !== branchID));
+  } catch (err) {
+    console.error("Delete failed:", err);
+  }
+};
 
   const [selectedBranch, setSelectedBranch] = useState(null);
   const [staffList, setStaffList] = useState([]);
 
   // ==================== Staff CRUD (Create / Edit / Delete) ====================
-  const handleCreateStaff = async () => {
-    try {
-      await axios.post("/staff", {
-        FullName: newStaff.FullName,
-        Role: newStaff.Role,
-        Email: newStaff.Email,
-        Phone: newStaff.Phone,
-      });
-      setAddStaffOpen(false);
-      setNewStaff({ FullName: "", Role: "Staff", Email: "", Phone: "" });
-      fetchData();
-    } catch (err) {
-      console.error("Failed to create staff:", err);
-    }
-  };
-
-  async function handleUpdateStaff() {
-    try {
-      const staffID = editStaffData.StaffID;
-  
-      // Build a payload object with the fields you want to update.
-      // If you support multiple branches in a pivot table, include an array BranchIDs.
-      // Otherwise, if it's one-branch-only, use BranchID.
-      const payload = {
-        FullName:     editStaffData.FullName,
-        Role:         editStaffData.Role,
-        Email:        editStaffData.Email,
-        Phone:        editStaffData.Phone,
-        DateHired:    editStaffData.DateHired,
-        DailyRate:    editStaffData.DailyRate,
-        HourlyRate:   editStaffData.HourlyRate,
-        OvertimeRate: editStaffData.OvertimeRate,
-        Notes:        editStaffData.Notes,
-        
-        // For multi-branch pivot:
-        BranchIDs:    editStaffData.BranchIDs || [],
-        
-        // If single branch:
-        // BranchID:   editStaffData.BranchID
-      };
-  
-      // Make the PUT request
-      const response = await axios.put(`/staff/${staffID}`, payload);
-  
-      // If your back end returns updated data in response.data.staff:
-      const updatedStaff = response.data.staff;
-  
-      // Update local 'staff' array
-      setStaff((prev) =>
-        prev.map((s) => (s.StaffID === staffID ? updatedStaff : s))
-      );
-  
-      // If you also have a filteredStaff or other arrays, update them too:
-      // setFilteredStaff(prev =>
-      //   prev.map(s => (s.StaffID === staffID ? updatedStaff : s))
-      // );
-  
-      // Close the edit dialog
-      setEditStaffOpen(false);
-    } catch (error) {
-      console.error("Failed to update staff:", error);
-    }
+// Create Staff
+const handleCreateStaff = async () => {
+  try {
+    const res = await axios.post(route('staff.store'), newStaff); // Named route
+    setStaff(prev => [...prev, res.data.staff]); // Use staff from response
+    setAddStaffOpen(false);
+  } catch (err) {
+    console.error("Create failed:", err);
   }
-  
+};
 
-  const handleDeleteStaff = async (staffID) => {
-    if (!window.confirm("Delete this staff record?")) return;
-    try {
-      await axios.delete(`/staff/${staffID}`);
-      fetchData();
-    } catch (err) {
-      console.error("Failed to delete staff record:", err);
-    }
-  };
+// Update Staff
+async function handleUpdateStaff() {
+  try {
+    const res = await axios.put(route('staff.update', editStaffData.StaffID), editStaffData);
+    setStaff(prev => prev.map(s => s.StaffID === res.data.staff.StaffID ? res.data.staff : s));
+    setEditStaffOpen(false);
+  } catch (error) {
+    console.error("Update failed:", error);
+  }
+}
+
+// Delete Staff
+const handleDeleteStaff = async (staffID) => {
+  try {
+    await axios.delete(route('staff.destroy', staffID)); // Named route
+    setStaff(prev => prev.filter(s => s.StaffID !== staffID));
+  } catch (err) {
+    console.error("Delete failed:", err);
+  }
+};
 
   // ==================== Maintenance CRUD ====================
-  // Adjust if your route is different, e.g. /operations/maintenance-logs
-  const handleUpdateMaintenance = async () => {
-    try {
-      if (!editMaintenance?.MaintenanceLogID) return;
-      await axios.put(`/operations/maintenance-logs/${editMaintenance.MaintenanceLogID}`, {
-        Task: editMaintenance.Task,
-        Status: editMaintenance.Status,
-        DueDate: editMaintenance.DueDate,
-        // etc. if you have more fields
-      });
-      setEditMaintenanceOpen(false);
-      fetchData();
-    } catch (err) {
-      console.error("Failed to update maintenance:", err);
-    }
-  };
+// Add Maintenance Log
+const handleUpdateMaintenance = async () => {
+  try {
+    const res = await axios.put(
+      route('maintenance.logs.update', editMaintenance.MaintenanceLogID),
+      editMaintenance
+    );
+    setMaintenanceLogs(prev => prev.map(m => m.MaintenanceLogID === res.data.log.MaintenanceLogID ? res.data.log : m));
+    setEditMaintenanceOpen(false);
+  } catch (err) {
+    console.error("Update failed:", err);
+  }
+};
 
-  const handleDeleteMaintenance = async (logID) => {
-    if (!window.confirm("Delete this maintenance log?")) return;
-    try {
-      await axios.delete(`/operations/maintenance-logs/${logID}`);
-      fetchData();
-    } catch (err) {
-      console.error("Failed to delete maintenance log:", err);
-    }
-  };
+// Delete Maintenance Log
+const handleDeleteMaintenance = async (logID) => {
+  try {
+    await axios.delete(route('maintenance.logs.destroy', logID));
+    setMaintenanceLogs(prev => prev.filter(m => m.MaintenanceLogID !== logID));
+  } catch (err) {
+    console.error("Delete failed:", err);
+  }
+};
 
   // ==================== Financial CRUD ====================
   // Suppose your route is /finance/summary
-  const handleUpdateFinancial = async () => {
-    try {
-      if (!editFinancial?.SummaryID) return;
-      await axios.put(`/finance/summary/${editFinancial.SummaryID}`, {
-        BranchName: editFinancial.BranchName,
-        CashSales: editFinancial.CashSales,
-        GCashSales: editFinancial.GCashSales,
-        BPISales: editFinancial.BPISales,
-        TotalRevenue: editFinancial.TotalRevenue,
-      });
-      setEditFinancialOpen(false);
-      fetchData();
-    } catch (err) {
-      console.error("Failed to update financial summary:", err);
-    }
-  };
+// Update Financial
+const handleUpdateFinancial = async () => {
+  try {
+    const res = await axios.put(
+      route('finance.summary.update', editFinancial.SummaryID),
+      editFinancial
+    );
+    setFinancials(prev => prev.map(f => f.SummaryID === res.data.summary.SummaryID ? res.data.summary : f));
+    setEditFinancialOpen(false);
+  } catch (err) {
+    console.error("Update failed:", err);
+  }
+};
 
-  const handleDeleteFinancial = async (summaryID) => {
-    if (!window.confirm("Delete this financial summary?")) return;
-    try {
-      await axios.delete(`/finance/summary/${summaryID}`);
-      fetchData();
-    } catch (err) {
-      console.error("Failed to delete financial summary:", err);
-    }
-  };
+// Delete Financial
+const handleDeleteFinancial = async (summaryID) => {
+  try {
+    await axios.delete(route('finance.summary.destroy', summaryID));
+    setFinancials(prev => prev.filter(f => f.SummaryID !== summaryID));
+  } catch (err) {
+    console.error("Delete failed:", err);
+  }
+};
 
   // ==================== Column definitions & CSV/PDF ====================
   const branchColumns = [
@@ -510,55 +498,81 @@ export default function BranchManagement() {
     },
   ];
 
+
   const maintColumns = [
-    { field: "MaintenanceLogID", headerName: "Log ID", width: 100 },
-    { field: "Task", headerName: "Task", width: 180 },
-    { field: "Status", headerName: "Status", width: 130 },
-    { field: "DueDate", headerName: "Due Date", width: 130 },
+    { 
+      field: "MaintenanceID", 
+      headerName: "Log ID", 
+      width: 100 
+    },
+    { 
+      field: "equipment", 
+      headerName: "Equipment", 
+      width: 180,
+      valueGetter: (params) => params?.row?.equipment?.Name || 'N/A'
+    },
+    { 
+      field: "IssueDescription", 
+      headerName: "Issue", 
+      width: 250 
+    },
+    { 
+      field: "Status", 
+      headerName: "Status", 
+      width: 130,
+      valueGetter: (params) => {
+        if (!params?.row?.NextMaintenanceDate) return 'N/A';
+        try {
+          const nextDate = new Date(params.row.NextMaintenanceDate);
+          return Date.now() > nextDate.getTime() ? 'Overdue' : 'Pending';
+        } catch {
+          return 'Invalid Date';
+        }
+      }
+    },
+    { 
+      field: "MaintenanceDate", 
+      headerName: "Date", 
+      width: 150,
+      valueFormatter: (params) => {
+        try {
+          return params.value ? new Date(params.value).toLocaleDateString() : 'N/A';
+        } catch {
+          return 'Invalid Date';
+        }
+      }
+    },
+    { 
+      field: "NextMaintenanceDate", 
+      headerName: "Next Due", 
+      width: 150,
+      valueFormatter: (params) => {
+        try {
+          return params.value ? new Date(params.value).toLocaleDateString() : 'N/A';
+        } catch {
+          return 'Invalid Date';
+        }
+      }
+    },
+    { 
+      field: "maintainer", 
+      headerName: "Staff", 
+      width: 180,
+      valueGetter: (params) => params?.row?.maintainer?.FullName || 'Unknown'
+    },
     {
       field: "Actions",
       headerName: "Actions",
       width: 240,
       sortable: false,
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", gap: 1 }}>
-          <Tooltip title="View Log">
-            <Button
-              variant="outlined"
-              size="small"
-              color="success"
-              onClick={() => {
-                setViewMaintenanceData(params.row);
-                setViewMaintenanceOpen(true);
-              }}
-            >
-              <VisibilityIcon fontSize="small" />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Edit Log">
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => {
-                setEditMaintenance({ ...params.row });
-                setEditMaintenanceOpen(true);
-              }}
-            >
-              <EditIcon fontSize="small" />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Delete Log">
-            <Button
-              variant="outlined"
-              size="small"
-              color="error"
-              onClick={() => handleDeleteMaintenance(params.row.MaintenanceLogID)}
-            >
-              <DeleteIcon fontSize="small" />
-            </Button>
-          </Tooltip>
-        </Box>
-      ),
+      renderCell: (params) => {
+        if (!params?.row) return null;
+        return (
+          <Box sx={{ display: "flex", gap: 1 }}>
+            {/* Action buttons */}
+          </Box>
+        )
+      }
     },
   ];
 
@@ -729,9 +743,11 @@ export default function BranchManagement() {
       doc.save("FinancialSummary.pdf");
     }
   };
-
+  
   // ==================== Render ====================
   return (
+    <>
+    {error && <ErrorAlert />}
     <Box sx={{ p: 4 }}>
       {/* Date Period & Filters */}
       <Box
@@ -774,53 +790,70 @@ export default function BranchManagement() {
         />
       </Box>
 
-      {/* Overview Cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
-            <BusinessIcon sx={{ fontSize: 40, mr: 2, color: "steelblue" }} />
-            <CardContent>
-              <Typography variant="subtitle1">Total Branches</Typography>
-              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-                {totalBranches}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
-            <MonetizationOnIcon sx={{ fontSize: 40, mr: 2, color: "green" }} />
-            <CardContent>
-              <Typography variant="subtitle1">Total Revenue</Typography>
-              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-                ₱ {totalRevenue}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
-            <GroupIcon sx={{ fontSize: 40, mr: 2, color: "purple" }} />
-            <CardContent>
-              <Typography variant="subtitle1">Members Per Branch</Typography>
-              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-                {membersPerBranch}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
-            <BuildIcon sx={{ fontSize: 40, mr: 2, color: "orangered" }} />
-            <CardContent>
-              <Typography variant="subtitle1">Pending Maintenance</Typography>
-              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-                {pendingMaintenance}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+  {/* Total Branches */}
+  <Grid item xs={12} sm={6} md={3}>
+    {loading ? <StatSkeleton /> : (
+      <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
+        <BusinessIcon sx={{ fontSize: 40, mr: 2, color: "steelblue" }} />
+        <CardContent>
+          <Typography variant="subtitle1">Total Branches</Typography>
+          <Typography variant="h5" sx={{ fontWeight: "bold" }}>
+    {(stats.totalBranches || 0).toLocaleString()}
+</Typography>
+        </CardContent>
+      </Card>
+    )}
+  </Grid>
+
+  {/* Total Revenue */}
+  <Grid item xs={12} sm={6} md={3}>
+    {loading ? <StatSkeleton /> : (
+      <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
+        <MonetizationOnIcon sx={{ fontSize: 40, mr: 2, color: "green" }} />
+        <CardContent>
+          <Typography variant="subtitle1">Total Revenue</Typography>
+          <Typography variant="h5" sx={{ fontWeight: "bold" }}>
+    ₱ {(stats.totalRevenue || 0).toLocaleString(undefined, { 
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2 
+    })}
+</Typography>
+        </CardContent>
+      </Card>
+    )}
+  </Grid>
+
+  {/* Members Per Branch */}
+  <Grid item xs={12} sm={6} md={3}>
+    {loading ? <StatSkeleton /> : (
+      <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
+        <GroupIcon sx={{ fontSize: 40, mr: 2, color: "purple" }} />
+        <CardContent>
+          <Typography variant="subtitle1">Average Members/Branch</Typography>
+          <Typography variant="h5" sx={{ fontWeight: "bold" }}>
+    {Math.round(stats.membersPerBranch || 0).toLocaleString()}
+</Typography>
+        </CardContent>
+      </Card>
+    )}
+  </Grid>
+
+  {/* Pending Maintenance */}
+  <Grid item xs={12} sm={6} md={3}>
+    {loading ? <StatSkeleton /> : (
+      <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
+        <BuildIcon sx={{ fontSize: 40, mr: 2, color: "orangered" }} />
+        <CardContent>
+          <Typography variant="subtitle1">Pending Maintenance</Typography>
+          <Typography variant="h5" sx={{ fontWeight: "bold" }}>
+    {(stats.pendingMaintenance || 0).toLocaleString()}
+</Typography>
+        </CardContent>
+      </Card>
+    )}
+  </Grid>
+</Grid>
 
       {/* Title & Tabs */}
       <Box
@@ -900,7 +933,7 @@ export default function BranchManagement() {
           getRowId={(row) => {
             if (activeTab === 0) return row.BranchID;
             if (activeTab === 1) return row.StaffID;
-            if (activeTab === 2) return row.MaintenanceLogID;
+            if (activeTab === 2) return row.MaintenanceID;
             if (activeTab === 3) return row.SummaryID;
           }}
           pageSize={5}
@@ -1351,5 +1384,6 @@ export default function BranchManagement() {
         </DialogActions>
       </Dialog>
     </Box>
+    </>
   );
 }

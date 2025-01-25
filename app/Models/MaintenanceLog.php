@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class MaintenanceLog extends Model
 {
-    protected $primaryKey = 'MaintenanceID';
+    protected $primaryKey = 'MaintenanceLogID';
 
     protected $fillable = [
         'EquipmentID',
@@ -23,7 +23,7 @@ class MaintenanceLog extends Model
         return $this->belongsTo(Equipment::class, 'EquipmentID', 'EquipmentID');
     }
 
-    public function staff()
+    public function maintainer()
     {
         return $this->belongsTo(Staff::class, 'MaintainedBy', 'StaffID');
     }

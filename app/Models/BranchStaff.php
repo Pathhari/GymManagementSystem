@@ -7,8 +7,6 @@ use Illuminate\Database\Eloquent\Relations\Pivot;
 class BranchStaff extends Pivot
 {
     protected $table = 'branch_staff';
-    protected $fillable = [
-        'BranchID',
-        'StaffID',
-    ];
+    protected $primaryKey = ['BranchID', 'StaffID'];
+    public $incrementing = false;
 }

@@ -39,10 +39,24 @@ export default function AddPayrollLayout({
       });
       return;
     }
-    onAdd(payrollData);
+  
+    // Get the staff name from staffOptions
+    const selectedStaff = staffOptions.find(
+      (staff) => staff.value === payrollData.StaffID
+    );
+  
+    // Add staff name to payload
+    const payload = {
+      ...payrollData,
+      staff: {
+        StaffID: payrollData.StaffID,
+        FullName: selectedStaff?.label || "N/A",
+      },
+    };
+  
+    onAdd(payload);
     onClose();
   };
-
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle sx={{ pb: 1 }}>
