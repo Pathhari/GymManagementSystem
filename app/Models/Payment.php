@@ -10,6 +10,7 @@ class Payment extends Model
     protected $primaryKey = 'PaymentID';
 
     protected $fillable = [
+        'BranchID',
         'MemberID',
         'PaymentFor',
         'PaymentMethod',
@@ -17,24 +18,22 @@ class Payment extends Model
         'PaymentDate',
         'Status',
         'FailureReason',
-        'BranchID', // <--- new column
     ];
 
-    // Relationship: Payment belongs to a branch (which processed it)
     public function branch()
     {
         return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');
     }
 
-    // If you want a relationship to the Member who paid:
     public function member()
     {
         return $this->belongsTo(Member::class, 'MemberID', 'MemberID');
     }
-    // If using bridging table PaymentInvoice
+
+    // many-to-many with invoices
     public function invoices()
     {
-        return $this->belongsToMany(Invoice::class, 'payment_invoice', 'PaymentID', 'InvoiceID')
+        return $this->belongsToMany(Invoice::class, 'PaymentInvoices', 'PaymentID', 'InvoiceID')
                     ->withPivot('AmountAllocated')
                     ->withTimestamps();
     }

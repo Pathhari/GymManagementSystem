@@ -1,29 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 import {
-  Box,
-  Typography,
-  Paper,
-  Button,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Tabs,
-  Tab,
-  Tooltip,
-  Grid,
-  Card,
-  CardContent,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Menu,
-  Divider,
+  Box, Typography, Paper, Button, TextField,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  Tabs, Tab, Tooltip, Grid, Card, CardContent,
+  FormControl, InputLabel, Select, MenuItem,
+  Menu
 } from "@mui/material";
-import AddIcon from "@mui/icons-material/Add";
 import { DataGrid } from "@mui/x-data-grid";
+import AddIcon from "@mui/icons-material/Add";
 import ReceiptIcon from "@mui/icons-material/Receipt";
 import DescriptionIcon from "@mui/icons-material/Description";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -32,252 +17,221 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import ReplayCircleFilledIcon from "@mui/icons-material/ReplayCircleFilled";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 
-// ---------------------- SAMPLE DATA ----------------------
-const samplePayments = [
-  {
-    paymentId: "PAY-2001",
-    memberName: "John Doe",
-    paymentDate: "2025-01-05",
-    amountPaid: 50,
-    method: "Cash",
-    status: "Completed",
-    linkedInvoiceId: "INV-1001",
-  },
-  {
-    paymentId: "PAY-2002",
-    memberName: "Jane Smith",
-    paymentDate: "2025-01-06",
-    amountPaid: 75,
-    method: "GCash",
-    status: "Completed",
-    linkedInvoiceId: "INV-1002",
-  },
-  {
-    paymentId: "PAY-2003",
-    memberName: "Mark Johnson",
-    paymentDate: "2025-01-07",
-    amountPaid: 100,
-    method: "BPI",
-    status: "Pending",
-    linkedInvoiceId: "INV-1003",
-  },
-];
-
-const sampleInvoices = [
-  {
-    invoiceId: "INV-1001",
-    memberName: "John Doe",
-    invoiceDate: "2025-01-01",
-    dueDate: "2025-01-10",
-    totalAmount: 150,
-    status: "Unpaid",
-    linkedPaymentId: "",
-  },
-  {
-    invoiceId: "INV-1002",
-    memberName: "Jane Smith",
-    invoiceDate: "2025-01-02",
-    dueDate: "2025-01-12",
-    totalAmount: 75,
-    status: "Paid",
-    linkedPaymentId: "PAY-2002",
-  },
-  {
-    invoiceId: "INV-1003",
-    memberName: "Mark Johnson",
-    invoiceDate: "2025-01-05",
-    dueDate: "2025-01-15",
-    totalAmount: 200,
-    status: "Partially Paid",
-    linkedPaymentId: "",
-  },
-];
-
-// ---------- CSV & PDF Headers -------------
-const csvHeadersPayments = [
-  { label: "Payment ID", key: "paymentId" },
-  { label: "Member Name", key: "memberName" },
-  { label: "Payment Date", key: "paymentDate" },
-  { label: "Amount Paid", key: "amountPaid" },
-  { label: "Method", key: "method" },
-  { label: "Status", key: "status" },
-  { label: "Linked Invoice", key: "linkedInvoiceId" },
-];
-
-const csvHeadersInvoices = [
-  { label: "Invoice ID", key: "invoiceId" },
-  { label: "Member Name", key: "memberName" },
-  { label: "Invoice Date", key: "invoiceDate" },
-  { label: "Due Date", key: "dueDate" },
-  { label: "Total Amount", key: "totalAmount" },
-  { label: "Status", key: "status" },
-  { label: "Linked Payment", key: "linkedPaymentId" },
-];
-
-// For PDF
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { CSVLink } from "react-csv";
 
 export default function PaymentsAndInvoices() {
-  // ------------------ Tab / Search States ------------------
-  const [activeTab, setActiveTab] = useState(0); // 0 = Payments, 1 = Invoices
+  // ----------------- State -----------------
+  const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
+  
+  const [payments, setPayments] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [members, setMembers] = useState([]);
 
-  // ------------------ Payment States & Dialogs ------------------
-  const [payments, setPayments] = useState(samplePayments);
+  // Dialog flags
   const [isAddPaymentOpen, setAddPaymentOpen] = useState(false);
   const [isEditPaymentOpen, setEditPaymentOpen] = useState(false);
-  const [selectedPayment, setSelectedPayment] = useState(null);
-
-  // For the "View Payment" modal
   const [isViewPaymentOpen, setViewPaymentOpen] = useState(false);
-  const [viewPayment, setViewPayment] = useState(null);
-
-  // For the "Add Payment" form
-  const [newPayment, setNewPayment] = useState({
-    paymentId: "",
-    memberName: "",
-    paymentDate: "",
-    amountPaid: 0,
-    method: "",
-    status: "",
-    linkedInvoiceId: "",
-  });
-
-  // For the "Edit Payment" form
-  const [editPayment, setEditPayment] = useState({
-    paymentId: "",
-    memberName: "",
-    paymentDate: "",
-    amountPaid: 0,
-    method: "",
-    status: "",
-    linkedInvoiceId: "",
-  });
-
-  // ------------------ Invoice States & Dialogs ------------------
-  const [invoices, setInvoices] = useState(sampleInvoices);
+  
   const [isAddInvoiceOpen, setAddInvoiceOpen] = useState(false);
   const [isEditInvoiceOpen, setEditInvoiceOpen] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState(null);
-
-  // For the "View Invoice" modal
   const [isViewInvoiceOpen, setViewInvoiceOpen] = useState(false);
+
+  // Payment forms
+  const [newPayment, setNewPayment] = useState({
+    memberId: "",
+    paymentDate: "",
+    amountPaid: 0,
+    method: "",
+    status: "",
+  });
+  const [editPayment, setEditPayment] = useState({});
+  const [viewPayment, setViewPayment] = useState(null);
+
+  // Invoice forms
+  const [newInvoice, setNewInvoice] = useState({
+    memberId: "",
+    invoiceDate: "",
+    dueDate: "",
+    invoiceTotal: 0,
+    status: "",
+  });
+  const [editInvoice, setEditInvoice] = useState({});
   const [viewInvoice, setViewInvoice] = useState(null);
 
-  // For the "Add Invoice" form
-  const [newInvoice, setNewInvoice] = useState({
-    invoiceId: "",
-    memberName: "",
-    invoiceDate: "",
-    dueDate: "",
-    totalAmount: 0,
-    status: "",
-    linkedPaymentId: "",
-  });
+  // Summaries & filters
+  const [timePeriod, setTimePeriod] = useState("daily");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [branch, setBranch] = useState("all");
 
-  // For the "Edit Invoice" form
-  const [editInvoice, setEditInvoice] = useState({
-    invoiceId: "",
-    memberName: "",
-    invoiceDate: "",
-    dueDate: "",
-    totalAmount: 0,
-    status: "",
-    linkedPaymentId: "",
-  });
+  // ----------------- Fetch Data on Mount -----------------
+  useEffect(() => {
+    fetchMembers();
+    fetchPayments();
+    fetchInvoices();
+  }, []);
 
-  // ------------------ Search & Filtering ------------------
-  const handleSearchChange = (e) => {
-    setSearchTerm(e.target.value.toLowerCase());
+  const fetchMembers = () => {
+    axios.get("/membership/members")
+    .then((res) => {
+      if (Array.isArray(res.data)) {
+        setMembers(res.data);
+      } else {
+        setMembers([]); // fallback
+      }
+    })
+    .catch((err) => {
+      console.error(err);
+      setMembers([]); // fallback
+    })
   };
 
-  const filteredPayments = payments.filter((p) =>
-    Object.values(p).some((val) => String(val).toLowerCase().includes(searchTerm))
-  );
-  const filteredInvoices = invoices.filter((i) =>
-    Object.values(i).some((val) => String(val).toLowerCase().includes(searchTerm))
-  );
-
-  // ------------------ Tab Change ------------------
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-    setSearchTerm(""); // reset search when switching tabs
+  const fetchPayments = () => {
+    axios
+      .get("/payments")
+      .then((res) => {
+        // Suppose each payment has shape: { PaymentID, MemberID, Amount, PaymentDate, ... , member: {...} }
+        const mapped = res.data.map((p) => ({
+          paymentId: p.PaymentID,
+          memberName: p.member ? p.member.FullName : "N/A",
+          memberId: p.MemberID || "",
+          paymentDate: p.PaymentDate,
+          amountPaid: p.Amount,
+          method: p.PaymentMethod,
+          status: p.Status,
+        }));
+        setPayments(mapped);
+      })
+      .catch((err) => console.error(err));
   };
 
-  // ------------------ Payment Handlers ------------------
+  const fetchInvoices = () => {
+    axios.get("/invoices").then(res => {
+      const mapped = res.data.map(inv => ({
+        invoiceId: inv.InvoiceID,
+        memberName: inv.member ? inv.member.FullName : "N/A",
+        invoiceDate: inv.InvoiceDate,
+        dueDate: inv.DueDate,              // you do have a DueDate column
+        invoiceTotal: inv.InvoiceTotal,    // NOT totalAmount
+      }));
+        setInvoices(mapped);
+      })
+      .catch((err) => console.error(err));
+  };
+  
+  
+
+  // ----------------- Handlers: Add Payment -----------------
   const handleAddPaymentChange = (e) => {
     const { name, value } = e.target;
     setNewPayment((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleAddPaymentSubmit = () => {
-    const updated = [...payments, { ...newPayment }];
-    setPayments(updated);
-    setAddPaymentOpen(false);
-    // Reset form
-    setNewPayment({
-      paymentId: "",
-      memberName: "",
-      paymentDate: "",
-      amountPaid: 0,
-      method: "",
-      status: "",
-      linkedInvoiceId: "",
-    });
+    const payload = {
+      MemberID: newPayment.memberId,
+      PaymentMethod: newPayment.method,
+      Amount: newPayment.amountPaid,
+      PaymentDate: newPayment.paymentDate,
+      Status: newPayment.status,
+      PaymentFor: "Membership", // or any field your controller needs
+    };
+
+    axios
+      .post("/payments", payload)
+      .then(() => fetchPayments())
+      .then(() => {
+        setAddPaymentOpen(false);
+        setNewPayment({
+          memberId: "",
+          paymentDate: "",
+          amountPaid: 0,
+          method: "",
+          status: "",
+        });
+      })
+      .catch((err) => console.error(err));
   };
 
+  // ----------------- Handlers: Edit Payment -----------------
   const handleEditPaymentOpen = (row) => {
-    setSelectedPayment(row);
-    setEditPayment({ ...row }); // copy row data into editPayment form
+    setEditPayment(row);
     setEditPaymentOpen(true);
   };
-
+  
   const handleEditPaymentChange = (e) => {
     const { name, value } = e.target;
     setEditPayment((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleEditPaymentSubmit = () => {
-    const updated = payments.map((p) =>
-      p.paymentId === editPayment.paymentId ? editPayment : p
-    );
-    setPayments(updated);
-    setEditPaymentOpen(false);
+    // editPayment.paymentId is the unique ID from the DB
+    const payload = {
+      MemberID: editPayment.memberId,
+      PaymentMethod: editPayment.method,
+      Amount: editPayment.amountPaid,
+      PaymentDate: editPayment.paymentDate,
+      Status: editPayment.status,
+    };
+
+    axios
+      .put(`/payments/${editPayment.paymentId}`, payload)
+      .then(() => fetchPayments())
+      .then(() => {
+        setEditPaymentOpen(false);
+      })
+      .catch((err) => console.error(err));
   };
 
-  // New: Handle viewing payment details
+  // ----------------- Handlers: View Payment -----------------
   const handleViewPaymentOpen = (row) => {
     setViewPayment(row);
     setViewPaymentOpen(true);
   };
 
-  // ------------------ Invoice Handlers ------------------
+  // ----------------- Handlers: Refund -----------------
+  const handleRefundPayment = (row) => {
+    axios
+      .post(`/payments/${row.paymentId}/refund/initiate`)
+      .then(() => fetchPayments())
+      .catch((err) => console.error(err));
+  };
+
+  // ----------------- Handlers: Invoices: Add/Edit/View -----------------
   const handleAddInvoiceChange = (e) => {
     const { name, value } = e.target;
     setNewInvoice((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleAddInvoiceSubmit = () => {
-    const updated = [...invoices, { ...newInvoice }];
-    setInvoices(updated);
-    setAddInvoiceOpen(false);
-    // Reset form
-    setNewInvoice({
-      invoiceId: "",
-      memberName: "",
-      invoiceDate: "",
-      dueDate: "",
-      totalAmount: 0,
-      status: "",
-      linkedPaymentId: "",
-    });
+    const payload = {
+      MemberID: newInvoice.memberId,
+      InvoiceDate: newInvoice.invoiceDate,
+      DueDate: newInvoice.dueDate,
+      InvoiceTotal: newInvoice.invoiceTotal, // matches DB
+    };
+
+    axios
+      .post("/invoices", payload)
+      .then(() => fetchInvoices())
+      .then(() => {
+        setAddInvoiceOpen(false);
+        setNewInvoice({
+          memberId: "",
+          invoiceDate: "",
+          dueDate: "",
+          invoiceTotal: 0,
+          status: "",
+        });
+      })
+      .catch((err) => console.error(err));
   };
 
   const handleEditInvoiceOpen = (row) => {
-    setSelectedInvoice(row);
-    setEditInvoice({ ...row }); // copy row data into editInvoice form
+    setEditInvoice(row);
     setEditInvoiceOpen(true);
   };
 
@@ -287,20 +241,35 @@ export default function PaymentsAndInvoices() {
   };
 
   const handleEditInvoiceSubmit = () => {
-    const updated = invoices.map((inv) =>
-      inv.invoiceId === editInvoice.invoiceId ? editInvoice : inv
-    );
-    setInvoices(updated);
-    setEditInvoiceOpen(false);
+    const payload = {
+      MemberID: editInvoice.memberId,
+      InvoiceDate: editInvoice.invoiceDate,
+      DueDate: editInvoice.dueDate,
+      InvoiceTotal: editInvoice.invoiceTotal,
+    };
+
+    axios
+      .put(`/invoices/${editInvoice.invoiceId}`, payload)
+      .then(() => fetchInvoices())
+      .then(() => {
+        setEditInvoiceOpen(false);
+      })
+      .catch((err) => console.error(err));
   };
 
-  // New: Handle viewing invoice details
   const handleViewInvoiceOpen = (row) => {
     setViewInvoice(row);
     setViewInvoiceOpen(true);
   };
 
-  // -------------- Compute Overview Panel Stats --------------
+  const handleDeleteInvoice = (row) => {
+    axios
+      .delete(`/invoices/${row.invoiceId}`)
+      .then(() => fetchInvoices())
+      .catch((err) => console.error(err));
+  };
+
+  // ----------------- Summary Stats -----------------
   const totalRevenue = payments
     .filter((p) => p.status === "Completed")
     .reduce((acc, cur) => acc + cur.amountPaid, 0);
@@ -311,38 +280,32 @@ export default function PaymentsAndInvoices() {
 
   const completedInvoices = invoices.filter((inv) => inv.status === "Paid").length;
 
-  // -------------- DATE FILTERS for Summary Cards --------------
-  const [timePeriod, setTimePeriod] = useState("daily");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-
-  const handleTimePeriodChange = (e) => {
-    setTimePeriod(e.target.value);
-    // Insert your actual filtering logic if desired
-  };
-  const handleDateFromChange = (e) => {
-    setDateFrom(e.target.value);
-    // Insert your actual filtering logic if desired
-  };
-  const handleDateToChange = (e) => {
-    setDateTo(e.target.value);
-    // Insert your actual filtering logic if desired
-  };
-
-  // -------------- NEW: BRANCH FILTER --------------
-  const [branch, setBranch] = useState("all");
+  // Filters
+  const handleTimePeriodChange = (e) => setTimePeriod(e.target.value);
+  const handleDateFromChange = (e) => setDateFrom(e.target.value);
+  const handleDateToChange = (e) => setDateTo(e.target.value);
   const branchOptions = [
     { value: "all", label: "All Branches" },
     { value: "1", label: "Branch 1" },
-    { value: "2", label: "Branch 2" },
-    { value: "3", label: "Branch 3" },
   ];
-  const handleBranchChange = (e) => {
-    setBranch(e.target.value);
-    // Insert branch filtering logic if desired
+  const handleBranchChange = (e) => setBranch(e.target.value);
+
+  // ----------------- Search & Filtered Data -----------------
+  const handleSearchChange = (e) => setSearchTerm(e.target.value.toLowerCase());
+
+  const filteredPayments = payments.filter((p) =>
+    Object.values(p).some((val) => String(val).toLowerCase().includes(searchTerm))
+  );
+  const filteredInvoices = invoices.filter((i) =>
+    Object.values(i).some((val) => String(val).toLowerCase().includes(searchTerm))
+  );
+
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+    setSearchTerm("");
   };
 
-  // -------------- COLUMNS: PAYMENTS --------------
+  // ----------------- Table Columns -----------------
   const paymentColumns = [
     { field: "paymentId", headerName: "Payment ID", width: 120 },
     { field: "memberName", headerName: "Member Name", width: 150 },
@@ -350,7 +313,6 @@ export default function PaymentsAndInvoices() {
     { field: "amountPaid", headerName: "Amount Paid", width: 120 },
     { field: "method", headerName: "Method", width: 110 },
     { field: "status", headerName: "Status", width: 100 },
-    { field: "linkedInvoiceId", headerName: "Invoice", width: 120 },
     {
       field: "Actions",
       headerName: "Actions",
@@ -361,13 +323,7 @@ export default function PaymentsAndInvoices() {
           <Tooltip title="View">
             <Button
               variant="contained"
-              sx={{
-                backgroundColor: "#4caf50",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#43a047" },
-                minWidth: "40px",
-                padding: "6px",
-              }}
+              sx={{ backgroundColor: "#4caf50", color: "#fff" }}
               onClick={() => handleViewPaymentOpen(params.row)}
             >
               <VisibilityIcon />
@@ -376,13 +332,7 @@ export default function PaymentsAndInvoices() {
           <Tooltip title="Edit">
             <Button
               variant="contained"
-              sx={{
-                backgroundColor: "#2196f3",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#1976d2" },
-                minWidth: "40px",
-                padding: "6px",
-              }}
+              sx={{ backgroundColor: "#2196f3", color: "#fff" }}
               onClick={() => handleEditPaymentOpen(params.row)}
             >
               <EditIcon />
@@ -391,14 +341,8 @@ export default function PaymentsAndInvoices() {
           <Tooltip title="Refund">
             <Button
               variant="contained"
-              sx={{
-                backgroundColor: "#f44336",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#d32f2f" },
-                minWidth: "40px",
-                padding: "6px",
-              }}
-              onClick={() => alert(`Refund Payment: ${params.row.paymentId}`)}
+              sx={{ backgroundColor: "#f44336", color: "#fff" }}
+              onClick={() => handleRefundPayment(params.row)}
             >
               <ReplayCircleFilledIcon />
             </Button>
@@ -408,87 +352,21 @@ export default function PaymentsAndInvoices() {
     },
   ];
 
-  // -------------- COLUMNS: INVOICES --------------
   const invoiceColumns = [
     { field: "invoiceId", headerName: "Invoice ID", width: 120 },
     { field: "memberName", headerName: "Member Name", width: 150 },
-    { field: "invoiceDate", headerName: "Invoice Date", width: 130 },
+    { field: "invoiceDate", headerName: "Invoice Date", width: 140 },
     { field: "dueDate", headerName: "Due Date", width: 130 },
-    { field: "totalAmount", headerName: "Amount", width: 100 },
-    { field: "status", headerName: "Status", width: 110 },
-    {
-      field: "linkedPaymentId",
-      headerName: "Payment",
-      width: 120,
-      renderCell: (params) => (params.value ? params.value : "—"),
-    },
-    {
-      field: "Actions",
-      headerName: "Actions",
-      width: 250,
-      sortable: false,
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", gap: 1 }}>
-          <Tooltip title="View">
-            <Button
-              variant="contained"
-              sx={{
-                backgroundColor: "#4caf50",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#43a047" },
-                minWidth: "40px",
-                padding: "6px",
-              }}
-              onClick={() => handleViewInvoiceOpen(params.row)}
-            >
-              <VisibilityIcon />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Edit">
-            <Button
-              variant="contained"
-              sx={{
-                backgroundColor: "#2196f3",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#1976d2" },
-                minWidth: "40px",
-                padding: "6px",
-              }}
-              onClick={() => handleEditInvoiceOpen(params.row)}
-            >
-              <EditIcon />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Delete">
-            <Button
-              variant="contained"
-              sx={{
-                backgroundColor: "#f44336",
-                color: "#fff",
-                "&:hover": { backgroundColor: "#d32f2f" },
-                minWidth: "40px",
-                padding: "6px",
-              }}
-              onClick={() => alert(`Delete Invoice: ${params.row.invoiceId}`)}
-            >
-              <DeleteIcon />
-            </Button>
-          </Tooltip>
-        </Box>
-      ),
-    },
+    { field: "invoiceTotal", headerName: "Total", width: 120 },
   ];
 
-  // -------------- ROW ID GETTERS --------------
-  const getPaymentRowId = (row) => row.paymentId;
-  const getInvoiceRowId = (row) => row.invoiceId;
-
-  // -------------- TAB-DISPLAYED DATA --------------
   const displayedRows = activeTab === 0 ? filteredPayments : filteredInvoices;
   const displayedColumns = activeTab === 0 ? paymentColumns : invoiceColumns;
+  const getPaymentRowId = (row) => row.paymentId;
+  const getInvoiceRowId = (row) => row.invoiceId;
   const rowIdGetter = activeTab === 0 ? getPaymentRowId : getInvoiceRowId;
 
-  // =============== Export Menu Logic For Each Table ===============
+  // ----------------- Export Menu -----------------
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
   const openExportMenu = Boolean(exportAnchorEl);
 
@@ -499,18 +377,33 @@ export default function PaymentsAndInvoices() {
     setExportAnchorEl(null);
   };
 
-  // Export to CSV (react-csv handles the actual download)
+  const csvHeadersPayments = [
+    { label: "Payment ID", key: "paymentId" },
+    { label: "Member Name", key: "memberName" },
+    { label: "Payment Date", key: "paymentDate" },
+    { label: "Amount Paid", key: "amountPaid" },
+    { label: "Method", key: "method" },
+    { label: "Status", key: "status" },
+  ];
+
+  const csvHeadersInvoices = [
+    { label: "Invoice ID", key: "invoiceId" },
+    { label: "Member Name", key: "memberName" },
+    { label: "Invoice Date", key: "invoiceDate" },
+    { label: "Due Date", key: "dueDate" },
+    { label: "Total Amount", key: "invoiceTotal" },
+    { label: "Status", key: "status" },
+  ];
+
   const handleExportCSV = () => {
     handleExportMenuClose();
   };
 
-  // Export to PDF (jsPDF + autoTable)
   const handleExportPDF = () => {
     handleExportMenuClose();
     const doc = new jsPDF();
-
     if (activeTab === 0) {
-      // Export Payments
+      // Payments
       doc.text("Payments Export", 14, 10);
       const bodyData = filteredPayments.map((p) => [
         p.paymentId,
@@ -519,32 +412,26 @@ export default function PaymentsAndInvoices() {
         p.amountPaid,
         p.method,
         p.status,
-        p.linkedInvoiceId,
       ]);
       doc.autoTable({
-        head: [
-          ["Payment ID", "Member Name", "Date", "Amount", "Method", "Status", "Invoice"],
-        ],
+        head: [["ID", "Member", "Date", "Amount", "Method", "Status"]],
         body: bodyData,
         startY: 20,
       });
       doc.save("Payments.pdf");
     } else {
-      // Export Invoices
+      // Invoices
       doc.text("Invoices Export", 14, 10);
       const bodyData = filteredInvoices.map((i) => [
         i.invoiceId,
         i.memberName,
         i.invoiceDate,
         i.dueDate,
-        i.totalAmount,
+        i.invoiceTotal,
         i.status,
-        i.linkedPaymentId,
       ]);
       doc.autoTable({
-        head: [
-          ["Invoice ID", "Member Name", "Date", "Due", "Amount", "Status", "Payment"],
-        ],
+        head: [["ID", "Member", "Invoice Date", "Due Date", "Amount", "Status"]],
         body: bodyData,
         startY: 20,
       });
@@ -554,9 +441,8 @@ export default function PaymentsAndInvoices() {
 
   return (
     <Box sx={{ p: 4 }}>
-      {/* ------------------- OVERVIEW PANEL ------------------- */}
+      {/* Overview Panel */}
       <Box sx={{ mb: 3 }}>
-        {/* ---------- Date Filters for Summary Cards ---------- */}
         <Box
           sx={{
             mb: 2,
@@ -567,21 +453,15 @@ export default function PaymentsAndInvoices() {
             alignItems: "center",
           }}
         >
-          {/* Time Period Dropdown */}
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <InputLabel>Time Period</InputLabel>
-            <Select
-              value={timePeriod}
-              label="Time Period"
-              onChange={handleTimePeriodChange}
-            >
+            <Select value={timePeriod} label="Time Period" onChange={handleTimePeriodChange}>
               <MenuItem value="daily">Daily</MenuItem>
               <MenuItem value="weekly">Weekly</MenuItem>
               <MenuItem value="monthly">Monthly</MenuItem>
               <MenuItem value="yearly">Yearly</MenuItem>
             </Select>
           </FormControl>
-          {/* From Date */}
           <TextField
             type="date"
             size="small"
@@ -590,7 +470,6 @@ export default function PaymentsAndInvoices() {
             value={dateFrom}
             onChange={handleDateFromChange}
           />
-          {/* To Date */}
           <TextField
             type="date"
             size="small"
@@ -599,7 +478,6 @@ export default function PaymentsAndInvoices() {
             value={dateTo}
             onChange={handleDateToChange}
           />
-          {/* New Branch Filter */}
           <FormControl size="small" sx={{ minWidth: 140 }}>
             <InputLabel>Branch</InputLabel>
             <Select value={branch} label="Branch" onChange={handleBranchChange}>
@@ -612,7 +490,7 @@ export default function PaymentsAndInvoices() {
           </FormControl>
         </Box>
 
-        {/* ---------- Summaries (Example cards - adjust as needed) ---------- */}
+        {/* Summaries */}
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6} md={4}>
             <Card
@@ -686,32 +564,22 @@ export default function PaymentsAndInvoices() {
         </Grid>
       </Box>
 
-      {/* ---------- Title & Tabs ---------- */}
+      {/* Title & Tabs */}
       <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
+        sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}
       >
         <Typography variant="h4" gutterBottom>
           Payments & Invoices
         </Typography>
-        <Tabs
-          value={activeTab}
-          onChange={handleTabChange}
-          sx={{ flexWrap: "wrap", justifyContent: "flex-end" }}
-        >
+        <Tabs value={activeTab} onChange={handleTabChange}>
           <Tab icon={<ReceiptIcon />} label="Payments" />
           <Tab icon={<DescriptionIcon />} label="Invoices" />
         </Tabs>
       </Box>
 
-      {/* ---------- Search & Action Buttons ---------- */}
+      {/* Search & Export & Add */}
       <Paper elevation={2} sx={{ mt: 3, p: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-          {/* Search Input */}
           <TextField
             placeholder="Search"
             value={searchTerm}
@@ -720,8 +588,6 @@ export default function PaymentsAndInvoices() {
             size="small"
             sx={{ width: "100%", maxWidth: 300 }}
           />
-
-          {/* Right side: Export + Add Buttons */}
           <Box sx={{ display: "flex", gap: 1 }}>
             <Button
               variant="outlined"
@@ -760,7 +626,6 @@ export default function PaymentsAndInvoices() {
               </MenuItem>
               <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
             </Menu>
-
             {activeTab === 0 ? (
               <Button
                 variant="contained"
@@ -783,7 +648,6 @@ export default function PaymentsAndInvoices() {
           </Box>
         </Box>
 
-        {/* ---------- DataGrid Table ---------- */}
         <div style={{ height: 420, width: "100%" }}>
           <DataGrid
             rows={displayedRows}
@@ -795,26 +659,29 @@ export default function PaymentsAndInvoices() {
         </div>
       </Paper>
 
-      {/* ============ ADD Payment Dialog ============ */}
+      {/* ----------------- Add Payment Dialog ----------------- */}
       <Dialog open={isAddPaymentOpen} onClose={() => setAddPaymentOpen(false)}>
         <DialogTitle>Add Payment</DialogTitle>
         <DialogContent dividers>
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Payment ID"
-            name="paymentId"
-            value={newPayment.paymentId}
-            onChange={handleAddPaymentChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Member Name"
-            name="memberName"
-            value={newPayment.memberName}
-            onChange={handleAddPaymentChange}
-          />
+          {/* Use a Select for the Member Name */}
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Member Name</InputLabel>
+            <Select
+              label="Member Name"
+              name="memberId"
+              value={newPayment.memberId || ""}
+              onChange={(e) => {
+                setNewPayment((prev) => ({ ...prev, memberId: e.target.value }));
+              }}
+            >
+              {(members || []).map((m) => (
+                <MenuItem key={m.MemberID} value={m.MemberID}>
+                  {m.FullName}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
           <TextField
             fullWidth
             margin="normal"
@@ -850,14 +717,6 @@ export default function PaymentsAndInvoices() {
             value={newPayment.status}
             onChange={handleAddPaymentChange}
           />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Linked Invoice ID"
-            name="linkedInvoiceId"
-            value={newPayment.linkedInvoiceId}
-            onChange={handleAddPaymentChange}
-          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddPaymentOpen(false)}>Cancel</Button>
@@ -867,74 +726,71 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ============ EDIT Payment Dialog ============ */}
+      {/* ----------------- Edit Payment Dialog ----------------- */}
       <Dialog open={isEditPaymentOpen} onClose={() => setEditPaymentOpen(false)}>
         <DialogTitle>Edit Payment</DialogTitle>
         <DialogContent dividers>
-          {selectedPayment && (
-            <>
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Payment ID"
-                name="paymentId"
-                value={editPayment.paymentId}
-                onChange={handleEditPaymentChange}
-                disabled
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Member Name"
-                name="memberName"
-                value={editPayment.memberName}
-                onChange={handleEditPaymentChange}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                type="date"
-                label="Payment Date"
-                name="paymentDate"
-                InputLabelProps={{ shrink: true }}
-                value={editPayment.paymentDate}
-                onChange={handleEditPaymentChange}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Amount Paid"
-                name="amountPaid"
-                type="number"
-                value={editPayment.amountPaid}
-                onChange={handleEditPaymentChange}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Method"
-                name="method"
-                value={editPayment.method}
-                onChange={handleEditPaymentChange}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Status"
-                name="status"
-                value={editPayment.status}
-                onChange={handleEditPaymentChange}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Linked Invoice ID"
-                name="linkedInvoiceId"
-                value={editPayment.linkedInvoiceId}
-                onChange={handleEditPaymentChange}
-              />
-            </>
-          )}
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Payment ID"
+            name="paymentId"
+            value={editPayment.paymentId || ""}
+            onChange={handleEditPaymentChange}
+            disabled
+          />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Member Name</InputLabel>
+            <Select
+              label="Member Name"
+              name="memberId"
+              value={editPayment.memberId || ""}
+              onChange={(e) => {
+                setEditPayment((prev) => ({ ...prev, memberId: e.target.value }));
+              }}
+            >
+              {(members || []).map((m) => (
+                <MenuItem key={m.MemberID} value={m.MemberID}>
+                  {m.FullName}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            margin="normal"
+            type="date"
+            label="Payment Date"
+            name="paymentDate"
+            InputLabelProps={{ shrink: true }}
+            value={editPayment.paymentDate || ""}
+            onChange={handleEditPaymentChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Amount Paid"
+            name="amountPaid"
+            type="number"
+            value={editPayment.amountPaid || ""}
+            onChange={handleEditPaymentChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Method"
+            name="method"
+            value={editPayment.method || ""}
+            onChange={handleEditPaymentChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Status"
+            name="status"
+            value={editPayment.status || ""}
+            onChange={handleEditPaymentChange}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditPaymentOpen(false)}>Cancel</Button>
@@ -944,105 +800,92 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ============ VIEW Payment Dialog ============ */}
+      {/* ----------------- View Payment Dialog ----------------- */}
       <Dialog
-  open={isViewPaymentOpen}
-  onClose={() => setViewPaymentOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Payment Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {viewPayment && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-           
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Payment ID:
-            </Typography>
-            <Typography variant="body1">{viewPayment.paymentId}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Member Name:
-            </Typography>
-            <Typography variant="body1">{viewPayment.memberName}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Payment Date:
-            </Typography>
-            <Typography variant="body1">{viewPayment.paymentDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Amount Paid:
-            </Typography>
-            <Typography variant="body1">${viewPayment.amountPaid}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Method:
-            </Typography>
-            <Typography variant="body1">{viewPayment.method}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Status:
-            </Typography>
-            <Typography variant="body1">{viewPayment.status}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Linked Invoice ID:
-            </Typography>
-            <Typography variant="body1">
-              {viewPayment.linkedInvoiceId || "—"}
-            </Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewPaymentOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
+        open={isViewPaymentOpen}
+        onClose={() => setViewPaymentOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Payment Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {viewPayment && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Payment ID:
+                  </Typography>
+                  <Typography variant="body1">{viewPayment.paymentId}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Member Name:
+                  </Typography>
+                  <Typography variant="body1">{viewPayment.memberName}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Payment Date:
+                  </Typography>
+                  <Typography variant="body1">{viewPayment.paymentDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Amount Paid:
+                  </Typography>
+                  <Typography variant="body1">${viewPayment.amountPaid}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Method:
+                  </Typography>
+                  <Typography variant="body1">{viewPayment.method}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Status:
+                  </Typography>
+                  <Typography variant="body1">{viewPayment.status}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewPaymentOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-
-      {/* ============ ADD Invoice Dialog ============ */}
+      {/* ----------------- Add Invoice Dialog ----------------- */}
       <Dialog open={isAddInvoiceOpen} onClose={() => setAddInvoiceOpen(false)}>
         <DialogTitle>Add Invoice</DialogTitle>
         <DialogContent dividers>
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Invoice ID"
-            name="invoiceId"
-            value={newInvoice.invoiceId}
-            onChange={handleAddInvoiceChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Member Name"
-            name="memberName"
-            value={newInvoice.memberName}
-            onChange={handleAddInvoiceChange}
-          />
+          {/* Choose Member */}
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Member Name</InputLabel>
+            <Select
+              label="Member Name"
+              name="memberId"
+              value={newInvoice.memberId || ""}
+              onChange={(e) => {
+                setNewInvoice((prev) => ({ ...prev, memberId: e.target.value }));
+              }}
+            >
+              {(members || []).map((m) => (
+                <MenuItem key={m.MemberID} value={m.MemberID}>
+                  {m.FullName}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
           <TextField
             fullWidth
             margin="normal"
@@ -1056,36 +899,10 @@ export default function PaymentsAndInvoices() {
           <TextField
             fullWidth
             margin="normal"
-            type="date"
-            label="Due Date"
-            name="dueDate"
-            InputLabelProps={{ shrink: true }}
-            value={newInvoice.dueDate}
-            onChange={handleAddInvoiceChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
             label="Total Amount"
-            name="totalAmount"
+            name="invoiceTotal"
             type="number"
-            value={newInvoice.totalAmount}
-            onChange={handleAddInvoiceChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Status"
-            name="status"
-            value={newInvoice.status}
-            onChange={handleAddInvoiceChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Linked Payment ID"
-            name="linkedPaymentId"
-            value={newInvoice.linkedPaymentId}
+            value={newInvoice.invoiceTotal}
             onChange={handleAddInvoiceChange}
           />
         </DialogContent>
@@ -1097,76 +914,54 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ============ EDIT Invoice Dialog ============ */}
+      {/* ----------------- Edit Invoice Dialog ----------------- */}
       <Dialog open={isEditInvoiceOpen} onClose={() => setEditInvoiceOpen(false)}>
         <DialogTitle>Edit Invoice</DialogTitle>
         <DialogContent dividers>
-          {selectedInvoice && (
-            <>
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Invoice ID"
-                name="invoiceId"
-                value={editInvoice.invoiceId}
-                onChange={handleEditInvoiceChange}
-                disabled
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Member Name"
-                name="memberName"
-                value={editInvoice.memberName}
-                onChange={handleEditInvoiceChange}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                type="date"
-                label="Invoice Date"
-                name="invoiceDate"
-                InputLabelProps={{ shrink: true }}
-                value={editInvoice.invoiceDate}
-                onChange={handleEditInvoiceChange}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                type="date"
-                label="Due Date"
-                name="dueDate"
-                InputLabelProps={{ shrink: true }}
-                value={editInvoice.dueDate}
-                onChange={handleEditInvoiceChange}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Total Amount"
-                name="totalAmount"
-                type="number"
-                value={editInvoice.totalAmount}
-                onChange={handleEditInvoiceChange}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Status"
-                name="status"
-                value={editInvoice.status}
-                onChange={handleEditInvoiceChange}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Linked Payment ID"
-                name="linkedPaymentId"
-                value={editInvoice.linkedPaymentId}
-                onChange={handleEditInvoiceChange}
-              />
-            </>
-          )}
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Invoice ID"
+            name="invoiceId"
+            value={editInvoice.invoiceId || ""}
+            disabled
+          />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Member Name</InputLabel>
+            <Select
+              label="Member Name"
+              name="memberId"
+              value={editInvoice.memberId || ""}
+              onChange={(e) => {
+                setEditInvoice((prev) => ({ ...prev, memberId: e.target.value }));
+              }}
+            >
+              {(members || []).map((m) => (
+                <MenuItem key={m.MemberID} value={m.MemberID}>
+                  {m.FullName}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            margin="normal"
+            type="date"
+            label="Invoice Date"
+            name="invoiceDate"
+            InputLabelProps={{ shrink: true }}
+            value={editInvoice.invoiceDate || ""}
+            onChange={handleEditInvoiceChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Total Amount"
+            name="invoiceTotal"
+            type="number"
+            value={editInvoice.invoiceTotal || ""}
+            onChange={handleEditInvoiceChange}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditInvoiceOpen(false)}>Cancel</Button>
@@ -1176,84 +971,56 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ============ VIEW Invoice Dialog ============ */}
+      {/* ----------------- View Invoice Dialog ----------------- */}
       <Dialog
-  open={isViewInvoiceOpen}
-  onClose={() => setViewInvoiceOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Invoice Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {viewInvoice && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-            
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Invoice ID:
-            </Typography>
-            <Typography variant="body1">{viewInvoice.invoiceId}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Member Name:
-            </Typography>
-            <Typography variant="body1">{viewInvoice.memberName}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Invoice Date:
-            </Typography>
-            <Typography variant="body1">{viewInvoice.invoiceDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Due Date:
-            </Typography>
-            <Typography variant="body1">{viewInvoice.dueDate}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Total Amount:
-            </Typography>
-            <Typography variant="body1">${viewInvoice.totalAmount}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Status:
-            </Typography>
-            <Typography variant="body1">{viewInvoice.status}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Linked Payment ID:
-            </Typography>
-            <Typography variant="body1">
-              {viewInvoice.linkedPaymentId || "—"}
-            </Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewInvoiceOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
-
+        open={isViewInvoiceOpen}
+        onClose={() => setViewInvoiceOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Invoice Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {viewInvoice && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Invoice ID:
+                  </Typography>
+                  <Typography variant="body1">{viewInvoice.invoiceId}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Member Name:
+                  </Typography>
+                  <Typography variant="body1">{viewInvoice.memberName}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Invoice Date:
+                  </Typography>
+                  <Typography variant="body1">{viewInvoice.invoiceDate}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Total Amount:
+                  </Typography>
+                  <Typography variant="body1">${viewInvoice.invoiceTotal}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewInvoiceOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

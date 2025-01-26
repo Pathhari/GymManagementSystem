@@ -10,44 +10,43 @@ class Invoice extends Model
     protected $primaryKey = 'InvoiceID';
 
     protected $fillable = [
+        'BranchID',
         'MemberID',
         'PromotionID',
         'InvoiceDate',
+        'DueDate',
         'InvoiceTotal',
-        'BranchID', // <--- new column
     ];
-    
+
+    // Relationship: belongs to a branch
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');
+    }
+
+    // belongs to a member
     public function member()
     {
         return $this->belongsTo(Member::class, 'MemberID', 'MemberID');
     }
 
+    // belongs to a promotion
     public function promotion()
     {
         return $this->belongsTo(Promotions::class, 'PromotionID', 'PromotionID');
     }
 
+    // has many line items
     public function lineItems()
     {
         return $this->hasMany(InvoiceLineItem::class, 'InvoiceID', 'InvoiceID');
     }
 
+    // many-to-many with Payment via pivot PaymentInvoices
     public function payments()
     {
-        // Many-to-many bridging table PaymentInvoice
-        return $this->belongsToMany(Payment::class, 'payment_invoice', 'InvoiceID', 'PaymentID')
+        return $this->belongsToMany(Payment::class, 'PaymentInvoices', 'InvoiceID', 'PaymentID')
                     ->withPivot('AmountAllocated')
                     ->withTimestamps();
     }
-
-    public function branch()
-{
-    return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');
-}
-
-public function invoice_line_items()
-{
-    return $this->hasMany(InvoiceLineItem::class, 'InvoiceID', 'InvoiceID');
-}
-
 }

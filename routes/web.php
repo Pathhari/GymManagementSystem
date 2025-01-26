@@ -180,6 +180,16 @@ Route::prefix('payments')->group(function() {
         ->name('payments.link.invoices');
 });
 
+use App\Http\Controllers\InvoiceController;
+
+Route::prefix('invoices')->middleware('multiGuard:owner,admin,staff')->group(function() {
+    Route::get('/', [InvoiceController::class, 'index'])->name('invoices.index');
+    Route::post('/', [InvoiceController::class, 'store'])->name('invoices.store');
+    Route::get('{id}', [InvoiceController::class, 'show'])->name('invoices.show');
+    Route::put('{id}', [InvoiceController::class, 'update'])->name('invoices.update');
+    Route::delete('{id}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');
+});
+
 /* 
 |--------------------------------------------------------------------------
 | 2) NotificationController

@@ -271,12 +271,10 @@ class PaymentController extends Controller
     public function index()
     {
         $payments = Payment::with('member')
-                    ->orderBy('PaymentDate','desc')
-                    ->get();
-
-        return Inertia::render('Payments/Direct/Index', [
-            'payments' => $payments,
-        ]);
+            ->orderBy('PaymentDate','desc')
+            ->get();
+    
+        return response()->json($payments);
     }
 
     /**
