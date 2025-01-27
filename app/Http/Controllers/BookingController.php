@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Booking;
 use App\Models\Facility;
 use App\Models\Member;
-use App\Models\CoachingSessions;
+use App\Models\CoachingSession;
 use App\Models\SessionBooking;
 use App\Models\SessionWaitlist;
 use App\Models\SessionAttendance;
@@ -167,7 +167,7 @@ class BookingController extends Controller
 
         // If your sessions have a direct branch reference, you can do with('branch') or something similar.
         // We'll just do with('coach') for now:
-        $query = CoachingSessions::with('coach');
+        $query = CoachingSession::with('coach');
 
         // If there's a branch param: ?branch=Branch2
         if ($request->filled('branch')) {
@@ -210,7 +210,7 @@ class BookingController extends Controller
             'Fee'          => 'nullable|numeric|min:0',
         ]);
 
-        $session = CoachingSessions::create($data);
+        $session = CoachingSession::create($data);
 
         return response()->json([
             'message' => 'Session created successfully.',
@@ -232,7 +232,7 @@ class BookingController extends Controller
             'Status'       => 'nullable|string|max:50',
         ]);
 
-        $session = CoachingSessions::findOrFail($id);
+        $session = CoachingSession::findOrFail($id);
         $session->update($data);
 
         return response()->json(['message' => 'Session updated successfully.']);
@@ -240,7 +240,7 @@ class BookingController extends Controller
 
     public function cancelSession($id)
     {
-        $session = CoachingSessions::findOrFail($id);
+        $session = CoachingSession::findOrFail($id);
 
         if (empty($session->Status) || $session->Status !== 'Cancelled') {
             $session->Status = 'Cancelled';

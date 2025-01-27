@@ -45,13 +45,13 @@ import "jspdf-autotable";
 // Combine Bookings & Sessions for the calendar. Adjust fields as needed.
 function createCalendarEvents(bookings, sessions) {
   const bookingEvents = bookings.map((b) => ({
-    id: b.BookingID,
+    id: `booking-${b.BookingID}`,
     date: b.BookingDate, // "YYYY-MM-DD"
     title: `Booking: ${b.MemberName} (${b.BookingTime})`,
     type: "booking",
   }));
   const sessionEvents = sessions.map((s) => ({
-    id: s.SessionID,
+    id: `session-${s.SessionID}`,    
     date: s.StartTime.split(" ")[0],
     title: `Session: ${s.SessionName} (${s.StartTime} - ${s.EndTime})`,
     type: "session",
@@ -652,8 +652,8 @@ export default function BookingsSessions() {
               sx={{ width: 150 }}
             >
               <MenuItem value="">All</MenuItem>
-              <MenuItem value="Branch1">Branch1</MenuItem>
-              <MenuItem value="Branch2">Branch2</MenuItem>
+              <MenuItem value="Contnental Branch 1">Contnental Branch 1</MenuItem>
+            <MenuItem value="Contnental Branch 2">Contnental Branch 2</MenuItem>
               {/* Add additional branches here */}
             </TextField>
             {/* Search Box */}

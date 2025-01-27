@@ -1,11 +1,32 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import {
-  Box, Typography, Paper, Button, TextField,
-  Dialog, DialogTitle, DialogContent, DialogActions,
-  Tabs, Tab, Tooltip, Grid, Card, CardContent,
-  FormControl, InputLabel, Select, MenuItem,
-  Menu
+  Box,
+  Typography,
+  Paper,
+  Button,
+  TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Tabs,
+  Tab,
+  Tooltip,
+  Grid,
+  Card,
+  CardContent,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Menu,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import AddIcon from "@mui/icons-material/Add";
@@ -22,19 +43,20 @@ import "jspdf-autotable";
 import { CSVLink } from "react-csv";
 
 export default function PaymentsAndInvoices() {
-  // ----------------- State -----------------
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
-  
+
+  // Data arrays
   const [payments, setPayments] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [members, setMembers] = useState([]);
 
-  // Dialog flags
+  // Payment dialogs
   const [isAddPaymentOpen, setAddPaymentOpen] = useState(false);
   const [isEditPaymentOpen, setEditPaymentOpen] = useState(false);
   const [isViewPaymentOpen, setViewPaymentOpen] = useState(false);
-  
+
+  // Invoice dialogs
   const [isAddInvoiceOpen, setAddInvoiceOpen] = useState(false);
   const [isEditInvoiceOpen, setEditInvoiceOpen] = useState(false);
   const [isViewInvoiceOpen, setViewInvoiceOpen] = useState(false);
@@ -59,6 +81,8 @@ export default function PaymentsAndInvoices() {
     status: "",
   });
   const [editInvoice, setEditInvoice] = useState({});
+
+  // The invoice we’re viewing in the dialog, including line items
   const [viewInvoice, setViewInvoice] = useState(null);
 
   // Summaries & filters
@@ -74,26 +98,33 @@ export default function PaymentsAndInvoices() {
     fetchInvoices();
   }, []);
 
+  
+
   const fetchMembers = () => {
-    axios.get("/membership/members")
-    .then((res) => {
-      if (Array.isArray(res.data)) {
-        setMembers(res.data);
-      } else {
-        setMembers([]); // fallback
-      }
-    })
-    .catch((err) => {
-      console.error(err);
-      setMembers([]); // fallback
-    })
+    axios
+      .get("/membership/members")
+      .then((res) => {
+        // If your MembershipController returns { members, renewals, etc. },
+        // you might need res.data.members
+        // For now, if it returns an array directly, do:
+        if (Array.isArray(res.data)) {
+          setMembers(res.data);
+        } else if (res.data.members) {
+          setMembers(res.data.members);
+        } else {
+          setMembers([]);
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        setMembers([]);
+      });
   };
 
   const fetchPayments = () => {
     axios
       .get("/payments")
       .then((res) => {
-        // Suppose each payment has shape: { PaymentID, MemberID, Amount, PaymentDate, ... , member: {...} }
         const mapped = res.data.map((p) => ({
           paymentId: p.PaymentID,
           memberName: p.member ? p.member.FullName : "N/A",
@@ -109,22 +140,22 @@ export default function PaymentsAndInvoices() {
   };
 
   const fetchInvoices = () => {
-    axios.get("/invoices").then(res => {
-      const mapped = res.data.map(inv => ({
-        invoiceId: inv.InvoiceID,
-        memberName: inv.member ? inv.member.FullName : "N/A",
-        invoiceDate: inv.InvoiceDate,
-        dueDate: inv.DueDate,              // you do have a DueDate column
-        invoiceTotal: inv.InvoiceTotal,    // NOT totalAmount
-      }));
+    axios
+      .get("/invoices")
+      .then((res) => {
+        const mapped = res.data.map((inv) => ({
+          invoiceId: inv.InvoiceID,
+          memberName: inv.member ? inv.member.FullName : "N/A",
+          invoiceDate: inv.InvoiceDate,
+          dueDate: inv.DueDate,
+          invoiceTotal: inv.InvoiceTotal,
+        }));
         setInvoices(mapped);
       })
       .catch((err) => console.error(err));
   };
-  
-  
 
-  // ----------------- Handlers: Add Payment -----------------
+  // ----------------- Payment Handlers -----------------
   const handleAddPaymentChange = (e) => {
     const { name, value } = e.target;
     setNewPayment((prev) => ({ ...prev, [name]: value }));
@@ -137,7 +168,7 @@ export default function PaymentsAndInvoices() {
       Amount: newPayment.amountPaid,
       PaymentDate: newPayment.paymentDate,
       Status: newPayment.status,
-      PaymentFor: "Membership", // or any field your controller needs
+      PaymentFor: "Membership",
     };
 
     axios
@@ -156,19 +187,17 @@ export default function PaymentsAndInvoices() {
       .catch((err) => console.error(err));
   };
 
-  // ----------------- Handlers: Edit Payment -----------------
   const handleEditPaymentOpen = (row) => {
     setEditPayment(row);
     setEditPaymentOpen(true);
   };
-  
+
   const handleEditPaymentChange = (e) => {
     const { name, value } = e.target;
     setEditPayment((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleEditPaymentSubmit = () => {
-    // editPayment.paymentId is the unique ID from the DB
     const payload = {
       MemberID: editPayment.memberId,
       PaymentMethod: editPayment.method,
@@ -186,13 +215,11 @@ export default function PaymentsAndInvoices() {
       .catch((err) => console.error(err));
   };
 
-  // ----------------- Handlers: View Payment -----------------
   const handleViewPaymentOpen = (row) => {
     setViewPayment(row);
     setViewPaymentOpen(true);
   };
 
-  // ----------------- Handlers: Refund -----------------
   const handleRefundPayment = (row) => {
     axios
       .post(`/payments/${row.paymentId}/refund/initiate`)
@@ -200,7 +227,7 @@ export default function PaymentsAndInvoices() {
       .catch((err) => console.error(err));
   };
 
-  // ----------------- Handlers: Invoices: Add/Edit/View -----------------
+  // ----------------- Invoice Handlers -----------------
   const handleAddInvoiceChange = (e) => {
     const { name, value } = e.target;
     setNewInvoice((prev) => ({ ...prev, [name]: value }));
@@ -211,7 +238,7 @@ export default function PaymentsAndInvoices() {
       MemberID: newInvoice.memberId,
       InvoiceDate: newInvoice.invoiceDate,
       DueDate: newInvoice.dueDate,
-      InvoiceTotal: newInvoice.invoiceTotal, // matches DB
+      InvoiceTotal: newInvoice.invoiceTotal,
     };
 
     axios
@@ -257,23 +284,42 @@ export default function PaymentsAndInvoices() {
       .catch((err) => console.error(err));
   };
 
+  // 1) On “View” click, fetch the full invoice from /invoices/{id} with lineItems
   const handleViewInvoiceOpen = (row) => {
-    setViewInvoice(row);
-    setViewInvoiceOpen(true);
+    axios
+      .get(`/invoices/${row.invoiceId}`)
+      .then((res) => {
+        // res.data => { InvoiceID, InvoiceTotal, lineItems: [...], member: {...}, ... }
+        const fetched = {
+          invoiceId: res.data.InvoiceID,
+          memberName: res.data.member ? res.data.member.FullName : "N/A",
+          invoiceDate: res.data.InvoiceDate,
+          dueDate: res.data.DueDate,
+          invoiceTotal: res.data.InvoiceTotal,
+          lineItems: res.data.line_items || [],
+        };
+        setViewInvoice(fetched);
+        setViewInvoiceOpen(true);
+      })
+      .catch((err) => console.error(err));
   };
 
   const handleDeleteInvoice = (row) => {
+    if (!window.confirm(`Are you sure you want to delete Invoice #${row.invoiceId}?`)) return;
+
     axios
       .delete(`/invoices/${row.invoiceId}`)
       .then(() => fetchInvoices())
       .catch((err) => console.error(err));
   };
+  
 
   // ----------------- Summary Stats -----------------
   const totalRevenue = payments
     .filter((p) => p.status === "Completed")
     .reduce((acc, cur) => acc + cur.amountPaid, 0);
 
+  // If you actually have an invoice status column, adjust these filters:
   const pendingInvoices = invoices.filter(
     (inv) => inv.status === "Unpaid" || inv.status === "Partially Paid"
   ).length;
@@ -358,6 +404,43 @@ export default function PaymentsAndInvoices() {
     { field: "invoiceDate", headerName: "Invoice Date", width: 140 },
     { field: "dueDate", headerName: "Due Date", width: 130 },
     { field: "invoiceTotal", headerName: "Total", width: 120 },
+    {
+      field: "Actions",
+      headerName: "Actions",
+      width: 220,
+      sortable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title="View Invoice + Line Items">
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#4caf50", color: "#fff" }}
+              onClick={() => handleViewInvoiceOpen(params.row)}
+            >
+              <VisibilityIcon />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Edit Invoice">
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#2196f3", color: "#fff" }}
+              onClick={() => handleEditInvoiceOpen(params.row)}
+            >
+              <EditIcon />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Delete Invoice">
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#e53935", color: "#fff" }}
+              onClick={() => handleDeleteInvoice(params.row)}
+            >
+              <DeleteIcon />
+            </Button>
+          </Tooltip>
+        </Box>
+      ),
+    },
   ];
 
   const displayedRows = activeTab === 0 ? filteredPayments : filteredInvoices;
@@ -392,7 +475,6 @@ export default function PaymentsAndInvoices() {
     { label: "Invoice Date", key: "invoiceDate" },
     { label: "Due Date", key: "dueDate" },
     { label: "Total Amount", key: "invoiceTotal" },
-    { label: "Status", key: "status" },
   ];
 
   const handleExportCSV = () => {
@@ -403,7 +485,6 @@ export default function PaymentsAndInvoices() {
     handleExportMenuClose();
     const doc = new jsPDF();
     if (activeTab === 0) {
-      // Payments
       doc.text("Payments Export", 14, 10);
       const bodyData = filteredPayments.map((p) => [
         p.paymentId,
@@ -420,7 +501,6 @@ export default function PaymentsAndInvoices() {
       });
       doc.save("Payments.pdf");
     } else {
-      // Invoices
       doc.text("Invoices Export", 14, 10);
       const bodyData = filteredInvoices.map((i) => [
         i.invoiceId,
@@ -428,10 +508,9 @@ export default function PaymentsAndInvoices() {
         i.invoiceDate,
         i.dueDate,
         i.invoiceTotal,
-        i.status,
       ]);
       doc.autoTable({
-        head: [["ID", "Member", "Invoice Date", "Due Date", "Amount", "Status"]],
+        head: [["ID", "Member", "Invoice Date", "Due Date", "Amount"]],
         body: bodyData,
         startY: 20,
       });
@@ -441,7 +520,7 @@ export default function PaymentsAndInvoices() {
 
   return (
     <Box sx={{ p: 4 }}>
-      {/* Overview Panel */}
+      {/* ---------- OVERVIEW PANEL ---------- */}
       <Box sx={{ mb: 3 }}>
         <Box
           sx={{
@@ -490,7 +569,6 @@ export default function PaymentsAndInvoices() {
           </FormControl>
         </Box>
 
-        {/* Summaries */}
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6} md={4}>
             <Card
@@ -510,7 +588,8 @@ export default function PaymentsAndInvoices() {
                   Total Revenue
                 </Typography>
                 <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-                  ${totalRevenue}
+                  $
+                  {totalRevenue}
                 </Typography>
               </CardContent>
             </Card>
@@ -564,10 +643,8 @@ export default function PaymentsAndInvoices() {
         </Grid>
       </Box>
 
-      {/* Title & Tabs */}
-      <Box
-        sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}
-      >
+      {/* ---------- Title & Tabs ---------- */}
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Typography variant="h4" gutterBottom>
           Payments & Invoices
         </Typography>
@@ -577,7 +654,7 @@ export default function PaymentsAndInvoices() {
         </Tabs>
       </Box>
 
-      {/* Search & Export & Add */}
+      {/* ---------- Search & Action Buttons ---------- */}
       <Paper elevation={2} sx={{ mt: 3, p: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
           <TextField
@@ -659,11 +736,10 @@ export default function PaymentsAndInvoices() {
         </div>
       </Paper>
 
-      {/* ----------------- Add Payment Dialog ----------------- */}
+      {/* ----------------- ADD Payment Dialog ----------------- */}
       <Dialog open={isAddPaymentOpen} onClose={() => setAddPaymentOpen(false)}>
         <DialogTitle>Add Payment</DialogTitle>
         <DialogContent dividers>
-          {/* Use a Select for the Member Name */}
           <FormControl fullWidth margin="normal">
             <InputLabel>Member Name</InputLabel>
             <Select
@@ -681,7 +757,6 @@ export default function PaymentsAndInvoices() {
               ))}
             </Select>
           </FormControl>
-
           <TextField
             fullWidth
             margin="normal"
@@ -726,7 +801,7 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ----------------- Edit Payment Dialog ----------------- */}
+      {/* ----------------- EDIT Payment Dialog ----------------- */}
       <Dialog open={isEditPaymentOpen} onClose={() => setEditPaymentOpen(false)}>
         <DialogTitle>Edit Payment</DialogTitle>
         <DialogContent dividers>
@@ -800,13 +875,8 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ----------------- View Payment Dialog ----------------- */}
-      <Dialog
-        open={isViewPaymentOpen}
-        onClose={() => setViewPaymentOpen(false)}
-        fullWidth
-        maxWidth="sm"
-      >
+      {/* ----------------- VIEW Payment Dialog ----------------- */}
+      <Dialog open={isViewPaymentOpen} onClose={() => setViewPaymentOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>
           <Typography variant="h6" color="primary">
             Payment Details
@@ -863,11 +933,10 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ----------------- Add Invoice Dialog ----------------- */}
+      {/* ----------------- ADD Invoice Dialog ----------------- */}
       <Dialog open={isAddInvoiceOpen} onClose={() => setAddInvoiceOpen(false)}>
         <DialogTitle>Add Invoice</DialogTitle>
         <DialogContent dividers>
-          {/* Choose Member */}
           <FormControl fullWidth margin="normal">
             <InputLabel>Member Name</InputLabel>
             <Select
@@ -899,6 +968,16 @@ export default function PaymentsAndInvoices() {
           <TextField
             fullWidth
             margin="normal"
+            type="date"
+            label="Due Date"
+            name="dueDate"
+            InputLabelProps={{ shrink: true }}
+            value={newInvoice.dueDate}
+            onChange={handleAddInvoiceChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
             label="Total Amount"
             name="invoiceTotal"
             type="number"
@@ -914,7 +993,7 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ----------------- Edit Invoice Dialog ----------------- */}
+      {/* ----------------- EDIT Invoice Dialog ----------------- */}
       <Dialog open={isEditInvoiceOpen} onClose={() => setEditInvoiceOpen(false)}>
         <DialogTitle>Edit Invoice</DialogTitle>
         <DialogContent dividers>
@@ -956,6 +1035,16 @@ export default function PaymentsAndInvoices() {
           <TextField
             fullWidth
             margin="normal"
+            type="date"
+            label="Due Date"
+            name="dueDate"
+            InputLabelProps={{ shrink: true }}
+            value={editInvoice.dueDate || ""}
+            onChange={handleEditInvoiceChange}
+          />
+          <TextField
+            fullWidth
+            margin="normal"
             label="Total Amount"
             name="invoiceTotal"
             type="number"
@@ -971,13 +1060,8 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ----------------- View Invoice Dialog ----------------- */}
-      <Dialog
-        open={isViewInvoiceOpen}
-        onClose={() => setViewInvoiceOpen(false)}
-        fullWidth
-        maxWidth="sm"
-      >
+      {/* ----------------- VIEW Invoice Dialog (With Line Items!) ----------------- */}
+      <Dialog open={isViewInvoiceOpen} onClose={() => setViewInvoiceOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>
           <Typography variant="h6" color="primary">
             Invoice Details
@@ -1007,11 +1091,54 @@ export default function PaymentsAndInvoices() {
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
+                    Due Date:
+                  </Typography>
+                  <Typography variant="body1">
+                    {viewInvoice.dueDate ? viewInvoice.dueDate : "—"}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
                     Total Amount:
                   </Typography>
                   <Typography variant="body1">${viewInvoice.invoiceTotal}</Typography>
                 </Grid>
               </Grid>
+
+              {/* ----------- Line Items Table ----------- */}
+              <Box mt={3}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Line Items
+                </Typography>
+                {viewInvoice.lineItems && viewInvoice.lineItems.length > 0 ? (
+                  <TableContainer component={Paper}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>ItemType</TableCell>
+                          <TableCell>Description</TableCell>
+                          <TableCell>Qty</TableCell>
+                          <TableCell>UnitPrice</TableCell>
+                          <TableCell>Subtotal</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {viewInvoice.lineItems.map((li) => (
+                          <TableRow key={li.LineItemID}>
+                            <TableCell>{li.ItemType}</TableCell>
+                            <TableCell>{li.Description}</TableCell>
+                            <TableCell>{li.Quantity}</TableCell>
+                            <TableCell>${li.UnitPrice}</TableCell>
+                            <TableCell>${li.Subtotal}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                ) : (
+                  <Typography>No line items found.</Typography>
+                )}
+              </Box>
             </Box>
           )}
         </DialogContent>
