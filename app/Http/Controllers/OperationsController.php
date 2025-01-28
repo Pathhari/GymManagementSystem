@@ -195,37 +195,49 @@ class OperationsController extends Controller
     }
 
 
-    /* ------------------------------------------------------------------
-     * P. LOCKER & LOCKER USAGE
-     * ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------
+ * P. LOCKER & LOCKER USAGE (JSON Responses)
+ * ------------------------------------------------------------------ */
 
-    /**
-     * 44. Manage Locker => route:Owner,Admin,Staff
-     * Show a list of lockers and their status.
-     */
-    public function indexLockers()
-    {
-        $staff = auth('staff')->user();
+ public function indexLockers()
+ {
+     $staff = auth('staff')->user();
+ 
+     $query = Locker::with(['lockerUsages' => function($q){
+         $q->where('Returned', false)
+           ->with('member')
+           ->orderBy('BorrowDate','desc');
+     }]);
+ 
+     if ($staff) {
+         $query->where('BranchID', $staff->BranchID);
+     }
+ 
+     $lockers = $query->get();
+ 
+     // Map each locker to a structure with occupant if usage found
+     $response = $lockers->map(function($locker){
+         $activeUsage = $locker->lockerUsages->first(); 
+         return [
+             'LockerID'      => $locker->LockerID,
+             'LockerNumber'  => $locker->LockerNumber,
+             'Status'        => $locker->Status,
+             'BranchID'      => $locker->BranchID,
+             'occupant'      => $activeUsage ? [
+                 'UsageID'  => $activeUsage->UsageID,
+                 'MemberID' => $activeUsage->MemberID,
+                 'FullName' => $activeUsage->member->FullName ?? '',
+             ] : null,
+         ];
+     });
+ 
+     return response()->json(['lockers' => $response], 200);
+ }
+ 
 
-        if ($staff) {
-            $lockers = Locker::where('BranchID',$staff->BranchID)
-                ->orderBy('LockerNumber','asc')
-                ->get();
-        } else {
-            // admin/owner => all
-            $lockers = Locker::orderBy('LockerNumber','asc')->get();
-        }
-
-        return Inertia::render('Operations/Lockers/Index', [
-            'lockers' => $lockers
-        ]);
-    }
-
-    /**
-     * Create or update a Locker record.
-     */
-    public function storeLocker(Request $request)
-    {
+public function storeLocker(Request $request)
+{
+    try {
         $staff = auth('staff')->user();
 
         $data = $request->validate([
@@ -236,36 +248,42 @@ class OperationsController extends Controller
             'BranchID'     => 'nullable|exists:branches,BranchID',
         ]);
 
-        // Staff forced to own branch
+        // Force staff to their branch
         if ($staff) {
             $data['BranchID'] = $staff->BranchID;
         }
 
         if (!empty($data['LockerID'])) {
             $locker = Locker::findOrFail($data['LockerID']);
-
-            // If staff => branch check
-            if ($staff && $locker->BranchID != $staff->BranchID) {
-                abort(403,'Cannot update locker from another branch.');
+            if ($staff && $locker->BranchID !== $staff->BranchID) {
+                return response()->json(['error' => 'Cannot update locker of another branch.'], 403);
             }
-
-            // Check unique LockerNumber ignoring self
             $locker->update($data);
         } else {
-            // If staff => or admin => create new
-            Locker::create($data);
+            $locker = Locker::create($data);
         }
 
-        return redirect()
-            ->route('operations.lockers.index')
-            ->with('success','Locker saved successfully.');
-    }
+        return response()->json([
+            'message' => 'Locker saved successfully.',
+            'locker'  => $locker
+        ], 200);
 
-    /**
-     * 45. Borrow Key => create a LockerUsage
-     */
-    public function borrowLockerKey(Request $request)
-    {
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        return response()->json([
+            'error'  => 'Validation failed.',
+            'errors' => $e->errors()
+        ], 422);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error'   => 'Server error.',
+            'message' => $e->getMessage()
+        ], 500);
+    }
+}
+
+public function borrowLockerKey(Request $request)
+{
+    try {
         $staff = auth('staff')->user();
 
         $data = $request->validate([
@@ -274,46 +292,60 @@ class OperationsController extends Controller
             'Notes'    => 'nullable|string',
         ]);
 
-        // Check staff’s branch vs. locker->BranchID
+        // Ensure staff only borrows lockers in their branch
         if ($staff) {
-            $lockerCheck = Locker::where('LockerID',$data['LockerID'])
-                ->where('BranchID',$staff->BranchID)
+            $lockerCheck = Locker::where('LockerID', $data['LockerID'])
+                ->where('BranchID', $staff->BranchID)
                 ->first();
             if (!$lockerCheck) {
-                abort(403,'Cannot borrow a locker from another branch.');
+                return response()->json(['error' => 'Cannot borrow locker from another branch.'], 403);
             }
         }
 
         LockerUsage::create([
-            'LockerID'     => $data['LockerID'],
-            'MemberID'     => $data['MemberID'],
-            'KeyBorrowed'  => true,
-            'BorrowDate'   => now(),
-            'Returned'     => false,
-            'Notes'        => $data['Notes'] ?? null,
+            'LockerID'    => $data['LockerID'],
+            'MemberID'    => $data['MemberID'],
+            'KeyBorrowed' => true,
+            'BorrowDate'  => now(),
+            'Returned'    => false,
+            'Notes'       => $data['Notes'] ?? null,
         ]);
 
-        // Optionally update locker status => "Occupied"
-        Locker::where('LockerID',$data['LockerID'])->update(['Status'=>'Occupied']);
+        // Optionally mark locker as Occupied
+        Locker::where('LockerID', $data['LockerID'])->update(['Status' => 'Occupied']);
 
-        return redirect()->back()->with('success','Locker key borrowed successfully.');
+        return response()->json([
+            'message' => 'Locker key borrowed successfully.'
+        ], 200);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        return response()->json([
+            'error'  => 'Validation failed.',
+            'errors' => $e->errors()
+        ], 422);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error'   => 'Server error.',
+            'message' => $e->getMessage()
+        ], 500);
     }
+}
 
-    /**
-     * Return Locker Key => update an existing LockerUsage record
-     */
-    public function returnLockerKey($usageId)
-    {
+public function returnLockerKey($usageId)
+{
+    try {
         $staff = auth('staff')->user();
         $usage = LockerUsage::findOrFail($usageId);
 
-        // If staff => check usage->locker->BranchID
-        if ($staff && $usage->locker && $usage->locker->BranchID != $staff->BranchID) {
-            abort(403,'Cannot return a locker key from another branch.');
+        if ($staff && $usage->locker && $usage->locker->BranchID !== $staff->BranchID) {
+            return response()->json(['error' => 'Cannot return locker key from another branch.'], 403);
         }
 
         if ($usage->Returned) {
-            return redirect()->back()->with('info','Key already returned.');
+            // Already returned, not an error but no change needed
+            return response()->json([
+                'message' => 'Locker key was already returned.'
+            ], 200);
         }
 
         $usage->update([
@@ -322,13 +354,25 @@ class OperationsController extends Controller
         ]);
 
         // Optionally set locker back to "Available"
-        $locker = $usage->locker;
-        if ($locker) {
-            $locker->update(['Status'=>'Available']);
+        if ($usage->locker) {
+            $usage->locker->update(['Status' => 'Available']);
         }
 
-        return redirect()->back()->with('success','Locker key returned successfully.');
+        return response()->json([
+            'message' => 'Locker key returned successfully.'
+        ], 200);
+
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return response()->json([
+            'error' => 'Usage record not found.'
+        ], 404);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error'   => 'Server error.',
+            'message' => $e->getMessage()
+        ], 500);
     }
+}
 
 
   /* ------------------------------------------------------------------

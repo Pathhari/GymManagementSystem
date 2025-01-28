@@ -62,6 +62,20 @@ class MembershipController extends Controller
      * Create a new member via Axios JSON.
      * POST /membership/members
      */
+
+         // ** New: Search by name **
+    public function apiSearchMembers(Request $request)
+    {
+        $q = $request->query('q', '');
+        // E.g. "starts with" filter:
+        $members = Member::where('FullName', 'like', $q . '%')
+                    ->orderBy('FullName')
+                    ->limit(30)
+                    ->get(['MemberID','FullName']);
+        
+        return response()->json($members);
+    }
+    
     public function apiStoreMember(Request $request)
     {
         $data = $request->validate([

@@ -514,15 +514,17 @@ class TestDataSeeder extends Seeder
 
         // 29) Lockers
         $lockers = [];
-        for ($i = 1; $i <= 5; $i++) {
-            $branchPick = $faker->randomElement($branches);
-            $lockers[] = Locker::create([
-                'BranchID'     => $branchPick->BranchID,
-                'LockerNumber' => "LCK-".$faker->unique()->numerify('###'),
-                'Status'       => $faker->randomElement(['Available','Occupied','OutOfService']),
-                'Notes'        => $faker->sentence,
-            ]);
+        foreach ($branches as $branchPick) {
+            for ($i = 1; $i <= 100; $i++) {
+                $lockers[] = Locker::create([
+                    'BranchID'     => $branchPick->BranchID,
+                    'LockerNumber' => (string) $i, // or "LCK-$i" if you prefer
+                    'Status'       => $faker->randomElement(['Available','Occupied','OutOfService']),
+                    'Notes'        => $faker->sentence,
+                ]);
+            }
         }
+
 
         // 30) Locker Usage
         foreach ($lockers as $locker) {

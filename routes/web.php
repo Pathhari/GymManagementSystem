@@ -276,6 +276,8 @@ Route::prefix('membership')->group(function() {
         ->name('membership.members.apiDestroyMember');
     Route::get('statuses', [MembershipController::class, 'indexMemberStatuses'])
     ->name('membership.statuses.index');
+    Route::get('members/search', [MembershipController::class, 'apiSearchMembers'])
+    ->name('membership.members.apiSearch');
 
 
 

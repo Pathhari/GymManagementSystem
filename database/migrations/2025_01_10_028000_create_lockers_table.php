@@ -15,7 +15,8 @@ return new class extends Migration
             $table->id('LockerID');
             $table->unsignedBigInteger('BranchID')->nullable(); 
             $table->foreign('BranchID')->references('BranchID')->on('branches');
-            $table->string('LockerNumber')->unique();
+            $table->string('LockerNumber', 50);
+             $table->unique(['BranchID', 'LockerNumber'], 'unique_locker_per_branch');
             $table->string('Status')->default('Available'); // "Available", "Occupied", "OutOfService"
             $table->text('Notes')->nullable();
         

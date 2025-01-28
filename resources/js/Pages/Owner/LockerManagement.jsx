@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import {
   Box,
+  Grid,
   Typography,
   Paper,
   Button,
@@ -16,71 +17,24 @@ import {
   InputLabel,
   MenuItem,
   Select,
+  Card,
+  CardActionArea,
+  CardContent,
+  CardActions,
 } from "@mui/material";
-import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-} from "react-beautiful-dnd";
-
 import AddIcon from "@mui/icons-material/Add";
-import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
-import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
-import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank";
-import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import Autocomplete from "@mui/material/Autocomplete";
 
-/** 
- * EXPLANATION:
- * - We rename statuses to match your DB: "Available", "Occupied", "OutOfService".
- * - We'll fetch lockers from GET /operations/lockers (which your backend can return in JSON format).
- * - We'll send new/updates to POST /operations/lockers (storeLocker).
- * - We'll handle borrow/return keys with your existing borrowLockerKey / returnLockerKey routes.
- */
-
-// Droppable background colors, keyed by the droppable ID
-const droppableBackground = {
-  availableList: "#A6AEBF",   
-  occupiedList: "#F4DEB3",  
-  outOfServiceList: "#C96868",
+// Custom color gradients for statuses
+const statusGradients = {
+  Available: "linear-gradient(135deg, #4caf50 0%, #66bb6a 100%)",
+  Occupied: "linear-gradient(135deg, #f44336 0%, #ef5350 100%)",
+  OutOfService: "linear-gradient(135deg, #9e9e9e 0%, #bdbdbd 100%)",
 };
-
-// Helper function to reorder within the same list.
-const reorder = (list, startIndex, endIndex) => {
-  const result = Array.from(list);
-  const [removed] = result.splice(startIndex, 1);
-  result.splice(endIndex, 0, removed);
-  return result;
-};
-
-// Draggable item style
-const getItemStyle = (isDragging, draggableStyle) => ({
-  userSelect: "none",
-  padding: 12,
-  margin: "0 0 8px 0",
-  fontSize: "0.95rem",
-  background: isDragging ? "#673ab7" : "#fafafa",
-  color: isDragging ? "#fff" : "#000",
-  border: "1px solid #ccc",
-  borderRadius: 6,
-  transition: "all 0.2s ease",
-  ...draggableStyle,
-});
-
-// Droppable area style
-const getListStyle = (droppableId, isDraggingOver) => ({
-  background: isDraggingOver
-    ? "#eeeeee"
-    : droppableBackground[droppableId] || "#f5f5f5",
-  padding: 8,
-  width: 300,
-  minHeight: 370,
-  borderRadius: 4,
-  transition: "background 0.2s",
-});
 
 export default function LockerManagement() {
-  // Real-time clock
+  // Clock
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -88,46 +42,31 @@ export default function LockerManagement() {
   }, []);
   const clockString = currentTime.toLocaleTimeString();
 
-  // Lockers state (fetched from your backend)
+  // Lockers & Branches
   const [lockers, setLockers] = useState([]);
-  const [logs, setLogs] = useState([]);
+  const [branches, setBranches] = useState([]);
 
-  // 1) Fetch lockers from the backend on mount
+  // Fetch on mount
   useEffect(() => {
     axios
-      .get("/operations/lockers") // your indexLockers route returning JSON
-      .then((res) => {
-        // Expect res.data.lockers or something similar
-        setLockers(res.data.lockers || []);
-      })
+      .get("/operations/lockers")
+      .then((res) => setLockers(res.data.lockers || []))
       .catch((err) => console.error("Error fetching lockers:", err));
+
+    axios
+      .get("/owner/branches")
+      .then((res) => setBranches(res.data.branches || []))
+      .catch((err) => console.error("Error fetching branches:", err));
   }, []);
 
-  // 2) Branch Filter (assuming all branches are returned if admin/owner)
-  //    If staff, the backend will already filter. We can still let them filter locally
-  const branchOptions = ["All Branches"]; // We'll fill in after we see real data from server
-  // Or you can build an array from the returned data
-  // e.g. const branchOptions = [...new Set(lockers.map(lk => lk.BranchName))];
-
+  // Branch filter
   const [selectedBranch, setSelectedBranch] = useState("All Branches");
-
   const filteredLockers =
     selectedBranch === "All Branches"
       ? lockers
-      : lockers.filter((lk) => lk.BranchID === selectedBranch);
+      : lockers.filter((lk) => String(lk.BranchID) === String(selectedBranch));
 
-  // Derive the three status arrays
-  const availableLockers = filteredLockers.filter(
-    (lk) => lk.Status === "Available"
-  );
-  const occupiedLockers = filteredLockers.filter(
-    (lk) => lk.Status === "Occupied"
-  );
-  const outOfServiceLockers = filteredLockers.filter(
-    (lk) => lk.Status === "OutOfService"
-  );
-
-  // 3) Add Locker Dialog
+  // Add Locker
   const [isAddLockerOpen, setAddLockerOpen] = useState(false);
   const [newLockerNumber, setNewLockerNumber] = useState("");
   const [newLockerBranch, setNewLockerBranch] = useState("");
@@ -146,212 +85,107 @@ export default function LockerManagement() {
       setAddError("Please enter a valid locker number.");
       return;
     }
-
-    // Build payload for your storeLocker method
     const payload = {
-      // According to your validation rules:
-      // 'LockerID' => 'nullable|exists:lockers,LockerID'
-      LockerID: null,
       LockerNumber: String(numVal),
       Status: "Available",
       Notes: null,
       BranchID: newLockerBranch || null,
     };
-
     axios
       .post("/operations/lockers", payload)
+      .then(() => axios.get("/operations/lockers"))
       .then((res) => {
-        // Successfully created. We can do one of two approaches:
-        // A) Re-fetch from backend for the updated list:
-        return axios.get("/operations/lockers");
-      })
-      .then((refetch) => {
-        setLockers(refetch.data.lockers || []);
+        setLockers(res.data.lockers || []);
         setAddLockerOpen(false);
       })
       .catch((err) => {
         console.error(err);
         if (err.response?.data?.message) {
           setAddError(err.response.data.message);
+        } else if (err.response?.data?.error) {
+          setAddError(err.response.data.error);
         }
       });
   };
 
-  // 4) Drag & Drop
-  const onDragEnd = (result) => {
-    const { source, destination } = result;
-    if (!destination) return;
-
-    // Reorder within the same column
-    if (
-      source.droppableId === destination.droppableId &&
-      source.index !== destination.index
-    ) {
-      let updated = [];
-      if (source.droppableId === "availableList") {
-        updated = reorder(availableLockers, source.index, destination.index);
-        applyReorderToLockers(updated, "Available");
-      } else if (source.droppableId === "occupiedList") {
-        updated = reorder(occupiedLockers, source.index, destination.index);
-        applyReorderToLockers(updated, "Occupied");
-      } else if (source.droppableId === "outOfServiceList") {
-        updated = reorder(
-          outOfServiceLockers,
-          source.index,
-          destination.index
-        );
-        applyReorderToLockers(updated, "OutOfService");
-      }
-      return;
-    }
-
-    // Move between columns
-    if (source.droppableId !== destination.droppableId) {
-      handleStatusChange(source, destination);
-    }
-  };
-
-  const applyReorderToLockers = (newArr, status) => {
-    // Just updates local array; no DB call
-    // If you want to preserve re-order in DB, you'd store "sortOrder" in your DB.
-    // For now, we only do local reorder
-    const otherLockers = lockers.filter((lk) => lk.Status !== status);
-    const updatedLockers = [
-      ...otherLockers,
-      ...newArr.map((item) => ({ ...item, Status: status })),
-    ];
-    setLockers(updatedLockers);
-  };
-
-  // Return array based on droppableId
-  const getLockersByDroppable = (droppableId) => {
-    if (droppableId === "availableList") return availableLockers;
-    if (droppableId === "occupiedList") return occupiedLockers;
-    if (droppableId === "outOfServiceList") return outOfServiceLockers;
-    return [];
-  };
-
-  const applyAllLockers = (avail, occ, out) => {
-    const final = [
-      ...avail.map((lk) => ({ ...lk, Status: "Available" })),
-      ...occ.map((lk) => ({ ...lk, Status: "Occupied" })),
-      ...out.map((lk) => ({ ...lk, Status: "OutOfService" })),
-    ];
-    setLockers(final);
-  };
-
-  // handleStatusChange: changes a single item’s status + calls server
-  const handleStatusChange = (source, destination) => {
-    const srcList = getLockersByDroppable(source.droppableId);
-    const destList = getLockersByDroppable(destination.droppableId);
-    const [movedItem] = srcList.splice(source.index, 1);
-
-    let newStatus = "Available";
-    if (destination.droppableId === "occupiedList") newStatus = "Occupied";
-    if (destination.droppableId === "outOfServiceList") newStatus = "OutOfService";
-
-    const oldStatus = movedItem.Status;
-    movedItem.Status = newStatus;
-    // If you want occupant cleared for non-Occupied
-    if (newStatus !== "Occupied") {
-      movedItem.occupant = "";
-    }
-    destList.splice(destination.index, 0, movedItem);
-    applyAllLockers(availableLockers, occupiedLockers, outOfServiceLockers);
-
-    // CALL SERVER to update the status
-    const payload = {
-      LockerID: movedItem.LockerID,
-      LockerNumber: movedItem.LockerNumber,
-      Status: newStatus,
-      BranchID: movedItem.BranchID,
-      // You can pass occupant if you store it in DB, etc.
-    };
-
-    axios
-      .post("/operations/lockers", payload) // storeLocker
-      .then(() => {
-        const logMsg = `Locker #${movedItem.LockerNumber} changed from ${oldStatus} to ${newStatus}.`;
-        setLogs((prev) => [logMsg, ...prev]);
-      })
-      .catch((err) => {
-        console.error("Error updating locker status:", err);
-      });
-  };
-
-  // 5) Borrow & Return
+  // Borrow
   const [borrowOpen, setBorrowOpen] = useState(false);
   const [borrowData, setBorrowData] = useState({
     LockerID: "",
     MemberID: "",
     Notes: "",
   });
-  const [borrowLocker, setBorrowLocker] = useState(null);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [memberOptions, setMemberOptions] = useState([]);
+
+  // Member search
+  useEffect(() => {
+    if (memberSearch.trim().length > 0) {
+      axios
+        .get(`/membership/members/search?q=${memberSearch.trim()}`)
+        .then((res) => setMemberOptions(res.data))
+        .catch((err) => console.error("Error searching members:", err));
+    } else {
+      setMemberOptions([]);
+    }
+  }, [memberSearch]);
 
   const openBorrowForm = (lockerItem) => {
-    setBorrowLocker(lockerItem);
     setBorrowData({
-      LockerID: lockerItem.LockerID, // from DB
-      MemberID: "", // user must pick a member ID
+      LockerID: lockerItem.LockerID,
+      MemberID: "",
       Notes: "",
     });
+    setMemberSearch("");
+    setMemberOptions([]);
     setBorrowOpen(true);
   };
 
   const handleBorrowChange = (e) => {
-    const { name, value } = e.target;
-    setBorrowData((prev) => ({ ...prev, [name]: value }));
+    setBorrowData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleBorrowSubmit = () => {
     if (!borrowData.LockerID || !borrowData.MemberID) {
-      alert("Please fill out LockerID and MemberID.");
+      alert("LockerID and MemberID are required.");
       return;
     }
-
     axios
       .post("/operations/lockers/borrow", borrowData)
-      .then(() => {
-        // Optionally refresh the locker list
-        return axios.get("/operations/lockers");
-      })
+      .then(() => axios.get("/operations/lockers"))
       .then((res) => {
         setLockers(res.data.lockers || []);
         setBorrowOpen(false);
       })
-      .catch((err) => {
-        console.error("Error borrowing locker:", err);
-      });
+      .catch((err) => console.error("Error borrowing locker:", err));
   };
 
+  // Return
   const [returnOpen, setReturnOpen] = useState(false);
   const [returnData, setReturnData] = useState({
     usageId: "",
     returnDate: "",
     notes: "",
+    occupantName: "",
   });
-  const [returnLocker, setReturnLocker] = useState(null);
 
-  const openReturnForm = (lockerItem, usageId) => {
-    setReturnLocker(lockerItem);
+  const openReturnForm = (usageId, occupantName = "") => {
     setReturnData({
       usageId: usageId || "",
       returnDate: "",
       notes: "",
+      occupantName: occupantName || "",
     });
     setReturnOpen(true);
   };
 
   const handleReturnChange = (e) => {
-    const { name, value } = e.target;
-    setReturnData((prev) => ({ ...prev, [name]: value }));
+    setReturnData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleReturnSubmit = () => {
-    // Your backend route is: POST /operations/lockers/{usageId}/return
-    // so we do:
     if (!returnData.usageId) {
-      alert("Missing usage ID for returning a locker.");
+      alert("Missing usage ID.");
       return;
     }
     axios
@@ -364,290 +198,152 @@ export default function LockerManagement() {
         setLockers(res.data.lockers || []);
         setReturnOpen(false);
       })
-      .catch((err) => {
-        console.error("Error returning locker:", err);
-      });
+      .catch((err) => console.error("Error returning locker:", err));
   };
 
-  // 6) Removing a locker (if your backend allows it).
-  // In your code, you have "storeLocker" for create/update. 
-  // There's no direct "destroy" route shown, but you might add:
-  // Route::delete('/operations/lockers/{lockerID}', ...)
-  const removeLocker = (LockerID) => {
-    if (!confirm("Are you sure you want to remove this locker?")) return;
+  // Remove Locker
+  const removeLocker = (lockerID) => {
+    if (!confirm("Remove this locker?")) return;
     axios
-      .delete(`/operations/lockers/${LockerID}`)
+      .delete(`/operations/lockers/${lockerID}`)
       .then(() => axios.get("/operations/lockers"))
-      .then((res) => {
-        setLockers(res.data.lockers || []);
-      })
-      .catch((err) => {
-        console.error("Error removing locker:", err);
-      });
+      .then((res) => setLockers(res.data.lockers || []))
+      .catch((err) => console.error("Error removing locker:", err));
   };
 
-  // Renders a single Draggable
-  const renderDraggableLocker = (locker, index) => (
-    <Draggable key={String(locker.LockerID)} draggableId={String(locker.LockerID)} index={index}>
-      {(provided, snapshot) => (
-        <Box
-          ref={provided.innerRef}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
-          style={getItemStyle(snapshot.isDragging, provided.draggableProps.style)}
-        >
-          <Box sx={{ textAlign: "right" }}>
-            <IconButton
-              size="small"
-              onClick={() => removeLocker(locker.LockerID)}
-              sx={{ color: "#f44336" }}
-            >
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Box>
-          <strong>#{locker.LockerNumber}</strong>
-          {locker.occupant ? ` (User: ${locker.occupant})` : ""}
-          <br />
-          <small>BranchID: {locker.BranchID}</small>
-          <br />
-          {locker.Status}
-          <br />
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => openBorrowForm(locker)}
-            disabled={locker.Status !== "Available"} 
-            sx={{ mt: 1, mr: 1 }}
-          >
-            Borrow
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => openReturnForm(locker, /* usageId? */ "")}
-            disabled={locker.Status !== "Occupied"}
-            sx={{ mt: 1 }}
-          >
-            Return
-          </Button>
-        </Box>
-      )}
-    </Draggable>
-  );
-
-  // (Optional) editing logs, local only
-  const [editLogIndex, setEditLogIndex] = useState(null);
-  const [editLogText, setEditLogText] = useState("");
-  const handleEditLog = (idx) => {
-    setEditLogIndex(idx);
-    setEditLogText(logs[idx]);
-  };
-  const handleSaveLogEdit = () => {
-    if (editLogIndex !== null) {
-      const updatedLogs = [...logs];
-      updatedLogs[editLogIndex] = editLogText;
-      setLogs(updatedLogs);
-    }
-    setEditLogIndex(null);
-    setEditLogText("");
-  };
-  const handleCancelLogEdit = () => {
-    setEditLogIndex(null);
-    setEditLogText("");
-  };
-  const truncatedLogs = logs.slice(0, 15);
-  const clearAllLogs = () => setLogs([]);
-
+  // UI Rendering
   return (
-    <Box sx={{ display: "flex", gap: 3, p: 4 }}>
-      {/* ---------- LEFT SIDE: Filter, Columns ---------- */}
-      <Box flex={1}>
-        <FormControl sx={{ mb: 2, minWidth: 180 }}>
-          <InputLabel>Filter by Branch</InputLabel>
-          <Select
-            label="Filter by Branch"
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-          >
-            {/* Basic example: only "All Branches" if you don't have a list */}
-            <MenuItem value="All Branches">All Branches</MenuItem>
-            {/* 
-              If you want to dynamically load branches from the server, 
-              you'd map them here:
-            
-              {branchesFromServer.map(branch => (
-                <MenuItem key={branch.BranchID} value={branch.BranchID}>
-                  {branch.Name}
-                </MenuItem>
-              ))}
-            */}
-          </Select>
-        </FormControl>
-
-        <Typography variant="h4" gutterBottom>
-          Locker Management
+    <Box sx={{ p: 4 }}>
+      {/* Clock */}
+      <Paper
+        sx={{
+          p: 2,
+          mb: 3,
+          backgroundColor: "#424242",
+          color: "#fff",
+          textAlign: "center",
+          borderRadius: 2,
+        }}
+        elevation={4}
+      >
+        <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+          {clockString}
         </Typography>
-        <Divider sx={{ mb: 2 }} />
+      </Paper>
 
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleAddLockerOpen}
-          sx={{ mb: 3 }}
+      {/* Branch Filter */}
+      <FormControl sx={{ mb: 2, minWidth: 180 }}>
+        <InputLabel>Filter by Branch</InputLabel>
+        <Select
+          label="Filter by Branch"
+          value={selectedBranch}
+          onChange={(e) => setSelectedBranch(e.target.value)}
         >
-          Add Locker
-        </Button>
+          <MenuItem value="All Branches">All Branches</MenuItem>
+          {branches.map((branch) => (
+            <MenuItem key={branch.BranchID} value={branch.BranchID}>
+              {branch.BranchName}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
 
-        <DragDropContext onDragEnd={onDragEnd}>
-          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-            {/* ---------- AVAILABLE Column ---------- */}
-            <Droppable droppableId="availableList">
-              {(provided, snapshot) => (
+      <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
+        Locker Management
+      </Typography>
+      <Divider sx={{ mb: 2 }} />
+
+      <Button
+        variant="contained"
+        startIcon={<AddIcon />}
+        onClick={handleAddLockerOpen}
+        sx={{ mb: 3 }}
+      >
+        Add Locker
+      </Button>
+
+      {/* Locker Grid */}
+      <Grid container spacing={3}>
+        {filteredLockers
+          .slice()
+          .sort(
+            (a, b) =>
+              parseInt(a.LockerNumber, 10) - parseInt(b.LockerNumber, 10)
+          )
+          .map((locker) => {
+            // Create color gradient for each status
+            const statusGradients = {
+              Available: "linear-gradient(135deg, #4caf50 0%, #66bb6a 100%)",
+              Occupied: "linear-gradient(135deg, #f44336 0%, #ef5350 100%)",
+              OutOfService: "linear-gradient(135deg, #9e9e9e 0%, #bdbdbd 100%)",
+            };
+            const gradient =
+              statusGradients[locker.Status] || statusGradients.OutOfService;
+
+            return (
+              <Grid item xs={12} sm={6} md={4} lg={3} key={locker.LockerID}>
                 <Paper
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  sx={{ p: 2 }}
-                  style={getListStyle("availableList", snapshot.isDraggingOver)}
+                  sx={{
+                    borderRadius: 3,
+                    overflow: "hidden",
+                    background: gradient,
+                    color: "#fff",
+                    boxShadow: 4,
+                    "&:hover": { boxShadow: 6 },
+                    p: 2,
+                    textAlign: "center",
+                    height: "100%",
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                  }}
+                  onClick={() => {
+                    if (locker.Status === "Available") {
+                      openBorrowForm(locker);
+                    } else if (locker.Status === "Occupied") {
+                      const usageId = locker.occupant?.UsageID || "";
+                      const occupantName = locker.occupant?.FullName || "";
+                      openReturnForm(usageId, occupantName);
+                    }
+                  }}
                 >
-                  <Typography
-                    variant="h6"
-                    gutterBottom
-                    sx={{ textAlign: "center" }}
-                  >
-                    <CheckBoxOutlineBlankIcon /> Available
-                  </Typography>
-                  {availableLockers.map((lk, index) =>
-                    renderDraggableLocker(lk, index)
-                  )}
-                  {provided.placeholder}
+                  <Box>
+                    <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
+                      Locker #{locker.LockerNumber}
+                    </Typography>
+                    <Typography variant="body1">{locker.Status}</Typography>
+
+                    {locker.Status === "Occupied" && locker.occupant && (
+                      <Typography variant="subtitle2" sx={{ mt: 1 }}>
+                        Occupied by: {locker.occupant.FullName}
+                      </Typography>
+                    )}
+
+                    <Typography variant="caption" sx={{ mt: 1, display: "block" }}>
+                      Branch: {locker.BranchID}
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ mt: 1, textAlign: "right" }}>
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeLocker(locker.LockerID);
+                      }}
+                      sx={{ color: "#fff" }}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
                 </Paper>
-              )}
-            </Droppable>
+              </Grid>
+            );
+          })}
+      </Grid>
 
-            {/* ---------- OCCUPIED Column ---------- */}
-            <Droppable droppableId="occupiedList">
-              {(provided, snapshot) => (
-                <Paper
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  sx={{ p: 2 }}
-                  style={getListStyle("occupiedList", snapshot.isDraggingOver)}
-                >
-                  <Typography
-                    variant="h6"
-                    gutterBottom
-                    sx={{ textAlign: "center" }}
-                  >
-                    <AssignmentTurnedInIcon /> Occupied
-                  </Typography>
-                  {occupiedLockers.map((lk, index) =>
-                    renderDraggableLocker(lk, index)
-                  )}
-                  {provided.placeholder}
-                </Paper>
-              )}
-            </Droppable>
-
-            {/* ---------- Out of Service Column ---------- */}
-            <Droppable droppableId="outOfServiceList">
-              {(provided, snapshot) => (
-                <Paper
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  sx={{ p: 2 }}
-                  style={getListStyle("outOfServiceList", snapshot.isDraggingOver)}
-                >
-                  <Typography
-                    variant="h6"
-                    gutterBottom
-                    sx={{ textAlign: "center" }}
-                  >
-                    <ErrorOutlineIcon /> Out of Service
-                  </Typography>
-                  {outOfServiceLockers.map((lk, index) =>
-                    renderDraggableLocker(lk, index)
-                  )}
-                  {provided.placeholder}
-                </Paper>
-              )}
-            </Droppable>
-          </Box>
-        </DragDropContext>
-      </Box>
-
-      {/* ---------- RIGHT SIDE: Activity / Logs ---------- */}
-      <Box sx={{ width: 320, maxWidth: "100%" }}>
-        <Paper
-          sx={{
-            p: 1,
-            mb: 2,
-            backgroundColor: "#424242",
-            color: "#fff",
-            textAlign: "center",
-          }}
-          elevation={3}
-        >
-          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-            {clockString}
-          </Typography>
-        </Paper>
-
-        <Typography variant="h5" gutterBottom>
-          Activity
-        </Typography>
-        <Divider sx={{ mb: 2 }} />
-
-        <Box sx={{ mb: 1, textAlign: "right" }}>
-          <Button variant="outlined" color="secondary" onClick={clearAllLogs}>
-            Clear All
-          </Button>
-        </Box>
-
-        <Paper
-          sx={{
-            p: 2,
-            borderRadius: 2,
-            backgroundColor: "#212121",
-            color: "#fafafa",
-            maxHeight: 600,
-            overflowY: "auto",
-          }}
-          elevation={4}
-        >
-          {truncatedLogs.length === 0 ? (
-            <Typography variant="body2" color="#ccc">
-              No recent logs...
-            </Typography>
-          ) : (
-            truncatedLogs.map((log, idx) => (
-              <Box
-                key={idx}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  mb: 1,
-                  borderBottom: "1px solid #333",
-                  pb: 1,
-                }}
-              >
-                <Typography variant="body2" sx={{ flex: 1, fontSize: "0.9rem" }}>
-                  {log}
-                </Typography>
-                <IconButton
-                  size="small"
-                  color="inherit"
-                  onClick={() => handleEditLog(idx)}
-                  sx={{ ml: 1 }}
-                >
-                  <EditIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            ))
-          )}
-        </Paper>
-      </Box>
-
-      {/* ---------- DIALOG: Add Locker ---------- */}
+      {/* Add Locker Dialog */}
       <Dialog
         open={isAddLockerOpen}
         onClose={() => setAddLockerOpen(false)}
@@ -672,12 +368,12 @@ export default function LockerManagement() {
               value={newLockerBranch}
               onChange={(e) => setNewLockerBranch(e.target.value)}
             >
-              {/* If staff => we might auto-set this to staff's branch
-                  If admin => list them. Example placeholder: */}
               <MenuItem value="">No Branch</MenuItem>
-              <MenuItem value="1">Branch #1</MenuItem>
-              <MenuItem value="2">Branch #2</MenuItem>
-              {/* or map from some branch list */}
+              {branches.map((branch) => (
+                <MenuItem key={branch.BranchID} value={branch.BranchID}>
+                  {branch.BranchName}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
         </DialogContent>
@@ -689,7 +385,7 @@ export default function LockerManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* ---------- DIALOG: Borrow Form ---------- */}
+      {/* Borrow Locker Dialog */}
       <Dialog
         open={borrowOpen}
         onClose={() => setBorrowOpen(false)}
@@ -707,14 +403,30 @@ export default function LockerManagement() {
             onChange={handleBorrowChange}
             disabled
           />
-          <TextField
-            label="Member ID"
-            name="MemberID"
-            margin="normal"
-            fullWidth
-            value={borrowData.MemberID}
-            onChange={handleBorrowChange}
+
+          <Autocomplete
+            freeSolo={false}
+            options={memberOptions}
+            getOptionLabel={(option) => option.FullName}
+            onInputChange={(event, newInputValue) => {
+              setMemberSearch(newInputValue);
+            }}
+            onChange={(event, newValue) => {
+              setBorrowData((prev) => ({
+                ...prev,
+                MemberID: newValue ? newValue.MemberID : "",
+              }));
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Search Member"
+                margin="normal"
+                fullWidth
+              />
+            )}
           />
+
           <TextField
             label="Notes"
             name="Notes"
@@ -734,7 +446,7 @@ export default function LockerManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* ---------- DIALOG: Return Form ---------- */}
+      {/* Return Locker Dialog */}
       <Dialog
         open={returnOpen}
         onClose={() => setReturnOpen(false)}
@@ -743,6 +455,11 @@ export default function LockerManagement() {
       >
         <DialogTitle>Locker Return Form</DialogTitle>
         <DialogContent dividers>
+          {returnData.occupantName && (
+            <Typography sx={{ mb: 2 }}>
+              Occupied by: {returnData.occupantName}
+            </Typography>
+          )}
           <TextField
             label="Usage ID"
             name="usageId"
@@ -775,31 +492,6 @@ export default function LockerManagement() {
         <DialogActions>
           <Button onClick={() => setReturnOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleReturnSubmit}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ---------- DIALOG: Edit Log Entry ---------- */}
-      <Dialog
-        open={editLogIndex !== null}
-        onClose={handleCancelLogEdit}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Edit Activity Log</DialogTitle>
-        <DialogContent dividers>
-          <TextField
-            fullWidth
-            multiline
-            rows={3}
-            value={editLogText}
-            onChange={(e) => setEditLogText(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCancelLogEdit}>Cancel</Button>
-          <Button variant="contained" onClick={handleSaveLogEdit}>
             Save
           </Button>
         </DialogActions>
