@@ -526,15 +526,13 @@ export default function BookingsSessions() {
 
   const handleCreateSession = async () => {
     try {
-      const startFull = newSession.StartDate && newSession.StartTime
-      ? `${newSession.StartDate} ${newSession.StartTime}`
-      : "";
-      const endFull = newSession.EndDate && newSession.EndTime
-      ? `${newSession.EndDate} ${newSession.EndTime}`
-      : "";
+      const startFull = dayjs(`${newSession.StartDate} ${newSession.StartTime}`, 'YYYY-MM-DD HH:mm:ss')
+      .format('YYYY-MM-DDTHH:mm');    
+      const endFull = dayjs(`${newSession.EndDate} ${newSession.EndTime}`, 'YYYY-MM-DD HH:mm:ss')
+      .format('YYYY-MM-DDTHH:mm');
       // Use newSession.Branch here, not newSession.BranchID
       await axios.post("/booking/sessions", {
-        Branch: newSession.Branch,
+        BranchID: newSession.BranchID,        
         SessionName: newSession.SessionName,
         SessionType: newSession.SessionType,
         CoachID: newSession.CoachID,
@@ -582,7 +580,7 @@ export default function BookingsSessions() {
       ? `${selectedSession.EndDate} ${selectedSession.EndTime}`
       : "";
       await axios.put(`/booking/sessions/${selectedSession.SessionID}`, {
-        Branch: selectedSession.Branch,
+        Branch: selectedSession.BranchID,
         SessionName: selectedSession.SessionName,
         SessionType: selectedSession.SessionType,
         CoachID: selectedSession.CoachID,
@@ -993,10 +991,11 @@ export default function BookingsSessions() {
         <InputLabel>Branch</InputLabel>
         <Select
           label="Branch"
-          value={newSession.Branch || ""}
-          onChange={(e) => setNewSession({ ...newSession, Branch: e.target.value })}
+          value={newSession.BranchID || ""}
+          onChange={(e) =>
+            setNewSession({ ...newSession, BranchID: e.target.value })
+          }
         >
-          <MenuItem value="">--Select Branch--</MenuItem>
           {branches.map((b) => (
             <MenuItem key={b.value} value={b.value}>
               {b.label}

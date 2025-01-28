@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('coaching_sessions', function (Blueprint $table) {
             $table->id('SessionID');
+            $table->unsignedBigInteger('BranchID')->nullable();
+            $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->string('SessionName');
             $table->string('SessionType')->nullable(); // "group class" or "personal training"
             $table->unsignedBigInteger('CoachID');

@@ -443,12 +443,12 @@ class TestDataSeeder extends Seeder
             }
         }
 
-        // 24) Coaches
+      // 24) Coaches
         $coaches = [];
         for ($i = 1; $i <= 5; $i++) {
             $branchPick = $faker->randomElement($branches);
             $coaches[] = Coach::create([
-                'BranchID'     => $branchPick->BranchID,
+                'BranchID'     => $branchPick->BranchID,  // a real branch ID
                 'FullName'     => $faker->name,
                 'Specialty'    => $faker->randomElement(['Yoga','Boxing','Zumba','Crossfit']),
                 'Availability' => 'Weekdays 5AM - 9PM',
@@ -461,6 +461,7 @@ class TestDataSeeder extends Seeder
         foreach ($coaches as $coach) {
             for ($i = 1; $i <= 2; $i++) {
                 $sessions[] = CoachingSession::create([
+                    'BranchID'    => $coach->BranchID,  // use coach's branch
                     'SessionName' => $faker->sentence(2),
                     'SessionType' => $faker->randomElement(['Group Class','Personal Training']),
                     'CoachID'     => $coach->CoachID,
@@ -492,10 +493,10 @@ class TestDataSeeder extends Seeder
             if ($faker->boolean(20)) {
                 $memberPick = $faker->randomElement($members);
                 SessionWaitlist::create([
-                    'SessionID'   => $session->SessionID,
-                    'MemberID'    => $memberPick->MemberID,
-                    'WaitlistDate'=> $faker->dateTimeBetween('-1 days','now'),
-                    'Status'      => 'Waiting',
+                    'SessionID'    => $session->SessionID,
+                    'MemberID'     => $memberPick->MemberID,
+                    'WaitlistDate' => $faker->dateTimeBetween('-1 days','now'),
+                    'Status'       => 'Waiting',
                 ]);
             }
         }

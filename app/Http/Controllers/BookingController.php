@@ -184,8 +184,8 @@ class BookingController extends Controller
 
         // If your sessions have a direct branch reference, you can do with('branch') or something similar.
         // We'll just do with('coach') for now:
-        $query = CoachingSession::with('coach');
-
+        $query = CoachingSession::with(['coach', 'branch']);
+            
         // If there's a branch param: ?branch=Branch2
         if ($request->filled('branch')) {
             $branchParam = $request->get('branch');
@@ -199,7 +199,7 @@ class BookingController extends Controller
         $data = $sessions->map(function($s) {
             return [
                 'SessionID'    => $s->SessionID,
-                'Branch'       => $s->BranchName ?? '',
+                'Branch'       => optional($s->branch)->BranchName ?? '',                
                 'SessionName'  => $s->SessionName,
                 'CoachName'    => optional($s->coach)->FullName ?? '',
                 'StartTime'    => $s->StartTime,
@@ -216,7 +216,7 @@ class BookingController extends Controller
     public function storeSession(Request $request)
     {
         $data = $request->validate([
-            'Branch'       => 'nullable|string|max:100',
+           'BranchID' => 'required|integer|exists:branches,BranchID',
             'SessionName'  => 'required|string|max:255',
             'SessionType'  => 'required|string|max:50', 
             'CoachID'      => 'required|exists:coaches,CoachID',
@@ -239,7 +239,7 @@ class BookingController extends Controller
     {
         $data = $request->validate([
             'SessionName'  => 'required|string|max:255',
-            'Branch'       => 'nullable|string|max:100',
+           'BranchID' => 'required|integer|exists:branches,BranchID',
             'SessionType'  => 'required|string|max:50',
             'CoachID'      => 'required|exists:coaches,CoachID',
             'StartTime'    => 'required|date_format:Y-m-d\TH:i',
