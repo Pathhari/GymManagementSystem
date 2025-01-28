@@ -519,7 +519,7 @@ class TestDataSeeder extends Seeder
                 $lockers[] = Locker::create([
                     'BranchID'     => $branchPick->BranchID,
                     'LockerNumber' => (string) $i, // or "LCK-$i" if you prefer
-                    'Status'       => $faker->randomElement(['Available','Occupied','OutOfService']),
+                    'Status'       => 'Available',
                     'Notes'        => $faker->sentence,
                 ]);
             }
