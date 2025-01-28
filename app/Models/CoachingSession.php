@@ -8,6 +8,7 @@ class CoachingSession extends Model
 {
     protected $primaryKey = 'SessionID';
     protected $fillable = [
+        'BranchID',   
         'SessionName',
         'SessionType',
         'CoachID',
@@ -21,6 +22,12 @@ class CoachingSession extends Model
     public function coach()
     {
         return $this->belongsTo(Coach::class, 'CoachID', 'CoachID');
+    }
+
+        // If you did BranchID and have a Branch model:
+    public function branch()
+    {
+         return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');
     }
 
     // A session can have many bookings

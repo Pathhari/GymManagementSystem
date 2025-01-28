@@ -152,6 +152,23 @@ class BookingController extends Controller
         return response()->json(['message' => 'Booking cancelled.']);
     }
 
+        public function index()
+    {
+        $coaches = Coach::orderBy('FullName')->get();
+
+        // return { "coaches": [ { CoachID, FullName, ... }, ... ] }
+        return response()->json(['coaches' => $coaches]);
+    }
+
+
+    public function indexFacilities()
+    {
+        $facilities = Facility::orderBy('Name','asc')->get();
+
+        // Return as { "facilities": [ {FacilityID, Name, ...}, ... ] }
+        return response()->json(['facilities' => $facilities]);
+    }
+
     /* ------------------------------------------------------------------
      * O. COACHING SESSIONS (Table #15)
      * ------------------------------------------------------------------ */
@@ -182,6 +199,7 @@ class BookingController extends Controller
         $data = $sessions->map(function($s) {
             return [
                 'SessionID'    => $s->SessionID,
+                'Branch'       => $s->BranchName ?? '',
                 'SessionName'  => $s->SessionName,
                 'CoachName'    => optional($s->coach)->FullName ?? '',
                 'StartTime'    => $s->StartTime,
@@ -189,8 +207,6 @@ class BookingController extends Controller
                 'Capacity'     => $s->Capacity,
                 'Participants' => $s->Participants ?? 0,
                 'Status'       => $s->Status ?? '',
-                // If you store BranchName or have a relationship, do:
-                'Branch'       => $s->BranchName ?? '',
             ];
         });
 
@@ -200,6 +216,7 @@ class BookingController extends Controller
     public function storeSession(Request $request)
     {
         $data = $request->validate([
+            'Branch'       => 'nullable|string|max:100',
             'SessionName'  => 'required|string|max:255',
             'SessionType'  => 'required|string|max:50', 
             'CoachID'      => 'required|exists:coaches,CoachID',
@@ -222,6 +239,7 @@ class BookingController extends Controller
     {
         $data = $request->validate([
             'SessionName'  => 'required|string|max:255',
+            'Branch'       => 'nullable|string|max:100',
             'SessionType'  => 'required|string|max:50',
             'CoachID'      => 'required|exists:coaches,CoachID',
             'StartTime'    => 'required|date_format:Y-m-d\TH:i',

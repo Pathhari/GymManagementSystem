@@ -27,7 +27,7 @@ use App\Models\Promotions;
 use App\Models\Invoice;
 use App\Models\InvoiceLineItem;
 use App\Models\Payment;
-use App\Models\PaymentInvoices;
+use App\Models\PaymentInvoice;
 use App\Models\Facility;
 use App\Models\Booking;
 use App\Models\DailyCashFlow;
@@ -341,7 +341,7 @@ class TestDataSeeder extends Seeder
                     'PaymentDate'   => $faker->dateTimeBetween($inv->InvoiceDate, 'now'),
                     'Status'        => 'Completed',
                 ]);
-                PaymentInvoices::create([
+                PaymentInvoice::create([
                     'PaymentID'       => $payment->PaymentID,
                     'InvoiceID'       => $inv->InvoiceID,
                     'AmountAllocated' => $inv->InvoiceTotal,

@@ -22,7 +22,10 @@ import {
   Divider,
   Menu,
   MenuItem,
-  Pagination, // <-- Import Pagination
+  Pagination,
+  FormControl,
+  InputLabel,
+  Select,
 } from "@mui/material";
 
 import { DataGrid } from "@mui/x-data-grid";
@@ -38,6 +41,11 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 
+import { LocalizationProvider, TimePicker } from "@mui/x-date-pickers";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import { DatePicker } from "@mui/x-date-pickers";
+import dayjs from "dayjs";
+
 import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
@@ -51,7 +59,7 @@ function createCalendarEvents(bookings, sessions) {
     type: "booking",
   }));
   const sessionEvents = sessions.map((s) => ({
-    id: `session-${s.SessionID}`,    
+    id: `session-${s.SessionID}`,
     date: s.StartTime.split(" ")[0],
     title: `Session: ${s.SessionName} (${s.StartTime} - ${s.EndTime})`,
     type: "session",
@@ -65,16 +73,29 @@ export default function BookingsSessions() {
   const [sessions, setSessions] = useState([]);
   const [calendarEvents, setCalendarEvents] = useState([]);
 
-  // ------------------ New: Branch Filter State ------------------
+  // For demonstration, if you also want a dynamic list of branches:
+  const [branches, setBranches] = useState([
+    // Hardcode or fetch from server
+    { value: 1, label: "Contnental Branch 1" },
+    { value: 2, label: "Contnental Branch 2" },
+  ]);
+
+  // ------------------ New: Branch Filter State (top-level search) ------------------
   const [branchFilter, setBranchFilter] = useState("");
 
   // ------------------ Pagination State for Event List ------------------
   const eventsPerPage = 6;
   const [eventPage, setEventPage] = useState(1);
+  const [members, setMembers] = useState([]);
+  const [facilities, setFacilities] = useState([]);
+  const [coaches, setCoaches] = useState([]);
 
   // ------------------ Load data from the server on mount ------------------
   useEffect(() => {
     fetchData();
+    fetchMembers();
+    fetchFacilities();
+    fetchCoaches();
   }, []);
 
   const fetchData = async () => {
@@ -95,6 +116,38 @@ export default function BookingsSessions() {
     }
   };
 
+  const fetchMembers = async () => {
+    try {
+      const res = await axios.get("/membership/members");
+      setMembers(res.data.members || []);
+    } catch (err) {
+      console.error("Failed to load members:", err);
+      setMembers([]);
+    }
+  };
+
+  async function fetchFacilities() {
+    try {
+      const res = await axios.get("/booking/facilities");
+      // Must match the shape => { facilities: [ ... ] }
+      setFacilities(res.data.facilities || []);
+    } catch (err) {
+      console.error("Failed to load facilities:", err);
+      setFacilities([]);
+    }
+  }
+
+  async function fetchCoaches() {
+    try {
+      const res = await axios.get("/booking/coaches");
+      // { coaches: [ { CoachID, FullName, ... }, ... ] }
+      setCoaches(res.data.coaches || []);
+    } catch (err) {
+      console.error("Failed to load coaches:", err);
+      setCoaches([]);
+    }
+  }
+
   // ------------------ Tabs & Search ------------------
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
@@ -108,6 +161,7 @@ export default function BookingsSessions() {
   };
 
   // ------------------ Filter the table data ------------------
+  // We'll assume each booking has a "Branch" field from the server.
   const filteredBookings = bookings.filter((b) => {
     const branchMatches = branchFilter ? b.Branch === branchFilter : true;
     const searchMatches = Object.values(b).some((val) =>
@@ -115,6 +169,7 @@ export default function BookingsSessions() {
     );
     return branchMatches && searchMatches;
   });
+  // Similarly for sessions if you store a "Branch" or "BranchID" field
   const filteredSessions = sessions.filter((s) => {
     const branchMatches = branchFilter ? s.Branch === branchFilter : true;
     const searchMatches = Object.values(s).some((val) =>
@@ -245,17 +300,18 @@ export default function BookingsSessions() {
 
   // ------------------ Column Definitions for DataGrid ------------------
   const bookingColumns = [
-    { field: "BookingID", headerName: "Booking ID", width: 120 },
+    { field: "BookingID", headerName: "Booking ID", width: 100 },
+    { field: "Branch", headerName: "Branch", width: 150 },
     { field: "MemberName", headerName: "Member Name", width: 150 },
     { field: "FacilityName", headerName: "Facility", width: 130 },
-    { field: "BookingDate", headerName: "Date", width: 120 },
-    { field: "BookingTime", headerName: "Time", width: 140 },
-    { field: "Duration", headerName: "Duration", width: 100 },
-    { field: "Status", headerName: "Status", width: 110 },
+    { field: "BookingDate", headerName: "Date", width: 100 },
+    { field: "BookingTime", headerName: "Time", width: 100 },
+    { field: "Duration", headerName: "Duration", width: 80 },
+    { field: "Status", headerName: "Status", width: 90 },
     {
       field: "Actions",
       headerName: "Actions",
-      width: 230,
+      width: 210,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
@@ -267,16 +323,6 @@ export default function BookingsSessions() {
               onClick={() => handleViewBooking(params.row.BookingID)}
             >
               <VisibilityIcon />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Edit">
-            <Button
-              variant="contained"
-              color="primary"
-              sx={{ minWidth: 40, padding: "6px" }}
-              onClick={() => handleEditBooking(params.row.BookingID)}
-            >
-              <EditIcon />
             </Button>
           </Tooltip>
           <Tooltip title="Cancel">
@@ -296,6 +342,7 @@ export default function BookingsSessions() {
 
   const sessionColumns = [
     { field: "SessionID", headerName: "Session ID", width: 120 },
+    { field: "Branch", headerName: "Branch", width: 150 },
     { field: "SessionName", headerName: "Session Name", width: 150 },
     { field: "CoachName", headerName: "Coach Name", width: 140 },
     { field: "StartTime", headerName: "Start Time", width: 150 },
@@ -357,6 +404,7 @@ export default function BookingsSessions() {
 
   const csvHeadersBookings = [
     { label: "Booking ID", key: "BookingID" },
+    { label: "Branch", key: "Branch" },
     { label: "Member Name", key: "MemberName" },
     { label: "Facility", key: "FacilityName" },
     { label: "Date", key: "BookingDate" },
@@ -383,6 +431,7 @@ export default function BookingsSessions() {
       doc.text("Bookings Export", 14, 10);
       const rowsForPDF = filteredBookings.map((b) => [
         b.BookingID,
+        b.Branch,
         b.MemberName,
         b.FacilityName,
         b.BookingDate,
@@ -391,7 +440,7 @@ export default function BookingsSessions() {
         b.Status,
       ]);
       doc.autoTable({
-        head: [["ID", "Member", "Facility", "Date", "Time", "Dur", "Status"]],
+        head: [["ID", "Branch", "Member", "Facility", "Date", "Time", "Dur", "Status"]],
         body: rowsForPDF,
         startY: 20,
       });
@@ -411,7 +460,7 @@ export default function BookingsSessions() {
       ]);
       doc.autoTable({
         head: [
-          ["ID", "Name", "Coach", "Start", "End", "Cap", "Participants", "Status"],
+          ["ID", "SessionName", "Coach", "Start", "End", "Cap", "Participants", "Status"],
         ],
         body: rowsForPDF,
         startY: 20,
@@ -430,10 +479,21 @@ export default function BookingsSessions() {
     Duration: "",
     PaymentID: null,
     Status: "",
+    Branch: "",
   });
+
+  // Because user must pick a branch first => then we filter facilities for that branch
+  const [selectedBranchForBooking, setSelectedBranchForBooking] = useState("");
+
+  // Filter facilities by selectedBranchForBooking
+  const facilitiesForBranch = selectedBranchForBooking
+  ? facilities.filter((f) => f.BranchID === selectedBranchForBooking)
+  : facilities;
+
   const handleCreateBooking = async () => {
     try {
       await axios.post("/booking", {
+        Branch: selectedBranchForBooking, // if your DB has a Branch column
         MemberID: newBooking.MemberID,
         FacilityID: newBooking.FacilityID,
         BookingDate: newBooking.BookingDate,
@@ -451,23 +511,35 @@ export default function BookingsSessions() {
 
   const [isAddSessionOpen, setAddSessionOpen] = useState(false);
   const [newSession, setNewSession] = useState({
+    Branch: "",
     SessionName: "",
     SessionType: "",
     CoachID: "",
+    StartDate: "",
     StartTime: "",
+    EndDate: "",
     EndTime: "",
     Capacity: "",
     Location: "",
     Fee: "",
   });
+
   const handleCreateSession = async () => {
     try {
+      const startFull = newSession.StartDate && newSession.StartTime
+      ? `${newSession.StartDate} ${newSession.StartTime}`
+      : "";
+      const endFull = newSession.EndDate && newSession.EndTime
+      ? `${newSession.EndDate} ${newSession.EndTime}`
+      : "";
+      // Use newSession.Branch here, not newSession.BranchID
       await axios.post("/booking/sessions", {
+        Branch: newSession.Branch,
         SessionName: newSession.SessionName,
         SessionType: newSession.SessionType,
         CoachID: newSession.CoachID,
-        StartTime: newSession.StartTime,
-        EndTime: newSession.EndTime,
+        StartTime: startFull, // e.g. "YYYY-MM-DD HH:mm:ss"
+        EndTime: endFull,        
         Capacity: newSession.Capacity,
         Location: newSession.Location,
         Fee: newSession.Fee,
@@ -484,6 +556,7 @@ export default function BookingsSessions() {
     if (!selectedBooking) return;
     try {
       await axios.put(`/booking/${selectedBooking.BookingID}`, {
+        Branch: selectedBooking.Branch,
         MemberID: selectedBooking.MemberID,
         FacilityID: selectedBooking.FacilityID,
         BookingDate: selectedBooking.BookingDate,
@@ -502,12 +575,19 @@ export default function BookingsSessions() {
   const handleUpdateSession = async () => {
     if (!selectedSession) return;
     try {
+      const startFull = selectedSession.StartDate && selectedSession.StartTime
+      ? `${selectedSession.StartDate} ${selectedSession.StartTime}`
+      : "";
+    const endFull = selectedSession.EndDate && selectedSession.EndTime
+      ? `${selectedSession.EndDate} ${selectedSession.EndTime}`
+      : "";
       await axios.put(`/booking/sessions/${selectedSession.SessionID}`, {
+        Branch: selectedSession.Branch,
         SessionName: selectedSession.SessionName,
         SessionType: selectedSession.SessionType,
         CoachID: selectedSession.CoachID,
-        StartTime: selectedSession.StartTime,
-        EndTime: selectedSession.EndTime,
+        StartTime: startFull,
+        EndTime: endFull,
         Capacity: selectedSession.Capacity,
         Location: selectedSession.Location,
         Fee: selectedSession.Fee,
@@ -520,761 +600,1059 @@ export default function BookingsSessions() {
   };
 
   // ------------------ Pagination for Event List ------------------
-  // Calculate the events to display on the current page:
   const indexOfLastEvent = eventPage * eventsPerPage;
   const indexOfFirstEvent = indexOfLastEvent - eventsPerPage;
   const currentEvents = calendarEvents.slice(indexOfFirstEvent, indexOfLastEvent);
 
-  // Change page handler for Pagination component
   const handleEventPageChange = (event, value) => {
     setEventPage(value);
   };
 
   // ------------------ Render ------------------
   return (
-    <Box sx={{ p: 4 }}>
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 2, minHeight: 550 }}>
-            <Typography variant="h6" gutterBottom>
-              Calendar
-            </Typography>
-            <FullCalendar
-              plugins={[dayGridPlugin, interactionPlugin]}
-              initialView="dayGridMonth"
-              events={fullCalendarEvents}
-              height="auto"
-              editable
-              validRange={{
-                start: new Date().toISOString().split("T")[0],
-              }}
-              dateClick={handleDateClick}
-              eventDrop={handleEventDrop}
-            />
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Drag events to reschedule; cannot schedule on past dates.
-            </Typography>
-          </Paper>
-        </Grid>
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
+      <Box sx={{ p: 4 }}>
+        {/* Top row: Calendar + Event List */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid item xs={12} md={8}>
+            <Paper sx={{ p: 2, minHeight: 550 }}>
+              <Typography variant="h6" gutterBottom>
+                Calendar
+              </Typography>
+              <FullCalendar
+                plugins={[dayGridPlugin, interactionPlugin]}
+                initialView="dayGridMonth"
+                events={fullCalendarEvents}
+                height="auto"
+                editable
+                validRange={{
+                  start: new Date().toISOString().split("T")[0],
+                }}
+                dateClick={handleDateClick}
+                eventDrop={handleEventDrop}
+              />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Drag events to reschedule; cannot schedule on past dates.
+              </Typography>
+            </Paper>
+          </Grid>
 
-        {/* Event List */}
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, minHeight: 550 }}>
-            <Typography variant="h6" gutterBottom>
-              Event List
-            </Typography>
-            <Divider sx={{ mb: 2 }} />
-            <List dense sx={{ maxHeight: 500, overflowY: "auto" }}>
-              {calendarEvents.length === 0 ? (
-                <ListItem>
-                  <ListItemText
-                    primary="No events for this month."
-                    primaryTypographyProps={{ color: "text.secondary" }}
-                  />
-                </ListItem>
-              ) : (
-                currentEvents.map((ev) => (
-                  <Paper
-                    key={ev.id}
-                    variant="outlined"
-                    sx={{ mb: 1, p: 1, borderRadius: 2 }}
-                  >
-                    <ListItem
-                      secondaryAction={
-                        <Box>
-                          <Tooltip title="Edit Event">
-                            <IconButton onClick={() => handleEditEvent(ev.id)}>
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete Event">
-                            <IconButton onClick={() => handleDeleteEvent(ev.id)} sx={{ ml: 1 }}>
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      }
-                      sx={{ py: 0 }}
-                    >
-                      <ListItemText
-                        primary={ev.title}
-                        primaryTypographyProps={{ fontWeight: 600, fontSize: "0.95rem" }}
-                        secondary={`Date: ${ev.date}`}
-                      />
-                    </ListItem>
-                  </Paper>
-                ))
-              )}
-            </List>
-            {/* Pagination Controls */}
-            {calendarEvents.length > eventsPerPage && (
-              <Box sx={{ mt: 2, display: "flex", justifyContent: "center" }}>
-                <Pagination
-                  count={Math.ceil(calendarEvents.length / eventsPerPage)}
-                  page={eventPage}
-                  onChange={handleEventPageChange}
-                  size="small"
-                />
-              </Box>
-            )}
-          </Paper>
-        </Grid>
-      </Grid>
-
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <Typography variant="h4" gutterBottom>
-          Bookings & Sessions
-        </Typography>
-        <Tabs value={activeTab} onChange={handleTabChange}>
-          <Tab icon={<CalendarTodayIcon />} label="Bookings" />
-          <Tab icon={<FitnessCenterIcon />} label="Sessions" />
-        </Tabs>
-      </Box>
-      &nbsp;
-
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-          <Box sx={{ display: "flex", gap: 2 }}>
-            {/* Branch Filter Dropdown */}
-            <TextField
-              select
-              label="Branch"
-              value={branchFilter}
-              onChange={(e) => setBranchFilter(e.target.value)}
-              size="small"
-              sx={{ width: 150 }}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="Contnental Branch 1">Contnental Branch 1</MenuItem>
-            <MenuItem value="Contnental Branch 2">Contnental Branch 2</MenuItem>
-              {/* Add additional branches here */}
-            </TextField>
-            {/* Search Box */}
-            <TextField
-              placeholder="Search"
-              value={searchTerm}
-              onChange={handleSearchChange}
-              variant="outlined"
-              size="small"
-              sx={{ width: "100%", maxWidth: 300 }}
-            />
-          </Box>
-          {/* Export + Add Buttons */}
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Button
-              variant="outlined"
-              onClick={handleExportClick}
-              startIcon={<FileDownloadIcon />}
-              sx={{ textTransform: "none" }}
-            >
-              Export
-            </Button>
-            <Menu
-              anchorEl={exportAnchor}
-              open={openExport}
-              onClose={handleExportClose}
-              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-            >
-              <MenuItem>
-                {activeTab === 0 ? (
-                  <CSVLink
-                    data={filteredBookings}
-                    headers={csvHeadersBookings}
-                    filename="Bookings.csv"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      textDecoration: "none",
-                      color: "inherit",
-                    }}
-                  >
-                    <Typography>Export CSV</Typography>
-                  </CSVLink>
+          {/* Event List */}
+          <Grid item xs={12} md={4}>
+            <Paper sx={{ p: 2, minHeight: 550 }}>
+              <Typography variant="h6" gutterBottom>
+                Event List
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+              <List dense sx={{ maxHeight: 500, overflowY: "auto" }}>
+                {calendarEvents.length === 0 ? (
+                  <ListItem>
+                    <ListItemText
+                      primary="No events for this month."
+                      primaryTypographyProps={{ color: "text.secondary" }}
+                    />
+                  </ListItem>
                 ) : (
-                  <CSVLink
-                    data={filteredSessions}
-                    headers={csvHeadersSessions}
-                    filename="Sessions.csv"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      textDecoration: "none",
-                      color: "inherit",
-                    }}
-                  >
-                    <Typography>Export CSV</Typography>
-                  </CSVLink>
+                  currentEvents.map((ev) => (
+                    <Paper
+                      key={ev.id}
+                      variant="outlined"
+                      sx={{ mb: 1, p: 1, borderRadius: 2 }}
+                    >
+                      <ListItem
+                        secondaryAction={
+                          <Box>
+                            <Tooltip title="Edit Event">
+                              <IconButton onClick={() => handleEditEvent(ev.id)}>
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete Event">
+                              <IconButton
+                                onClick={() => handleDeleteEvent(ev.id)}
+                                sx={{ ml: 1 }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        }
+                        sx={{ py: 0 }}
+                      >
+                        <ListItemText
+                          primary={ev.title}
+                          primaryTypographyProps={{
+                            fontWeight: 600,
+                            fontSize: "0.95rem",
+                          }}
+                          secondary={`Date: ${ev.date}`}
+                        />
+                      </ListItem>
+                    </Paper>
+                  ))
                 )}
-              </MenuItem>
-              <MenuItem onClick={handleExportPDF}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  <Typography>Export PDF</Typography>
+              </List>
+              {calendarEvents.length > eventsPerPage && (
+                <Box sx={{ mt: 2, display: "flex", justifyContent: "center" }}>
+                  <Pagination
+                    count={Math.ceil(calendarEvents.length / eventsPerPage)}
+                    page={eventPage}
+                    onChange={handleEventPageChange}
+                    size="small"
+                  />
                 </Box>
-              </MenuItem>
-            </Menu>
+              )}
+            </Paper>
+          </Grid>
+        </Grid>
 
-            {/* Add Booking / Add Session */}
-            {activeTab === 0 ? (
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => setAddBookingOpen(true)}
-              >
-                Add Booking
-              </Button>
-            ) : (
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => setAddSessionOpen(true)}
-              >
-                Add Session
-              </Button>
-            )}
-          </Box>
-        </Box>
-
-        <div style={{ height: 420, width: "100%" }}>
-          <DataGrid
-            rows={rows}
-            columns={columns}
-            pageSize={5}
-            rowsPerPageOptions={[5, 10]}
-            getRowId={getRowId}
-          />
-        </div>
-      </Paper>
-
-      {/* ==================== DIALOGS ==================== */}
-
-      {/* 1) Add Booking Dialog */}
-      <Dialog
-        open={isAddBookingOpen}
-        onClose={() => setAddBookingOpen(false)}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Add New Booking</DialogTitle>
-        <DialogContent dividers>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <TextField
-              label="Member ID"
-              size="small"
-              value={newBooking.MemberID}
-              onChange={(e) => setNewBooking({ ...newBooking, MemberID: e.target.value })}
-            />
-            <TextField
-              label="Facility ID"
-              size="small"
-              value={newBooking.FacilityID}
-              onChange={(e) => setNewBooking({ ...newBooking, FacilityID: e.target.value })}
-            />
-            <TextField
-              label="Booking Date (YYYY-MM-DD)"
-              size="small"
-              value={newBooking.BookingDate}
-              onChange={(e) => setNewBooking({ ...newBooking, BookingDate: e.target.value })}
-            />
-            <TextField
-              label="Booking Time (HH:MM)"
-              size="small"
-              value={newBooking.BookingTime}
-              onChange={(e) => setNewBooking({ ...newBooking, BookingTime: e.target.value })}
-            />
-            <TextField
-              label="Duration"
-              size="small"
-              value={newBooking.Duration}
-              onChange={(e) => setNewBooking({ ...newBooking, Duration: e.target.value })}
-            />
-            <TextField
-              label="Payment ID (optional)"
-              size="small"
-              value={newBooking.PaymentID || ""}
-              onChange={(e) => setNewBooking({ ...newBooking, PaymentID: e.target.value })}
-            />
-            <TextField
-              label="Status"
-              size="small"
-              value={newBooking.Status}
-              onChange={(e) => setNewBooking({ ...newBooking, Status: e.target.value })}
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddBookingOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreateBooking}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* 2) Add Session Dialog */}
-      <Dialog
-        open={isAddSessionOpen}
-        onClose={() => setAddSessionOpen(false)}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Add New Session</DialogTitle>
-        <DialogContent dividers>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <TextField
-              label="Session Name"
-              size="small"
-              value={newSession.SessionName}
-              onChange={(e) => setNewSession({ ...newSession, SessionName: e.target.value })}
-            />
-            <TextField
-              label="Session Type"
-              size="small"
-              value={newSession.SessionType}
-              onChange={(e) => setNewSession({ ...newSession, SessionType: e.target.value })}
-            />
-            <TextField
-              label="Coach ID"
-              size="small"
-              value={newSession.CoachID}
-              onChange={(e) => setNewSession({ ...newSession, CoachID: e.target.value })}
-            />
-            <TextField
-              label="Start Time (YYYY-MM-DDTHH:MM)"
-              size="small"
-              value={newSession.StartTime}
-              onChange={(e) => setNewSession({ ...newSession, StartTime: e.target.value })}
-            />
-            <TextField
-              label="End Time (YYYY-MM-DDTHH:MM)"
-              size="small"
-              value={newSession.EndTime}
-              onChange={(e) => setNewSession({ ...newSession, EndTime: e.target.value })}
-            />
-            <TextField
-              label="Capacity"
-              type="number"
-              size="small"
-              value={newSession.Capacity}
-              onChange={(e) => setNewSession({ ...newSession, Capacity: e.target.value })}
-            />
-            <TextField
-              label="Location"
-              size="small"
-              value={newSession.Location}
-              onChange={(e) => setNewSession({ ...newSession, Location: e.target.value })}
-            />
-            <TextField
-              label="Fee"
-              type="number"
-              size="small"
-              value={newSession.Fee}
-              onChange={(e) => setNewSession({ ...newSession, Fee: e.target.value })}
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddSessionOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreateSession}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* 3) Add Event from Calendar (Optional) */}
-      <Dialog
-        open={isAddCalendarEventOpen}
-        onClose={() => setAddCalendarEventOpen(false)}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>
-          New Schedule for {selectedDate?.toDateString() || "???"}
-        </DialogTitle>
-        <DialogContent dividers>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <TextField label="Title" size="small" />
-            <TextField label="Description" size="small" />
-            <TextField label="Start Time" size="small" />
-            <TextField label="End Time" size="small" />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddCalendarEventOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={() =>
-              handleSaveCalendarEvent(
-                "Title from user",
-                "Description from user",
-                "startTime from user",
-                "endTime from user"
-              )
-            }
-          >
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* 4) Edit Event from List (Optional) */}
-      <Dialog
-        open={isEditEventOpen}
-        onClose={() => setEditEventOpen(false)}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Edit Event</DialogTitle>
-        <DialogContent dividers>
-          {selectedEvent && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <TextField
-                label="Title"
-                size="small"
-                value={selectedEvent.title}
-                onChange={(e) =>
-                  setSelectedEvent({ ...selectedEvent, title: e.target.value })
-                }
-              />
-              <TextField
-                label="Date (YYYY-MM-DD)"
-                size="small"
-                value={selectedEvent.date}
-                onChange={(e) =>
-                  setSelectedEvent({ ...selectedEvent, date: e.target.value })
-                }
-              />
-              <TextField
-                label="Description"
-                size="small"
-                value={selectedEvent.description || ""}
-                onChange={(e) =>
-                  setSelectedEvent({
-                    ...selectedEvent,
-                    description: e.target.value,
-                  })
-                }
-              />
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditEventOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSaveEditedEvent}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* 5) View Booking */}
-      <Dialog
-        open={viewBookingModal}
-        onClose={() => setViewBookingModal(false)}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>
-          <Typography variant="h6" color="primary">
-            Booking Details
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <Typography variant="h4" gutterBottom>
+            Bookings & Sessions
           </Typography>
-        </DialogTitle>
-        <DialogContent dividers>
-          {selectedBooking && (
-            <Box sx={{ p: 2 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={12}></Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Booking ID:
-                  </Typography>
-                  <Typography variant="body1">{selectedBooking.BookingID}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Member Name:
-                  </Typography>
-                  <Typography variant="body1">{selectedBooking.MemberName}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Facility Name:
-                  </Typography>
-                  <Typography variant="body1">{selectedBooking.FacilityName}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Date:
-                  </Typography>
-                  <Typography variant="body1">{selectedBooking.BookingDate}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Time:
-                  </Typography>
-                  <Typography variant="body1">{selectedBooking.BookingTime}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Duration:
-                  </Typography>
-                  <Typography variant="body1">{selectedBooking.Duration}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Status:
-                  </Typography>
-                  <Typography variant="body1">{selectedBooking.Status}</Typography>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewBookingModal(false)} variant="contained" color="primary">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
+          <Tabs value={activeTab} onChange={handleTabChange}>
+            <Tab icon={<CalendarTodayIcon />} label="Bookings" />
+            <Tab icon={<FitnessCenterIcon />} label="Sessions" />
+          </Tabs>
+        </Box>
+        &nbsp;
 
-      {/* 6) Edit Booking */}
-      <Dialog
-        open={editBookingModal}
-        onClose={() => setEditBookingModal(false)}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Edit Booking</DialogTitle>
-        <DialogContent dividers>
-          {selectedBooking && (
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+            <Box sx={{ display: "flex", gap: 2 }}>
+              {/* Branch Filter Dropdown */}
+              <TextField
+                select
+                label="Branch"
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                size="small"
+                sx={{ width: 150 }}
+              >
+                <MenuItem value="">All</MenuItem>
+                {branches.map((b) => (
+                  <MenuItem key={b.value} value={b.value}>
+                    {b.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              {/* Search Box */}
+              <TextField
+                placeholder="Search"
+                value={searchTerm}
+                onChange={handleSearchChange}
+                variant="outlined"
+                size="small"
+                sx={{ width: "100%", maxWidth: 300 }}
+              />
+            </Box>
+            <Box sx={{ display: "flex", gap: 1 }}>
+              <Button
+                variant="outlined"
+                onClick={handleExportClick}
+                startIcon={<FileDownloadIcon />}
+                sx={{ textTransform: "none" }}
+              >
+                Export
+              </Button>
+              <Menu
+                anchorEl={exportAnchor}
+                open={openExport}
+                onClose={handleExportClose}
+                anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+              >
+                <MenuItem>
+                  {activeTab === 0 ? (
+                    <CSVLink
+                      data={filteredBookings}
+                      headers={csvHeadersBookings}
+                      filename="Bookings.csv"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        textDecoration: "none",
+                        color: "inherit",
+                      }}
+                    >
+                      <Typography>Export CSV</Typography>
+                    </CSVLink>
+                  ) : (
+                    <CSVLink
+                      data={filteredSessions}
+                      headers={csvHeadersSessions}
+                      filename="Sessions.csv"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        textDecoration: "none",
+                        color: "inherit",
+                      }}
+                    >
+                      <Typography>Export CSV</Typography>
+                    </CSVLink>
+                  )}
+                </MenuItem>
+                <MenuItem onClick={handleExportPDF}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <Typography>Export PDF</Typography>
+                  </Box>
+                </MenuItem>
+              </Menu>
+
+              {activeTab === 0 ? (
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => setAddBookingOpen(true)}
+                >
+                  Add Booking
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => setAddSessionOpen(true)}
+                >
+                  Add Session
+                </Button>
+              )}
+            </Box>
+          </Box>
+
+          <div style={{ height: 420, width: "100%" }}>
+            <DataGrid
+              rows={rows}
+              columns={columns}
+              pageSize={5}
+              rowsPerPageOptions={[5, 10]}
+              getRowId={getRowId}
+            />
+          </div>
+        </Paper>
+
+        {/* ==================== DIALOGS ==================== */}
+
+        {/* 1) Add Booking Dialog */}
+        <Dialog
+          open={isAddBookingOpen}
+          onClose={() => setAddBookingOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>Add New Booking</DialogTitle>
+          <DialogContent dividers>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <TextField
-                label="Member Name"
-                size="small"
-                value={selectedBooking.MemberName}
-                onChange={(e) =>
-                  setSelectedBooking({ ...selectedBooking, MemberName: e.target.value })
-                }
-              />
-              <TextField
-                label="Facility Name"
-                size="small"
-                value={selectedBooking.FacilityName}
-                onChange={(e) =>
-                  setSelectedBooking({ ...selectedBooking, FacilityName: e.target.value })
-                }
-              />
-              <TextField
+              {/* Branch (for the new booking) */}
+              <FormControl fullWidth margin="normal" size="small">
+                <InputLabel>Branch</InputLabel>
+                <Select
+                  label="Branch"
+                  value={selectedBranchForBooking}
+                  onChange={(e) => {
+                    setSelectedBranchForBooking(e.target.value);
+                  }}
+                >
+                  <MenuItem value=""> --Select Branch-- </MenuItem>
+                  {branches.map((b) => (
+                    <MenuItem key={b.value} value={b.value}>
+                      {b.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              {/* Member Select */}
+              <FormControl fullWidth margin="normal" size="small">
+                <InputLabel>Member</InputLabel>
+                <Select
+                  label="Member"
+                  value={newBooking.MemberID || ""}
+                  onChange={(e) =>
+                    setNewBooking({ ...newBooking, MemberID: e.target.value })
+                  }
+                >
+                  {members.map((m) => (
+                    <MenuItem key={m.MemberID} value={m.MemberID}>
+                      {m.FullName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              {/* Facility Select (filtered by branch) */}
+              <FormControl fullWidth margin="normal" size="small">
+                <InputLabel>Facility</InputLabel>
+                <Select
+                  label="Facility"
+                  value={newBooking.FacilityID || ""}
+                  onChange={(e) =>
+                    setNewBooking({ ...newBooking, FacilityID: e.target.value })
+                  }
+                >
+                  {facilitiesForBranch.map((f) => (
+                    <MenuItem key={f.FacilityID} value={f.FacilityID}>
+                      {f.Name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              {/* Date Picker */}
+              <DatePicker
                 label="Booking Date"
-                size="small"
-                value={selectedBooking.BookingDate}
-                onChange={(e) =>
-                  setSelectedBooking({ ...selectedBooking, BookingDate: e.target.value })
+                value={
+                  newBooking.BookingDate ? dayjs(newBooking.BookingDate) : null
                 }
+                onChange={(dayjsValue) => {
+                  const formattedString = dayjsValue
+                    ? dayjsValue.format("YYYY-MM-DD")
+                    : "";
+                  setNewBooking((prev) => ({
+                    ...prev,
+                    BookingDate: formattedString,
+                  }));
+                }}
+                renderInput={(params) => <TextField {...params} size="small" />}
               />
-              <TextField
+
+              {/* Time Picker */}
+              <TimePicker
                 label="Booking Time"
+                value={
+                  newBooking.BookingTime
+                    ? dayjs(newBooking.BookingTime, "HH:mm:ss")
+                    : null
+                }
+                onChange={(timeValue) => {
+                  const formatted = timeValue
+                    ? timeValue.format("HH:mm:ss")
+                    : "";
+                  setNewBooking((prev) => ({
+                    ...prev,
+                    BookingTime: formatted,
+                  }));
+                }}
+                renderInput={(params) => <TextField {...params} size="small" />}
+              />
+
+              <TextField
+                label="Duration (hrs)"
                 size="small"
-                value={selectedBooking.BookingTime}
+                value={newBooking.Duration}
                 onChange={(e) =>
-                  setSelectedBooking({ ...selectedBooking, BookingTime: e.target.value })
+                  setNewBooking({ ...newBooking, Duration: e.target.value })
                 }
               />
               <TextField
-                label="Duration"
+                label="Payment ID (optional)"
                 size="small"
-                value={selectedBooking.Duration}
+                value={newBooking.PaymentID || ""}
                 onChange={(e) =>
-                  setSelectedBooking({ ...selectedBooking, Duration: e.target.value })
+                  setNewBooking({ ...newBooking, PaymentID: e.target.value })
                 }
               />
               <TextField
                 label="Status"
                 size="small"
-                value={selectedBooking.Status}
+                value={newBooking.Status}
                 onChange={(e) =>
-                  setSelectedBooking({ ...selectedBooking, Status: e.target.value })
+                  setNewBooking({ ...newBooking, Status: e.target.value })
                 }
               />
             </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditBookingModal(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleUpdateBooking}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddBookingOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={handleCreateBooking}>
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-      {/* 7) View Session */}
-      <Dialog
-        open={viewSessionModal}
-        onClose={() => setViewSessionModal(false)}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>
-          <Typography variant="h6" color="primary">
-            Session Details
-          </Typography>
-        </DialogTitle>
-        <DialogContent dividers>
-          {selectedSession && (
-            <Box sx={{ p: 2 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={12}></Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Session ID:
-                  </Typography>
-                  <Typography variant="body1">{selectedSession.SessionID}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Session Name:
-                  </Typography>
-                  <Typography variant="body1">{selectedSession.SessionName}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Coach Name:
-                  </Typography>
-                  <Typography variant="body1">{selectedSession.CoachName}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Start Time:
-                  </Typography>
-                  <Typography variant="body1">{selectedSession.StartTime}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    End Time:
-                  </Typography>
-                  <Typography variant="body1">{selectedSession.EndTime}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Capacity:
-                  </Typography>
-                  <Typography variant="body1">{selectedSession.Capacity}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Participants:
-                  </Typography>
-                  <Typography variant="body1">{selectedSession.Participants}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Status:
-                  </Typography>
-                  <Typography variant="body1">{selectedSession.Status}</Typography>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewSessionModal(false)} variant="contained" color="primary">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
+        {/* 2) Add Session Dialog */}
+        <Dialog
+  open={isAddSessionOpen}
+  onClose={() => setAddSessionOpen(false)}
+  fullWidth
+  maxWidth="sm"
+>
+  <DialogTitle>Add New Session</DialogTitle>
+  <DialogContent dividers>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {/* Branch Selector */}
+      <FormControl fullWidth margin="normal" size="small">
+        <InputLabel>Branch</InputLabel>
+        <Select
+          label="Branch"
+          value={newSession.Branch || ""}
+          onChange={(e) => setNewSession({ ...newSession, Branch: e.target.value })}
+        >
+          <MenuItem value="">--Select Branch--</MenuItem>
+          {branches.map((b) => (
+            <MenuItem key={b.value} value={b.value}>
+              {b.label}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
 
-      {/* 8) Edit Session */}
-      <Dialog
-        open={editSessionModal}
-        onClose={() => setEditSessionModal(false)}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Edit Session</DialogTitle>
-        <DialogContent dividers>
-          {selectedSession && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <TextField
-                label="Session Name"
-                size="small"
-                value={selectedSession.SessionName}
-                onChange={(e) =>
-                  setSelectedSession({ ...selectedSession, SessionName: e.target.value })
-                }
-              />
-              <TextField
-                label="Session Type"
-                size="small"
-                value={selectedSession.SessionType}
-                onChange={(e) =>
-                  setSelectedSession({ ...selectedSession, SessionType: e.target.value })
-                }
-              />
-              <TextField
-                label="Coach Name"
-                size="small"
-                value={selectedSession.CoachName}
-                onChange={(e) =>
-                  setSelectedSession({ ...selectedSession, CoachName: e.target.value })
-                }
-              />
-              <TextField
-                label="Start Time"
-                size="small"
-                value={selectedSession.StartTime}
-                onChange={(e) =>
-                  setSelectedSession({ ...selectedSession, StartTime: e.target.value })
-                }
-              />
-              <TextField
-                label="End Time"
-                size="small"
-                value={selectedSession.EndTime}
-                onChange={(e) =>
-                  setSelectedSession({ ...selectedSession, EndTime: e.target.value })
-                }
-              />
-              <TextField
-                label="Capacity"
-                size="small"
-                value={selectedSession.Capacity}
-                onChange={(e) =>
-                  setSelectedSession({ ...selectedSession, Capacity: e.target.value })
-                }
-              />
-              <TextField
-                label="Location"
-                size="small"
-                value={selectedSession.Location}
-                onChange={(e) =>
-                  setSelectedSession({ ...selectedSession, Location: e.target.value })
-                }
-              />
-              <TextField
-                label="Fee"
-                size="small"
-                value={selectedSession.Fee}
-                onChange={(e) =>
-                  setSelectedSession({ ...selectedSession, Fee: e.target.value })
-                }
-              />
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditSessionModal(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleUpdateSession}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <TextField
+        label="Session Name"
+        size="small"
+        value={newSession.SessionName}
+        onChange={(e) =>
+          setNewSession({ ...newSession, SessionName: e.target.value })
+        }
+      />
+      <TextField
+        label="Session Type"
+        size="small"
+        value={newSession.SessionType}
+        onChange={(e) =>
+          setNewSession({ ...newSession, SessionType: e.target.value })
+        }
+      />
+
+      {/* Coach dropdown, if any */}
+      <FormControl fullWidth margin="normal" size="small">
+        <InputLabel>Coach</InputLabel>
+        <Select
+          label="Coach"
+          value={newSession.CoachID || ""}
+          onChange={(e) => setNewSession({ ...newSession, CoachID: e.target.value })}
+        >
+          {coaches.map((c) => (
+            <MenuItem key={c.CoachID} value={c.CoachID}>
+              {c.FullName}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      {/* Start Date */}
+      <DatePicker
+        label="Start Date"
+        value={newSession.StartDate ? dayjs(newSession.StartDate) : null}
+        onChange={(dayjsVal) => {
+          const dateStr = dayjsVal ? dayjsVal.format("YYYY-MM-DD") : "";
+          setNewSession({ ...newSession, StartDate: dateStr });
+        }}
+        renderInput={(params) => <TextField {...params} size="small" />}
+      />
+
+      {/* Start Time */}
+      <TimePicker
+        label="Start Time"
+        value={newSession.StartTime ? dayjs(newSession.StartTime, "HH:mm:ss") : null}
+        onChange={(timeVal) => {
+          const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
+          setNewSession({ ...newSession, StartTime: timeStr });
+        }}
+        renderInput={(params) => <TextField {...params} size="small" />}
+      />
+
+      {/* End Date */}
+      <DatePicker
+        label="End Date"
+        value={newSession.EndDate ? dayjs(newSession.EndDate) : null}
+        onChange={(dayjsVal) => {
+          const dateStr = dayjsVal ? dayjsVal.format("YYYY-MM-DD") : "";
+          setNewSession({ ...newSession, EndDate: dateStr });
+        }}
+        renderInput={(params) => <TextField {...params} size="small" />}
+      />
+
+      {/* End Time */}
+      <TimePicker
+        label="End Time"
+        value={newSession.EndTime ? dayjs(newSession.EndTime, "HH:mm:ss") : null}
+        onChange={(timeVal) => {
+          const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
+          setNewSession({ ...newSession, EndTime: timeStr });
+        }}
+        renderInput={(params) => <TextField {...params} size="small" />}
+      />
+
+      <TextField
+        label="Capacity"
+        type="number"
+        size="small"
+        value={newSession.Capacity}
+        onChange={(e) =>
+          setNewSession({ ...newSession, Capacity: e.target.value })
+        }
+      />
+      <TextField
+        label="Location"
+        size="small"
+        value={newSession.Location}
+        onChange={(e) =>
+          setNewSession({ ...newSession, Location: e.target.value })
+        }
+      />
+      <TextField
+        label="Fee"
+        type="number"
+        size="small"
+        value={newSession.Fee}
+        onChange={(e) => setNewSession({ ...newSession, Fee: e.target.value })}
+      />
     </Box>
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setAddSessionOpen(false)}>Cancel</Button>
+    <Button variant="contained" onClick={handleCreateSession}>
+      Save
+    </Button>
+  </DialogActions>
+</Dialog>
+
+
+        {/* 3) Add Event from Calendar (Optional) */}
+        <Dialog
+          open={isAddCalendarEventOpen}
+          onClose={() => setAddCalendarEventOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>
+            New Schedule for {selectedDate?.toDateString() || "???"}
+          </DialogTitle>
+          <DialogContent dividers>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <TextField label="Title" size="small" />
+              <TextField label="Description" size="small" />
+              <TextField label="Start Time" size="small" />
+              <TextField label="End Time" size="small" />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddCalendarEventOpen(false)}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={() =>
+                handleSaveCalendarEvent(
+                  "Title from user",
+                  "Description from user",
+                  "startTime from user",
+                  "endTime from user"
+                )
+              }
+            >
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* 4) Edit Event from List (Optional) */}
+        <Dialog
+          open={isEditEventOpen}
+          onClose={() => setEditEventOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>Edit Event</DialogTitle>
+          <DialogContent dividers>
+            {selectedEvent && (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <TextField
+                  label="Title"
+                  size="small"
+                  value={selectedEvent.title}
+                  onChange={(e) =>
+                    setSelectedEvent({ ...selectedEvent, title: e.target.value })
+                  }
+                />
+                <TextField
+                  label="Date (YYYY-MM-DD)"
+                  size="small"
+                  value={selectedEvent.date}
+                  onChange={(e) =>
+                    setSelectedEvent({ ...selectedEvent, date: e.target.value })
+                  }
+                />
+                <TextField
+                  label="Description"
+                  size="small"
+                  value={selectedEvent.description || ""}
+                  onChange={(e) =>
+                    setSelectedEvent({
+                      ...selectedEvent,
+                      description: e.target.value,
+                    })
+                  }
+                />
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditEventOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={handleSaveEditedEvent}>
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* 5) View Booking */}
+        <Dialog
+          open={viewBookingModal}
+          onClose={() => setViewBookingModal(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>
+            <Typography variant="h6" color="primary">
+              Booking Details
+            </Typography>
+          </DialogTitle>
+          <DialogContent dividers>
+            {selectedBooking && (
+              <Box sx={{ p: 2 }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}></Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Booking ID:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedBooking.BookingID}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Branch:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedBooking.Branch}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Member Name:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedBooking.MemberName}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Facility Name:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedBooking.FacilityName}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Date:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedBooking.BookingDate}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Time:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedBooking.BookingTime}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Duration:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedBooking.Duration}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Status:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedBooking.Status}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button
+              onClick={() => setViewBookingModal(false)}
+              variant="contained"
+              color="primary"
+            >
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* 6) Edit Booking */}
+        <Dialog
+          open={editBookingModal}
+          onClose={() => setEditBookingModal(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>Edit Booking</DialogTitle>
+          <DialogContent dividers>
+            {selectedBooking && (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <TextField
+                  label="Branch"
+                  size="small"
+                  value={selectedBooking.Branch}
+                  onChange={(e) =>
+                    setSelectedBooking({
+                      ...selectedBooking,
+                      Branch: e.target.value,
+                    })
+                  }
+                />
+                <TextField
+                  label="Member Name"
+                  size="small"
+                  value={selectedBooking.MemberName}
+                  onChange={(e) =>
+                    setSelectedBooking({
+                      ...selectedBooking,
+                      MemberName: e.target.value,
+                    })
+                  }
+                />
+                <TextField
+                  label="Facility Name"
+                  size="small"
+                  value={selectedBooking.FacilityName}
+                  onChange={(e) =>
+                    setSelectedBooking({
+                      ...selectedBooking,
+                      FacilityName: e.target.value,
+                    })
+                  }
+                />
+                <DatePicker
+                  label="Booking Date"
+                  value={
+                    selectedBooking.BookingDate
+                      ? dayjs(selectedBooking.BookingDate)
+                      : null
+                  }
+                  onChange={(newVal) => {
+                    const str = newVal ? newVal.format("YYYY-MM-DD") : "";
+                    setSelectedBooking({
+                      ...selectedBooking,
+                      BookingDate: str,
+                    });
+                  }}
+                  renderInput={(params) => <TextField {...params} size="small" />}
+                />
+                <TextField
+                  label="Booking Time"
+                  size="small"
+                  value={selectedBooking.BookingTime}
+                  onChange={(e) =>
+                    setSelectedBooking({
+                      ...selectedBooking,
+                      BookingTime: e.target.value,
+                    })
+                  }
+                />
+                <TextField
+                  label="Duration"
+                  size="small"
+                  value={selectedBooking.Duration}
+                  onChange={(e) =>
+                    setSelectedBooking({
+                      ...selectedBooking,
+                      Duration: e.target.value,
+                    })
+                  }
+                />
+                <TextField
+                  label="Status"
+                  size="small"
+                  value={selectedBooking.Status}
+                  onChange={(e) =>
+                    setSelectedBooking({
+                      ...selectedBooking,
+                      Status: e.target.value,
+                    })
+                  }
+                />
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditBookingModal(false)}>Cancel</Button>
+            <Button variant="contained" onClick={handleUpdateBooking}>
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* 7) View Session */}
+        <Dialog
+          open={viewSessionModal}
+          onClose={() => setViewSessionModal(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>
+            <Typography variant="h6" color="primary">
+              Session Details
+            </Typography>
+          </DialogTitle>
+          <DialogContent dividers>
+            {selectedSession && (
+              <Box sx={{ p: 2 }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}></Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Session ID:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedSession.SessionID}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Session Name:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedSession.SessionName}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Coach Name:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedSession.CoachName}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Start Time:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedSession.StartTime}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      End Time:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedSession.EndTime}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Capacity:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedSession.Capacity}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Participants:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedSession.Participants}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="textSecondary">
+                      Status:
+                    </Typography>
+                    <Typography variant="body1">
+                      {selectedSession.Status}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button
+              onClick={() => setViewSessionModal(false)}
+              variant="contained"
+              color="primary"
+            >
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* 8) Edit Session */}
+        <Dialog
+          open={editSessionModal}
+          onClose={() => setEditSessionModal(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>Edit Session</DialogTitle>
+          <DialogContent dividers>
+            {selectedSession && (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <TextField
+                  label="Branch"
+                  size="small"
+                  value={selectedSession.Branch || ""}
+                  onChange={(e) =>
+                    setSelectedSession({ ...selectedSession, Branch: e.target.value })
+                  }
+                />
+                <TextField
+                  label="Session Name"
+                  size="small"
+                  value={selectedSession.SessionName}
+                  onChange={(e) =>
+                    setSelectedSession({
+                      ...selectedSession,
+                      SessionName: e.target.value,
+                    })
+                  }
+                />
+                <TextField
+                  label="Session Type"
+                  size="small"
+                  value={selectedSession.SessionType}
+                  onChange={(e) =>
+                    setSelectedSession({
+                      ...selectedSession,
+                      SessionType: e.target.value,
+                    })
+                  }
+                />
+                <TextField
+                  label="Coach Name"
+                  size="small"
+                  value={selectedSession.CoachName}
+                  onChange={(e) =>
+                    setSelectedSession({
+                      ...selectedSession,
+                      CoachName: e.target.value,
+                    })
+                  }
+                />
+{/* Start Date */}
+<DatePicker
+      label="Start Date"
+      value={
+        selectedSession.StartDate
+          ? dayjs(selectedSession.StartDate) 
+          : null
+      }
+      onChange={(dayjsVal) => {
+        const dateStr = dayjsVal ? dayjsVal.format("YYYY-MM-DD") : "";
+        setSelectedSession((prev) => ({ ...prev, StartDate: dateStr }));
+      }}
+      renderInput={(params) => <TextField {...params} size="small" />}
+    />
+
+    {/* Start Time */}
+    <TimePicker
+      label="Start Time"
+      value={
+        selectedSession.StartTime
+          ? dayjs(selectedSession.StartTime, "HH:mm:ss")
+          : null
+      }
+      onChange={(timeVal) => {
+        const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
+        setSelectedSession((prev) => ({ ...prev, StartTime: timeStr }));
+      }}
+      renderInput={(params) => <TextField {...params} size="small" />}
+    />
+
+    {/* End Date */}
+    <DatePicker
+      label="End Date"
+      value={
+        selectedSession.EndDate
+          ? dayjs(selectedSession.EndDate)
+          : null
+      }
+      onChange={(dayjsVal) => {
+        const dateStr = dayjsVal ? dayjsVal.format("YYYY-MM-DD") : "";
+        setSelectedSession((prev) => ({ ...prev, EndDate: dateStr }));
+      }}
+      renderInput={(params) => <TextField {...params} size="small" />}
+    />
+
+    {/* End Time */}
+    <TimePicker
+      label="End Time"
+      value={
+        selectedSession.EndTime
+          ? dayjs(selectedSession.EndTime, "HH:mm:ss")
+          : null
+      }
+      onChange={(timeVal) => {
+        const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
+        setSelectedSession((prev) => ({ ...prev, EndTime: timeStr }));
+      }}
+      renderInput={(params) => <TextField {...params} size="small" />}
+    />
+                <TextField
+                  label="Capacity"
+                  size="small"
+                  value={selectedSession.Capacity}
+                  onChange={(e) =>
+                    setSelectedSession({
+                      ...selectedSession,
+                      Capacity: e.target.value,
+                    })
+                  }
+                />
+                <TextField
+                  label="Location"
+                  size="small"
+                  value={selectedSession.Location}
+                  onChange={(e) =>
+                    setSelectedSession({
+                      ...selectedSession,
+                      Location: e.target.value,
+                    })
+                  }
+                />
+                <TextField
+                  label="Fee"
+                  size="small"
+                  value={selectedSession.Fee}
+                  onChange={(e) =>
+                    setSelectedSession({
+                      ...selectedSession,
+                      Fee: e.target.value,
+                    })
+                  }
+                />
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditSessionModal(false)}>Cancel</Button>
+            <Button variant="contained" onClick={handleUpdateSession}>
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Box>
+    </LocalizationProvider>
   );
 }
-  

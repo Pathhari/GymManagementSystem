@@ -358,6 +358,9 @@ Route::prefix('booking')->group(function() {
         ->middleware('multiGuard:owner,admin,staff')
         ->name('booking.cancel');
     
+    Route::get('/coaches', [BookingController::class, 'index'])
+    ->middleware('multiGuard:owner,admin,staff')
+    ->name('coaches.index');
 
     // Facilities
     Route::get('facilities', [BookingController::class, 'indexFacilities'])
