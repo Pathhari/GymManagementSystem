@@ -17,21 +17,38 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  Card,
-  CardActionArea,
-  CardContent,
-  CardActions,
+  Autocomplete,
 } from "@mui/material";
+import { styled } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
-import Autocomplete from "@mui/material/Autocomplete";
 
-// Custom color gradients for statuses
+// Gradients for each status
 const statusGradients = {
   Available: "linear-gradient(135deg, #4caf50 0%, #66bb6a 100%)",
   Occupied: "linear-gradient(135deg, #f44336 0%, #ef5350 100%)",
   OutOfService: "linear-gradient(135deg, #9e9e9e 0%, #bdbdbd 100%)",
 };
+
+// Styled card with hover scale/shadow
+const LockerCard = styled(Paper)(({ theme }) => ({
+  borderRadius: theme.shape.borderRadius * 2,
+  overflow: "hidden",
+  color: "#fff",
+  padding: theme.spacing(2),
+  textAlign: "center",
+  height: "100%",
+  cursor: "pointer",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "space-between",
+  boxShadow: theme.shadows[4],
+  transition: "transform 0.3s ease, box-shadow 0.3s ease",
+  "&:hover": {
+    transform: "scale(1.03)",
+    boxShadow: theme.shadows[8],
+  },
+}));
 
 export default function LockerManagement() {
   // Clock
@@ -211,7 +228,6 @@ export default function LockerManagement() {
       .catch((err) => console.error("Error removing locker:", err));
   };
 
-  // UI Rendering
   return (
     <Box sx={{ p: 4 }}>
       {/* Clock */}
@@ -262,8 +278,8 @@ export default function LockerManagement() {
         Add Locker
       </Button>
 
-      {/* Locker Grid */}
-      <Grid container spacing={3}>
+      {/* Set columns={5} to ensure 5 lockers per row */}
+      <Grid container spacing={3} columns={5}>
         {filteredLockers
           .slice()
           .sort(
@@ -271,33 +287,14 @@ export default function LockerManagement() {
               parseInt(a.LockerNumber, 10) - parseInt(b.LockerNumber, 10)
           )
           .map((locker) => {
-            // Create color gradient for each status
-            const statusGradients = {
-              Available: "linear-gradient(135deg, #4caf50 0%, #66bb6a 100%)",
-              Occupied: "linear-gradient(135deg, #f44336 0%, #ef5350 100%)",
-              OutOfService: "linear-gradient(135deg, #9e9e9e 0%, #bdbdbd 100%)",
-            };
             const gradient =
               statusGradients[locker.Status] || statusGradients.OutOfService;
 
             return (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={locker.LockerID}>
-                <Paper
-                  sx={{
-                    borderRadius: 3,
-                    overflow: "hidden",
-                    background: gradient,
-                    color: "#fff",
-                    boxShadow: 4,
-                    "&:hover": { boxShadow: 6 },
-                    p: 2,
-                    textAlign: "center",
-                    height: "100%",
-                    cursor: "pointer",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "space-between",
-                  }}
+              // Each item takes up 1 column out of 5
+              <Grid item xs={1} key={locker.LockerID}>
+                <LockerCard
+                  sx={{ background: gradient }}
                   onClick={() => {
                     if (locker.Status === "Available") {
                       openBorrowForm(locker);
@@ -337,7 +334,7 @@ export default function LockerManagement() {
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Box>
-                </Paper>
+                </LockerCard>
               </Grid>
             );
           })}
