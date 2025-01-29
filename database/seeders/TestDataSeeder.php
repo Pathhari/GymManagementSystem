@@ -516,7 +516,7 @@ class TestDataSeeder extends Seeder
         // 29) Lockers
         $lockers = [];
         foreach ($branches as $branchPick) {
-            for ($i = 1; $i <= 100; $i++) {
+            for ($i = 1; $i <= 54; $i++) {
                 $lockers[] = Locker::create([
                     'BranchID'     => $branchPick->BranchID,
                     'LockerNumber' => (string) $i, // or "LCK-$i" if you prefer

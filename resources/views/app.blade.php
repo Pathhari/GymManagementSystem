@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>Contnental Club</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <!-- IMPORTANT: Add this -->
     @routes
     @viteReactRefresh

@@ -385,22 +385,18 @@ public function returnLockerKey($usageId)
     public function indexEquipment()
     {
         $staff = auth('staff')->user();
-
-        // If staff is logged in, show equipment specific to their branch.
-        // Otherwise (admin/owner), show all.
-        if ($staff) {
-            $equipment = Equipment::where('BranchID', $staff->BranchID)
+    
+        $equipment = $staff
+            ? Equipment::where('BranchID', $staff->BranchID)
                 ->orderBy('Name', 'asc')
-                ->get();
-        } else {
-            $equipment = Equipment::orderBy('Name', 'asc')->get();
-        }
-
-        return Inertia::render('Operations/Equipment/Index', [
+                ->get()
+            : Equipment::orderBy('Name', 'asc')->get();
+    
+        return response()->json([
             'equipment' => $equipment
         ]);
     }
-
+    
     /**
      * Create or update an Equipment record
      */
@@ -537,7 +533,18 @@ public function getMaintenanceStats()
         'pending_maintenance' => $query->where('status', 'pending')->count()
     ]);
 }
-    
+
+public function destroyMaintenanceLog($id)
+{
+    $log = MaintenanceLog::findOrFail($id);
+    $log->delete();
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Maintenance log deleted successfully.'
+    ]);
+}
+
     /* ------------------------------------------------------------------
      * S. MEMBERVISIT
      * ------------------------------------------------------------------ */
