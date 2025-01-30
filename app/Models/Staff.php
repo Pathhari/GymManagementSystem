@@ -4,10 +4,13 @@ namespace App\Models;
 
 use Illuminate\Foundation\Auth\User as Authenticatable;  // <— instead of Model
 use Illuminate\Notifications\Notifiable;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class Staff extends Authenticatable
 {
     use Notifiable;
+    use LogsActivity;
 
     protected $table = 'staff';
     protected $primaryKey = 'StaffID';
@@ -28,6 +31,14 @@ class Staff extends Authenticatable
         'password',    // <— add this if you want to do Eloquent-based inserts
     ];
 
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('staff')
+            ->setDescriptionForEvent(fn (string $eventName) => "Staff {$eventName}")
+            ->logFillable()
+            ->logOnlyDirty();
+    }
     /**
      * The attributes that should be hidden for arrays.
      */

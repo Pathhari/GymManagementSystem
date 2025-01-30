@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -18,11 +18,9 @@ import {
   Select,
   MenuItem,
   Menu,
-  Divider,
+  Divider
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
-import SearchIcon from "@mui/icons-material/Search";
-import AddIcon from "@mui/icons-material/Add";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ArchiveIcon from "@mui/icons-material/Archive";
@@ -32,13 +30,11 @@ import ListAltIcon from "@mui/icons-material/ListAlt";
 import EventNoteIcon from "@mui/icons-material/EventNote";
 import EngineeringIcon from "@mui/icons-material/Engineering";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
-
-// For CSV/PDF export
 import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 
-// Placeholder charts (Line / Bar / Doughnut, etc.)
+// Chart.js
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -49,9 +45,9 @@ import {
   ArcElement,
   Title,
   Tooltip as ChartTooltip,
-  Legend,
+  Legend
 } from "chart.js";
-import { Line, Bar, Doughnut } from "react-chartjs-2";
+import { Line, Doughnut } from "react-chartjs-2";
 
 ChartJS.register(
   CategoryScale,
@@ -65,87 +61,144 @@ ChartJS.register(
   Legend
 );
 
-// -------------- SAMPLE DATA --------------
-// Added a "branch" property for each log.
-const sampleLogs = [
-  {
-    logId: "LOG-1001",
-    timestamp: "2025-01-01 09:15:00",
-    user: "AdminUser",
-    actionDesc: "Deleted Member #123",
-    module: "Membership",
-    logType: "Critical",
-    details: "Removed membership record and all references.",
-    ipAddress: "192.168.1.10",
-    branch: "New York",
-  },
-  {
-    logId: "LOG-1002",
-    timestamp: "2025-01-02 10:30:00",
-    user: "JohnDoe",
-    actionDesc: "Updated Payment #PAY-2001",
-    module: "Payments",
-    logType: "Informational",
-    details: "Changed status from Pending to Completed.",
-    ipAddress: "192.168.1.20",
-    branch: "Los Angeles",
-  },
-  {
-    logId: "LOG-1003",
-    timestamp: "2025-01-02 11:00:00",
-    user: "Alice",
-    actionDesc: "Changed user role for Bob to 'Staff'",
-    module: "Staff Management",
-    logType: "Critical",
-    details: "Updated role from 'Viewer' to 'Staff'.",
-    ipAddress: "192.168.1.30",
-    branch: "Chicago",
-  },
-];
-
-// Define branch filter options.
-const branchOptions = ["All Branches", "New York", "Los Angeles", "Chicago"];
-
-// Example data for "Most Active Module" placeholder
-const MOST_ACTIVE_MODULE = "Membership Management (45 Actions This Week)";
+const csrfToken = document
+  .querySelector('meta[name="csrf-token"]')
+  ?.getAttribute('content');
 
 export default function SystemLogs() {
-  // ------------------ States & Data ------------------
-  const [logs, setLogs] = useState(sampleLogs);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Filters
   const [searchTerm, setSearchTerm] = useState("");
-
-  // New: Branch Filter state
   const [selectedBranch, setSelectedBranch] = useState("All Branches");
+  const branchOptions = ["All Branches", "New York", "Los Angeles", "Chicago"];
 
-  // Date filters
   const [dateRange, setDateRange] = useState("last7days");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  // Derive stats for overview cards
-  const totalLogsCount = logs.length; // "Total Logs"
+  // Fetch logs on mount
+  useEffect(() => {
+    setLoading(true);
+    fetch("/system/logs", {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "X-CSRF-TOKEN": csrfToken,
+        "X-Requested-With": "XMLHttpRequest"
+      }
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch logs");
+        return res.json();
+      })
+      .then((data) => {
+        setLogs(data.logs || []);
+      })
+      .catch((err) => console.error("Error:", err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // ------------------ Overview Stats ------------------
+  const totalLogsCount = logs.length;
   const criticalActionsCount = logs.filter((l) => l.logType === "Critical").length;
-  // Suppose "User Activity Today" means logs from a specific date (hard-coded for example)
-  const todayStr = "2025-01-02";
+
+  // Logs from "today"
+  const todayStr = new Date().toISOString().slice(0, 10); // e.g. "2025-01-02"
   const userActivityTodayCount = logs.filter((l) => l.timestamp.startsWith(todayStr)).length;
-  // "Most Active Module" in the last 7 days
-  const mostActiveModule = MOST_ACTIVE_MODULE;
 
-  // ------------- Filtered Logs -------------
-  // First filter by branch.
-  const branchFilteredLogs =
-    selectedBranch === "All Branches"
-      ? logs
-      : logs.filter((log) => log.branch === selectedBranch);
+  const mostActiveModule = "Membership Management (45 Actions This Week)"; // example placeholder
 
-  // Then, apply search (and later you can add date range filtering)
-  const filteredLogs = branchFilteredLogs.filter((log) =>
-    Object.values(log).some((val) =>
-      String(val).toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  );
+  // ------------------ Filtering (Branch, Search) ------------------
+  const branchFilteredLogs = useMemo(() => {
+    if (selectedBranch === "All Branches") return logs;
+    return logs.filter((log) => (log.branch || "") === selectedBranch);
+  }, [logs, selectedBranch]);
 
-  // ------------- Table Columns -------------
+  const filteredLogs = useMemo(() => {
+    return branchFilteredLogs.filter((log) =>
+      Object.values(log).some((val) =>
+        String(val).toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    );
+  }, [branchFilteredLogs, searchTerm]);
+
+  // ------------------ BUILD CHART DATA DYNAMICALLY ------------------
+  // 1) Logs Over Time (Line Chart)
+  const lineChartData = useMemo(() => {
+    // Group logs by date (YYYY-MM-DD)
+    const countsByDate = {};
+    logs.forEach((log) => {
+      // assume 'timestamp' is '2025-01-02 10:30:00'
+      const dateOnly = log.timestamp.slice(0, 10); // '2025-01-02'
+      if (!countsByDate[dateOnly]) countsByDate[dateOnly] = 0;
+      countsByDate[dateOnly]++;
+    });
+
+    // Create arrays sorted by date
+    const sortedDates = Object.keys(countsByDate).sort();
+    const counts = sortedDates.map((d) => countsByDate[d]);
+
+    return {
+      labels: sortedDates,
+      datasets: [
+        {
+          label: "Number of Logs",
+          data: counts,
+          borderColor: "#42a5f5",
+          backgroundColor: "rgba(66,165,245,0.2)",
+          fill: true,
+          tension: 0.3
+        }
+      ]
+    };
+  }, [logs]);
+
+  const lineOptions = {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true } },
+    maintainAspectRatio: false
+  };
+
+  // 2) Logs by Module (Doughnut)
+  const modulesChartData = useMemo(() => {
+    const countsByModule = {};
+    logs.forEach((log) => {
+      const mod = log.module || "Unknown";
+      if (!countsByModule[mod]) countsByModule[mod] = 0;
+      countsByModule[mod]++;
+    });
+    const modules = Object.keys(countsByModule);
+    const counts = modules.map((m) => countsByModule[m]);
+
+    return {
+      labels: modules,
+      datasets: [
+        {
+          data: counts,
+          backgroundColor: [
+            "#66bb6a",
+            "#ef5350",
+            "#26c6da",
+            "#ffca28",
+            "#ab47bc",
+            "#ffa726",
+            "#8d6e63"
+          ]
+        }
+      ]
+    };
+  }, [logs]);
+
+  const modulesOptions = {
+    responsive: true,
+    plugins: { legend: { position: "bottom" } },
+    maintainAspectRatio: false
+  };
+
+  // ------------------ DataGrid Columns ------------------
   const columns = [
     { field: "logId", headerName: "Log ID", width: 100 },
     { field: "timestamp", headerName: "Timestamp", width: 160 },
@@ -165,24 +218,22 @@ export default function SystemLogs() {
           )}
           <Typography>{params.value}</Typography>
         </Box>
-      ),
+      )
     },
     {
       field: "details",
       headerName: "Details",
-      width: 200,
+      width: 220,
       renderCell: (params) => (
         <Tooltip title={params.value}>
-          <Typography sx={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {params.value}
-          </Typography>
+          <Typography noWrap>{params.value}</Typography>
         </Tooltip>
-      ),
+      )
     },
     {
       field: "Actions",
       headerName: "Actions",
-      width: 250,
+      width: 220,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
@@ -194,14 +245,14 @@ export default function SystemLogs() {
                 color: "#fff",
                 "&:hover": { backgroundColor: "#43a047" },
                 minWidth: "40px",
-                padding: "6px",
+                padding: "6px"
               }}
               onClick={() => handleViewLog(params.row)}
             >
               <VisibilityIcon />
             </Button>
           </Tooltip>
-          <Tooltip title="Archive Log (Older Logs)">
+          <Tooltip title="Archive Log (local only)">
             <Button
               variant="contained"
               sx={{
@@ -209,14 +260,14 @@ export default function SystemLogs() {
                 color: "#fff",
                 "&:hover": { backgroundColor: "#757575" },
                 minWidth: "40px",
-                padding: "6px",
+                padding: "6px"
               }}
               onClick={() => handleArchiveLog(params.row.logId)}
             >
               <ArchiveIcon />
             </Button>
           </Tooltip>
-          <Tooltip title="Delete Log">
+          <Tooltip title="Delete Log (backend)">
             <Button
               variant="contained"
               sx={{
@@ -224,7 +275,7 @@ export default function SystemLogs() {
                 color: "#fff",
                 "&:hover": { backgroundColor: "#d32f2f" },
                 minWidth: "40px",
-                padding: "6px",
+                padding: "6px"
               }}
               onClick={() => handleDeleteLog(params.row.logId)}
             >
@@ -232,12 +283,12 @@ export default function SystemLogs() {
             </Button>
           </Tooltip>
         </Box>
-      ),
-    },
+      )
+    }
   ];
   const getRowId = (row) => row.logId;
 
-  // ------------- Handlers: View, Archive, Delete -------------
+  // ------------------ Handlers: View, Archive, Delete ------------------
   const [viewOpen, setViewOpen] = useState(false);
   const [viewLogData, setViewLogData] = useState(null);
 
@@ -245,12 +296,13 @@ export default function SystemLogs() {
     setViewLogData(row);
     setViewOpen(true);
   };
+
   const [confirmArchiveLogId, setConfirmArchiveLogId] = useState(null);
   const handleArchiveLog = (logId) => {
     setConfirmArchiveLogId(logId);
   };
   const confirmArchive = () => {
-    setLogs((prev) => prev.filter((log) => log.logId !== confirmArchiveLogId));
+    setLogs((prev) => prev.filter((l) => l.logId !== confirmArchiveLogId));
     setConfirmArchiveLogId(null);
   };
 
@@ -259,20 +311,34 @@ export default function SystemLogs() {
     setConfirmDeleteLogId(logId);
   };
   const confirmDelete = () => {
-    setLogs((prev) => prev.filter((log) => log.logId !== confirmDeleteLogId));
-    setConfirmDeleteLogId(null);
+    if (!confirmDeleteLogId) return;
+    const numericId = confirmDeleteLogId.split("-")[1] || "";
+    fetch(`/system/logs/${numericId}`, {
+      method: "DELETE",
+      headers: {
+        "X-CSRF-TOKEN": csrfToken,
+        "X-Requested-With": "XMLHttpRequest"
+      }
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Delete failed");
+        setLogs((prev) => prev.filter((l) => l.logId !== confirmDeleteLogId));
+        setConfirmDeleteLogId(null);
+      })
+      .catch((err) => console.error("Error deleting log:", err));
   };
 
-  // ------------- Export (CSV/PDF) -------------
+  // ------------------ Export (CSV/PDF) ------------------
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
   const openExportMenu = Boolean(exportAnchorEl);
-  const handleExportMenuOpen = (event) => {
-    setExportAnchorEl(event.currentTarget);
+
+  const handleExportMenuOpen = (e) => {
+    setExportAnchorEl(e.currentTarget);
   };
   const handleExportMenuClose = () => {
     setExportAnchorEl(null);
   };
-  // CSV
+
   const csvHeaders = [
     { label: "Log ID", key: "logId" },
     { label: "Timestamp", key: "timestamp" },
@@ -281,18 +347,19 @@ export default function SystemLogs() {
     { label: "Module", key: "module" },
     { label: "LogType", key: "logType" },
     { label: "Details", key: "details" },
+    { label: "IPAddress", key: "ipAddress" },
+    { label: "Branch", key: "branch" }
   ];
   const csvData = filteredLogs;
 
   const handleExportCSV = () => {
     handleExportMenuClose();
   };
-  // PDF
+
   const handleExportPDF = () => {
     handleExportMenuClose();
     const doc = new jsPDF();
     doc.text("System Logs Export", 14, 10);
-
     const bodyData = filteredLogs.map((l) => [
       l.logId,
       l.timestamp,
@@ -301,55 +368,22 @@ export default function SystemLogs() {
       l.module,
       l.logType,
       l.details || "",
+      l.ipAddress || "",
+      l.branch || ""
     ]);
     doc.autoTable({
-      head: [["LogID", "Timestamp", "User", "Action", "Module", "LogType", "Details"]],
+      head: [
+        ["LogID", "Timestamp", "User", "Action", "Module", "LogType", "Details", "IP", "Branch"]
+      ],
       body: bodyData,
-      startY: 20,
+      startY: 20
     });
     doc.save("SystemLogs.pdf");
   };
 
-  // ------------- CHARTS (Placeholder) -------------
-  // 1) Line chart for "Logs Over Time"
-  const lineData = {
-    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    datasets: [
-      {
-        label: "Number of Logs",
-        data: [20, 15, 18, 25, 30, 22, 10],
-        borderColor: "#42a5f5",
-        backgroundColor: "rgba(66,165,245,0.2)",
-        fill: true,
-        tension: 0.3,
-      },
-    ],
-  };
-  const lineOptions = {
-    responsive: true,
-    plugins: { legend: { display: false } },
-    scales: { y: { beginAtZero: true } },
-  };
-
-  // 2) Doughnut chart for "Logs by Module" (example)
-  const modulesData = {
-    labels: ["Membership", "Payments", "Coaching", "Staff", "Other"],
-    datasets: [
-      {
-        data: [30, 20, 10, 15, 5],
-        backgroundColor: ["#66bb6a", "#ef5350", "#26c6da", "#ffca28", "#ab47bc"],
-      },
-    ],
-  };
-  const modulesOptions = {
-    responsive: true,
-    plugins: { legend: { position: "bottom" } },
-    maintainAspectRatio: false,
-  };
-
   return (
     <Box sx={{ p: 4 }}>
-      {/* ---------- Date Period & Filters on Top ---------- */}
+      {/* ---------- Date/Branch Filters ---------- */}
       <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap", gap: 2, alignItems: "center" }}>
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Date Range</InputLabel>
@@ -379,7 +413,6 @@ export default function SystemLogs() {
           value={dateTo}
           onChange={(e) => setDateTo(e.target.value)}
         />
-        {/* Branch Filter */}
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Branch</InputLabel>
           <Select
@@ -387,9 +420,9 @@ export default function SystemLogs() {
             label="Branch"
             onChange={(e) => setSelectedBranch(e.target.value)}
           >
-            {branchOptions.map((branch) => (
-              <MenuItem key={branch} value={branch}>
-                {branch}
+            {branchOptions.map((b) => (
+              <MenuItem key={b} value={b}>
+                {b}
               </MenuItem>
             ))}
           </Select>
@@ -405,7 +438,7 @@ export default function SystemLogs() {
               color: "background.paper",
               display: "flex",
               alignItems: "center",
-              p: 2,
+              p: 2
             }}
           >
             <ListAltIcon sx={{ fontSize: 40, color: "#fff", mr: 2 }} />
@@ -424,7 +457,7 @@ export default function SystemLogs() {
               color: "background.paper",
               display: "flex",
               alignItems: "center",
-              p: 2,
+              p: 2
             }}
           >
             <ErrorIcon sx={{ fontSize: 40, color: "#f44336", mr: 2 }} />
@@ -443,7 +476,7 @@ export default function SystemLogs() {
               color: "background.paper",
               display: "flex",
               alignItems: "center",
-              p: 2,
+              p: 2
             }}
           >
             <EventNoteIcon sx={{ fontSize: 40, color: "#4caf50", mr: 2 }} />
@@ -462,7 +495,7 @@ export default function SystemLogs() {
               color: "background.paper",
               display: "flex",
               alignItems: "center",
-              p: 2,
+              p: 2
             }}
           >
             <EngineeringIcon sx={{ fontSize: 40, color: "#ffca28", mr: 2 }} />
@@ -476,61 +509,30 @@ export default function SystemLogs() {
         </Grid>
       </Grid>
 
-      {/* ---------- 2 Graphs: Logs Over Time & Logs by Module ---------- */}
+      {/* ---------- Logs Over Time & Logs by Module ---------- */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        {/* Logs Over Time Graph Card */}
         <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 400,
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
+          <Paper sx={{ p: 2, height: 400, display: "flex", flexDirection: "column" }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
               Logs Over Time
             </Typography>
-            <Box
-              sx={{
-                flex: 1,
-                position: "relative",
-              }}
-            >
-              <Line
-                data={lineData}
-                options={{ ...lineOptions, maintainAspectRatio: false }}
-              />
+            <Box sx={{ flex: 1, position: "relative" }}>
+              <Line data={lineChartData} options={lineOptions} />
             </Box>
           </Paper>
         </Grid>
-
-        {/* Logs by Module Graph Card */}
         <Grid item xs={12} md={6}>
-          <Paper
-            sx={{
-              p: 2,
-              height: 400,
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
+          <Paper sx={{ p: 2, height: 400, display: "flex", flexDirection: "column" }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
               Logs by Module
             </Typography>
-            <Box
-              sx={{
-                flex: 1,
-                position: "relative",
-              }}
-            >
-              <Doughnut data={modulesData} options={modulesOptions} />
+            <Box sx={{ flex: 1, position: "relative" }}>
+              <Doughnut data={modulesChartData} options={modulesOptions} />
             </Box>
           </Paper>
         </Grid>
       </Grid>
 
-      &nbsp;
       <Typography variant="h4" gutterBottom>
         System Logs & Activity
       </Typography>
@@ -549,11 +551,7 @@ export default function SystemLogs() {
           />
 
           <Box>
-            <Button
-              variant="outlined"
-              onClick={(e) => setExportAnchorEl(e.currentTarget)}
-              startIcon={<FileDownloadIcon />}
-            >
+            <Button variant="outlined" onClick={handleExportMenuOpen} startIcon={<FileDownloadIcon />}>
               Export
             </Button>
             <Menu
@@ -569,123 +567,103 @@ export default function SystemLogs() {
                   filename="SystemLogs.csv"
                   style={{ textDecoration: "none", color: "inherit" }}
                 >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <FileDownloadIcon sx={{ color: "#42a5f5" }} />
-                    <Typography>Export CSV</Typography>
-                  </Box>
+                  Export CSV
                 </CSVLink>
               </MenuItem>
-              <MenuItem onClick={handleExportPDF}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  <FileDownloadIcon sx={{ color: "#ef5350" }} />
-                  <Typography>Export PDF</Typography>
-                </Box>
-              </MenuItem>
+              <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
             </Menu>
           </Box>
         </Box>
 
-        {/* ---------- DataGrid Table ---------- */}
         <div style={{ height: 450, width: "100%" }}>
           <DataGrid
             rows={filteredLogs}
             columns={columns}
             getRowId={getRowId}
             pageSize={5}
-            rowsPerPageOptions={[5, 10, 20]}
+            rowsPerPageOptions={[5, 10]}
+            loading={loading}
           />
         </div>
       </Paper>
 
       {/* ---------- View Log Dialog ---------- */}
-      <Dialog
-  open={viewOpen}
-  onClose={() => setViewOpen(false)}
-  fullWidth
-  maxWidth="md"
->
-  <DialogTitle>
-    <Typography variant="h6" color="primary">
-      Log Details
-    </Typography>
-  </DialogTitle>
-  <DialogContent dividers>
-    {viewLogData && (
-      <Box sx={{ p: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Log ID:
-            </Typography>
-            <Typography variant="body1">{viewLogData.logId}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Timestamp:
-            </Typography>
-            <Typography variant="body1">{viewLogData.timestamp}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              User:
-            </Typography>
-            <Typography variant="body1">{viewLogData.user}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Action:
-            </Typography>
-            <Typography variant="body1">{viewLogData.actionDesc}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Module:
-            </Typography>
-            <Typography variant="body1">{viewLogData.module}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Log Type:
-            </Typography>
-            <Typography variant="body1">{viewLogData.logType}</Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="body2" color="textSecondary">
-              Details:
-            </Typography>
-            <Typography variant="body1">{viewLogData.details}</Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              IP Address:
-            </Typography>
-            <Typography variant="body1">
-              {viewLogData.ipAddress || "N/A"}
-            </Typography>
-          </Grid>
-          <Grid item xs={6}>
-            <Typography variant="body2" color="textSecondary">
-              Branch:
-            </Typography>
-            <Typography variant="body1">{viewLogData.branch}</Typography>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions>
-    <Button
-      onClick={() => setViewOpen(false)}
-      variant="contained"
-      color="primary"
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
-
+      <Dialog open={viewOpen} onClose={() => setViewOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>
+          <Typography variant="h6" color="primary">
+            Log Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {viewLogData && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Log ID:
+                  </Typography>
+                  <Typography variant="body1">{viewLogData.logId}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Timestamp:
+                  </Typography>
+                  <Typography variant="body1">{viewLogData.timestamp}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    User:
+                  </Typography>
+                  <Typography variant="body1">{viewLogData.user}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Action:
+                  </Typography>
+                  <Typography variant="body1">{viewLogData.actionDesc}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Module:
+                  </Typography>
+                  <Typography variant="body1">{viewLogData.module}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Log Type:
+                  </Typography>
+                  <Typography variant="body1">{viewLogData.logType}</Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="textSecondary">
+                    Details:
+                  </Typography>
+                  <Typography variant="body1">{viewLogData.details}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    IP Address:
+                  </Typography>
+                  <Typography variant="body1">
+                    {viewLogData.ipAddress || "N/A"}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Branch:
+                  </Typography>
+                  <Typography variant="body1">{viewLogData.branch || "N/A"}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewOpen(false)} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ---------- Confirm Archive Dialog ---------- */}
       <Dialog

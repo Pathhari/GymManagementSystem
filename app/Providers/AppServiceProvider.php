@@ -20,6 +20,11 @@ class AppServiceProvider extends ServiceProvider
      * Bootstrap any application services.
      */
     public function boot(): void
-    {
-        Payment::observe(PaymentObserver::class);    }
+    {   
+        activity()->causedBy(
+            // pick the first guard that is logged in, e.g. owner, then admin, then staff
+            auth('owner')->user() ?? auth('admin')->user() ?? auth('staff')->user()
+        );
+        Payment::observe(PaymentObserver::class);       
+    }
 }

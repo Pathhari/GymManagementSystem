@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class MaintenanceLog extends Model
-{
+{   
+    use LogsActivity;
     protected $primaryKey = 'MaintenanceID';
 
     protected $fillable = [
@@ -17,6 +20,15 @@ class MaintenanceLog extends Model
         'NextMaintenanceDate',
         'Notes',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('maintenance')
+            ->setDescriptionForEvent(fn($eventName) => "Maintenance log {$eventName}")
+            ->logFillable()
+            ->logOnlyDirty();
+    }
 
     public function equipment()
     {

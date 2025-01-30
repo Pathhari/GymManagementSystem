@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class Member extends Model
-{
+{   
+    use LogsActivity;
     protected $table = 'members';         // If your table name is "members"
     protected $primaryKey = 'MemberID';   // If the PK is "MemberID"
 
@@ -26,6 +29,19 @@ class Member extends Model
         // Add the new status foreign key
         'MemberStatusID',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('member')                    // or "Membership"
+            ->setDescriptionForEvent(function(string $eventName) {
+                return "Member record has been {$eventName}";
+            })
+            ->logFillable()                           // logs changes to fillable attributes
+            ->logOnlyDirty();                         // only store changed attributes
+    }
+
+
     // Relationship: A member started at one branch
     public function startedBranch()
     {

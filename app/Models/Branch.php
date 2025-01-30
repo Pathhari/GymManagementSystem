@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class Branch extends Model
-{
+{   
+    use LogsActivity;
     protected $table = 'branches';
     protected $primaryKey = 'BranchID';
 
@@ -19,6 +22,14 @@ class Branch extends Model
         'Status',
         'Contact',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('branch')
+            ->setDescriptionForEvent(fn (string $eventName) => "Branch record {$eventName}")
+            ->logAll(); // logs all fillable + changes
+    }
 
     /**
      * STAFF

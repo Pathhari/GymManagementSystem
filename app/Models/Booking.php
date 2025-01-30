@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class Booking extends Model
-{
+{   
+    use LogsActivity;
     protected $primaryKey = 'BookingID';
 
     protected $fillable = [
@@ -16,6 +19,15 @@ class Booking extends Model
         'BookingTime',
         'Duration',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('booking')
+            ->setDescriptionForEvent(fn($eventName) => "Booking {$eventName}")
+            ->logFillable()
+            ->logOnlyDirty();
+    }
 
     public function member()
     {
