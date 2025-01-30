@@ -128,7 +128,7 @@ function CustomAppTitle() {
         alt="Logo"
         style={{ height: '40px', width: 'auto' }}
       />
-      <Typography variant="h6">Continental Club</Typography>
+      <Typography variant="h6">Contnental Club</Typography>
     </Stack>
   );
 }

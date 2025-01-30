@@ -23,7 +23,7 @@ const PayslipLayout = ({ staffData, payrollData }) => {
       {/* Company / Gym Information */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="h6" sx={{ fontWeight: "medium" }}>
-          Continental Fitness Gym
+          Contnental Fitness Gym
         </Typography>
       </Box>
 
