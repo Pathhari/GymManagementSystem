@@ -18,13 +18,15 @@ class DailyCashFlow extends Model
         'WalkInCashSales',
         'WalkInGCashSales',
         'WalkInBPISales',
+        'BDOSales',            // <--- add
+        'WalkInBDOSales',      // <--- add
         'TotalSales',
         'PettyCash',
         'DepositedAmount',
         'Remarks',
-        'BranchID', // <--- new column
+        'BranchID',
     ];
-
+    
     // Relationship: This daily cash flow record belongs to one branch
     public function branch()
     {

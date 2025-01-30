@@ -17,16 +17,30 @@ return new class extends Migration
             $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->date('Date');
             $table->string('BusinessType')->default('Gym'); // or "Cafe", "Yogurt Cafe"
+        
+            // Existing columns
             $table->decimal('CashSales', 10, 2)->default(0);
             $table->decimal('GCashSales', 10, 2)->default(0);
             $table->decimal('BPISales', 10, 2)->default(0);
             $table->decimal('WalkInCashSales', 10, 2)->default(0);
             $table->decimal('WalkInGCashSales', 10, 2)->default(0);
             $table->decimal('WalkInBPISales', 10, 2)->default(0);
+        
+            // NEW: BDO columns
+            $table->decimal('BDOSales', 10, 2)->default(0);
+            $table->decimal('WalkInBDOSales', 10, 2)->default(0);
+        
             $table->decimal('TotalSales', 10, 2)->default(0);
+        
+            // If you have petty cash / deposited columns, keep them here:
+            $table->decimal('PettyCash', 10, 2)->default(0);
+            $table->decimal('DepositedAmount', 10, 2)->default(0);
+        
+            $table->text('Remarks')->nullable();
         
             $table->timestamps();
         });
+        
         
     }
 

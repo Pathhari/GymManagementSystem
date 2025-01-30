@@ -3,47 +3,43 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use App\Models\DailyCashFlow;
 use App\Models\Expense;
 use App\Models\Promotions;
-// If you have a Staff model, you can reference it too:
-// use App\Models\Staff;
 use Illuminate\Support\Facades\DB;
 
 class FinanceController extends Controller
 {
     /* ------------------------------------------------------------------
-     * X. DAILY CASH FLOW (Table #10 in ERD)
+     * DAILY CASH FLOW
      * ------------------------------------------------------------------ */
 
     /**
-     * 61. Record => route:Owner,Admin
-     * Show form to create a new daily cash flow record.
+     * Show any data needed before creating a cash flow record
+     * (e.g., branch list). Returns JSON instead of an Inertia page.
      */
     public function createCashFlow()
     {
-        // If admin/owner can choose the branch, you might load a Branch::all() here
-        // and pass it to the view. For staff, they'd have only 1 branch.
-        // Example:
-        // $branches = auth('owner')->check() || auth('admin')->check()
-        //     ? Branch::orderBy('BranchName')->get()
-        //     : null;
+        // Example: if you want to return branches or other data needed on the form:
+        // $branches = Branch::select('BranchID','BranchName')->get();
+        // return response()->json([
+        //     'branches' => $branches
+        // ]);
 
-        return Inertia::render('Finance/CashFlow/Create'/*, compact('branches')*/);
+        return response()->json([
+            'message' => 'Endpoint for creating a new cash flow record. Provide branch list here if needed.'
+        ]);
     }
 
     /**
-     * Store a newly created DailyCashFlow record.
+     * Store a newly created DailyCashFlow record and return JSON.
      */
     public function storeCashFlow(Request $request)
     {
         $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
-    
+
         $data = $request->validate([
-            'BranchID'         => 'required|exists:branches,BranchID',  // always pick a branch
+            'BranchID'         => 'required|exists:branches,BranchID',
             'Date'             => 'required|date',
             'BusinessType'     => 'required|string|max:100',
             'CashSales'        => 'nullable|numeric|min:0',
@@ -56,86 +52,87 @@ class FinanceController extends Controller
             'DepositedAmount'  => 'nullable|numeric|min:0',
             'Remarks'          => 'nullable|string',
         ]);
-    
-        // Auto-compute total
+
+        // Compute total
         $total = 0;
         $total += $data['CashSales']        ?? 0;
         $total += $data['GCashSales']       ?? 0;
         $total += $data['BPISales']         ?? 0;
+        $total += $data['BDOSales']         ?? 0;
+        $total += $data['WalkInBDOSales']   ?? 0;
         $total += $data['WalkInCashSales']  ?? 0;
         $total += $data['WalkInGCashSales'] ?? 0;
         $total += $data['WalkInBPISales']   ?? 0;
         $data['TotalSales'] = $total;
-    
-        // If staff is logged in, ensure the selected BranchID is one they have access to
+
+        // Staff branch check
         if ($staff) {
-            // If staff is multi-branch assigned, verify that $request->BranchID is in their pivot
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
             if (! in_array($data['BranchID'], $staffBranchIDs)) {
-                abort(403, 'You cannot create a Cash Flow for a branch you are not assigned to.');
+                return response()->json([
+                    'error' => 'You cannot create a Cash Flow for a branch you are not assigned to.'
+                ], 403);
             }
-        } 
-        // If admin/owner => we trust the incoming BranchID is valid
-    
-        DailyCashFlow::create($data);
-    
-        return redirect()
-            ->route('finance.cashflow.index')
-            ->with('success','Cash flow recorded successfully.');
+        }
+
+        $flow = DailyCashFlow::create($data);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cash flow recorded successfully.',
+            'data'    => $flow
+        ], 201);
     }
-    
+
+    /**
+     * Return list of daily cash flow records in JSON.
+     */
     public function indexCashFlow()
     {
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
-    
+
         if ($staff) {
-            // If staff => show only branches they have
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
-            // Possibly partial columns
             $flows = DailyCashFlow::select('CashFlowID','Date','BusinessType','TotalSales','Remarks')
                 ->whereIn('BranchID', $staffBranchIDs)
                 ->orderBy('Date','desc')
                 ->get();
         } elseif ($admin || $owner) {
-            // Admin/Owner => see everything
             $flows = DailyCashFlow::orderBy('Date','desc')->get();
         } else {
-            // If no auth => maybe show none or handle differently
             $flows = collect([]);
         }
-    
-        return Inertia::render('Finance/CashFlow/Index', [
-            'flows' => $flows
-        ]);
+
+        return response()->json(['flows' => $flows]);
     }
-    
 
     /* ------------------------------------------------------------------
-     * AE. EXPENSES TABLE (#81–84 in ERD)
+     * EXPENSES
      * ------------------------------------------------------------------ */
 
     /**
-     * 81. Create => route:Owner,Admin
-     * Show a form to create a new expense record.
+     * Return any data needed to create an expense (JSON).
      */
     public function createExpense()
     {
-        // If admin/owner can pick the branch, load branches
-        // If staff => pinned to 1 branch
-        return Inertia::render('Finance/Expenses/Create');
+        // Example: branches, expense categories, etc.
+        // $branches = Branch::select('BranchID','BranchName')->get();
+
+        return response()->json([
+            'message' => 'Endpoint for creating a new expense.',
+            // 'branches' => $branches
+        ]);
     }
 
     /**
-     * Store a new Expense record.
+     * Store a new Expense in JSON.
      */
     public function storeExpense(Request $request)
     {
         $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
-    
+
         $data = $request->validate([
             'BranchID'       => 'required|exists:branches,BranchID',
             'ExpenseDate'    => 'required|date',
@@ -145,57 +142,61 @@ class FinanceController extends Controller
             'StaffID'        => 'nullable|exists:staff,StaffID',
             'Notes'          => 'nullable|string',
         ]);
-    
+
+        // Staff branch check
         if ($staff) {
-            // If staff => check if BranchID is among staff->branches
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
             if (! in_array($data['BranchID'], $staffBranchIDs)) {
-                abort(403, 'You cannot create an Expense for a branch you are not assigned to.');
+                return response()->json([
+                    'error' => 'You cannot create an Expense for a branch you are not assigned to.'
+                ], 403);
             }
         }
-    
-        Expense::create($data);
-    
-        return redirect()->route('finance.expenses.index')
-            ->with('success','Expense created successfully.');
+
+        $expense = Expense::create($data);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Expense created successfully.',
+            'data'    => $expense
+        ], 201);
     }
-    
+
+    /**
+     * Return list of expenses in JSON.
+     */
     public function indexExpenses()
     {
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
-    
+
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
-            // Staff sees partial columns + only branches in $staffBranchIDs
             $expenses = Expense::with('staff')
                 ->select('ExpenseID','ExpenseDate','ExpenseCategory','Amount','Notes','StaffID','BranchID')
                 ->whereIn('BranchID', $staffBranchIDs)
                 ->orderBy('ExpenseDate','desc')
                 ->get();
         } elseif ($admin || $owner) {
-            // admin/owner => see all
             $expenses = Expense::with('staff')
                 ->orderBy('ExpenseDate','desc')
                 ->get();
         } else {
             $expenses = collect([]);
         }
-    
-        return Inertia::render('Finance/Expenses/Index', [
-            'expenses' => $expenses
-        ]);
+
+        return response()->json(['expenses' => $expenses]);
     }
-    
+
+    /**
+     * Update an expense by ID (JSON).
+     */
     public function updateExpense(Request $request, $id)
     {
         $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
-    
         $expense = Expense::findOrFail($id);
-    
+
         $data = $request->validate([
             'BranchID'       => 'required|exists:branches,BranchID',
             'ExpenseDate'    => 'required|date',
@@ -205,69 +206,74 @@ class FinanceController extends Controller
             'StaffID'        => 'nullable|exists:staff,StaffID',
             'Notes'          => 'nullable|string',
         ]);
-    
-        // Staff => check pivot
+
+        // Staff => check branch pivot
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
-            // Also ensure the existing expense belongs to one of staff's branches
-            // AND the new BranchID is also allowed
             if (! in_array($expense->BranchID, $staffBranchIDs)) {
-                abort(403, 'Cannot update expense from a branch you are not assigned to.');
+                return response()->json([
+                    'error' => 'Cannot update expense from a branch you are not assigned to.'
+                ], 403);
             }
             if (! in_array($data['BranchID'], $staffBranchIDs)) {
-                abort(403, 'Cannot change expense to a branch you are not assigned to.');
+                return response()->json([
+                    'error' => 'Cannot change expense to a branch you are not assigned to.'
+                ], 403);
             }
         }
-    
+
         $expense->update($data);
-    
-        return redirect()->route('finance.expenses.index')
-            ->with('success','Expense updated successfully.');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Expense updated successfully.',
+            'data'    => $expense
+        ]);
     }
-    
+
+    /**
+     * Delete an expense by ID (JSON).
+     */
     public function destroyExpense($id)
     {
         $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
-    
         $expense = Expense::findOrFail($id);
-    
+
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
             if (! in_array($expense->BranchID, $staffBranchIDs)) {
-                abort(403, 'Cannot delete an expense from a branch you are not assigned to.');
+                return response()->json([
+                    'error' => 'Cannot delete an expense from a branch you are not assigned to.'
+                ], 403);
             }
         }
-    
+
         $expense->delete();
-    
-        return redirect()->route('finance.expenses.index')
-            ->with('success','Expense deleted successfully.');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Expense deleted successfully.'
+        ]);
     }
 
-
     /* ------------------------------------------------------------------
-     * U. PROMOTIONS TABLE (#54–55)
+     * PROMOTIONS
      * ------------------------------------------------------------------ */
 
     /**
-     * 54. Create/Edit => route:All
-     * Display all promotions; staff might see partial if needed.
+     * List all promotions. Return JSON.
      */
-    public function indexPromotions()
+    public function indexPromotions(Request $request)
     {
-        // Currently, no BranchID in promotions table,
-        // so we won’t filter by branch.
-        // If you want staff to see partial columns, do it similarly:
-        //   ->select('PromotionID','Name',...) for staff
         $promos = Promotions::orderBy('Name','asc')->get();
 
-        return Inertia::render('Finance/Promotions/Index', compact('promos'));
+        return response()->json([
+            'promos' => $promos
+        ]);
     }
 
     /**
-     * Store or update a Promotion (like a simple create).
+     * Create or update a Promotion (JSON).
      */
     public function storePromotion(Request $request)
     {
@@ -286,16 +292,18 @@ class FinanceController extends Controller
             $promo = Promotions::findOrFail($data['PromotionID']);
             $promo->update($data);
         } else {
-            Promotions::create($data);
+            $promo = Promotions::create($data);
         }
 
-        return redirect()
-            ->back()
-            ->with('success','Promotion saved successfully.');
+        return response()->json([
+            'success' => true,
+            'message' => 'Promotion saved successfully.',
+            'data'    => $promo
+        ]);
     }
 
     /**
-     * 55. Activate/Deactivate => route:All
+     * Toggle active/inactive for a promotion. Return JSON.
      */
     public function togglePromotion($id)
     {
@@ -307,10 +315,16 @@ class FinanceController extends Controller
             $promo->update(['Status' => 'Active']);
         }
 
-        return redirect()->back()
-            ->with('success','Promotion status toggled.');
+        return response()->json([
+            'success' => true,
+            'message' => 'Promotion status toggled.',
+            'data'    => $promo
+        ]);
     }
 
+    /**
+     * Financial summary (already returns JSON).
+     */
     public function getFinancialSummary()
     {
         $staff = auth('staff')->user();
@@ -329,8 +343,7 @@ class FinanceController extends Controller
         
         return response()->json([
             'total_revenue' => $totalRevenue,
-            'net_profit' => $totalRevenue - $totalExpenses
+            'net_profit'    => $totalRevenue - $totalExpenses
         ]);
     }
-
 }
