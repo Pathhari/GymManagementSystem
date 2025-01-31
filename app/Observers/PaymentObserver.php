@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Models\Payment;
 use App\Models\DailyCashFlow;
+use Illuminate\Support\Carbon;
 
 class PaymentObserver
 {
@@ -42,9 +43,7 @@ class PaymentObserver
     private function applyPaymentToDailyCashFlow(Payment $payment)
     {
         // 1) Convert PaymentDate to date only, if needed
-        // E.g., $date = Carbon::parse($payment->PaymentDate)->format('Y-m-d');
-        $date = substr($payment->PaymentDate, 0, 10); // quick approach
-
+        $date = Carbon::parse($payment->PaymentDate)->format('Y-m-d');
         // 2) Find or create daily cash flow
         $cashFlow = DailyCashFlow::firstOrCreate(
             [

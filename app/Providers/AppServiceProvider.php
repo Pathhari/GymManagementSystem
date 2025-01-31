@@ -21,10 +21,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {   
-        activity()->causedBy(
+        //-activity()->causedBy(
             // pick the first guard that is logged in, e.g. owner, then admin, then staff
-            auth('owner')->user() ?? auth('admin')->user() ?? auth('staff')->user()
-        );
+        //   auth('owner')->user() ?? auth('admin')->user() ?? auth('staff')->user());
         Payment::observe(PaymentObserver::class);       
     }
 }
