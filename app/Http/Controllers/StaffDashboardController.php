@@ -9,9 +9,12 @@ class StaffDashboardController extends Controller
     public function index()
     {
         // Only accessible by guard:staff
-        return Inertia::render('Staff/Dashboard', [
+        $dashboardData = [
             'title' => 'Staff Dashboard',
-            'info'  => 'Staff-friendly overview or partial data'
-        ]);
-    }
+            'info'  => 'Any data relevant to the  Admin',
+            // Add more data if needed, e.g., statistics, notifications, etc.
+        ];
+           // Render the Owner Dashboard view
+           return Inertia::render('Staff/DashboardLayoutWrapper', $dashboardData);
+        }
 }

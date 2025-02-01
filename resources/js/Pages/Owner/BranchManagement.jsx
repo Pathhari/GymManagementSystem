@@ -829,7 +829,7 @@ const handleDeleteFinancial = async (summaryID) => {
   {/* Total Branches */}
   <Grid item xs={12} sm={6} md={3}>
     {loading ? <StatSkeleton /> : (
-      <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
+      <Card sx={{ p: 2, display: "flex", alignItems: "center", bgcolor: "text.primary", color: "background.paper", }}>
         <BusinessIcon sx={{ fontSize: 40, mr: 2, color: "steelblue" }} />
         <CardContent>
           <Typography variant="subtitle1">Total Branches</Typography>
@@ -844,7 +844,7 @@ const handleDeleteFinancial = async (summaryID) => {
   {/* Total Revenue */}
   <Grid item xs={12} sm={6} md={3}>
     {loading ? <StatSkeleton /> : (
-      <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
+      <Card sx={{ p: 2, display: "flex", alignItems: "center", bgcolor: "text.primary", color: "background.paper"}}>
         <MonetizationOnIcon sx={{ fontSize: 40, mr: 2, color: "green" }} />
         <CardContent>
           <Typography variant="subtitle1">Total Revenue</Typography>
@@ -862,7 +862,7 @@ const handleDeleteFinancial = async (summaryID) => {
   {/* Members Per Branch */}
   <Grid item xs={12} sm={6} md={3}>
     {loading ? <StatSkeleton /> : (
-      <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
+      <Card sx={{ p: 2, display: "flex", alignItems: "center", bgcolor: "text.primary", color: "background.paper"}}>
         <GroupIcon sx={{ fontSize: 40, mr: 2, color: "purple" }} />
         <CardContent>
           <Typography variant="subtitle1">Average Members/Branch</Typography>
@@ -877,7 +877,7 @@ const handleDeleteFinancial = async (summaryID) => {
   {/* Pending Maintenance */}
   <Grid item xs={12} sm={6} md={3}>
     {loading ? <StatSkeleton /> : (
-      <Card sx={{ p: 2, display: "flex", alignItems: "center", backgroundColor: theme.palette.background.paper }}>
+      <Card sx={{ p: 2, display: "flex", alignItems: "center", bgcolor: "text.primary", color: "background.paper"}}>
         <BuildIcon sx={{ fontSize: 40, mr: 2, color: "orangered" }} />
         <CardContent>
           <Typography variant="subtitle1">Pending Maintenance</Typography>

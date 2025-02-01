@@ -14,30 +14,20 @@ import {
   DialogActions,
   Avatar,
   IconButton,
-  useMediaQuery,
-  useTheme,
   Checkbox,
   FormControlLabel,
-  FormControl,
-  InputLabel,
-  Select,
   Radio,
   RadioGroup,
 } from "@mui/material";
 import Webcam from "react-webcam";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import CloseIcon from "@mui/icons-material/Close";
+import FileUploadIcon from '@mui/icons-material/FileUpload';
 
 export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   const [errors, setErrors] = useState({});
   
-
-  // Radio for membership type
-  const [membershipType, setMembershipType] = useState("regular"); 
-  // If "regular", we POST /membership/members
-  // If "lockin", we POST /membership/storeLockInMembership.
-
-  // Form fields
+  const [membershipType, setMembershipType] = useState("regular");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -48,20 +38,13 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   const [branch, setBranch] = useState("");
   const [notes, setNotes] = useState("");
 
-  // Photo states
-  const [photoFile, setPhotoFile] = useState(null); // For file from disk
-  const [capturedImage, setCapturedImage] = useState(null); // Base64 from webcam
-
-  // Lists for plans + branches
+  const [photoFile, setPhotoFile] = useState(null);
+  const [capturedImage, setCapturedImage] = useState(null);
   const [plans, setPlans] = useState([]);
   const [branches, setBranches] = useState([]);
 
-  // Webcam dialog
   const [openWebcam, setOpenWebcam] = useState(false);
   const webcamRef = useRef(null);
-
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   // Fetch membership plans + branches on mount
   useEffect(() => {
@@ -70,59 +53,45 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
       .then((res) => setPlans(res.data || []))
       .catch((err) => console.error("Error fetching plans:", err));
 
-    // Load branches from your back end: 
-    // e.g. GET /branches => returns [{ BranchID:1, BranchName:"..."}, ...]
     axios
-    .get("/owner/branches")
-    .then((res) => {
-      // If your server returns { branches: [...] }:
-      setBranches(res.data.branches || []);
-      // If it returns an array directly, do: setBranches(res.data);
-    })
-    .catch((err) => console.error("Error fetching branches:", err));
+      .get("/owner/branches")
+      .then((res) => {
+        // Adjust based on your API
+        setBranches(res.data.branches || []);
+      })
+      .catch((err) => console.error("Error fetching branches:", err));
   }, []);
 
   // Simple validations
   const validateEmail = (str) => /\S+@\S+\.\S+/.test(str);
   const validatePhoneNumber = (str) => {
-    const phRegex = /^(\+63|0)9\d{9}$/; 
+    const phRegex = /^(\+63|0)9\d{9}$/;
     return phRegex.test(str);
   };
 
   const validateForm = () => {
     const newErrors = {};
 
-    if (!fullName.trim()) {
-      newErrors.FullName = ["Full Name is required"];
-    }
-    if (!email.trim()) {
-      newErrors.Email = ["Email is required"];
-    } else if (!validateEmail(email)) {
-      newErrors.Email = ["Invalid email format"];
-    }
-    if (!phoneNumber.trim()) {
-      newErrors.Phone = ["Phone Number is required"];
-    } else if (!validatePhoneNumber(phoneNumber)) {
+    if (!fullName.trim()) newErrors.FullName = ["Full Name is required"];
+    if (!email.trim()) newErrors.Email = ["Email is required"];
+    else if (!validateEmail(email)) newErrors.Email = ["Invalid email format"];
+    
+    if (!phoneNumber.trim()) newErrors.Phone = ["Phone Number is required"];
+    else if (!validatePhoneNumber(phoneNumber))
       newErrors.Phone = ["Must be 09xxxxxxxxx or +639xxxxxxxxx"];
-    }
-    if (!selectedPlanID) {
-      newErrors.PlanID = ["Plan is required"];
-    }
-    if (!membershipCardNumber.trim()) {
+
+    if (!selectedPlanID) newErrors.PlanID = ["Plan is required"];
+    if (!membershipCardNumber.trim())
       newErrors.MembershipCardNumber = ["Membership Card Number is required"];
-    }
-    if (freeSessions === "") {
+    if (freeSessions === "")
       newErrors.FreeSessions = ["Free Sessions is required"];
-    }
-    if (!branch) {
-      newErrors.BranchID = ["Branch is required"];
-    }
+    if (!branch) newErrors.BranchID = ["Branch is required"];
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // Convert base64 from webcam to a File if you like
+  // Convert base64 from webcam to a File
   function dataURLToFile(dataURL, filename) {
     const arr = dataURL.split(",");
     const mime = arr[0].match(/:(.*?);/)[1];
@@ -135,7 +104,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     return new File([u8arr], filename, { type: mime });
   }
 
-  // Webcam
+  // Webcam handlers
   const handleOpenWebcam = () => setOpenWebcam(true);
   const handleCloseWebcam = () => setOpenWebcam(false);
 
@@ -151,13 +120,12 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   const handleBiometricUpload = (e) => {
     if (e.target.files && e.target.files[0]) {
       setPhotoFile(e.target.files[0]);
-      setCapturedImage(null); // if user picks a file, ignore webcam capture
+      setCapturedImage(null);
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!validateForm()) {
       alert("Please fix errors before submitting.");
       return;
@@ -184,18 +152,14 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     }
 
     // Decide endpoint
-    let url = "/membership/members"; 
-    if (membershipType === "lockin") {
-      url = "/membership/storeLockInMembership";
-    }
+    let url = "/membership/members";
+    if (membershipType === "lockin") url = "/membership/storeLockInMembership";
 
     try {
       const res = await axios.post(url, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      // If your response is { message, member }, call onMemberCreated:
       if (onMemberCreated) onMemberCreated(res.data);
-
       onClose();
     } catch (error) {
       console.error("Error creating member:", error);
@@ -222,7 +186,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
         <Box sx={{ p: 2 }}>
           <Divider sx={{ mb: 3 }} />
 
-          {/* RADIO for membership type */}
+          {/* Membership Type Radio */}
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle1">Membership Type:</Typography>
             <RadioGroup
@@ -244,14 +208,13 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
           </Box>
 
           <form onSubmit={handleSubmit}>
-            <Grid container spacing={3} direction={isMobile ? "column" : "row"}>
+            <Grid container direction="row" spacing={3}>
               {/* LEFT SIDE */}
               <Grid
                 item
-                xs={12}
-                md={6}
+                xs={6}
                 sx={{
-                  backgroundColor: isMobile ? "transparent" : "rgba(0,0,0,0.02)",
+                  backgroundColor: "rgba(0,0,0,0.02)",
                   p: 2,
                   borderRadius: 2,
                 }}
@@ -342,9 +305,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       control={
                         <Checkbox
                           checked={membershipCardIssued}
-                          onChange={(e) =>
-                            setMembershipCardIssued(e.target.checked)
-                          }
+                          onChange={(e) => setMembershipCardIssued(e.target.checked)}
                         />
                       }
                       label="Membership Card Issued?"
@@ -366,7 +327,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                     />
                   </Grid>
 
-                  {/* Branch list from your fetched branches array */}
                   <Grid item xs={12} sm={6}>
                     <TextField
                       select
@@ -393,10 +353,9 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
               {/* RIGHT SIDE */}
               <Grid
                 item
-                xs={12}
-                md={6}
+                xs={6}
                 sx={{
-                  backgroundColor: isMobile ? "transparent" : "rgba(0,0,0,0.02)",
+                  backgroundColor: "rgba(0,0,0,0.02)",
                   p: 2,
                   borderRadius: 2,
                 }}
@@ -406,20 +365,32 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                 </Typography>
 
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <Button
-                      variant="contained"
-                      component="label"
-                      startIcon={<PhotoCameraIcon />}
-                    >
-                      Upload Photo
-                      <input
-                        type="file"
-                        hidden
-                        accept="image/*"
-                        onChange={handleBiometricUpload}
-                      />
-                    </Button>
+                  {/* Put BOTH buttons in one row */}
+                  <Grid item xs={12}>
+                    <Box sx={{ display: "flex", gap: 2 }}>
+                      <Button sx={{ bgcolor: "#ffffff", color: "black" }}
+                        variant="contained"
+                        component="label"
+                        
+                        startIcon={<FileUploadIcon />}
+                      >
+                        Upload Biometrics
+                        <input
+                          type="file"
+                          hidden
+                          accept="image/*"
+                          onChange={handleBiometricUpload}
+                        />
+                      </Button>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleOpenWebcam}
+                        startIcon={<PhotoCameraIcon />}
+                      >
+                        Capture Picture
+                      </Button>
+                    </Box>
                     {photoFile && (
                       <Typography variant="caption" sx={{ ml: 2 }}>
                         {photoFile.name}
@@ -439,7 +410,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                     />
                   </Grid>
 
-                  {/* If we captured from webcam, show a preview */}
                   {capturedImage && (
                     <Grid item xs={12}>
                       <Typography variant="subtitle1" gutterBottom>
@@ -456,43 +426,27 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
               </Grid>
             </Grid>
 
+            {/* Action Buttons at the bottom */}
             <Box
               sx={{
                 mt: 4,
                 display: "flex",
-                flexDirection: isMobile ? "column" : "row",
+                flexDirection: "row",
                 gap: 2,
-                justifyContent: "space-between",
-                alignItems: "center",
+                justifyContent: "flex-end",
               }}
             >
-              <Button
-                variant="contained"
-                color="secondary"
-                onClick={handleOpenWebcam}
-                startIcon={<PhotoCameraIcon />}
-                fullWidth={isMobile}
-              >
-                Capture Picture
+              <Button variant="text" color="inherit" onClick={onClose}>
+                Cancel
               </Button>
-              <Box sx={{ display: "flex", gap: 2 }}>
-                <Button variant="text" color="inherit" onClick={onClose}>
-                  Cancel
-                </Button>
-                <Button variant="contained" color="primary" type="submit">
-                  Submit Registration
-                </Button>
-              </Box>
+              <Button variant="contained" color="primary" type="submit">
+                Submit Registration
+              </Button>
             </Box>
           </form>
 
           {/* Webcam Dialog */}
-          <Dialog
-            open={openWebcam}
-            onClose={handleCloseWebcam}
-            maxWidth="sm"
-            fullWidth
-          >
+          <Dialog open={openWebcam} onClose={handleCloseWebcam} maxWidth="sm" fullWidth>
             <DialogTitle>
               Capture Profile Picture
               <IconButton
@@ -502,7 +456,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                   position: "absolute",
                   right: 8,
                   top: 8,
-                  color: (theme) => theme.palette.grey[500],
                 }}
               >
                 <CloseIcon />

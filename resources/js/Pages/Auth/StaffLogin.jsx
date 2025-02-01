@@ -27,7 +27,7 @@ const BRANDING = {
 export default function StaffLogin() {
   const theme = useTheme();
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(''); 
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(''); // General error message

@@ -8,10 +8,14 @@ class AdminDashboardController extends Controller
 {
     public function index()
     {
-        // Only accessible by guard:admin
-        return Inertia::render('Admin/Dashboard', [
-            'title' => 'Admin (Manager) Dashboard',
-            'info'  => 'Any manager-level data'
-        ]);
+        // Fetch any relevant data for the dashboard here
+        $dashboardData = [
+            'title' => 'Admin Dashboard',
+            'info'  => 'Any data relevant to the  Admin',
+            // Add more data if needed, e.g., statistics, notifications, etc.
+        ];
+
+        // Render the Owner Dashboard view
+        return Inertia::render('Admin/DashboardLayoutWrapper', $dashboardData);
     }
 }
