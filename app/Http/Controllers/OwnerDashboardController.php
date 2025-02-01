@@ -3,25 +3,83 @@
 namespace App\Http\Controllers;
 
 use Inertia\Inertia;
+use Illuminate\Http\Request;
+use App\Models\Payment;
+use App\Models\Member;
 
 class OwnerDashboardController extends Controller
 {
     /**
-     * Display the Owner Dashboard.
-     *
-     * This method renders the Owner dashboard page using Inertia.
-     * The route should be protected by the 'auth:owner' middleware.
+     * Render the dashboard layout.
      */
     public function index()
     {
-        // Fetch any relevant data for the dashboard here
         $dashboardData = [
             'title' => 'Owner (Super Admin) Dashboard',
             'info'  => 'Any data relevant to the Super Admin',
-            // Add more data if needed, e.g., statistics, notifications, etc.
         ];
 
-        // Render the Owner Dashboard view
         return Inertia::render('Owner/DashboardLayoutWrapper', $dashboardData);
+    }
+
+    /**
+     * Return key metrics and notifications for the dashboard.
+     *
+     * Query parameters:
+     * - period (daily, weekly, monthly, yearly)
+     * - dateFrom (YYYY-MM-DD)
+     * - dateTo (YYYY-MM-DD)
+     * - branch (branch ID or 'all')
+     */
+    public function metrics(Request $request)
+    {
+        $period   = $request->query('period', 'monthly');
+        $dateFrom = $request->query('dateFrom');
+        $dateTo   = $request->query('dateTo');
+        $branch   = $request->query('branch', 'all');
+
+        // Build query for completed payments
+        $paymentsQuery = Payment::where('Status', 'Completed');
+        if ($branch !== 'all') {
+            $paymentsQuery->where('BranchID', $branch);
+        }
+        if ($dateFrom) {
+            $paymentsQuery->whereDate('PaymentDate', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $paymentsQuery->whereDate('PaymentDate', '<=', $dateTo);
+        }
+        $totalRevenue = $paymentsQuery->sum('Amount');
+
+        // For demonstration, we use the Member count for totalEmailsSent and totalClients.
+        $totalEmailsSent = Member::count();
+        $totalClients    = Member::count();
+
+        // Dummy traffic value – replace with real logic if needed.
+        $trafficReceived = 1000;
+
+        // Dummy notifications; replace with dynamic notifications if available.
+        $notifications = [
+            ['message' => 'New transaction completed: TXN001'],
+            ['message' => 'Revenue milestone reached: $500,000'],
+            ['message' => 'New client added: Company ABC'],
+            ['message' => 'System update available: Version 2.3'],
+            ['message' => 'Performance review scheduled for next week'],
+            ['message' => 'Reminder: Monthly report due in 3 days'],
+            ['message' => 'New member registered: John Doe'],
+            ['message' => 'Website traffic spike detected'],
+            ['message' => 'New feature release: Dark mode now available'],
+            ['message' => 'System maintenance scheduled for tomorrow'],
+        ];
+
+        return response()->json([
+            'metrics' => [
+                'totalRevenue'     => $totalRevenue,
+                'totalEmailsSent'  => $totalEmailsSent,
+                'totalClients'     => $totalClients,
+                'trafficReceived'  => $trafficReceived,
+            ],
+            'notifications' => $notifications,
+        ]);
     }
 }

@@ -33,6 +33,10 @@ use App\Http\Controllers\OwnerDashboardController;
 Route::middleware(['auth:owner'])->group(function () {
     Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index'])
         ->name('owner.dashboard');
+
+ Route::get('/owner/dashboard-metrics', [OwnerDashboardController::class, 'metrics'])
+    ->middleware('auth:owner')
+    ->name('dashboard.metrics');
 });
 
 

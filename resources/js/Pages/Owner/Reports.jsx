@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Box,
+  Container,
   Typography,
   Divider,
   Paper,
@@ -16,8 +17,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  IconButton,
-  Tooltip
+  Tooltip,
+  CircularProgress
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
@@ -32,7 +33,6 @@ import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 
-// Chart.js imports
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -62,133 +62,215 @@ ChartJS.register(
   Filler
 );
 
-// Branch filter options for daily cashflow (could also be fetched)
-const cashFlowBranchOptions = ["All Branches", "Main Branch", "Secondary Branch"];
-
 export default function Reports() {
-  // ------------------ FILTERS & DATE ------------------
+  // ------------------ STATE ------------------
+  const [loading, setLoading] = useState(true);
   const [timePeriod, setTimePeriod] = useState("monthly");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const handleTimePeriodChange = (e) => setTimePeriod(e.target.value);
-  const handleDateFromChange = (e) => setDateFrom(e.target.value);
-  const handleDateToChange = (e) => setDateTo(e.target.value);
 
-  // ------------------ OVERVIEW KPIs ------------------
+  // Overview KPIs
   const [totalRevenue, setTotalRevenue] = useState("₱0");
   const [newMembersThisMonth, setNewMembersThisMonth] = useState(0);
   const [attendanceRate, setAttendanceRate] = useState("0%");
   const [mostPopularService, setMostPopularService] = useState("N/A");
 
-  // 1) Fetch real KPI data from multiple endpoints
-  useEffect(() => {
-    // A) Fetch total revenue
-    axios
-      .get("/finance/summary", { withCredentials: true })
-      .then((res) => {
-        // e.g. { total_revenue: 250000, net_profit: 175000 }
-        const rev = res.data.total_revenue || 0;
-        // Convert to formatted string
-        setTotalRevenue(`₱${Number(rev).toLocaleString()}`);
-      })
-      .catch((err) => console.error("Error fetching finance summary:", err));
-
-    // B) Fetch membership growth => set newMembersThisMonth
-    axios
-      .get("/membership/growth", { withCredentials: true })
-      .then((res) => {
-        // e.g. [ { month:"Jan 2025", count:12 }, { month:"Feb 2025", count:15 } ]
-        const growthData = res.data || [];
-        const thisMonthYear = new Date().toLocaleString("en-US", {
-          month: "short",
-          year: "numeric"
-        }); // e.g. "Aug 2025"
-        const found = growthData.find((g) => g.month === thisMonthYear);
-        setNewMembersThisMonth(found ? found.count : 0);
-      })
-      .catch((err) => console.error("Error fetching membership growth:", err));
-
-    // C) Fetch attendance analytics => compute attendance rate
-    axios
-      .get("/staff/attendance-analytics", { withCredentials: true })
-      .then((res) => {
-        // e.g. [ { year:2025, week:5, totalAttendance:80 }, ... ]
-        const analytics = res.data || [];
-        let sum = 0;
-        analytics.forEach((a) => {
-          sum += Number(a.totalAttendance);
-        });
-        const avg = analytics.length > 0 ? sum / analytics.length : 0;
-        // Suppose target is 100 per "week"
-        const ratePercent = (avg / 100) * 100; // scale to 100%
-        // cap at 100% if you want
-        const finalRate = Math.min(ratePercent, 100).toFixed(0) + "%";
-        setAttendanceRate(finalRate);
-      })
-      .catch((err) => console.error("Error fetching attendance analytics:", err));
-
-    // D) Fetch most popular service
-    axios
-      .get("/booking/most-popular", { withCredentials: true })
-      .then((res) => {
-        // e.g. { mostPopularService: "Zumba Classes" }
-        setMostPopularService(res.data.mostPopularService || "N/A");
-      })
-      .catch((err) => console.error("Error fetching most popular service:", err));
-  }, []);
-
-  // ------------------ DAILY CASHFLOW ------------------
+  // Cashflow Data
   const [cashFlowRecords, setCashFlowRecords] = useState([]);
   const [selectedCashFlowBranch, setSelectedCashFlowBranch] = useState("All Branches");
-  const filteredCashFlowRecords =
-    selectedCashFlowBranch === "All Branches"
-      ? cashFlowRecords
-      : cashFlowRecords.filter((rec) => rec.branch === selectedCashFlowBranch);
+  const [selectedCashFlow, setSelectedCashFlow] = useState(null);
+  const [isViewCashFlowOpen, setViewCashFlowOpen] = useState(false);
+  const [isEditCashFlowOpen, setEditCashFlowOpen] = useState(false);
 
-  // ------------------ MEMBERSHIP DISTRIBUTION ------------------
+  // Export Menu
+  const [exportAnchorEl, setExportAnchorEl] = useState(null);
+
+  // Charts & Tables Data
   const [membershipPlans, setMembershipPlans] = useState([]);
-  // Expect each plan record to have { PlanID, PlanName, members_count }
+  const [membershipGrowth, setMembershipGrowth] = useState([]);
+  const [attendanceAnalytics, setAttendanceAnalytics] = useState({ labels: [], data: [] });
+  const [staffPerformance, setStaffPerformance] = useState([]);
+  const [bookingTrends, setBookingTrends] = useState([]);
+  const [systemMetrics, setSystemMetrics] = useState({});
+  const [branches, setBranches] = useState([]);
+
+  // ------------------ DATA FETCHING ------------------
   useEffect(() => {
-    const fetchMembershipPlans = async () => {
+    async function loadData() {
       try {
-        const res = await axios.get("/membership/plans", { withCredentials: true });
-        setMembershipPlans(res.data || []);
-      } catch (error) {
-        console.error("Error fetching membership plans:", error);
+        const [
+          financeSummary,
+          growthResponse,
+          attendanceResponse,
+          popularServiceResponse,
+          cashflowResponse,
+          membershipPlansResponse,
+          staffPerformanceResponse,
+          bookingTrendsResponse,
+          systemMetricsResponse,
+          branchesResponse
+        ] = await Promise.all([
+          axios.get("/finance/summary", { withCredentials: true }),
+          axios.get("/membership/growth", { withCredentials: true }),
+          axios.get("/staff/attendance-analytics", { withCredentials: true }),
+          axios.get("/booking/most-popular", { withCredentials: true }),
+          axios.get("/finance/cashflow", { withCredentials: true }),
+          axios.get("/membership/plans", { withCredentials: true }),
+          axios.get("/staff/performance", { withCredentials: true }),
+          axios.get("/booking/trends", { withCredentials: true }),
+          axios.get("/system/metrics", { withCredentials: true }),
+          axios.get("/owner/branches", { withCredentials: true })
+        ]);
+
+        // Total Revenue
+        const rev = financeSummary.data.total_revenue || 0;
+        setTotalRevenue(`₱${Number(rev).toLocaleString()}`);
+
+        // Membership Growth & New Members
+        const growthData = growthResponse.data || [];
+        setMembershipGrowth(growthData);
+        const thisMonthYear = new Date().toLocaleString("en-US", { month: "short", year: "numeric" });
+        const found = growthData.find((g) => g.month === thisMonthYear);
+        setNewMembersThisMonth(found ? found.count : 0);
+
+        // Attendance Analytics & Rate
+        const analytics = attendanceResponse.data || [];
+        let sum = 0;
+        analytics.forEach((a) => { sum += Number(a.totalAttendance); });
+        const avg = analytics.length > 0 ? sum / analytics.length : 0;
+        setAttendanceRate(Math.min(avg, 100).toFixed(0) + "%");
+        const labels = analytics.map((d) => `${d.year}-W${String(d.week).padStart(2, "0")}`);
+        const data = analytics.map((d) => Number(d.totalAttendance));
+        setAttendanceAnalytics({ labels, data });
+
+        // Popular Service
+        setMostPopularService(popularServiceResponse.data.mostPopularService || "N/A");
+
+        // Cashflow Records
+        setCashFlowRecords(cashflowResponse.data.flows || []);
+
+        // Membership Plans
+        setMembershipPlans(membershipPlansResponse.data || []);
+
+        // Staff Performance
+        setStaffPerformance(staffPerformanceResponse.data || []);
+
+        // Booking Trends
+        setBookingTrends(bookingTrendsResponse.data || []);
+
+        // System Metrics
+        setSystemMetrics(systemMetricsResponse.data || {});
+
+        // Branches
+        setBranches(branchesResponse.data.branches || []);
+      } catch (err) {
+        console.error("Error loading data:", err);
+      } finally {
+        setLoading(false);
       }
-    };
-    fetchMembershipPlans();
+    }
+    loadData();
   }, []);
 
-  const membershipDistData = {
+  // ------------------ HANDLERS ------------------
+  const handleTimePeriodChange = useCallback((e) => setTimePeriod(e.target.value), []);
+  const handleDateFromChange = useCallback((e) => setDateFrom(e.target.value), []);
+  const handleDateToChange = useCallback((e) => setDateTo(e.target.value), []);
+
+  const handleExportMenuOpen = useCallback((event) => setExportAnchorEl(event.currentTarget), []);
+  const handleExportMenuClose = useCallback(() => setExportAnchorEl(null), []);
+  const handleExportCSV = useCallback(() => {
+    handleExportMenuClose();
+    // CSV export handled via CSVLink (if needed)
+  }, [handleExportMenuClose]);
+
+  const handleExportPDF = useCallback(() => {
+    handleExportMenuClose();
+    const doc = new jsPDF();
+    doc.text("Daily Cashflow Report", 14, 10);
+    const bodyData = filteredCashFlowRecords.map((row) => [
+      row.CashFlowID,
+      row.Date,
+      row.BranchID,
+      row.BusinessType,
+      parseFloat(row.CashSales || 0).toFixed(2),
+      parseFloat(row.GCashSales || 0).toFixed(2),
+      parseFloat(row.BPISales || 0).toFixed(2),
+      parseFloat(row.OtherSales || 0).toFixed(2),
+      parseFloat(row.TotalSales || 0).toFixed(2),
+      parseFloat(row.PettyCash || 0).toFixed(2),
+      parseFloat(row.DepositedAmount || 0).toFixed(2),
+      row.Remarks
+    ]);
+    doc.autoTable({
+      head: [
+        [
+          "ID",
+          "Date",
+          "BranchID",
+          "Business Type",
+          "Cash Sales",
+          "GCash Sales",
+          "BPI Sales",
+          "Other Sales",
+          "Total Sales",
+          "Petty Cash",
+          "Deposited",
+          "Remarks"
+        ]
+      ],
+      body: bodyData,
+      startY: 20,
+      margin: { horizontal: 10 },
+      styles: { fontSize: 8, cellPadding: 3 },
+      headStyles: { fillColor: [22, 160, 133] }
+    });
+    doc.save("DailyCashflow.pdf");
+  }, [handleExportMenuClose, cashFlowRecords, selectedCashFlowBranch]);
+
+  const handleCloseViewCashFlow = useCallback(() => {
+    setViewCashFlowOpen(false);
+    setSelectedCashFlow(null);
+  }, []);
+
+  const handleCloseEditCashFlow = useCallback(() => {
+    setEditCashFlowOpen(false);
+    setSelectedCashFlow(null);
+  }, []);
+
+  const handleSaveCashFlowEdits = useCallback(() => {
+    const updatedRecords = cashFlowRecords.map((c) =>
+      c.CashFlowID === selectedCashFlow.CashFlowID ? selectedCashFlow : c
+    );
+    setCashFlowRecords(updatedRecords);
+    setEditCashFlowOpen(false);
+  }, [cashFlowRecords, selectedCashFlow]);
+
+  // ------------------ FILTERED DATA ------------------
+  const filteredCashFlowRecords = useMemo(() => {
+    return selectedCashFlowBranch === "All Branches"
+      ? cashFlowRecords
+      : cashFlowRecords.filter((rec) => rec.BranchID === selectedCashFlowBranch);
+  }, [cashFlowRecords, selectedCashFlowBranch]);
+
+  // ------------------ MEMOIZED CHART DATA & OPTIONS ------------------
+  const membershipDistData = useMemo(() => ({
     labels: membershipPlans.map((p) => p.PlanName),
     datasets: [
       {
         data: membershipPlans.map((p) => Number(p.members_count) || 0),
-        backgroundColor: ["#42a5f5", "#66bb6a", "#ef5350"],
-      },
-    ],
-  };
-  const membershipDistOptions = {
+        backgroundColor: ["#42a5f5", "#66bb6a", "#ef5350"]
+      }
+    ]
+  }), [membershipPlans]);
+
+  const membershipDistOptions = useMemo(() => ({
     responsive: true,
     plugins: { legend: { position: "bottom" } },
-    maintainAspectRatio: false,
-  };
+    maintainAspectRatio: false
+  }), []);
 
-  // ------------------ MEMBERSHIP GROWTH ------------------
-  const [membershipGrowth, setMembershipGrowth] = useState([]);
-  useEffect(() => {
-    const fetchMembershipGrowth = async () => {
-      try {
-        const res = await axios.get("/membership/growth", { withCredentials: true });
-        setMembershipGrowth(res.data || []);
-      } catch (error) {
-        console.error("Error fetching membership growth:", error);
-      }
-    };
-    fetchMembershipGrowth();
-  }, []);
-  const membershipGrowthData = {
+  const membershipGrowthData = useMemo(() => ({
     labels: membershipGrowth.map((d) => d.month),
     datasets: [
       {
@@ -197,106 +279,58 @@ export default function Reports() {
         borderColor: "#ffa726",
         backgroundColor: "rgba(255,167,38,0.2)",
         fill: true,
-        tension: 0.3,
-      },
-    ],
-  };
-  const membershipGrowthOptions = {
+        tension: 0.3
+      }
+    ]
+  }), [membershipGrowth]);
+
+  const membershipGrowthOptions = useMemo(() => ({
     responsive: true,
     plugins: { legend: { display: false } },
     scales: { y: { beginAtZero: true } },
-    maintainAspectRatio: false,
-  };
+    maintainAspectRatio: false
+  }), []);
 
-  // ------------------ ATTENDANCE ANALYTICS ------------------
-  const [attendanceAnalytics, setAttendanceAnalytics] = useState([]);
-  useEffect(() => {
-    const fetchAttendanceAnalytics = async () => {
-      try {
-        const res = await axios.get("/staff/attendance-analytics", { withCredentials: true });
-        // Map to labels like "2025-W01" if desired.
-        const labels = res.data.map(
-          (d) => `${d.year}-W${String(d.week).padStart(2, "0")}`
-        );
-        const data = res.data.map((d) => Number(d.totalAttendance));
-        setAttendanceAnalytics({ labels, data });
-      } catch (error) {
-        console.error("Error fetching attendance analytics:", error);
-      }
-    };
-    fetchAttendanceAnalytics();
-  }, []);
-  const attendanceAnalyticsData = {
-    labels: attendanceAnalytics.labels || [],
+  const attendanceAnalyticsData = useMemo(() => ({
+    labels: attendanceAnalytics.labels,
     datasets: [
       {
         label: "Total Attendance",
-        data: attendanceAnalytics.data || [],
+        data: attendanceAnalytics.data,
         borderColor: "#5c6bc0",
         backgroundColor: "rgba(92,107,192,0.2)",
         fill: true,
-        tension: 0.3,
-      },
-    ],
-  };
-  const attendanceAnalyticsOptions = {
+        tension: 0.3
+      }
+    ]
+  }), [attendanceAnalytics]);
+
+  const attendanceAnalyticsOptions = useMemo(() => ({
     responsive: true,
     plugins: { legend: { display: false } },
     scales: { y: { beginAtZero: true } },
-    maintainAspectRatio: false,
-  };
+    maintainAspectRatio: false
+  }), []);
 
-  // ------------------ STAFF PERFORMANCE ------------------
-  const [staffPerformance, setStaffPerformance] = useState([]);
-  useEffect(() => {
-    const fetchStaffPerformance = async () => {
-      try {
-        const res = await axios.get("/staff/performance", { withCredentials: true });
-        setStaffPerformance(res.data);
-      } catch (error) {
-        console.error("Error fetching staff performance:", error);
-      }
-    };
-    fetchStaffPerformance();
-  }, []);
-  
-  // Prepare the data for the "Tasks Completed" chart
-  const staffNames = staffPerformance.map((s) => s.FullName); // use FullName field
-  const staffTasks = staffPerformance.map((s) => s.tasksCompleted);
-  
-  const staffPerformanceBarData = {
-    labels: staffNames,
+  const staffPerformanceBarData = useMemo(() => ({
+    labels: staffPerformance.map((s) => s.FullName),
     datasets: [
       {
         label: "Tasks Completed",
-        data: staffTasks,
-        backgroundColor: "#66bb6a",
-      },
-    ],
-  };
-  
-  const staffPerformanceBarOptions = {
+        data: staffPerformance.map((s) => s.tasksCompleted),
+        backgroundColor: "#66bb6a"
+      }
+    ]
+  }), [staffPerformance]);
+
+  const staffPerformanceBarOptions = useMemo(() => ({
     responsive: true,
     plugins: { legend: { display: false } },
     scales: { y: { beginAtZero: true } },
-    maintainAspectRatio: false,
-  };
-  
+    maintainAspectRatio: false
+  }), []);
 
-  // ------------------ BOOKING TRENDS ------------------
-  const [bookingTrends, setBookingTrends] = useState([]);
-  useEffect(() => {
-    const fetchBookingTrends = async () => {
-      try {
-        const res = await axios.get("/booking/trends", { withCredentials: true });
-        setBookingTrends(res.data || []);
-      } catch (error) {
-        console.error("Error fetching booking trends:", error);
-      }
-    };
-    fetchBookingTrends();
-  }, []);
-  const bookingTrendsData = {
+  const bookingTrendsData = useMemo(() => ({
     labels: bookingTrends.map((b) => b.month),
     datasets: [
       {
@@ -305,64 +339,38 @@ export default function Reports() {
         borderColor: "#8d6e63",
         backgroundColor: "rgba(141,110,99,0.2)",
         fill: true,
-        tension: 0.3,
-      },
-    ],
-  };
-  const bookingTrendsOptions = {
+        tension: 0.3
+      }
+    ]
+  }), [bookingTrends]);
+
+  const bookingTrendsOptions = useMemo(() => ({
     responsive: true,
     plugins: { legend: { display: false } },
     scales: { y: { beginAtZero: true } },
-    maintainAspectRatio: false,
-  };
+    maintainAspectRatio: false
+  }), []);
 
-  // ------------------ SYSTEM METRICS ------------------
-  const [systemMetrics, setSystemMetrics] = useState({});
-  useEffect(() => {
-    const fetchSystemMetrics = async () => {
-      try {
-        const res = await axios.get("/system/metrics", { withCredentials: true });
-        setSystemMetrics(res.data || {});
-      } catch (error) {
-        console.error("Error fetching system metrics:", error);
-      }
-    };
-    fetchSystemMetrics();
-  }, []);
-  const systemMetricsBarData = {
+  const systemMetricsBarData = useMemo(() => ({
     labels: ["Logs", "Notifications"],
     datasets: [
       {
         label: "Count",
-        data: [
-          systemMetrics.logsCount || 0,
-          systemMetrics.notificationsCount || 0,
-        ],
-        backgroundColor: "#ab47bc",
-      },
-    ],
-  };
-  const systemMetricsBarOptions = {
+        data: [systemMetrics.logsCount || 0, systemMetrics.notificationsCount || 0],
+        backgroundColor: "#ab47bc"
+      }
+    ]
+  }), [systemMetrics]);
+
+  const systemMetricsBarOptions = useMemo(() => ({
     responsive: true,
     plugins: { legend: { display: false } },
     scales: { y: { beginAtZero: true } },
-    maintainAspectRatio: false,
-  };
+    maintainAspectRatio: false
+  }), []);
 
-  // ------------------ DAILY CASHFLOW (Already working) ------------------
-  useEffect(() => {
-    const fetchCashFlow = async () => {
-      try {
-        const res = await axios.get("/finance/cashflow", { withCredentials: true });
-        setCashFlowRecords(res.data.flows || []);
-      } catch (error) {
-        console.error("Error fetching cash flow:", error);
-      }
-    };
-    fetchCashFlow();
-  }, []);
-
-  const dailyCashFlowColumns = [
+  // ------------------ DATA GRID COLUMNS ------------------
+  const dailyCashFlowColumns = useMemo(() => [
     { field: "CashFlowID", headerName: "ID", width: 70 },
     { field: "Date", headerName: "Date", width: 120 },
     { field: "BranchID", headerName: "Branch ID", width: 100 },
@@ -446,9 +454,13 @@ export default function Reports() {
                 color: "#fff",
                 "&:hover": { backgroundColor: "#43a047" },
                 minWidth: "40px",
-                padding: "6px"
+                p: 1
               }}
-              onClick={() => setSelectedCashFlow(params.row)}
+              aria-label="View Cashflow"
+              onClick={() => {
+                setSelectedCashFlow(params.row);
+                setViewCashFlowOpen(true);
+              }}
             >
               <VisibilityIcon />
             </Button>
@@ -461,9 +473,13 @@ export default function Reports() {
                 color: "#fff",
                 "&:hover": { backgroundColor: "#1976d2" },
                 minWidth: "40px",
-                padding: "6px"
+                p: 1
               }}
-              onClick={() => setSelectedCashFlow(params.row)}
+              aria-label="Edit Cashflow"
+              onClick={() => {
+                setSelectedCashFlow(params.row);
+                setEditCashFlowOpen(true);
+              }}
             >
               <EditIcon />
             </Button>
@@ -476,8 +492,9 @@ export default function Reports() {
                 color: "#fff",
                 "&:hover": { backgroundColor: "#d32f2f" },
                 minWidth: "40px",
-                padding: "6px"
+                p: 1
               }}
+              aria-label="Delete Cashflow"
               onClick={() => {
                 const updated = cashFlowRecords.filter(
                   (c) => c.CashFlowID !== params.row.CashFlowID
@@ -491,148 +508,171 @@ export default function Reports() {
         </Box>
       )
     }
-  ];
+  ], [cashFlowRecords]);
 
-  // ------------------ CASHFLOW DIALOG STATES ------------------
-  const [selectedCashFlow, setSelectedCashFlow] = useState(null);
-  const [isViewCashFlowOpen, setViewCashFlowOpen] = useState(false);
-  const [isEditCashFlowOpen, setEditCashFlowOpen] = useState(false);
-
-  const handleCloseViewCashFlow = () => {
-    setViewCashFlowOpen(false);
-    setSelectedCashFlow(null);
-  };
-
-  const handleCloseEditCashFlow = () => {
-    setEditCashFlowOpen(false);
-    setSelectedCashFlow(null);
-  };
-
-  const handleSaveCashFlowEdits = () => {
-    const updatedRecords = cashFlowRecords.map((c) =>
-      c.CashFlowID === selectedCashFlow.CashFlowID ? selectedCashFlow : c
+  // ------------------ LOADING STATE ------------------
+  if (loading) {
+    return (
+      <Container
+        maxWidth="xl"
+        sx={{
+          py: 3,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh"
+        }}
+      >
+        <CircularProgress />
+      </Container>
     );
-    setCashFlowRecords(updatedRecords);
-    setEditCashFlowOpen(false);
-  };
+  }
 
-  // ------------------ EXPORT MENU ------------------
-  const [exportAnchorEl, setExportAnchorEl] = useState(null);
-  const openExportMenu = Boolean(exportAnchorEl);
-  const handleExportMenuOpen = (event) => setExportAnchorEl(event.currentTarget);
-  const handleExportMenuClose = () => setExportAnchorEl(null);
-  const handleExportCSV = () => handleExportMenuClose();
-  const handleExportPDF = () => {
-    handleExportMenuClose();
-    const doc = new jsPDF();
-    doc.text("Daily Cashflow Report", 14, 10);
-    const bodyData = filteredCashFlowRecords.map((row) => [
-      row.CashFlowID,
-      row.Date,
-      row.BranchID,
-      row.BusinessType,
-      parseFloat(row.CashSales || 0).toFixed(2),
-      parseFloat(row.GCashSales || 0).toFixed(2),
-      parseFloat(row.BPISales || 0).toFixed(2),
-      parseFloat(row.OtherSales || 0).toFixed(2),
-      parseFloat(row.TotalSales || 0).toFixed(2),
-      parseFloat(row.PettyCash || 0).toFixed(2),
-      parseFloat(row.DepositedAmount || 0).toFixed(2),
-      row.Remarks
-    ]);
-    doc.autoTable({
-      head: [
-        [
-          "ID",
-          "Date",
-          "BranchID",
-          "Business Type",
-          "Cash Sales",
-          "GCash Sales",
-          "BPI Sales",
-          "Other Sales",
-          "Total Sales",
-          "Petty Cash",
-          "Deposited",
-          "Remarks"
-        ]
-      ],
-      body: bodyData,
-      startY: 20,
-      margin: { horizontal: 10 },
-      styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [22, 160, 133] }
-    });
-    doc.save("DailyCashflow.pdf");
-  };
-
-  // ------------------ RENDER ------------------
+  // ------------------ RENDER UI ------------------
   return (
-    <Box sx={{ p: 3 }}>
-      {/* Filters */}
-      <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap", gap: 2, alignItems: "center" }}>
+    <Container maxWidth="xl" sx={{ py: 3 }}>
+      {/* Filter Section */}
+      <Box
+        sx={{
+          mb: 3,
+          p: 2,
+          bgcolor: "grey.100",
+          borderRadius: 2,
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 2,
+          alignItems: "center"
+        }}
+      >
         <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Time Period</InputLabel>
-          <Select value={timePeriod} label="Time Period" onChange={handleTimePeriodChange}>
+          <InputLabel id="time-period-label">Time Period</InputLabel>
+          <Select
+            labelId="time-period-label"
+            value={timePeriod}
+            label="Time Period"
+            onChange={handleTimePeriodChange}
+          >
             <MenuItem value="daily">Daily</MenuItem>
             <MenuItem value="weekly">Weekly</MenuItem>
             <MenuItem value="monthly">Monthly</MenuItem>
             <MenuItem value="yearly">Yearly</MenuItem>
           </Select>
         </FormControl>
-        <TextField type="date" size="small" label="From" InputLabelProps={{ shrink: true }} value={dateFrom} onChange={handleDateFromChange} />
-        <TextField type="date" size="small" label="To" InputLabelProps={{ shrink: true }} value={dateTo} onChange={handleDateToChange} />
+        <TextField
+          type="date"
+          size="small"
+          label="From"
+          InputLabelProps={{ shrink: true }}
+          value={dateFrom}
+          onChange={handleDateFromChange}
+        />
+        <TextField
+          type="date"
+          size="small"
+          label="To"
+          InputLabelProps={{ shrink: true }}
+          value={dateTo}
+          onChange={handleDateToChange}
+        />
         <FormControl size="small" sx={{ minWidth: 140 }}>
-          <InputLabel>Cashflow Branch</InputLabel>
-          <Select value={selectedCashFlowBranch} label="Cashflow Branch" onChange={(e) => setSelectedCashFlowBranch(e.target.value)}>
-            {cashFlowBranchOptions.map((branch) => (
-              <MenuItem key={branch} value={branch}>{branch}</MenuItem>
+          <InputLabel id="branch-label">Branch</InputLabel>
+          <Select
+            labelId="branch-label"
+            value={selectedCashFlowBranch}
+            label="Branch"
+            onChange={(e) => setSelectedCashFlowBranch(e.target.value)}
+          >
+            <MenuItem value="All Branches">All Branches</MenuItem>
+            {branches.map((b) => (
+              <MenuItem key={b.BranchID} value={b.BranchID}>
+                {b.BranchName}
+              </MenuItem>
             ))}
           </Select>
         </FormControl>
       </Box>
 
-      {/* Overview Cards */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
+      {/* Overview KPI Cards */}
+      <Grid container spacing={2} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 2 }}>
-            <MonetizationOnIcon sx={{ fontSize: 40, color: "#ffd54f", mr: 2 }} />
+          <Paper
+            elevation={3}
+            sx={{
+              bgcolor: "primary.main",
+              color: "primary.contrastText",
+              display: "flex",
+              alignItems: "center",
+              p: 2,
+              borderRadius: 2
+            }}
+          >
+            <MonetizationOnIcon sx={{ fontSize: 40, mr: 2 }} />
             <Box>
-              <Typography variant="h6">Total Revenue</Typography>
-              <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+              <Typography variant="subtitle1">Total Revenue</Typography>
+              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
                 {totalRevenue}
               </Typography>
             </Box>
           </Paper>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 2 }}>
-            <PersonAddIcon sx={{ fontSize: 40, color: "#81c784", mr: 2 }} />
+          <Paper
+            elevation={3}
+            sx={{
+              bgcolor: "success.main",
+              color: "success.contrastText",
+              display: "flex",
+              alignItems: "center",
+              p: 2,
+              borderRadius: 2
+            }}
+          >
+            <PersonAddIcon sx={{ fontSize: 40, mr: 2 }} />
             <Box>
-              <Typography variant="h6">New Members</Typography>
-              <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+              <Typography variant="subtitle1">New Members</Typography>
+              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
                 {newMembersThisMonth} This Month
               </Typography>
             </Box>
           </Paper>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 2 }}>
-            <FavoriteIcon sx={{ fontSize: 40, color: "#f06292", mr: 2 }} />
+          <Paper
+            elevation={3}
+            sx={{
+              bgcolor: "error.main",
+              color: "error.contrastText",
+              display: "flex",
+              alignItems: "center",
+              p: 2,
+              borderRadius: 2
+            }}
+          >
+            <FavoriteIcon sx={{ fontSize: 40, mr: 2 }} />
             <Box>
-              <Typography variant="h6">Attendance Rate</Typography>
-              <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+              <Typography variant="subtitle1">Attendance Rate</Typography>
+              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
                 {attendanceRate}
               </Typography>
             </Box>
           </Paper>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 2 }}>
-            <GroupWorkIcon sx={{ fontSize: 40, color: "#29b6f6", mr: 2 }} />
+          <Paper
+            elevation={3}
+            sx={{
+              bgcolor: "info.main",
+              color: "info.contrastText",
+              display: "flex",
+              alignItems: "center",
+              p: 2,
+              borderRadius: 2
+            }}
+          >
+            <GroupWorkIcon sx={{ fontSize: 40, mr: 2 }} />
             <Box>
-              <Typography variant="h6">Popular Service</Typography>
-              <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
+              <Typography variant="subtitle1">Popular Service</Typography>
+              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
                 {mostPopularService}
               </Typography>
             </Box>
@@ -640,49 +680,12 @@ export default function Reports() {
         </Grid>
       </Grid>
 
-      {/* Daily Cashflow Table */}
-      <Typography variant="h5" gutterBottom>Daily Cashflow</Typography>
-      <Divider sx={{ mb: 2 }} />
-      <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
-        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-          <Typography variant="h6">Daily Cashflow Report</Typography>
-          <Box>
-            <Button variant="outlined" onClick={handleExportMenuOpen}>
-              <FileDownloadIcon sx={{ mr: 1 }} /> Export
-            </Button>
-            <Menu
-              anchorEl={exportAnchorEl}
-              open={openExportMenu}
-              onClose={handleExportMenuClose}
-              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-            >
-              <MenuItem onClick={handleExportCSV}>
-                <CSVLink
-                  data={cashFlowRecords}
-                  headers={[
-                    { label: "Date", key: "Date" },
-                    { label: "BranchID", key: "BranchID" },
-                    { label: "BusinessType", key: "BusinessType" },
-                    { label: "Cash Sales", key: "CashSales" },
-                    { label: "GCash Sales", key: "GCashSales" },
-                    { label: "BPI Sales", key: "BPISales" },
-                    { label: "Other Sales", key: "OtherSales" },
-                    { label: "Total Sales", key: "TotalSales" },
-                    { label: "Petty Cash", key: "PettyCash" },
-                    { label: "Deposited Amount", key: "DepositedAmount" },
-                    { label: "Remarks", key: "Remarks" }
-                  ]}
-                  filename="DailyCashflow.csv"
-                  style={{ textDecoration: "none", color: "inherit" }}
-                >
-                  Export CSV
-                </CSVLink>
-              </MenuItem>
-              <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
-            </Menu>
-          </Box>
-        </Box>
-        <div style={{ height: 300, width: "100%" }}>
+      {/* Daily Cashflow Section */}
+      <Paper elevation={3} sx={{ p: 2, mb: 4, borderRadius: 2 }}>
+        <Typography variant="h6" gutterBottom>
+          Daily Cashflow Report
+        </Typography>
+        <Box sx={{ height: 320, width: "100%" }}>
           <DataGrid
             rows={filteredCashFlowRecords}
             columns={dailyCashFlowColumns}
@@ -690,117 +693,44 @@ export default function Reports() {
             rowsPerPageOptions={[5]}
             getRowId={(row) => row.CashFlowID}
           />
-        </div>
+        </Box>
       </Paper>
 
-      {/* View & Edit Cashflow Dialogs */}
-      <Dialog open={isViewCashFlowOpen} onClose={handleCloseViewCashFlow} fullWidth maxWidth="sm">
-        <DialogTitle>
-          <Typography variant="h6" color="primary">Daily Cashflow Details</Typography>
-        </DialogTitle>
-        <DialogContent dividers>
-          {selectedCashFlow && (
-            <Box sx={{ p: 2 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">ID:</Typography>
-                  <Typography variant="body1">{selectedCashFlow.CashFlowID}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Date:</Typography>
-                  <Typography variant="body1">{selectedCashFlow.Date}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Branch ID:</Typography>
-                  <Typography variant="body1">{selectedCashFlow.BranchID}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Business Type:</Typography>
-                  <Typography variant="body1">{selectedCashFlow.BusinessType}</Typography>
-                </Grid>
-                {/* Repeat similar blocks for other fields */}
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Cash Sales:</Typography>
-                  <Typography variant="body1">₱{parseFloat(selectedCashFlow.CashSales || 0).toFixed(2)}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">GCash Sales:</Typography>
-                  <Typography variant="body1">₱{parseFloat(selectedCashFlow.GCashSales || 0).toFixed(2)}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">BPI Sales:</Typography>
-                  <Typography variant="body1">₱{parseFloat(selectedCashFlow.BPISales || 0).toFixed(2)}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Other Sales:</Typography>
-                  <Typography variant="body1">₱{parseFloat(selectedCashFlow.OtherSales || 0).toFixed(2)}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Total Sales:</Typography>
-                  <Typography variant="body1">₱{parseFloat(selectedCashFlow.TotalSales || 0).toFixed(2)}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Petty Cash:</Typography>
-                  <Typography variant="body1">₱{parseFloat(selectedCashFlow.PettyCash || 0).toFixed(2)}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">Deposited Amount:</Typography>
-                  <Typography variant="body1">₱{parseFloat(selectedCashFlow.DepositedAmount || 0).toFixed(2)}</Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="body2" color="textSecondary">Remarks:</Typography>
-                  <Typography variant="body1">{selectedCashFlow.Remarks}</Typography>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseViewCashFlow} variant="contained" color="primary">Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={isEditCashFlowOpen} onClose={handleCloseEditCashFlow} fullWidth maxWidth="sm">
-        <DialogTitle>Edit Daily Cashflow</DialogTitle>
-        <DialogContent dividers>
-          {selectedCashFlow && (
-            <Box component="form" noValidate>
-              {/* Form fields for editing (similar to view dialog, with onChange updating selectedCashFlow) */}
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Date"
-                name="Date"
-                type="date"
-                value={selectedCashFlow.Date}
-                onChange={(e) => setSelectedCashFlow({ ...selectedCashFlow, Date: e.target.value })}
-                InputLabelProps={{ shrink: true }}
-              />
-              {/* Repeat for other fields as needed */}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseEditCashFlow}>Cancel</Button>
-          <Button variant="contained" onClick={handleSaveCashFlowEdits}>Save Changes</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* MEMBERSHIP REPORTS */}
-      <Typography variant="h5" gutterBottom>Membership Reports</Typography>
-      <Divider sx={{ mb: 2 }} />
-      <Grid container spacing={2} sx={{ mb: 3 }}>
+      {/* Membership Reports Section */}
+      <Grid container spacing={2} sx={{ mb: 4 }}>
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
-            <Typography variant="subtitle1" gutterBottom>Membership Plan Distribution</Typography>
+          <Paper
+            elevation={3}
+            sx={{
+              p: 2,
+              height: 320,
+              display: "flex",
+              flexDirection: "column",
+              borderRadius: 2
+            }}
+          >
+            <Typography variant="h6" gutterBottom>
+              Membership Plan Distribution
+            </Typography>
             <Box sx={{ flex: 1, position: "relative" }}>
               <Doughnut data={membershipDistData} options={membershipDistOptions} />
             </Box>
           </Paper>
         </Grid>
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
-            <Typography variant="subtitle1" gutterBottom>Membership Growth</Typography>
+          <Paper
+            elevation={3}
+            sx={{
+              p: 2,
+              height: 320,
+              display: "flex",
+              flexDirection: "column",
+              borderRadius: 2
+            }}
+          >
+            <Typography variant="h6" gutterBottom>
+              Membership Growth
+            </Typography>
             <Box sx={{ flex: 1, position: "relative" }}>
               <Line data={membershipGrowthData} options={membershipGrowthOptions} />
             </Box>
@@ -808,61 +738,222 @@ export default function Reports() {
         </Grid>
       </Grid>
 
-      {/* ATTENDANCE ANALYTICS */}
-      <Typography variant="h5" gutterBottom>Attendance Analytics</Typography>
-      <Divider sx={{ mb: 2 }} />
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
-            <Typography variant="subtitle1" gutterBottom>Attendance Over Time</Typography>
-            <Box sx={{ flex: 1, position: "relative" }}>
-              <Line data={attendanceAnalyticsData} options={attendanceAnalyticsOptions} />
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
+      {/* Attendance Analytics Section */}
+      <Paper
+        elevation={3}
+        sx={{
+          p: 2,
+          mb: 4,
+          borderRadius: 2,
+          height: 320,
+          display: "flex",
+          flexDirection: "column"
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          Attendance Over Time
+        </Typography>
+        <Box sx={{ flex: 1, position: "relative" }}>
+          <Line data={attendanceAnalyticsData} options={attendanceAnalyticsOptions} />
+        </Box>
+      </Paper>
 
-      {/* STAFF PERFORMANCE */}
-      <Typography variant="h5" gutterBottom>Staff Performance</Typography>
-      <Divider sx={{ mb: 2 }} />
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
-            <Typography variant="subtitle1" gutterBottom>Tasks Completed</Typography>
-            <Box sx={{ flex: 1, position: "relative" }}>
-              <Bar data={staffPerformanceBarData} options={staffPerformanceBarOptions} />
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
+      {/* Staff Performance Section */}
+      <Paper
+        elevation={3}
+        sx={{
+          p: 2,
+          mb: 4,
+          borderRadius: 2,
+          height: 320,
+          display: "flex",
+          flexDirection: "column"
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          Staff Performance - Tasks Completed
+        </Typography>
+        <Box sx={{ flex: 1, position: "relative" }}>
+          <Bar data={staffPerformanceBarData} options={staffPerformanceBarOptions} />
+        </Box>
+      </Paper>
 
-      {/* BOOKING TRENDS */}
-      <Typography variant="h5" gutterBottom>Booking & Session Reports</Typography>
-      <Divider sx={{ mb: 2 }} />
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
-            <Typography variant="subtitle1" gutterBottom>Booking Trends</Typography>
-            <Box sx={{ flex: 1, position: "relative" }}>
-              <Line data={bookingTrendsData} options={bookingTrendsOptions} />
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
+      {/* Booking Trends Section */}
+      <Paper
+        elevation={3}
+        sx={{
+          p: 2,
+          mb: 4,
+          borderRadius: 2,
+          height: 320,
+          display: "flex",
+          flexDirection: "column"
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          Booking & Session Reports - Booking Trends
+        </Typography>
+        <Box sx={{ flex: 1, position: "relative" }}>
+          <Line data={bookingTrendsData} options={bookingTrendsOptions} />
+        </Box>
+      </Paper>
 
-      {/* SYSTEM METRICS */}
-      <Typography variant="h5" gutterBottom>Critical System Metrics</Typography>
-      <Divider sx={{ mb: 2 }} />
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: 320, display: "flex", flexDirection: "column" }}>
-            <Typography variant="subtitle1" gutterBottom>System Metrics Overview</Typography>
-            <Box sx={{ flex: 1, position: "relative" }}>
-              <Bar data={systemMetricsBarData} options={systemMetricsBarOptions} />
+      {/* System Metrics Section */}
+      <Paper
+        elevation={3}
+        sx={{
+          p: 2,
+          borderRadius: 2,
+          height: 320,
+          display: "flex",
+          flexDirection: "column"
+        }}
+      >
+        <Typography variant="h6" gutterBottom>
+          Critical System Metrics
+        </Typography>
+        <Box sx={{ flex: 1, position: "relative" }}>
+          <Bar data={systemMetricsBarData} options={systemMetricsBarOptions} />
+        </Box>
+      </Paper>
+
+      {/* Cashflow View Dialog */}
+      <Dialog open={isViewCashFlowOpen} onClose={handleCloseViewCashFlow} fullWidth maxWidth="sm" aria-labelledby="view-cashflow-dialog-title">
+        <DialogTitle id="view-cashflow-dialog-title">
+          <Typography variant="h6" color="primary">
+            Daily Cashflow Details
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedCashFlow && (
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedCashFlow.CashFlowID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Date:
+                  </Typography>
+                  <Typography variant="body1">{selectedCashFlow.Date}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Branch ID:
+                  </Typography>
+                  <Typography variant="body1">{selectedCashFlow.BranchID}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Business Type:
+                  </Typography>
+                  <Typography variant="body1">{selectedCashFlow.BusinessType}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Cash Sales:
+                  </Typography>
+                  <Typography variant="body1">
+                    ₱{parseFloat(selectedCashFlow.CashSales || 0).toFixed(2)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    GCash Sales:
+                  </Typography>
+                  <Typography variant="body1">
+                    ₱{parseFloat(selectedCashFlow.GCashSales || 0).toFixed(2)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    BPI Sales:
+                  </Typography>
+                  <Typography variant="body1">
+                    ₱{parseFloat(selectedCashFlow.BPISales || 0).toFixed(2)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Other Sales:
+                  </Typography>
+                  <Typography variant="body1">
+                    ₱{parseFloat(selectedCashFlow.OtherSales || 0).toFixed(2)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Total Sales:
+                  </Typography>
+                  <Typography variant="body1">
+                    ₱{parseFloat(selectedCashFlow.TotalSales || 0).toFixed(2)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Petty Cash:
+                  </Typography>
+                  <Typography variant="body1">
+                    ₱{parseFloat(selectedCashFlow.PettyCash || 0).toFixed(2)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="textSecondary">
+                    Deposited Amount:
+                  </Typography>
+                  <Typography variant="body1">
+                    ₱{parseFloat(selectedCashFlow.DepositedAmount || 0).toFixed(2)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="textSecondary">
+                    Remarks:
+                  </Typography>
+                  <Typography variant="body1">{selectedCashFlow.Remarks}</Typography>
+                </Grid>
+              </Grid>
             </Box>
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseViewCashFlow} variant="contained" color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Cashflow Edit Dialog */}
+      <Dialog open={isEditCashFlowOpen} onClose={handleCloseEditCashFlow} fullWidth maxWidth="sm" aria-labelledby="edit-cashflow-dialog-title">
+        <DialogTitle id="edit-cashflow-dialog-title">Edit Daily Cashflow</DialogTitle>
+        <DialogContent dividers>
+          {selectedCashFlow && (
+            <Box component="form" noValidate sx={{ mt: 1 }}>
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Date"
+                name="Date"
+                type="date"
+                value={selectedCashFlow.Date}
+                onChange={(e) =>
+                  setSelectedCashFlow({ ...selectedCashFlow, Date: e.target.value })
+                }
+                InputLabelProps={{ shrink: true }}
+              />
+              {/* Additional edit fields can be added here */}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditCashFlow}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveCashFlowEdits}>
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
   );
 }
