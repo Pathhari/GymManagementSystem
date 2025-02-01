@@ -55,15 +55,16 @@ class BookingController extends Controller
             return [
                 'BookingID'    => $b->BookingID,
                 'MemberName'   => optional($b->member)->FullName ?? '',
+                'FacilityID'   => optional($b->facility)->FacilityID ?? null,  // add this
                 'FacilityName' => optional($b->facility)->Name ?? '',
                 'BookingDate'  => $b->BookingDate,
                 'BookingTime'  => $b->BookingTime,
                 'Duration'     => $b->Duration,
                 'Status'       => $b->Status ?? '',
-                // Pull the branch name from $b->facility->branch->BranchName
                 'Branch'       => optional(optional($b->facility)->branch)->BranchName ?? '',
+                'BranchID'     => optional(optional($b->facility)->branch)->BranchID ?? null,  // add this
             ];
-        });
+                });
 
         // Return JSON for your React front end
         return response()->json(['bookings' => $data]);
