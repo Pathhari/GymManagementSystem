@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Box,
+  Card,
+  CardContent,
   Container,
   Typography,
   Divider,
@@ -536,7 +538,6 @@ export default function Reports() {
         sx={{
           mb: 3,
           p: 2,
-          bgcolor: "grey.100",
           borderRadius: 2,
           display: "flex",
           flexWrap: "wrap",
@@ -593,92 +594,53 @@ export default function Reports() {
       </Box>
 
       {/* Overview KPI Cards */}
-      <Grid container spacing={2} sx={{ mb: 4 }}>
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+        {/* Total Revenue */}
         <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            elevation={3}
-            sx={{
-              bgcolor: "primary.main",
-              color: "primary.contrastText",
-              display: "flex",
-              alignItems: "center",
-              p: 2,
-              borderRadius: 2
-            }}
-          >
-            <MonetizationOnIcon sx={{ fontSize: 40, mr: 2 }} />
-            <Box>
-              <Typography variant="subtitle1">Total Revenue</Typography>
-              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-                {totalRevenue}
-              </Typography>
-            </Box>
-          </Paper>
+          <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1 }}>
+            <MonetizationOnIcon sx={{ fontSize: 40, color: "#42a5f5", mr: 2 }} />
+            <CardContent>
+              <Typography variant="h6">Total Revenue</Typography>
+              <Typography variant="h5">{totalRevenue}</Typography>
+            </CardContent>
+          </Card>
         </Grid>
+
+        {/* New Members */}
         <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            elevation={3}
-            sx={{
-              bgcolor: "success.main",
-              color: "success.contrastText",
-              display: "flex",
-              alignItems: "center",
-              p: 2,
-              borderRadius: 2
-            }}
-          >
-            <PersonAddIcon sx={{ fontSize: 40, mr: 2 }} />
-            <Box>
-              <Typography variant="subtitle1">New Members</Typography>
-              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-                {newMembersThisMonth} This Month
-              </Typography>
-            </Box>
-          </Paper>
+          <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1 }}>
+            <PersonAddIcon sx={{ fontSize: 40, color: "#e53935", mr: 2 }} />
+            <CardContent>
+              <Typography variant="h6">New Members</Typography>
+              <Typography variant="h5">{newMembersThisMonth} This Month</Typography>
+            </CardContent>
+          </Card>
         </Grid>
+
+        {/* Attendance Rate */}
         <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            elevation={3}
-            sx={{
-              bgcolor: "error.main",
-              color: "error.contrastText",
-              display: "flex",
-              alignItems: "center",
-              p: 2,
-              borderRadius: 2
-            }}
-          >
-            <FavoriteIcon sx={{ fontSize: 40, mr: 2 }} />
-            <Box>
-              <Typography variant="subtitle1">Attendance Rate</Typography>
-              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-                {attendanceRate}
-              </Typography>
-            </Box>
-          </Paper>
+          <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1 }}>
+            <FavoriteIcon sx={{ fontSize: 40, color: "#43a047", mr: 2 }} />
+            <CardContent>
+              <Typography variant="h6">Attendance Rate</Typography>
+              <Typography variant="h5">{attendanceRate}</Typography>
+            </CardContent>
+          </Card>
         </Grid>
+
+        {/* Most Popular Service */}
         <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            elevation={3}
-            sx={{
-              bgcolor: "info.main",
-              color: "info.contrastText",
-              display: "flex",
-              alignItems: "center",
-              p: 2,
-              borderRadius: 2
-            }}
-          >
-            <GroupWorkIcon sx={{ fontSize: 40, mr: 2 }} />
-            <Box>
-              <Typography variant="subtitle1">Popular Service</Typography>
-              <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-                {mostPopularService}
-              </Typography>
-            </Box>
-          </Paper>
+          <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1 }}>
+            <GroupWorkIcon sx={{ fontSize: 40, color: "#ffca28", mr: 2 }} />
+            <CardContent>
+              <Typography variant="h6">Popular Service</Typography>
+              <Typography variant="h5">{mostPopularService}</Typography>
+            </CardContent>
+          </Card>
         </Grid>
       </Grid>
+
+
 
       {/* Daily Cashflow Section */}
       <Paper elevation={3} sx={{ p: 2, mb: 4, borderRadius: 2 }}>

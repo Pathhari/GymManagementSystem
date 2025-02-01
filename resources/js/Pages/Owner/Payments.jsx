@@ -579,76 +579,71 @@ export default function PaymentsAndInvoices() {
         </Box>
 
         <Grid container spacing={2}>
-          <Grid item xs={12} sm={6} md={4}>
-            <Card
-              sx={{
-                bgcolor: "text.primary",
-                color: "background.paper",
-                textAlign: "center",
-                p: 2,
-                display: "flex",
-                alignItems: "center",
-                gap: 2,
-              }}
-            >
-              <ReceiptIcon sx={{ fontSize: 40, color: "gold" }} />
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Total Revenue
-                </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-                  ${totalRevenue.toFixed(2)}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <Card
-              sx={{
-                bgcolor: "text.primary",
-                color: "background.paper",
-                textAlign: "center",
-                p: 2,
-                display: "flex",
-                alignItems: "center",
-                gap: 2,
-              }}
-            >
-              <DescriptionIcon sx={{ fontSize: 40, color: "orange" }} />
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Total Invoices
-                </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-                  {totalInvoices}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <Card
-              sx={{
-                bgcolor: "text.primary",
-                color: "background.paper",
-                textAlign: "center",
-                p: 2,
-                display: "flex",
-                alignItems: "center",
-                gap: 2,
-              }}
-            >
-              <ReplayCircleFilledIcon sx={{ fontSize: 40, color: "limegreen" }} />
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Outstanding Amount
-                </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-                  ${outstandingAmount.toFixed(2)}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+  {/* Total Revenue */}
+  <Grid item xs={12} sm={6} md={4}>
+    <Card
+      sx={{
+        bgcolor: "text.primary",
+        color: "background.paper",
+        display: "flex",
+        alignItems: "center",
+        p: 2,
+        boxShadow: 3,
+      }}
+    >
+      <ReceiptIcon sx={{ fontSize: 30, mr: 1.5, color: "gold" }} />
+      <CardContent sx={{ p: 0.5 }}>
+        <Typography variant="body2">Total Revenue</Typography>
+        <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+          ₱{totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </Typography>
+      </CardContent>
+    </Card>
+  </Grid>
+
+  {/* Total Invoices */}
+  <Grid item xs={12} sm={6} md={4}>
+    <Card
+      sx={{
+        bgcolor: "text.primary",
+        color: "background.paper",
+        display: "flex",
+        alignItems: "center",
+        p: 2,
+        boxShadow: 3,
+      }}
+    >
+      <DescriptionIcon sx={{ fontSize: 30, mr: 1.5, color: "orange" }} />
+      <CardContent sx={{ p: 0.5 }}>
+        <Typography variant="body2">Total Invoices</Typography>
+        <Typography variant="h6" sx={{ fontWeight: "bold" }}>{totalInvoices}</Typography>
+      </CardContent>
+    </Card>
+  </Grid>
+
+  {/* Outstanding Amount */}
+  <Grid item xs={12} sm={6} md={4}>
+    <Card
+      sx={{
+        bgcolor: "text.primary",
+        color: "background.paper",
+        display: "flex",
+        alignItems: "center",
+        p: 2,
+        boxShadow: 3,
+      }}
+    >
+      <ReplayCircleFilledIcon sx={{ fontSize: 30, mr: 1.5, color: "limegreen" }} />
+      <CardContent sx={{ p: 0.5 }}>
+        <Typography variant="body2">Outstanding Amount</Typography>
+        <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+          ₱{outstandingAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </Typography>
+      </CardContent>
+    </Card>
+  </Grid>
+</Grid>
+
       </Box>
 
       {/* ---------- Title & Tabs ---------- */}

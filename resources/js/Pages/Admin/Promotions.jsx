@@ -467,82 +467,61 @@ export default function PromotionsSegments() {
   return (
     <Box sx={{ p: 4 }}>
       {/* TOP FILTERS */}
-      <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap", gap: 2 }}>
-        <TextField
-          label="Search"
-          size="small"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        {branches.length > 0 && (
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel>Filter Branch</InputLabel>
-            <Select
-              label="Filter Branch"
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-            >
-              <MenuItem value="All">All</MenuItem>
-              {branches.map((b) => (
-                <MenuItem key={b.BranchID} value={b.BranchName}>
-                  {b.BranchName}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        )}
-        <Button variant="outlined" onClick={fetchPromotions}>
-          Refresh
-        </Button>
-      </Box>
-
-      {/* OVERVIEW CARDS */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2, display: "flex", alignItems: "center" }}>
-            <StarsIcon sx={{ fontSize: 40, color: "#ffd700", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Active</Typography>
-              <Typography variant="body1" sx={{ fontWeight: "bold", fontSize: "1.3rem" }}>
-                {activePromosCount}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2, display: "flex", alignItems: "center" }}>
-            <CalendarTodayIcon sx={{ fontSize: 40, color: "#2196f3", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Inactive</Typography>
-              <Typography variant="body1" sx={{ fontWeight: "bold", fontSize: "1.3rem" }}>
-                {inactivePromosCount}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2, display: "flex", alignItems: "center" }}>
-            <WarningAmberIcon sx={{ fontSize: 40, color: "red", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Expired</Typography>
-              <Typography variant="body1" sx={{ fontWeight: "bold", fontSize: "1.3rem" }}>
-                {expiredPromosCount}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2, display: "flex", alignItems: "center" }}>
-            <RedeemIcon sx={{ fontSize: 40, color: "#ffca28", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Redemptions</Typography>
-              <Typography variant="body1" sx={{ fontWeight: "bold", fontSize: "1.3rem" }}>
-                {totalRedemptions}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+            {/* Active Promotions */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: "text.primary", color: "background.paper", p: 2, display: "flex", alignItems: "center" }}>
+                <StarsIcon sx={{ fontSize: 40, color: "#ffd700", mr: 2 }} />
+                <CardContent>
+                  <Typography variant="subtitle1">Active Promotions</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                    {activePromosCount}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Inactive Promotions */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: "text.primary", color: "background.paper", p: 2, display: "flex", alignItems: "center" }}>
+                <CalendarTodayIcon sx={{ fontSize: 40, color: "#2196f3", mr: 2 }} />
+                <CardContent>
+                  <Typography variant="subtitle1">Inactive Promotions</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                    {inactivePromosCount}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Expired Promotions */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: "text.primary", color: "background.paper", p: 2, display: "flex", alignItems: "center" }}>
+                <WarningAmberIcon sx={{ fontSize: 40, color: "red", mr: 2 }} />
+                <CardContent>
+                  <Typography variant="subtitle1">Expired Promotions</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                    {expiredPromosCount}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Redemptions */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: "text.primary", color: "background.paper", p: 2, display: "flex", alignItems: "center" }}>
+                <RedeemIcon sx={{ fontSize: 40, color: "#ffca28", mr: 2 }} />
+                <CardContent>
+                  <Typography variant="subtitle1">Total Redemptions</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                    {totalRedemptions}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+
 
       {/* HEADER + EXPORT + ADD BUTTONS */}
       <Typography variant="h4" gutterBottom>
@@ -552,8 +531,19 @@ export default function PromotionsSegments() {
 
       <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-          <Typography variant="h6">All Promotions</Typography>
+        <TextField
+        variant="outlined"
+        size="small"
+        placeholder="Search..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        sx={{ width: 250 }}
+      />
+    
           <Box sx={{ display: "flex", gap: 1 }}>
+          <Button variant="outlined" onClick={fetchPromotions}>
+        Refresh
+      </Button>
             <Button
               variant="outlined"
               onClick={handleExportMenuOpen}
@@ -603,27 +593,32 @@ export default function PromotionsSegments() {
         </div>
       </Paper>
 
-      {/* CHARTS EXAMPLES */}
-      <Grid container spacing={2} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: 300 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Promotions Over Time
-            </Typography>
-            <Line data={lineChartData} options={lineChartOptions} />
-          </Paper>
+   {/* CHARTS INSIDE CARDS */}
+          <Grid container spacing={2} sx={{ mb: 4 }}>
+          {/* Promotions Over Time */}
+          <Grid item xs={12} md={6}>
+            <Card sx={{ bgcolor: "background.paper", p: 2, height: 350, display: "flex", flexDirection: "column" }}>
+              <CardContent sx={{ flexGrow: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>Promotions Over Time</Typography>
+                <Box sx={{ flexGrow: 1 }}>
+                  <Line data={lineChartData} options={{ ...lineChartOptions, maintainAspectRatio: false }} />
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Promotion Segments */}
+          <Grid item xs={12} md={6}>
+            <Card sx={{ bgcolor: "background.paper", p: 2, height: 350, display: "flex", flexDirection: "column" }}>
+              <CardContent sx={{ flexGrow: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>Promotion Segments</Typography>
+                <Box sx={{ flexGrow: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Doughnut data={donutData} options={{ ...donutOptions, maintainAspectRatio: false }} />
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: 300 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Promotion Segments
-            </Typography>
-            <Box sx={{ height: "100%", position: "relative" }}>
-              <Doughnut data={donutData} options={donutOptions} />
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
 
       {/* ADD PROMOTION DIALOG */}
       <Dialog open={isAddOpen} onClose={() => setAddOpen(false)} fullWidth maxWidth="sm">

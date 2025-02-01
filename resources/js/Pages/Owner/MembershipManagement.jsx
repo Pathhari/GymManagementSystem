@@ -897,50 +897,54 @@ async function handleAddRenewal() {
 
   return (
     <Box sx={{ p: 4 }}>
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ bgcolor: "text.primary", color: "background.paper", p: 2, display: "flex" }}>
-            <GroupsIcon sx={{ fontSize: 40, color: "gray", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Total Members</Typography>
-              <Typography sx={{ fontSize: 18, fontWeight: "bold" }}>{totalMembers}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ bgcolor: "text.primary", color: "background.paper", p: 2, display: "flex" }}>
-            <DirectionsWalkIcon sx={{ fontSize: 40, color: "primary.main", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Walk-Ins</Typography>
-              <Typography sx={{ fontSize: 18, fontWeight: "bold" }}>
-                {walkInRecords.length}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ bgcolor: "text.primary", color: "background.paper", p: 2, display: "flex" }}>
-            <WarningIcon sx={{ fontSize: 40, color: "red", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Expired</Typography>
-              <Typography sx={{ fontSize: 18, fontWeight: "bold" }}>
-                {expiredMemberships}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ bgcolor: "text.primary", color: "background.paper", p: 2, display: "flex" }}>
-            <EventAvailableIcon sx={{ fontSize: 40, color: "blue", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Expiring Soon</Typography>
-              <Typography sx={{ fontSize: 18, fontWeight: "bold" }}>
-                {upcomingExpirations}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+          {/* Key Metrics Section */}
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            {/* Total Members */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: "text.primary", color: "background.paper", p: 1.5, display: "flex", alignItems: "center", boxShadow: 2 }}>
+                <GroupsIcon sx={{ fontSize: 30, color: "gray", mr: 1.5 }} />
+                <CardContent sx={{ p: 0.5 }}>
+                  <Typography variant="body2">Total Members</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>{totalMembers}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Walk-Ins */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: "text.primary", color: "background.paper", p: 1.5, display: "flex", alignItems: "center", boxShadow: 2 }}>
+                <DirectionsWalkIcon sx={{ fontSize: 30, color: "primary.main", mr: 1.5 }} />
+                <CardContent sx={{ p: 0.5 }}>
+                  <Typography variant="body2">Walk-Ins</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>{walkInRecords.length}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Expired Memberships */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: "text.primary", color: "background.paper", p: 1.5, display: "flex", alignItems: "center", boxShadow: 2 }}>
+                <WarningIcon sx={{ fontSize: 30, color: "red", mr: 1.5 }} />
+                <CardContent sx={{ p: 0.5 }}>
+                  <Typography variant="body2">Expired</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>{expiredMemberships}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Expiring Soon */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: "text.primary", color: "background.paper", p: 1.5, display: "flex", alignItems: "center", boxShadow: 2 }}>
+                <EventAvailableIcon sx={{ fontSize: 30, color: "blue", mr: 1.5 }} />
+                <CardContent sx={{ p: 0.5 }}>
+                  <Typography variant="body2">Expiring Soon</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>{upcomingExpirations}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+
 
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
         <Typography variant="h4">Membership Management</Typography>

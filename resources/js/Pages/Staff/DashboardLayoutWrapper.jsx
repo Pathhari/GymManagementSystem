@@ -10,7 +10,6 @@ import EventNoteIcon from '@mui/icons-material/CalendarMonth';
 import LockIcon from '@mui/icons-material/Lock';
 import NotificationsIcon from '@mui/icons-material/NotificationsActive';
 import BuildIcon from '@mui/icons-material/FitnessCenter';
-import BarChartIcon from '@mui/icons-material/BarChart';
 import LogoutIcon from '@mui/icons-material/Logout';
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import { AppProvider } from '@toolpad/core/AppProvider';

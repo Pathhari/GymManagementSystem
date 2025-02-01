@@ -431,107 +431,74 @@ export default function SystemLogs() {
 
       {/* ---------- Overview Cards ---------- */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              bgcolor: "text.primary",
-              color: "background.paper",
-              display: "flex",
-              alignItems: "center",
-              p: 2
-            }}
-          >
-            <ListAltIcon sx={{ fontSize: 40, color: "#fff", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Total Logs</Typography>
-              <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
-                {totalLogsCount}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              bgcolor: "text.primary",
-              color: "background.paper",
-              display: "flex",
-              alignItems: "center",
-              p: 2
-            }}
-          >
-            <ErrorIcon sx={{ fontSize: 40, color: "#f44336", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Critical Actions</Typography>
-              <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
-                {criticalActionsCount}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              bgcolor: "text.primary",
-              color: "background.paper",
-              display: "flex",
-              alignItems: "center",
-              p: 2
-            }}
-          >
-            <EventNoteIcon sx={{ fontSize: 40, color: "#4caf50", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Logs Today</Typography>
-              <Typography variant="body1" sx={{ fontSize: "1.5rem", fontWeight: "bold" }}>
-                {userActivityTodayCount}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              bgcolor: "text.primary",
-              color: "background.paper",
-              display: "flex",
-              alignItems: "center",
-              p: 2
-            }}
-          >
-            <EngineeringIcon sx={{ fontSize: 40, color: "#ffca28", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Most Active Module</Typography>
-              <Typography variant="body2" sx={{ fontSize: "0.9rem" }}>
-                {mostActiveModule}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+            {/* Total Logs */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1 }}>
+                <ListAltIcon sx={{ fontSize: 40, color: "#42a5f5", mr: 2 }} />
+                <CardContent>
+                  <Typography variant="h6">Total Logs</Typography>
+                  <Typography variant="h5">{totalLogsCount}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Critical Actions */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1 }}>
+                <ErrorIcon sx={{ fontSize: 40, color: "#e53935", mr: 2 }} />
+                <CardContent>
+                  <Typography variant="h6">Critical Actions</Typography>
+                  <Typography variant="h5">{criticalActionsCount}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Logs Today */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1 }}>
+                <EventNoteIcon sx={{ fontSize: 40, color: "#43a047", mr: 2 }} />
+                <CardContent>
+                  <Typography variant="h6">Logs Today</Typography>
+                  <Typography variant="h5">{userActivityTodayCount}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Most Active Module */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1 }}>
+                <EngineeringIcon sx={{ fontSize: 40, color: "#ffca28", mr: 2 }} />
+                <CardContent>
+                  <Typography variant="h7">Most Active Module</Typography>
+                  <Typography variant="body2">{mostActiveModule}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
 
       {/* ---------- Logs Over Time & Logs by Module ---------- */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: 400, display: "flex", flexDirection: "column" }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Logs Over Time
-            </Typography>
-            <Box sx={{ flex: 1, position: "relative" }}>
-              <Line data={lineChartData} options={lineOptions} />
-            </Box>
-          </Paper>
+          {/* Logs Over Time */}
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2, height: 400, display: "flex", flexDirection: "column" }}>
+              <Typography variant="h6" sx={{ mb: 2 }}>Logs Over Time</Typography>
+              <Box sx={{ flex: 1 }}>
+                <Line data={lineChartData} options={lineOptions} />
+              </Box>
+            </Paper>
+          </Grid>
+
+          {/* Logs by Module */}
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2, height: 400, display: "flex", flexDirection: "column" }}>
+              <Typography variant="h6" sx={{ mb: 2 }}>Logs by Module</Typography>
+              <Box sx={{ flex: 1 }}>
+                <Doughnut data={modulesChartData} options={modulesOptions} />
+              </Box>
+            </Paper>
+          </Grid>
         </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: 400, display: "flex", flexDirection: "column" }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Logs by Module
-            </Typography>
-            <Box sx={{ flex: 1, position: "relative" }}>
-              <Doughnut data={modulesChartData} options={modulesOptions} />
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
+
 
       <Typography variant="h4" gutterBottom>
         System Logs & Activity

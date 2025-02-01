@@ -62,9 +62,7 @@ export default function DashboardContent() {
 
   // Set background gradient based on theme mode
   const bgGradient = darkMode
-    ? 'linear-gradient(135deg, #1e1e1e, #2c2c2c)'
-    : 'linear-gradient(135deg, #f5f7fa, #c3cfe2)';
-
+   
   // States
   const [keyMetrics, setKeyMetrics] = useState({
     totalRevenue: 0,
@@ -215,9 +213,6 @@ export default function DashboardContent() {
       <Typography variant="h4" gutterBottom sx={{ mb: 4, fontWeight: 700, color: theme.palette.text.primary }}>
         Dashboard
       </Typography>
-      <Typography variant="body2" sx={{ mb: 4, color: theme.palette.text.secondary }}>
-        Overview of the entire system.
-      </Typography>
 
       {/* Top Controls */}
       <Grid container spacing={2} sx={{ mb: 4 }}>
@@ -269,56 +264,68 @@ export default function DashboardContent() {
       </Grid>
 
       {/* Key Metrics Section */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ backgroundColor: '#42A5F5', borderRadius: 2, boxShadow: 3 }}>
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ color: 'white', mb: 1 }}>
-                Members
-              </Typography>
-              <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
-                {loading ? <CircularProgress size={24} color="inherit" /> : keyMetrics.totalEmailsSent}
-              </Typography>
-            </CardContent>
-          </Card>
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {/* Total Members */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ backgroundColor: "#42A5F5", borderRadius: 2, boxShadow: 3, display: "flex", alignItems: "center", p: 1.5 }}>
+              <Person sx={{ fontSize: 30, color: "white", mr: 1.5 }} />
+              <CardContent sx={{ p: 1 }}>
+                <Typography variant="body2" sx={{ color: "white", mb: 0.5 }}>
+                  Members
+                </Typography>
+                <Typography variant="h6" sx={{ color: "white", fontWeight: "bold" }}>
+                  {loading ? <CircularProgress size={20} color="inherit" /> : keyMetrics.totalClients}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Revenue Generated */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ backgroundColor: "#66BB6A", borderRadius: 2, boxShadow: 3, display: "flex", alignItems: "center", p: 1.5 }}>
+              <AttachMoney sx={{ fontSize: 30, color: "white", mr: 1.5 }} />
+              <CardContent sx={{ p: 1 }}>
+                <Typography variant="body2" sx={{ color: "white", mb: 0.5 }}>
+                  Revenue
+                </Typography>
+                <Typography variant="h6" sx={{ color: "white", fontWeight: "bold" }}>
+                  {loading ? <CircularProgress size={20} color="inherit" /> : `₱${keyMetrics.totalRevenue.toLocaleString()}`}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* New Members */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ backgroundColor: "#FFB74D", borderRadius: 2, boxShadow: 3, display: "flex", alignItems: "center", p: 1.5 }}>
+              <People sx={{ fontSize: 30, color: "white", mr: 1.5 }} />
+              <CardContent sx={{ p: 1 }}>
+                <Typography variant="body2" sx={{ color: "white", mb: 0.5 }}>
+                  New Members
+                </Typography>
+                <Typography variant="h6" sx={{ color: "white", fontWeight: "bold" }}>
+                  {loading ? <CircularProgress size={20} color="inherit" /> : keyMetrics.totalClients}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Attendance */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ backgroundColor: "#9C27B0", borderRadius: 2, boxShadow: 3, display: "flex", alignItems: "center", p: 1.5 }}>
+              <DirectionsRun sx={{ fontSize: 30, color: "white", mr: 1.5 }} />
+              <CardContent sx={{ p: 1 }}>
+                <Typography variant="body2" sx={{ color: "white", mb: 0.5 }}>
+                  Attendance
+                </Typography>
+                <Typography variant="h6" sx={{ color: "white", fontWeight: "bold" }}>
+                  {loading ? <CircularProgress size={20} color="inherit" /> : keyMetrics.trafficReceived}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ backgroundColor: '#66BB6A', borderRadius: 2, boxShadow: 3 }}>
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ color: 'white', mb: 1 }}>
-                Revenue Generated
-              </Typography>
-              <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
-                {loading ? <CircularProgress size={24} color="inherit" /> : `$${keyMetrics.totalRevenue.toLocaleString()}`}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ backgroundColor: '#FFB74D', borderRadius: 2, boxShadow: 3 }}>
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ color: 'white', mb: 1 }}>
-                New Members
-              </Typography>
-              <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
-                {loading ? <CircularProgress size={24} color="inherit" /> : keyMetrics.totalClients}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ backgroundColor: '#9C27B0', borderRadius: 2, boxShadow: 3 }}>
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ color: 'white', mb: 1 }}>
-                Attendance
-              </Typography>
-              <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
-                {loading ? <CircularProgress size={24} color="inherit" /> : keyMetrics.trafficReceived}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+
 
       {/* Revenue Trends & Recent Transactions */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -351,7 +358,7 @@ export default function DashboardContent() {
                   {recentTransactions.slice(0, 8).map(transaction => (
                     <TableRow key={transaction.id} sx={{ '&:hover': { backgroundColor: theme.palette.action.hover } }}>
                       <TableCell>{transaction.id}</TableCell>
-                      <TableCell>${transaction.amount}</TableCell>
+                      <TableCell>₱{transaction.amount}</TableCell>
                       <TableCell>{transaction.date}</TableCell>
                       <TableCell>
                         <Typography sx={{ color: getStatusColor(transaction.status), fontWeight: 'bold' }}>

@@ -50,6 +50,10 @@ export default function PaymentsAndInvoices() {
   const [payments, setPayments] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [members, setMembers] = useState([]);
+  const [branchOptions, setBranchOptions] = useState([]);
+
+  // Selected branch ("all" or a BranchID as string)
+  const [branch, setBranch] = useState("all");
 
   // Payment dialogs
   const [isAddPaymentOpen, setAddPaymentOpen] = useState(false);
@@ -89,24 +93,19 @@ export default function PaymentsAndInvoices() {
   const [timePeriod, setTimePeriod] = useState("daily");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [branch, setBranch] = useState("all");
 
   // ----------------- Fetch Data on Mount -----------------
   useEffect(() => {
     fetchMembers();
     fetchPayments();
     fetchInvoices();
+    fetchBranches();
   }, []);
-
-  
 
   const fetchMembers = () => {
     axios
       .get("/membership/members")
       .then((res) => {
-        // If your MembershipController returns { members, renewals, etc. },
-        // you might need res.data.members
-        // For now, if it returns an array directly, do:
         if (Array.isArray(res.data)) {
           setMembers(res.data);
         } else if (res.data.members) {
@@ -130,9 +129,10 @@ export default function PaymentsAndInvoices() {
           memberName: p.member ? p.member.FullName : "N/A",
           memberId: p.MemberID || "",
           paymentDate: p.PaymentDate,
-          amountPaid: p.Amount,
+          amountPaid: Number(p.Amount), // Ensure it's a number
           method: p.PaymentMethod,
           status: p.Status,
+          branchId: p.BranchID ? p.BranchID.toString() : "",
         }));
         setPayments(mapped);
       })
@@ -149,10 +149,28 @@ export default function PaymentsAndInvoices() {
           invoiceDate: inv.InvoiceDate,
           dueDate: inv.DueDate,
           invoiceTotal: inv.InvoiceTotal,
+          status: inv.PaymentStatus, // Use the PaymentStatus field
         }));
         setInvoices(mapped);
       })
       .catch((err) => console.error(err));
+  };
+
+  const fetchBranches = () => {
+    axios
+      .get("/owner/branches")
+      .then((res) => {
+        const fetched = res.data.branches.map((b) => ({
+          value: b.BranchID.toString(),
+          label: b.BranchName,
+        }));
+        // Include "All Branches" as the first option
+        setBranchOptions([{ value: "all", label: "All Branches" }, ...fetched]);
+      })
+      .catch((err) => {
+        console.error(err);
+        setBranchOptions([{ value: "all", label: "All Branches" }]);
+      });
   };
 
   // ----------------- Payment Handlers -----------------
@@ -284,12 +302,10 @@ export default function PaymentsAndInvoices() {
       .catch((err) => console.error(err));
   };
 
-  // 1) On “View” click, fetch the full invoice from /invoices/{id} with lineItems
   const handleViewInvoiceOpen = (row) => {
     axios
       .get(`/invoices/${row.invoiceId}`)
       .then((res) => {
-        // res.data => { InvoiceID, InvoiceTotal, lineItems: [...], member: {...}, ... }
         const fetched = {
           invoiceId: res.data.InvoiceID,
           memberName: res.data.member ? res.data.member.FullName : "N/A",
@@ -312,40 +328,33 @@ export default function PaymentsAndInvoices() {
       .then(() => fetchInvoices())
       .catch((err) => console.error(err));
   };
-  
 
-  // ----------------- Summary Stats -----------------
-  const totalRevenue = payments
+  // ----------------- Summary Stats & Filtering -----------------
+  // Apply branch filtering to payments for summaries and table rows
+  const paymentsByBranch = branch === "all" ? payments : payments.filter((p) => p.branchId === branch);
+  const totalRevenue = paymentsByBranch
     .filter((p) => p.status === "Completed")
     .reduce((acc, cur) => acc + cur.amountPaid, 0);
 
-  // If you actually have an invoice status column, adjust these filters:
-  const pendingInvoices = invoices.filter(
-    (inv) => inv.status === "Unpaid" || inv.status === "Partially Paid"
-  ).length;
+  const totalInvoices = invoices.length;
+  const outstandingAmount = invoices
+    .filter((inv) => inv.status === "Unpaid" || inv.status === "Partially Paid")
+    .reduce((acc, inv) => acc + Number(inv.invoiceTotal), 0);
 
-  const completedInvoices = invoices.filter((inv) => inv.status === "Paid").length;
-
-  // Filters
-  const handleTimePeriodChange = (e) => setTimePeriod(e.target.value);
-  const handleDateFromChange = (e) => setDateFrom(e.target.value);
-  const handleDateToChange = (e) => setDateTo(e.target.value);
-  const branchOptions = [
-    { value: "all", label: "All Branches" },
-    { value: "1", label: "Branch 1" },
-  ];
-  const handleBranchChange = (e) => setBranch(e.target.value);
-
-  // ----------------- Search & Filtered Data -----------------
-  const handleSearchChange = (e) => setSearchTerm(e.target.value.toLowerCase());
-
-  const filteredPayments = payments.filter((p) =>
+  const filteredPayments = paymentsByBranch.filter((p) =>
     Object.values(p).some((val) => String(val).toLowerCase().includes(searchTerm))
   );
+
   const filteredInvoices = invoices.filter((i) =>
     Object.values(i).some((val) => String(val).toLowerCase().includes(searchTerm))
   );
 
+  const handleTimePeriodChange = (e) => setTimePeriod(e.target.value);
+  const handleDateFromChange = (e) => setDateFrom(e.target.value);
+  const handleDateToChange = (e) => setDateTo(e.target.value);
+  const handleBranchChange = (e) => setBranch(e.target.value);
+
+  const handleSearchChange = (e) => setSearchTerm(e.target.value.toLowerCase());
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
     setSearchTerm("");
@@ -570,77 +579,71 @@ export default function PaymentsAndInvoices() {
         </Box>
 
         <Grid container spacing={2}>
-          <Grid item xs={12} sm={6} md={4}>
-            <Card
-              sx={{
-                bgcolor: "text.primary",
-                color: "background.paper",
-                textAlign: "center",
-                p: 2,
-                display: "flex",
-                alignItems: "center",
-                gap: 2,
-              }}
-            >
-              <ReceiptIcon sx={{ fontSize: 40, color: "gold" }} />
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Total Revenue
-                </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-                  $
-                  {totalRevenue}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <Card
-              sx={{
-                bgcolor: "text.primary",
-                color: "background.paper",
-                textAlign: "center",
-                p: 2,
-                display: "flex",
-                alignItems: "center",
-                gap: 2,
-              }}
-            >
-              <DescriptionIcon sx={{ fontSize: 40, color: "orange" }} />
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Pending Invoices
-                </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-                  {pendingInvoices}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <Card
-              sx={{
-                bgcolor: "text.primary",
-                color: "background.paper",
-                textAlign: "center",
-                p: 2,
-                display: "flex",
-                alignItems: "center",
-                gap: 2,
-              }}
-            >
-              <ReplayCircleFilledIcon sx={{ fontSize: 40, color: "limegreen" }} />
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Completed Invoices
-                </Typography>
-                <Typography variant="body1" sx={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-                  {completedInvoices}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+  {/* Total Revenue */}
+  <Grid item xs={12} sm={6} md={4}>
+    <Card
+      sx={{
+        bgcolor: "text.primary",
+        color: "background.paper",
+        display: "flex",
+        alignItems: "center",
+        p: 2,
+        boxShadow: 3,
+      }}
+    >
+      <ReceiptIcon sx={{ fontSize: 30, mr: 1.5, color: "gold" }} />
+      <CardContent sx={{ p: 0.5 }}>
+        <Typography variant="body2">Total Revenue</Typography>
+        <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+          ₱{totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </Typography>
+      </CardContent>
+    </Card>
+  </Grid>
+
+  {/* Total Invoices */}
+  <Grid item xs={12} sm={6} md={4}>
+    <Card
+      sx={{
+        bgcolor: "text.primary",
+        color: "background.paper",
+        display: "flex",
+        alignItems: "center",
+        p: 2,
+        boxShadow: 3,
+      }}
+    >
+      <DescriptionIcon sx={{ fontSize: 30, mr: 1.5, color: "orange" }} />
+      <CardContent sx={{ p: 0.5 }}>
+        <Typography variant="body2">Total Invoices</Typography>
+        <Typography variant="h6" sx={{ fontWeight: "bold" }}>{totalInvoices}</Typography>
+      </CardContent>
+    </Card>
+  </Grid>
+
+  {/* Outstanding Amount */}
+  <Grid item xs={12} sm={6} md={4}>
+    <Card
+      sx={{
+        bgcolor: "text.primary",
+        color: "background.paper",
+        display: "flex",
+        alignItems: "center",
+        p: 2,
+        boxShadow: 3,
+      }}
+    >
+      <ReplayCircleFilledIcon sx={{ fontSize: 30, mr: 1.5, color: "limegreen" }} />
+      <CardContent sx={{ p: 0.5 }}>
+        <Typography variant="body2">Outstanding Amount</Typography>
+        <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+          ₱{outstandingAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </Typography>
+      </CardContent>
+    </Card>
+  </Grid>
+</Grid>
+
       </Box>
 
       {/* ---------- Title & Tabs ---------- */}
@@ -746,9 +749,9 @@ export default function PaymentsAndInvoices() {
               label="Member Name"
               name="memberId"
               value={newPayment.memberId || ""}
-              onChange={(e) => {
-                setNewPayment((prev) => ({ ...prev, memberId: e.target.value }));
-              }}
+              onChange={(e) =>
+                setNewPayment((prev) => ({ ...prev, memberId: e.target.value }))
+              }
             >
               {(members || []).map((m) => (
                 <MenuItem key={m.MemberID} value={m.MemberID}>
@@ -820,9 +823,9 @@ export default function PaymentsAndInvoices() {
               label="Member Name"
               name="memberId"
               value={editPayment.memberId || ""}
-              onChange={(e) => {
-                setEditPayment((prev) => ({ ...prev, memberId: e.target.value }));
-              }}
+              onChange={(e) =>
+                setEditPayment((prev) => ({ ...prev, memberId: e.target.value }))
+              }
             >
               {(members || []).map((m) => (
                 <MenuItem key={m.MemberID} value={m.MemberID}>
@@ -943,9 +946,9 @@ export default function PaymentsAndInvoices() {
               label="Member Name"
               name="memberId"
               value={newInvoice.memberId || ""}
-              onChange={(e) => {
-                setNewInvoice((prev) => ({ ...prev, memberId: e.target.value }));
-              }}
+              onChange={(e) =>
+                setNewInvoice((prev) => ({ ...prev, memberId: e.target.value }))
+              }
             >
               {(members || []).map((m) => (
                 <MenuItem key={m.MemberID} value={m.MemberID}>
@@ -1011,9 +1014,9 @@ export default function PaymentsAndInvoices() {
               label="Member Name"
               name="memberId"
               value={editInvoice.memberId || ""}
-              onChange={(e) => {
-                setEditInvoice((prev) => ({ ...prev, memberId: e.target.value }));
-              }}
+              onChange={(e) =>
+                setEditInvoice((prev) => ({ ...prev, memberId: e.target.value }))
+              }
             >
               {(members || []).map((m) => (
                 <MenuItem key={m.MemberID} value={m.MemberID}>
@@ -1060,7 +1063,7 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ----------------- VIEW Invoice Dialog (With Line Items!) ----------------- */}
+      {/* ----------------- VIEW Invoice Dialog ----------------- */}
       <Dialog open={isViewInvoiceOpen} onClose={() => setViewInvoiceOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>
           <Typography variant="h6" color="primary">
@@ -1093,9 +1096,7 @@ export default function PaymentsAndInvoices() {
                   <Typography variant="body2" color="textSecondary">
                     Due Date:
                   </Typography>
-                  <Typography variant="body1">
-                    {viewInvoice.dueDate ? viewInvoice.dueDate : "—"}
-                  </Typography>
+                  <Typography variant="body1">{viewInvoice.dueDate || "—"}</Typography>
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
@@ -1104,8 +1105,6 @@ export default function PaymentsAndInvoices() {
                   <Typography variant="body1">${viewInvoice.invoiceTotal}</Typography>
                 </Grid>
               </Grid>
-
-              {/* ----------- Line Items Table ----------- */}
               <Box mt={3}>
                 <Typography variant="subtitle1" gutterBottom>
                   Line Items

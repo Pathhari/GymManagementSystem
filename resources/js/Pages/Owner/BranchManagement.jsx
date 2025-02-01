@@ -824,71 +824,68 @@ const handleDeleteFinancial = async (summaryID) => {
           onChange={(e) => setDateTo(e.target.value)}
         />
       </Box>
+      <Grid container spacing={2}>
+          {/* Total Branches */}
+          <Grid item xs={12} sm={6} md={3}>
+            {loading ? <StatSkeleton /> : (
+              <Card sx={{ p: 1.5, display: "flex", alignItems: "center", bgcolor: "text.primary", color: "background.paper", boxShadow: 2 }}>
+                <BusinessIcon sx={{ fontSize: 30, mr: 1.5, color: "steelblue" }} />
+                <CardContent sx={{ p: 0.5 }}>
+                  <Typography variant="body2">Total Branches</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                    {(stats.totalBranches || 0).toLocaleString()}
+                  </Typography>
+                </CardContent>
+              </Card>
+            )}
+          </Grid>
 
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-  {/* Total Branches */}
-  <Grid item xs={12} sm={6} md={3}>
-    {loading ? <StatSkeleton /> : (
-      <Card sx={{ p: 2, display: "flex", alignItems: "center", bgcolor: "text.primary", color: "background.paper", }}>
-        <BusinessIcon sx={{ fontSize: 40, mr: 2, color: "steelblue" }} />
-        <CardContent>
-          <Typography variant="subtitle1">Total Branches</Typography>
-          <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-    {(stats.totalBranches || 0).toLocaleString()}
-</Typography>
-        </CardContent>
-      </Card>
-    )}
-  </Grid>
+          {/* Total Revenue */}
+          <Grid item xs={12} sm={6} md={3}>
+            {loading ? <StatSkeleton /> : (
+              <Card sx={{ p: 1.5, display: "flex", alignItems: "center", bgcolor: "text.primary", color: "background.paper", boxShadow: 2 }}>
+                <MonetizationOnIcon sx={{ fontSize: 30, mr: 1.5, color: "green" }} />
+                <CardContent sx={{ p: 0.5 }}>
+                  <Typography variant="body2">Total Revenue</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                    ₱ {(stats.totalRevenue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Typography>
+                </CardContent>
+              </Card>
+            )}
+          </Grid>
 
-  {/* Total Revenue */}
-  <Grid item xs={12} sm={6} md={3}>
-    {loading ? <StatSkeleton /> : (
-      <Card sx={{ p: 2, display: "flex", alignItems: "center", bgcolor: "text.primary", color: "background.paper"}}>
-        <MonetizationOnIcon sx={{ fontSize: 40, mr: 2, color: "green" }} />
-        <CardContent>
-          <Typography variant="subtitle1">Total Revenue</Typography>
-          <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-    ₱ {(stats.totalRevenue || 0).toLocaleString(undefined, { 
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2 
-    })}
-</Typography>
-        </CardContent>
-      </Card>
-    )}
-  </Grid>
+          {/* Members Per Branch */}
+          <Grid item xs={12} sm={6} md={3}>
+            {loading ? <StatSkeleton /> : (
+              <Card sx={{ p: 1.5, display: "flex", alignItems: "center", bgcolor: "text.primary", color: "background.paper", boxShadow: 2 }}>
+                <GroupIcon sx={{ fontSize: 30, mr: 1.5, color: "purple" }} />
+                <CardContent sx={{ p: 0.5 }}>
+                  <Typography variant="body2">Average Members/Branch</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                    {Math.round(stats.membersPerBranch || 0).toLocaleString()}
+                  </Typography>
+                </CardContent>
+              </Card>
+            )}
+          </Grid>
 
-  {/* Members Per Branch */}
-  <Grid item xs={12} sm={6} md={3}>
-    {loading ? <StatSkeleton /> : (
-      <Card sx={{ p: 2, display: "flex", alignItems: "center", bgcolor: "text.primary", color: "background.paper"}}>
-        <GroupIcon sx={{ fontSize: 40, mr: 2, color: "purple" }} />
-        <CardContent>
-          <Typography variant="subtitle1">Average Members/Branch</Typography>
-          <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-    {Math.round(stats.membersPerBranch || 0).toLocaleString()}
-</Typography>
-        </CardContent>
-      </Card>
-    )}
-  </Grid>
+          {/* Pending Maintenance */}
+          <Grid item xs={12} sm={6} md={3}>
+            {loading ? <StatSkeleton /> : (
+              <Card sx={{ p: 1.5, display: "flex", alignItems: "center", bgcolor: "text.primary", color: "background.paper", boxShadow: 2 }}>
+                <BuildIcon sx={{ fontSize: 30, mr: 1.5, color: "orangered" }} />
+                <CardContent sx={{ p: 0.5 }}>
+                  <Typography variant="body2">Pending Maintenance</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                    {(stats.pendingMaintenance || 0).toLocaleString()}
+                  </Typography>
+                </CardContent>
+              </Card>
+            )}
+          </Grid>
+        </Grid>
 
-  {/* Pending Maintenance */}
-  <Grid item xs={12} sm={6} md={3}>
-    {loading ? <StatSkeleton /> : (
-      <Card sx={{ p: 2, display: "flex", alignItems: "center", bgcolor: "text.primary", color: "background.paper"}}>
-        <BuildIcon sx={{ fontSize: 40, mr: 2, color: "orangered" }} />
-        <CardContent>
-          <Typography variant="subtitle1">Pending Maintenance</Typography>
-          <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-    {(stats.pendingMaintenance || 0).toLocaleString()}
-</Typography>
-        </CardContent>
-      </Card>
-    )}
-  </Grid>
-</Grid>
 
       {/* Title & Tabs */}
       <Box
