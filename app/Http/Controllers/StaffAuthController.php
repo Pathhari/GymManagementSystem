@@ -38,4 +38,22 @@ class StaffAuthController extends Controller
         Auth::guard('staff')->logout();
         return redirect()->route('staff.login')->with('success', 'Staff logged out.');
     }
+
+    public function updateProfile(Request $request)
+    {
+        $user = Auth::guard('staff')->user();
+
+        $data = $request->validate([
+            'email'    => 'required|email|unique:users,email,' . $user->id,
+            'password' => 'nullable|min:8|confirmed',
+        ]);
+
+        $user->email = $data['email'];
+        if (!empty($data['password'])) {
+            $user->password = Hash::make($data['password']);
+        }
+        $user->save();
+
+        return response()->json(['message' => 'Staff profile updated successfully.'], 200);
+    }
 }

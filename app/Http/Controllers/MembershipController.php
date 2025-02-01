@@ -494,7 +494,8 @@ private function generateRemainingLockInInvoices(Member $member, $planID)
      */
     public function indexPlans()
     {
-        $plans = MembershipPlan::orderBy('PlanID')->get();
+        // Use withCount to get the members count.
+        $plans = MembershipPlan::withCount('members')->orderBy('PlanID')->get();
         return response()->json($plans, 200);
     }
 
@@ -745,5 +746,19 @@ public function destroyFreeze($id)
         'message' => 'Freeze canceled. Unused freeze days removed, status reverted to Active.'
     ], 200);
 }
+
+public function growth()
+{
+    // Group members by month (using MembershipStartDate) and count new members.
+    $growthData = \DB::table('members')
+        ->select(\DB::raw("DATE_FORMAT(MembershipStartDate, '%b %Y') as month"), \DB::raw("COUNT(*) as count"))
+        ->whereNotNull('MembershipStartDate')
+        ->groupBy('month')
+        ->orderByRaw("MIN(MembershipStartDate)")
+        ->get();
+
+    return response()->json($growthData, 200);
+}
+
 
 }

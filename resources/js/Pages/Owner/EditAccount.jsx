@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -16,58 +16,117 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
-  InputAdornment,
+  InputAdornment
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import axios from "axios";
 
+// Role options for new staff.
 const roleOptions = ["Staff", "Admin", "Owner"];
-const branchOptions = ["Branch 1", "Branch 2"]; // Example branches
 
 export default function EditProfile() {
-  const [userEmail, setUserEmail] = useState("john.doe@example.com");
+  // -------------------------- 1) MY ACCOUNT (CURRENT USER) --------------------------
+  const [userEmail, setUserEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
+  // Fetch current profile details on mount.
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const res = await axios.get("/profile");
+        setUserEmail(res.data.email);
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+      }
+    };
+    fetchProfile();
+  }, []);
+
   const handleToggleShowNewPass = () => setShowNewPass((prev) => !prev);
   const handleToggleShowConfirmPass = () => setShowConfirmPass((prev) => !prev);
 
-  const handleSaveMyAccount = () => {
+  const handleSaveMyAccount = async () => {
     if (newPassword && newPassword !== confirmPass) {
       alert("New Password and Confirm Password do not match!");
       return;
     }
-    alert("Your account changes saved!");
+    try {
+      await axios.put("/profile", {
+        email: userEmail.trim(),
+        password: newPassword.trim() ? newPassword.trim() : null
+      });
+      alert("Your account changes have been saved!");
+      setNewPassword("");
+      setConfirmPass("");
+    } catch (error) {
+      console.error("Failed to update account:", error);
+      alert("Error updating your account. Check console.");
+    }
   };
 
+  // -------------------------- 2) CREATE NEW STAFF --------------------------
   const [isAddStaffOpen, setAddStaffOpen] = useState(false);
   const [staffEmail, setStaffEmail] = useState("");
   const [staffPassword, setStaffPassword] = useState("");
   const [staffRole, setStaffRole] = useState("Staff");
   const [staffName, setStaffName] = useState("");
-  const [staffBranch, setStaffBranch] = useState(""); // New state for branch selection
+
+  // We'll fetch real branches via GET /owner/branches.
+  const [branchOptions, setBranchOptions] = useState([]);
+  const [staffBranch, setStaffBranch] = useState(""); // Will store the numeric BranchID
+
+  useEffect(() => {
+    const loadBranches = async () => {
+      try {
+        const res = await axios.get("/owner/branches");
+        // Depending on your BranchController, the response may be wrapped in a "branches" key.
+        setBranchOptions(res.data.branches || res.data);
+      } catch (err) {
+        console.error("Error loading branches:", err);
+        alert("Failed to load branches from server.");
+      }
+    };
+    loadBranches();
+  }, []);
 
   const handleOpenAddStaff = () => {
     setStaffEmail("");
     setStaffPassword("");
     setStaffRole("Staff");
     setStaffName("");
-    setStaffBranch(""); // Reset branch
+    setStaffBranch("");
     setAddStaffOpen(true);
   };
 
-  const handleAddStaff = () => {
-    if (!staffName || !staffEmail || !staffPassword || !staffBranch) {
+  const handleAddStaff = async () => {
+    if (!staffName.trim() || !staffEmail.trim() || !staffPassword.trim() || !staffBranch) {
       alert("Please fill out all fields for the staff.");
       return;
     }
-    alert(
-      `Staff created!\nName: ${staffName}\nEmail: ${staffEmail}\nRole: ${staffRole}\nBranch: ${staffBranch}`
-    );
-    setAddStaffOpen(false);
+    try {
+      const res = await axios.post("/staff", {
+        FullName: staffName.trim(),
+        Email: staffEmail.trim(),
+        Role: staffRole,
+        password: staffPassword.trim(),
+        BranchID: staffBranch
+      });
+      alert(
+        `Staff created successfully!
+Name: ${res.data.FullName}
+Role: ${res.data.Role}
+BranchID: ${res.data.BranchID}`
+      );
+      setAddStaffOpen(false);
+    } catch (err) {
+      console.error("Failed to create staff:", err);
+      alert("Error creating staff. Check console for details.");
+    }
   };
 
   return (
@@ -77,6 +136,7 @@ export default function EditProfile() {
       </Typography>
       <Divider sx={{ mb: 3 }} />
 
+      {/* ---------------- MY ACCOUNT SECTION ---------------- */}
       <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
         <Typography variant="h6" gutterBottom>
           My Account
@@ -108,7 +168,7 @@ export default function EditProfile() {
                       {showNewPass ? <VisibilityOffIcon /> : <VisibilityIcon />}
                     </IconButton>
                   </InputAdornment>
-                ),
+                )
               }}
             />
           </Grid>
@@ -124,29 +184,22 @@ export default function EditProfile() {
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton onClick={handleToggleShowConfirmPass}>
-                      {showConfirmPass ? (
-                        <VisibilityOffIcon />
-                      ) : (
-                        <VisibilityIcon />
-                      )}
+                      {showConfirmPass ? <VisibilityOffIcon /> : <VisibilityIcon />}
                     </IconButton>
                   </InputAdornment>
-                ),
+                )
               }}
             />
           </Grid>
         </Grid>
         <Box sx={{ textAlign: "right", mt: 2 }}>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleSaveMyAccount}
-          >
+          <Button variant="contained" color="primary" onClick={handleSaveMyAccount}>
             Save My Account
           </Button>
         </Box>
       </Paper>
 
+      {/* ---------------- CREATE STAFF SECTION ---------------- */}
       <Paper elevation={2} sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>
           Add New Staff Account Credentials
@@ -154,21 +207,13 @@ export default function EditProfile() {
         <Typography variant="body2" sx={{ mb: 2 }}>
           Create a new staff account with role-based credentials.
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleOpenAddStaff}
-        >
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenAddStaff}>
           Create Staff
         </Button>
       </Paper>
 
-      <Dialog
-        open={isAddStaffOpen}
-        onClose={() => setAddStaffOpen(false)}
-        fullWidth
-        maxWidth="sm"
-      >
+      {/* ---------------- ADD STAFF DIALOG ---------------- */}
+      <Dialog open={isAddStaffOpen} onClose={() => setAddStaffOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Create Staff User</DialogTitle>
         <DialogContent dividers>
           <TextField
@@ -198,11 +243,7 @@ export default function EditProfile() {
           />
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>Role</InputLabel>
-            <Select
-              label="Role"
-              value={staffRole}
-              onChange={(e) => setStaffRole(e.target.value)}
-            >
+            <Select label="Role" value={staffRole} onChange={(e) => setStaffRole(e.target.value)}>
               {roleOptions.map((r) => (
                 <MenuItem key={r} value={r}>
                   {r}
@@ -210,16 +251,13 @@ export default function EditProfile() {
               ))}
             </Select>
           </FormControl>
+          {/* Real branch list loaded from backend */}
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>Branch</InputLabel>
-            <Select
-              label="Branch"
-              value={staffBranch}
-              onChange={(e) => setStaffBranch(e.target.value)}
-            >
+            <Select label="Branch" value={staffBranch} onChange={(e) => setStaffBranch(e.target.value)}>
               {branchOptions.map((b) => (
-                <MenuItem key={b} value={b}>
-                  {b}
+                <MenuItem key={b.BranchID} value={b.BranchID}>
+                  {b.BranchName}
                 </MenuItem>
               ))}
             </Select>
@@ -235,465 +273,3 @@ export default function EditProfile() {
     </Box>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//<----- ADD MEMBER CODE DO NOT REMOVE ----->
-
-// import React, { useState } from "react";
-
-// import {
-//   Box,
-//   Typography,
-//   Divider,
-//   Grid,
-//   Card,
-//   CardContent,
-//   Paper,
-//   Avatar,
-//   Button,
-//   TextField,
-//   MenuItem,
-//   FormControlLabel,
-//   Checkbox,
-//   Switch,
-//   FormControl,
-//   InputLabel,
-//   Select,
-//   Dialog,
-//   DialogTitle,
-//   DialogContent,
-//   DialogActions,
-//   Tooltip,
-// } from "@mui/material";
-// import EditIcon from "@mui/icons-material/Edit";
-// import AddAPhotoIcon from "@mui/icons-material/AddAPhoto";
-
-// // Sample membership details if user is a member
-// const mockMembershipDetails = {
-//   membershipType: "Premium Plan",
-//   startDate: "2025-01-01",
-//   endDate: "2025-12-31",
-//   autoRenew: true,
-// };
-
-// export default function EditProfile() {
-//   // ---------------------- PROFILE STATE (Demo) ----------------------
-//   // Profile Overview
-//   const [profilePic, setProfilePic] = useState(
-//     "https://via.placeholder.com/100x100?text=Profile"
-//   );
-
-//   // Personal Info
-//   const [firstName, setFirstName] = useState("John");
-//   const [lastName, setLastName] = useState("Doe");
-//   const [dob, setDob] = useState("1990-01-01");
-//   const [gender, setGender] = useState("Male");
-//   const [contactNumber, setContactNumber] = useState("123-456-7890");
-//   const [email, setEmail] = useState("john.doe@example.com");
-//   const [address, setAddress] = useState("1234 Elm Street, City, Country");
-//   const [emergencyContactName, setEmergencyContactName] = useState("Jane Doe");
-//   const [emergencyContactRelationship, setEmergencyContactRelationship] = useState("Spouse");
-//   const [emergencyContactPhone, setEmergencyContactPhone] = useState("987-654-3210");
-
-//   // Account Info
-//   const [username, setUsername] = useState("john_doe");
-//   const [currPassword, setCurrPassword] = useState("");
-//   const [newPassword, setNewPassword] = useState("");
-//   const [confirmPassword, setConfirmPassword] = useState("");
-//   const [emailPref, setEmailPref] = useState(true);
-
-//   // Membership Details (view-only, if applicable)
-//   const [membershipData] = useState(mockMembershipDetails);
-
-//   // Preferences
-//   const [prefLanguage, setPrefLanguage] = useState("en");
-//   const [prefEmail, setPrefEmail] = useState(true);
-//   const [prefSMS, setPrefSMS] = useState(false);
-//   const [prefApp, setPrefApp] = useState(true);
-//   const [prefPaymentMethod, setPrefPaymentMethod] = useState("GCash");
-
-//   // ---------------------- HANDLERS ----------------------
-//   const handleProfilePicChange = (e) => {
-//     // For demonstration only. Typically, you'd read the file & convert to base64 or store in DB.
-//     alert("Profile picture updated! (Mock)");
-//   };
-
-//   const handleSaveChanges = () => {
-//     // Validate & Save all data to server or context
-//     if (newPassword && newPassword !== confirmPassword) {
-//       alert("New Password and Confirm Password do not match!");
-//       return;
-//     }
-//     // Additional checks, then call an API
-//     alert("Profile changes saved!");
-//   };
-
-//   const handleCancelChanges = () => {
-//     // Revert or navigate away, etc.
-//     alert("Changes cancelled. Reverting...");
-//     // You might re-fetch user data from the backend or reset states.
-//   };
-
-//   return (
-//     <Box sx={{ p: 3 }}>
-//       <Typography variant="h4" gutterBottom>
-//         Edit Profile
-//       </Typography>
-//       <Divider sx={{ mb: 3 }} />
-
-//       {/* ------------ Profile Overview ------------ */}
-//       <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
-//         <Typography variant="h6" gutterBottom>
-//           Profile Overview
-//         </Typography>
-//         <Box sx={{ display: "flex", gap: 2, alignItems: "center", mt: 2 }}>
-//           <Avatar
-//             src={profilePic}
-//             alt="Profile Avatar"
-//             sx={{ width: 100, height: 100, border: "2px solid #ccc" }}
-//           />
-//           <Box>
-//             <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
-//               {firstName} {lastName}
-//             </Typography>
-//             <Typography variant="body2" color="text.secondary">
-//               Role: Member (or Staff/Admin/Owner)
-//             </Typography>
-//             <Typography variant="body2" color="text.secondary">
-//               Member ID: M-202501
-//             </Typography>
-//             {/* Upload button to change the profile picture */}
-//             <Button
-//               variant="outlined"
-//               startIcon={<AddAPhotoIcon />}
-//               sx={{ mt: 1 }}
-//               onClick={handleProfilePicChange}
-//             >
-//               Update Photo
-//             </Button>
-//           </Box>
-//         </Box>
-//       </Paper>
-
-//       {/* ------------ Personal Information ------------ */}
-//       <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
-//         <Typography variant="h6" gutterBottom>
-//           Personal Information
-//         </Typography>
-//         <Grid container spacing={2} sx={{ mt: 1 }}>
-//           <Grid item xs={12} sm={6}>
-//             <TextField
-//               label="First Name"
-//               variant="outlined"
-//               fullWidth
-//               value={firstName}
-//               onChange={(e) => setFirstName(e.target.value)}
-//             />
-//           </Grid>
-//           <Grid item xs={12} sm={6}>
-//             <TextField
-//               label="Last Name"
-//               variant="outlined"
-//               fullWidth
-//               value={lastName}
-//               onChange={(e) => setLastName(e.target.value)}
-//             />
-//           </Grid>
-//           <Grid item xs={12} sm={4}>
-//             <TextField
-//               type="date"
-//               label="Date of Birth"
-//               variant="outlined"
-//               fullWidth
-//               InputLabelProps={{ shrink: true }}
-//               value={dob}
-//               onChange={(e) => setDob(e.target.value)}
-//             />
-//           </Grid>
-//           <Grid item xs={12} sm={4}>
-//             <TextField
-//               select
-//               label="Gender"
-//               variant="outlined"
-//               fullWidth
-//               value={gender}
-//               onChange={(e) => setGender(e.target.value)}
-//             >
-//               <MenuItem value="Male">Male</MenuItem>
-//               <MenuItem value="Female">Female</MenuItem>
-//               <MenuItem value="Other">Other</MenuItem>
-//             </TextField>
-//           </Grid>
-//           <Grid item xs={12} sm={4}>
-//             <TextField
-//               label="Contact Number"
-//               variant="outlined"
-//               fullWidth
-//               value={contactNumber}
-//               onChange={(e) => setContactNumber(e.target.value)}
-//             />
-//           </Grid>
-//           <Grid item xs={12} sm={6}>
-//             <TextField
-//               label="Email Address"
-//               variant="outlined"
-//               fullWidth
-//               value={email}
-//               onChange={(e) => setEmail(e.target.value)}
-//             />
-//           </Grid>
-//           <Grid item xs={12} sm={6}>
-//             <TextField
-//               label="Address"
-//               variant="outlined"
-//               fullWidth
-//               multiline
-//               rows={2}
-//               value={address}
-//               onChange={(e) => setAddress(e.target.value)}
-//             />
-//           </Grid>
-//         </Grid>
-
-//         <Typography variant="subtitle1" sx={{ mt: 3 }}>
-//           Emergency Contact
-//         </Typography>
-//         <Grid container spacing={2} sx={{ mt: 1 }}>
-//           <Grid item xs={12} sm={4}>
-//             <TextField
-//               label="Name"
-//               variant="outlined"
-//               fullWidth
-//               value={emergencyContactName}
-//               onChange={(e) => setEmergencyContactName(e.target.value)}
-//             />
-//           </Grid>
-//           <Grid item xs={12} sm={4}>
-//             <TextField
-//               label="Relationship"
-//               variant="outlined"
-//               fullWidth
-//               value={emergencyContactRelationship}
-//               onChange={(e) => setEmergencyContactRelationship(e.target.value)}
-//             />
-//           </Grid>
-//           <Grid item xs={12} sm={4}>
-//             <TextField
-//               label="Phone Number"
-//               variant="outlined"
-//               fullWidth
-//               value={emergencyContactPhone}
-//               onChange={(e) => setEmergencyContactPhone(e.target.value)}
-//             />
-//           </Grid>
-//         </Grid>
-//       </Paper>
-
-//       {/* ------------ Account Information ------------ */}
-//       <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
-//         <Typography variant="h6" gutterBottom>
-//           Account Information
-//         </Typography>
-//         <Grid container spacing={2} sx={{ mt: 1 }}>
-//           <Grid item xs={12} sm={6}>
-//             <TextField
-//               label="Username"
-//               variant="outlined"
-//               fullWidth
-//               value={username}
-//               onChange={(e) => setUsername(e.target.value)}
-//             />
-//           </Grid>
-//           <Grid item xs={12} sm={6}>
-//             <FormControlLabel
-//               control={
-//                 <Checkbox
-//                   checked={emailPref}
-//                   onChange={(e) => setEmailPref(e.target.checked)}
-//                 />
-//               }
-//               label="Receive email promotions/updates?"
-//             />
-//           </Grid>
-//         </Grid>
-//         <Box sx={{ mt: 2 }}>
-//           <Typography variant="body1" sx={{ fontWeight: "bold", mb: 1 }}>
-//             Change Password
-//           </Typography>
-//           <Grid container spacing={2}>
-//             <Grid item xs={12} sm={4}>
-//               <TextField
-//                 label="Current Password"
-//                 type="password"
-//                 variant="outlined"
-//                 fullWidth
-//                 value={currPassword}
-//                 onChange={(e) => setCurrPassword(e.target.value)}
-//               />
-//             </Grid>
-//             <Grid item xs={12} sm={4}>
-//               <TextField
-//                 label="New Password"
-//                 type="password"
-//                 variant="outlined"
-//                 fullWidth
-//                 value={newPassword}
-//                 onChange={(e) => setNewPassword(e.target.value)}
-//               />
-//             </Grid>
-//             <Grid item xs={12} sm={4}>
-//               <TextField
-//                 label="Confirm New Password"
-//                 type="password"
-//                 variant="outlined"
-//                 fullWidth
-//                 value={confirmPassword}
-//                 onChange={(e) => setConfirmPassword(e.target.value)}
-//               />
-//             </Grid>
-//           </Grid>
-//         </Box>
-//       </Paper>
-
-//       {/* ------------ Membership Details (Read Only) ------------ */}
-//       <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
-//         <Typography variant="h6" gutterBottom>
-//           Membership Details (View-Only)
-//         </Typography>
-//         <Grid container spacing={2} sx={{ mt: 1 }}>
-//           <Grid item xs={12} sm={3}>
-//             <TextField
-//               label="Membership Type"
-//               variant="outlined"
-//               fullWidth
-//               value={membershipData.membershipType}
-//               disabled
-//             />
-//           </Grid>
-//           <Grid item xs={12} sm={3}>
-//             <TextField
-//               label="Start Date"
-//               variant="outlined"
-//               fullWidth
-//               value={membershipData.startDate}
-//               disabled
-//             />
-//           </Grid>
-//           <Grid item xs={12} sm={3}>
-//             <TextField
-//               label="End Date"
-//               variant="outlined"
-//               fullWidth
-//               value={membershipData.endDate}
-//               disabled
-//             />
-//           </Grid>
-//           <Grid item xs={12} sm={3}>
-//             <FormControlLabel
-//               label="Auto-Renew?"
-//               control={<Switch checked={membershipData.autoRenew} disabled />}
-//             />
-//           </Grid>
-//         </Grid>
-//       </Paper>
-
-//       {/* ------------ Preferences ------------ */}
-//       <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
-//         <Typography variant="h6" gutterBottom>
-//           Preferences
-//         </Typography>
-//         <Grid container spacing={2} sx={{ mt: 1 }}>
-//           <Grid item xs={12} sm={4}>
-//             <TextField
-//               select
-//               label="Preferred Language"
-//               variant="outlined"
-//               fullWidth
-//               value={prefLanguage}
-//               onChange={(e) => setPrefLanguage(e.target.value)}
-//             >
-//               <MenuItem value="en">English</MenuItem>
-//               <MenuItem value="es">Spanish</MenuItem>
-//               <MenuItem value="fr">French</MenuItem>
-//             </TextField>
-//           </Grid>
-//           <Grid item xs={12} sm={4}>
-//             <FormControl fullWidth>
-//               <InputLabel>Preferred Payment Method</InputLabel>
-//               <Select
-//                 label="Preferred Payment Method"
-//                 value={prefPaymentMethod}
-//                 onChange={(e) => setPrefPaymentMethod(e.target.value)}
-//               >
-//                 <MenuItem value="GCash">GCash</MenuItem>
-//                 <MenuItem value="CreditCard">Credit Card</MenuItem>
-//                 <MenuItem value="PayPal">PayPal</MenuItem>
-//               </Select>
-//             </FormControl>
-//           </Grid>
-//         </Grid>
-//         <Typography variant="subtitle1" sx={{ mt: 2 }}>
-//           Notification Preferences
-//         </Typography>
-//         <Box sx={{ display: "flex", gap: 4, mt: 1 }}>
-//           <FormControlLabel
-//             label="Email Notifications"
-//             control={
-//               <Checkbox
-//                 checked={prefEmail}
-//                 onChange={(e) => setPrefEmail(e.target.checked)}
-//               />
-//             }
-//           />
-//           <FormControlLabel
-//             label="SMS Notifications"
-//             control={
-//               <Checkbox
-//                 checked={prefSMS}
-//                 onChange={(e) => setPrefSMS(e.target.checked)}
-//               />
-//             }
-//           />
-//           <FormControlLabel
-//             label="App Notifications"
-//             control={
-//               <Checkbox
-//                 checked={prefApp}
-//                 onChange={(e) => setPrefApp(e.target.checked)}
-//               />
-//             }
-//           />
-//         </Box>
-//       </Paper>
-
-//       {/* ------------ ACTION BUTTONS ------------ */}
-//       <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end", mt: 2 }}>
-//         <Button variant="text" color="inherit" onClick={handleCancelChanges}>
-//           Cancel
-//         </Button>
-//         <Button variant="contained" color="primary" onClick={handleSaveChanges}>
-//           Save Changes
-//         </Button>
-//       </Box>
-//     </Box>
-//   );
-// }

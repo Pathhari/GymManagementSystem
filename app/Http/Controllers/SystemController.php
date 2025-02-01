@@ -99,4 +99,18 @@ class SystemController extends Controller
             'attendanceStats' => $attendanceStats,
         ]);
     }
+
+    public function systemMetrics()
+{
+    // Count total logs and notifications.
+    $logsCount = \DB::table('system_logs')->count();
+    $notificationsCount = \DB::table('notifications')->count();
+
+
+    return response()->json([
+        'logsCount' => $logsCount,
+        'notificationsCount' => $notificationsCount,
+    ], 200);
+}
+
 }

@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+
 /*
 |--------------------------------------------------------------------------
 | Root: Redirect to Correct Dashboard if Logged In
@@ -19,6 +20,9 @@ Route::get('/', function() {
     return Inertia::render('LandingPage');// or Inertia::render('Public/Welcome')
 })->name('root');
 
+use App\Http\Controllers\ProfileController;
+
+Route::middleware('auth:owner,admin,staff')->get('/profile', [ProfileController::class, 'show']);
 /*
 |--------------------------------------------------------------------------
 | Owner Dashboard
@@ -238,6 +242,27 @@ Route::prefix('notifications')->group(function() {
         ->middleware('auth:owner')
         ->name('notifications.mailjet.advanced');
 
+        Route::get('announcements', [NotificationController::class, 'indexAnnouncements'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('notifications.announcements.index');
+
+    Route::post('announcements', [NotificationController::class, 'storeAnnouncement'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('notifications.announcements.store');
+
+    Route::put('announcements/{id}', [NotificationController::class, 'updateAnnouncement'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('notifications.announcements.update');
+
+    Route::delete('announcements/{id}', [NotificationController::class, 'destroyAnnouncement'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('notifications.announcements.destroy');
+
+    // Send Notification to Staff
+    Route::post('send-staff', [NotificationController::class, 'sendStaffNotification'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('notifications.send.staff');
+
     // F) Notification Templates
     Route::get('templates', [NotificationController::class, 'indexTemplates'])
         ->middleware('multiGuard:owner,admin,staff')
@@ -278,7 +303,7 @@ Route::prefix('membership')->group(function() {
     ->name('membership.statuses.index');
     Route::get('members/search', [MembershipController::class, 'apiSearchMembers'])
     ->name('membership.members.apiSearch');
-
+    Route::get('growth', [MembershipController::class, 'growth'])->name('membership.growth');
 
 
     // 2) Plans
@@ -325,10 +350,8 @@ Route::prefix('membership')->group(function() {
     Route::post('import-lock-in', [MembershipController::class, 'importLockInMember'])
      ->middleware('multiGuard:owner,admin,staff')
      ->name('membership.lockIn.import');
+    });
 
- 
-
-});
 
 
 /* 
@@ -350,6 +373,8 @@ Route::prefix('booking')->group(function() {
     Route::get('/', [BookingController::class, 'indexBooking'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('booking.index');
+    Route::get('most-popular', [BookingController::class, 'mostPopular'])
+        ->name('booking.mostPopular');
     Route::get('{id}/edit', [BookingController::class, 'editBooking'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('booking.edit');
@@ -359,6 +384,8 @@ Route::prefix('booking')->group(function() {
     Route::post('{id}/cancel', [BookingController::class, 'cancelBooking'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('booking.cancel');
+    Route::get('trends', [BookingController::class, 'bookingTrends'])->name('booking.trends');
+
     
     Route::get('/coaches', [BookingController::class, 'index'])
     ->middleware('multiGuard:owner,admin,staff')
@@ -410,6 +437,8 @@ Route::prefix('staff')->name('staff.')->group(function() {
     Route::post('/', [StaffController::class, 'storeStaff'])->name('store');
     Route::put('/{id}', [StaffController::class, 'updateStaff'])->name('update');
     Route::delete('/{id}', [StaffController::class, 'destroyStaff'])->name('destroy');
+    Route::get('performance', [\App\Http\Controllers\StaffController::class, 'performance'])->name('performance');
+    Route::get('attendance-analytics', [StaffController::class, 'attendanceAnalytics'])->name('staff.attendance.analytics');
 
     // Attendance
     Route::prefix('attendance')->name('attendance.')->group(function() {
@@ -417,6 +446,8 @@ Route::prefix('staff')->name('staff.')->group(function() {
         Route::put('/{id}', [StaffController::class, 'updateAttendance'])->name('update');
         Route::delete('/{id}', [StaffController::class, 'destroyAttendance'])->name('destroy');
     });
+
+    
 
     // Payroll
     Route::prefix('payroll')->name('payroll.')->group(function() {
@@ -648,6 +679,8 @@ Route::prefix('system')->group(function() {
     Route::get('reports', [SystemController::class, 'generateReports'])
         ->middleware('multiGuard:owner,admin')
         ->name('system.reports');
+        Route::get('metrics', [SystemController::class, 'systemMetrics'])->name('system.metrics');
+
 });
 
 /* 

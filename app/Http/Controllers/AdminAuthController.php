@@ -38,4 +38,22 @@ class AdminAuthController extends Controller
         Auth::guard('admin')->logout();
         return redirect()->route('admin.login')->with('success', 'Admin logged out.');
     }
+
+    public function updateProfile(Request $request)
+    {
+        $user = Auth::guard('admin')->user();
+
+        $data = $request->validate([
+            'email'    => 'required|email|unique:users,email,' . $user->id,
+            'password' => 'nullable|min:8|confirmed',
+        ]);
+
+        $user->email = $data['email'];
+        if (!empty($data['password'])) {
+            $user->password = Hash::make($data['password']);
+        }
+        $user->save();
+
+        return response()->json(['message' => 'Admin profile updated successfully.'], 200);
+    }
 }

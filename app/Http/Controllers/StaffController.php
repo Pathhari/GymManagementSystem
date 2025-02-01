@@ -241,6 +241,24 @@ class StaffController extends Controller
         ]);
     }
 
+    public function attendanceAnalytics()
+    {
+        // Use the correct table name (attendances) instead of attendance.
+        $analytics = \DB::table('attendances')
+            ->select(
+                \DB::raw("YEAR(Date) as year"),
+                \DB::raw("WEEK(Date, 1) as week"),
+                \DB::raw("COUNT(*) as totalAttendance")
+            )
+            ->groupBy('year', 'week')
+            ->orderBy('year')
+            ->orderBy('week')
+            ->get();
+    
+        return response()->json($analytics, 200);
+    }
+    
+
     /* ------------------------------------------------------------------
      * R. STAFF TASKS
      * ------------------------------------------------------------------ */
@@ -309,6 +327,23 @@ class StaffController extends Controller
             'message' => 'Task completed.',
             'task'    => $task,
         ]);
+    }
+
+    public function performance()
+    {
+        // Aggregate completed tasks per staff member.
+        $performance = \DB::table('staff_tasks')
+            ->select(
+                'staff.StaffID',
+                'staff.FullName',
+                \DB::raw('COUNT(*) as tasksCompleted')
+            )
+            ->join('staff', 'staff_tasks.StaffID', '=', 'staff.StaffID')
+            ->where('staff_tasks.Status', 'Completed')
+            ->groupBy('staff.StaffID', 'staff.FullName')
+            ->get();
+    
+        return response()->json($performance, 200);
     }
 
     /* ------------------------------------------------------------------

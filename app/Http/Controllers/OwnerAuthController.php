@@ -61,6 +61,24 @@ class OwnerAuthController extends Controller
         // Redirect to the root route
         return redirect()->route('root');  // Redirects to the home page or a public page
     }
+
+    public function updateProfile(Request $request)
+    {
+        $user = Auth::guard('owner')->user();
+
+        $data = $request->validate([
+            'email'    => 'required|email|unique:users,email,' . $user->id,
+            'password' => 'nullable|min:8|confirmed',
+        ]);
+
+        $user->email = $data['email'];
+        if (!empty($data['password'])) {
+            $user->password = Hash::make($data['password']);
+        }
+        $user->save();
+
+        return response()->json(['message' => 'Owner profile updated successfully.'], 200);
+    }
     
 }
     

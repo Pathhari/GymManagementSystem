@@ -14,26 +14,13 @@ class FinanceController extends Controller
      * DAILY CASH FLOW
      * ------------------------------------------------------------------ */
 
-    /**
-     * Show any data needed before creating a cash flow record
-     * (e.g., branch list). Returns JSON instead of an Inertia page.
-     */
     public function createCashFlow()
     {
-        // Example: if you want to return branches or other data needed on the form:
-        // $branches = Branch::select('BranchID','BranchName')->get();
-        // return response()->json([
-        //     'branches' => $branches
-        // ]);
-
         return response()->json([
             'message' => 'Endpoint for creating a new cash flow record. Provide branch list here if needed.'
         ]);
     }
 
-    /**
-     * Store a newly created DailyCashFlow record and return JSON.
-     */
     public function storeCashFlow(Request $request)
     {
         $staff = auth('staff')->user();
@@ -53,22 +40,19 @@ class FinanceController extends Controller
             'Remarks'          => 'nullable|string',
         ]);
 
-        // Compute total
+        // Compute TotalSales from available fields
         $total = 0;
         $total += $data['CashSales']        ?? 0;
         $total += $data['GCashSales']       ?? 0;
         $total += $data['BPISales']         ?? 0;
-        $total += $data['BDOSales']         ?? 0;
-        $total += $data['WalkInBDOSales']   ?? 0;
         $total += $data['WalkInCashSales']  ?? 0;
         $total += $data['WalkInGCashSales'] ?? 0;
         $total += $data['WalkInBPISales']   ?? 0;
         $data['TotalSales'] = $total;
 
-        // Staff branch check
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
-            if (! in_array($data['BranchID'], $staffBranchIDs)) {
+            if (!in_array($data['BranchID'], $staffBranchIDs)) {
                 return response()->json([
                     'error' => 'You cannot create a Cash Flow for a branch you are not assigned to.'
                 ], 403);
@@ -84,9 +68,6 @@ class FinanceController extends Controller
         ], 201);
     }
 
-    /**
-     * Return list of daily cash flow records in JSON.
-     */
     public function indexCashFlow()
     {
         $staff = auth('staff')->user();
@@ -95,12 +76,12 @@ class FinanceController extends Controller
 
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
-            $flows = DailyCashFlow::select('CashFlowID','Date','BusinessType','TotalSales','Remarks')
+            $flows = DailyCashFlow::select('CashFlowID', 'Date', 'BusinessType', 'TotalSales', 'Remarks')
                 ->whereIn('BranchID', $staffBranchIDs)
-                ->orderBy('Date','desc')
+                ->orderBy('Date', 'desc')
                 ->get();
         } elseif ($admin || $owner) {
-            $flows = DailyCashFlow::orderBy('Date','desc')->get();
+            $flows = DailyCashFlow::orderBy('Date', 'desc')->get();
         } else {
             $flows = collect([]);
         }
@@ -112,23 +93,13 @@ class FinanceController extends Controller
      * EXPENSES
      * ------------------------------------------------------------------ */
 
-    /**
-     * Return any data needed to create an expense (JSON).
-     */
     public function createExpense()
     {
-        // Example: branches, expense categories, etc.
-        // $branches = Branch::select('BranchID','BranchName')->get();
-
         return response()->json([
-            'message' => 'Endpoint for creating a new expense.',
-            // 'branches' => $branches
+            'message' => 'Endpoint for creating a new expense.'
         ]);
     }
 
-    /**
-     * Store a new Expense in JSON.
-     */
     public function storeExpense(Request $request)
     {
         $staff = auth('staff')->user();
@@ -143,10 +114,9 @@ class FinanceController extends Controller
             'Notes'          => 'nullable|string',
         ]);
 
-        // Staff branch check
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
-            if (! in_array($data['BranchID'], $staffBranchIDs)) {
+            if (!in_array($data['BranchID'], $staffBranchIDs)) {
                 return response()->json([
                     'error' => 'You cannot create an Expense for a branch you are not assigned to.'
                 ], 403);
@@ -162,9 +132,6 @@ class FinanceController extends Controller
         ], 201);
     }
 
-    /**
-     * Return list of expenses in JSON.
-     */
     public function indexExpenses()
     {
         $staff = auth('staff')->user();
@@ -174,13 +141,13 @@ class FinanceController extends Controller
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
             $expenses = Expense::with('staff')
-                ->select('ExpenseID','ExpenseDate','ExpenseCategory','Amount','Notes','StaffID','BranchID')
+                ->select('ExpenseID', 'ExpenseDate', 'ExpenseCategory', 'Amount', 'Notes', 'StaffID', 'BranchID')
                 ->whereIn('BranchID', $staffBranchIDs)
-                ->orderBy('ExpenseDate','desc')
+                ->orderBy('ExpenseDate', 'desc')
                 ->get();
         } elseif ($admin || $owner) {
             $expenses = Expense::with('staff')
-                ->orderBy('ExpenseDate','desc')
+                ->orderBy('ExpenseDate', 'desc')
                 ->get();
         } else {
             $expenses = collect([]);
@@ -189,9 +156,6 @@ class FinanceController extends Controller
         return response()->json(['expenses' => $expenses]);
     }
 
-    /**
-     * Update an expense by ID (JSON).
-     */
     public function updateExpense(Request $request, $id)
     {
         $staff = auth('staff')->user();
@@ -207,15 +171,14 @@ class FinanceController extends Controller
             'Notes'          => 'nullable|string',
         ]);
 
-        // Staff => check branch pivot
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
-            if (! in_array($expense->BranchID, $staffBranchIDs)) {
+            if (!in_array($expense->BranchID, $staffBranchIDs)) {
                 return response()->json([
                     'error' => 'Cannot update expense from a branch you are not assigned to.'
                 ], 403);
             }
-            if (! in_array($data['BranchID'], $staffBranchIDs)) {
+            if (!in_array($data['BranchID'], $staffBranchIDs)) {
                 return response()->json([
                     'error' => 'Cannot change expense to a branch you are not assigned to.'
                 ], 403);
@@ -231,9 +194,6 @@ class FinanceController extends Controller
         ]);
     }
 
-    /**
-     * Delete an expense by ID (JSON).
-     */
     public function destroyExpense($id)
     {
         $staff = auth('staff')->user();
@@ -241,7 +201,7 @@ class FinanceController extends Controller
 
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
-            if (! in_array($expense->BranchID, $staffBranchIDs)) {
+            if (!in_array($expense->BranchID, $staffBranchIDs)) {
                 return response()->json([
                     'error' => 'Cannot delete an expense from a branch you are not assigned to.'
                 ], 403);
@@ -260,21 +220,15 @@ class FinanceController extends Controller
      * PROMOTIONS
      * ------------------------------------------------------------------ */
 
-    /**
-     * List all promotions. Return JSON.
-     */
     public function indexPromotions(Request $request)
     {
-        $promos = Promotions::orderBy('Name','asc')->get();
+        $promos = Promotions::orderBy('Name', 'asc')->get();
 
         return response()->json([
             'promos' => $promos
         ]);
     }
 
-    /**
-     * Create or update a Promotion (JSON).
-     */
     public function storePromotion(Request $request)
     {
         $data = $request->validate([
@@ -302,9 +256,6 @@ class FinanceController extends Controller
         ]);
     }
 
-    /**
-     * Toggle active/inactive for a promotion. Return JSON.
-     */
     public function togglePromotion($id)
     {
         $promo = Promotions::findOrFail($id);
@@ -323,27 +274,107 @@ class FinanceController extends Controller
     }
 
     /**
-     * Financial summary (already returns JSON).
+     * Return financial summary (total revenue, net profit).
      */
     public function getFinancialSummary()
     {
         $staff = auth('staff')->user();
-        
+
         $cashFlowQuery = DailyCashFlow::query();
         $expenseQuery = Expense::query();
-        
+
         if ($staff) {
-            $branchIds = $staff->branches->pluck('BranchID');
+            $branchIds = $staff->branches->pluck('BranchID')->toArray();
             $cashFlowQuery->whereIn('BranchID', $branchIds);
             $expenseQuery->whereIn('BranchID', $branchIds);
         }
-        
+
         $totalRevenue = $cashFlowQuery->sum('TotalSales');
         $totalExpenses = $expenseQuery->sum('Amount');
-        
+        $netProfit = $totalRevenue - $totalExpenses;
+
         return response()->json([
             'total_revenue' => $totalRevenue,
-            'net_profit'    => $totalRevenue - $totalExpenses
+            'net_profit'    => $netProfit
         ]);
+    }
+
+    /**
+     * NEW: Overview KPIs endpoint that aggregates multiple KPI values.
+     * These values will populate the front-end overview cards.
+     */
+    public function getOverviewKPIs()
+    {
+        $staff = auth('staff')->user();
+
+        // Financial summary
+        $cashFlowQuery = DailyCashFlow::query();
+        $expenseQuery = Expense::query();
+        if ($staff) {
+            $branchIds = $staff->branches->pluck('BranchID')->toArray();
+            $cashFlowQuery->whereIn('BranchID', $branchIds);
+            $expenseQuery->whereIn('BranchID', $branchIds);
+        }
+        $totalRevenue = $cashFlowQuery->sum('TotalSales');
+        $totalExpenses = $expenseQuery->sum('Amount');
+        $netProfit = $totalRevenue - $totalExpenses;
+
+        // New Members This Month
+        $currentMonth = date('M Y');
+        $newMembersThisMonth = DB::table('members')
+            ->whereNotNull('MembershipStartDate')
+            ->whereRaw("DATE_FORMAT(MembershipStartDate, '%b %Y') = ?", [$currentMonth])
+            ->count();
+
+        // Attendance Rate: average weekly attendance based on 'attendances' table
+        $weeklyAttendance = DB::table('attendances')
+            ->select(
+                DB::raw("YEAR(Date) as year"),
+                DB::raw("WEEK(Date, 1) as week"),
+                DB::raw("COUNT(*) as totalAttendance")
+            )
+            ->groupBy('year', 'week')
+            ->get();
+        $sumAttendance = $weeklyAttendance->sum('totalAttendance');
+        $numWeeks = $weeklyAttendance->count();
+        $avgAttendance = $numWeeks > 0 ? $sumAttendance / $numWeeks : 0;
+        // Assuming a weekly target of 100 attendances
+        $attendanceRatePercent = $avgAttendance > 0 ? min(round(($avgAttendance / 100) * 100), 100) : 0;
+        $attendanceRate = $attendanceRatePercent . "%";
+
+        // Most Popular Service: determine the facility with the highest number of bookings this month
+        $popularBooking = DB::table('bookings')
+            ->select('FacilityID', DB::raw("COUNT(*) as count"))
+            ->whereYear('BookingDate', date('Y'))
+            ->whereMonth('BookingDate', date('m'))
+            ->groupBy('FacilityID')
+            ->orderByDesc('count')
+            ->first();
+        $mostPopularService = "N/A";
+        if ($popularBooking) {
+            $facility = DB::table('facilities')
+                ->where('FacilityID', $popularBooking->FacilityID)
+                ->first();
+            if ($facility) {
+                $mostPopularService = $facility->Name;
+            }
+        }
+
+        return response()->json([
+            'total_revenue'          => $totalRevenue,
+            'net_profit'             => $netProfit,
+            'new_members_this_month' => $newMembersThisMonth,
+            'attendance_rate'        => $attendanceRate,
+            'most_popular_service'   => $mostPopularService,
+        ]);
+    }
+
+    /**
+     * Alias for front-end compatibility.
+     * GET /finance/summary will now call this method.
+     */
+    public function indexSummary()
+    {
+        return $this->getOverviewKPIs();
     }
 }

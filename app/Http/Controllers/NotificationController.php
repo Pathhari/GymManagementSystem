@@ -221,6 +221,100 @@ class NotificationController extends Controller
     }
 
 
+    public function indexAnnouncements()
+{
+    // Return the latest announcements from notifications table
+    $announcements = Notification::where('EventTrigger','Announcement')
+        ->orderBy('NotificationID','desc')
+        ->get();
+
+    return response()->json($announcements);
+}
+
+public function storeAnnouncement(Request $request)
+{
+    // Validate input
+    $data = $request->validate([
+        'topic'   => 'required|string|max:100',
+        'message' => 'required|string|max:2000',
+    ]);
+
+    // Create in notifications table
+    $notif = Notification::create([
+        'MemberID'           => null,
+        'EventTrigger'       => 'Announcement',
+        // We'll combine topic + message into 'Message' field
+        'Message'            => "Topic: {$data['topic']}\n{$data['message']}",
+        'NotificationMethod' => 'Internal', // or some arbitrary label
+        'SentDate'           => now(),
+        'Status'             => 'Sent',
+    ]);
+
+    // Return the newly created announcement as JSON
+    return response()->json($notif, 201);
+}
+
+public function updateAnnouncement(Request $request, $id)
+{
+    $data = $request->validate([
+        'topic'   => 'required|string|max:100',
+        'message' => 'required|string|max:2000',
+    ]);
+
+    // Find the target "announcement" in notifications
+    $notif = Notification::where('EventTrigger','Announcement')
+        ->where('NotificationID', $id)
+        ->firstOrFail();
+
+    $notif->update([
+        'Message' => "Topic: {$data['topic']}\n{$data['message']}",
+    ]);
+
+    return response()->json($notif);
+}
+
+public function destroyAnnouncement($id)
+{
+    $notif = Notification::where('EventTrigger','Announcement')
+        ->where('NotificationID', $id)
+        ->firstOrFail();
+
+    $notif->delete();
+
+    return response()->json(['message' => 'Announcement deleted.'], 200);
+}
+
+/**
+ * Send Notification to selected staff (JSON approach)
+ */
+public function sendStaffNotification(Request $request)
+{
+    // If you have actual staff records, you'd typically validate staff IDs exist.
+    // We'll keep it direct for now.
+    $data = $request->validate([
+        'staffIds' => 'required|array',
+        'subject'  => 'required|string|max:100',
+        'message'  => 'required|string|max:2000',
+    ]);
+
+    // For each staff ID, create a notification row
+    // or do email/SMS integration if you prefer
+    foreach ($data['staffIds'] as $staffId) {
+        Notification::create([
+            'MemberID'           => null,
+            'EventTrigger'       => 'StaffNotice',
+            'Message'            => "Subject: {$data['subject']}\n{$data['message']}",
+            'NotificationMethod' => 'Internal',
+            'SentDate'           => now(),
+            'Status'             => 'Sent',
+        ]);
+    }
+
+    return response()->json(['message' => 'Staff notifications sent.'], 200);
+}
+
+
+
     /* ------------------------------------------------------------------
      * F. NOTIFICATION TEMPLATES
      * ------------------------------------------------------------------ */

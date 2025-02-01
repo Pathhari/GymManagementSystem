@@ -11,6 +11,7 @@ use App\Models\SessionBooking;
 use App\Models\SessionWaitlist;
 use App\Models\SessionAttendance;
 use App\Models\Coach;
+use Illuminate\Support\Facades\DB;  // ADD THIS LINE
 use Inertia\Inertia;
 
 class BookingController extends Controller
@@ -318,4 +319,43 @@ class BookingController extends Controller
 
         return response()->json(['message' => 'Attendance marked successfully.']);
     }
+    public function mostPopular()
+    {
+        // Example logic: find the top facility used this month
+        $popularBooking = \DB::table('bookings')
+            ->select('FacilityID', \DB::raw("COUNT(*) as count"))
+            ->whereYear('BookingDate', date('Y'))
+            ->whereMonth('BookingDate', date('m'))
+            ->groupBy('FacilityID')
+            ->orderByDesc('count')
+            ->first();
+    
+        $mostPopular = 'N/A';
+        if ($popularBooking) {
+            $facility = \DB::table('facilities')->where('FacilityID', $popularBooking->FacilityID)->first();
+            if ($facility) {
+                $mostPopular = $facility->Name;
+            }
+        }
+    
+        return response()->json([
+            'most_popular_service' => $mostPopular,
+            'booking_count'        => $popularBooking->count ?? 0,
+        ], 200);
+    }
+    
+
+    public function bookingTrends()
+    {
+        $trends = DB::table('bookings')
+            ->select(DB::raw("DATE_FORMAT(BookingDate, '%b %Y') as month"), DB::raw("COUNT(*) as totalBookings"))
+            ->groupBy('month')
+            ->orderByRaw("MIN(BookingDate)")
+            ->get();
+
+        return response()->json($trends, 200);
+    }
+    
+
+    
 }
