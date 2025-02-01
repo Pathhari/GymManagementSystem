@@ -21,7 +21,7 @@ import { AppProvider } from '@toolpad/core/AppProvider';
 import { DashboardLayout } from '@toolpad/core/DashboardLayout';
 import ApartmentIcon from '@mui/icons-material/Apartment';
 import axios from 'axios';
-import { Inertia } from '@inertiajs/inertia-react'; // Inertia.js import
+import { Inertia } from '@inertiajs/inertia';
 
 
 import DashboardContent from './DashboardContent';
@@ -190,15 +190,13 @@ function DashboardLayoutSlots(props) {
 
   const handleLogout = async () => {
     try {
-      // Make a POST request to logout endpoint to destroy the session
-      await axios.post('/owner/logout');  // Ensure this URL matches your backend route
-  
-      // Redirect to the landing page using Inertia
-      Inertia.visit('/LandingPage');  // Inertia redirect to the home page (127.0.0.1:8000)
+      await axios.post('/owner/logout', {}, { withCredentials: true });
+      globalThis.location.href = '/';
     } catch (error) {
       console.error('Logout failed:', error);
     }
   };
+  
   
 
   return (
