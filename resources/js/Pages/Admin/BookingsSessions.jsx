@@ -50,7 +50,7 @@ import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 
-// Combine Bookings & Sessions for the calendar. Adjust fields as needed.
+// Utility: Combine bookings and sessions for the calendar.
 function createCalendarEvents(bookings, sessions) {
   const bookingEvents = bookings.map((b) => ({
     id: `booking-${b.BookingID}`,
@@ -68,46 +68,92 @@ function createCalendarEvents(bookings, sessions) {
 }
 
 export default function BookingsSessions() {
-  // ------------------ States: Bookings, Sessions, Events ------------------
+  // ------------------ Data States ------------------
   const [bookings, setBookings] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [calendarEvents, setCalendarEvents] = useState([]);
-
-  // For demonstration, if you also want a dynamic list of branches:
+  
+  // Hardcoded branch list – in production you might fetch this list.
+  // Here the branch objects contain a value (ID as string) and a label.
   const [branches, setBranches] = useState([
-    // Hardcode or fetch from server
-    { value: 1, label: "Contnental Branch 1" },
-    { value: 2, label: "Contnental Branch 2" },
+    { value: "1", label: "Contnental Branch 1" },
+    { value: "2", label: "Contnental Branch 2" },
   ]);
-
-  // ------------------ New: Branch Filter State (top-level search) ------------------
-  const [branchFilter, setBranchFilter] = useState("");
-
-  // ------------------ Pagination State for Event List ------------------
-  const eventsPerPage = 6;
-  const [eventPage, setEventPage] = useState(1);
+  
+  // ------------------ Filter & Search States ------------------
+  // branchFilter: "all" or a branch ID (as string)
+  const [branchFilter, setBranchFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  
+  // ------------------ Additional Data ------------------
   const [members, setMembers] = useState([]);
   const [facilities, setFacilities] = useState([]);
   const [coaches, setCoaches] = useState([]);
-
-  // ------------------ Load data from the server on mount ------------------
-  useEffect(() => {
+  
+  // ------------------ UI States ------------------
+  const [activeTab, setActiveTab] = useState(0);
+  const [exportAnchor, setExportAnchor] = useState(null);
+  
+  // Calendar Event dialogs
+  const [isAddCalendarEventOpen, setAddCalendarEventOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [isEditEventOpen, setEditEventOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  
+  // Booking dialogs
+  const [viewBookingModal, setViewBookingModal] = useState(false);
+  const [editBookingModal, setEditBookingModal] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState(null);
+  const [newBooking, setNewBooking] = useState({
+    MemberID: "",
+    FacilityID: "",
+    BookingDate: "",
+    BookingTime: "",
+    Duration: "",
+    PaymentID: null,
+    Status: "",
+    Branch: "", // not used for filtering; branch comes from facility
+  });
+  const [selectedBranchForBooking, setSelectedBranchForBooking] = useState("");
+  
+  // Session dialogs
+  const [viewSessionModal, setViewSessionModal] = useState(false);
+  const [editSessionModal, setEditSessionModal] = useState(false);
+  const [selectedSession, setSelectedSession] = useState(null);
+  const [newSession, setNewSession] = useState({
+    Branch: "",
+    SessionName: "",
+    SessionType: "",
+    CoachID: "",
+    StartDate: "",
+    StartTime: "",
+    EndDate: "",
+    EndTime: "",
+    Capacity: "",
+    Location: "",
+    Fee: "",
+  });
+  
+  // ------------------ Pagination for Calendar Events ------------------
+  const eventsPerPage = 6;
+  const [eventPage, setEventPage] = useState(1);
+  
+  // ------------------ Data Loading ------------------
+  useEffect(() => {   
     fetchData();
     fetchMembers();
     fetchFacilities();
     fetchCoaches();
   }, []);
-
+  
   const fetchData = async () => {
     try {
-      // GET /booking => booking.index
       const bookingRes = await axios.get("/booking");
       const loadedBookings = bookingRes.data.bookings || [];
-
-      // GET /booking/sessions => booking.sessions.index
+  
       const sessionRes = await axios.get("/booking/sessions");
       const loadedSessions = sessionRes.data.sessions || [];
-
+  
       setBookings(loadedBookings);
       setSessions(loadedSessions);
       setCalendarEvents(createCalendarEvents(loadedBookings, loadedSessions));
@@ -115,7 +161,7 @@ export default function BookingsSessions() {
       console.error("Failed to load data:", err);
     }
   };
-
+  
   const fetchMembers = async () => {
     try {
       const res = await axios.get("/membership/members");
@@ -125,66 +171,53 @@ export default function BookingsSessions() {
       setMembers([]);
     }
   };
-
+  
   async function fetchFacilities() {
     try {
       const res = await axios.get("/booking/facilities");
-      // Must match the shape => { facilities: [ ... ] }
       setFacilities(res.data.facilities || []);
     } catch (err) {
       console.error("Failed to load facilities:", err);
       setFacilities([]);
     }
   }
-
+  
   async function fetchCoaches() {
     try {
       const res = await axios.get("/booking/coaches");
-      // { coaches: [ { CoachID, FullName, ... }, ... ] }
       setCoaches(res.data.coaches || []);
     } catch (err) {
       console.error("Failed to load coaches:", err);
       setCoaches([]);
     }
   }
-
-  // ------------------ Tabs & Search ------------------
-  const [activeTab, setActiveTab] = useState(0);
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const handleTabChange = (e, newVal) => {
-    setActiveTab(newVal);
-    setSearchTerm("");
-  };
-  const handleSearchChange = (e) => {
-    setSearchTerm(e.target.value);
-  };
-
-  // ------------------ Filter the table data ------------------
-  // We'll assume each booking has a "Branch" field from the server.
+  
   const filteredBookings = bookings.filter((b) => {
-    const branchMatches = branchFilter ? b.Branch === branchFilter : true;
+    const branchMatches =
+      branchFilter === "all" || Number(b.BranchID) === Number(branchFilter);
     const searchMatches = Object.values(b).some((val) =>
       String(val).toLowerCase().includes(searchTerm.toLowerCase())
     );
     return branchMatches && searchMatches;
   });
-  // Similarly for sessions if you store a "Branch" or "BranchID" field
+  
   const filteredSessions = sessions.filter((s) => {
-    const branchMatches = branchFilter ? s.Branch === branchFilter : true;
+    // Assuming you also update your sessions transformation similarly to include BranchID
+    const branchMatches =
+      branchFilter === "all" || Number(s.BranchID) === Number(branchFilter);
     const searchMatches = Object.values(s).some((val) =>
       String(val).toLowerCase().includes(searchTerm.toLowerCase())
     );
     return branchMatches && searchMatches;
   });
-
+    
   // ------------------ FullCalendar Config ------------------
-  const fullCalendarEvents = calendarEvents.map((ev) => ({
+  const fullCalendarEventsConfig = calendarEvents.map((ev) => ({
     id: ev.id,
     title: ev.title,
     start: ev.date,
   }));
-
+  
   const handleDateClick = (info) => {
     const clickedDate = new Date(info.dateStr);
     if (clickedDate < new Date()) {
@@ -194,20 +227,15 @@ export default function BookingsSessions() {
     setSelectedDate(clickedDate);
     setAddCalendarEventOpen(true);
   };
-
+  
   const handleEventDrop = (info) => {
     const eventId = info.event.id;
     const newDateStr = info.event.startStr;
     setCalendarEvents((prev) =>
       prev.map((ev) => (ev.id === eventId ? { ...ev, date: newDateStr } : ev))
     );
-    // If you want to persist date changes to DB, do that here.
   };
-
-  // For creating a brand-new event from the calendar (Optional UI)
-  const [isAddCalendarEventOpen, setAddCalendarEventOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(null);
-
+  
   const handleSaveCalendarEvent = (title, desc, start, end) => {
     const newEv = {
       id: Date.now().toString(),
@@ -218,10 +246,7 @@ export default function BookingsSessions() {
     setCalendarEvents((prev) => [...prev, newEv]);
     setAddCalendarEventOpen(false);
   };
-
-  // Editing/deleting from the event list (optional)
-  const [isEditEventOpen, setEditEventOpen] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState(null);
+  
   const handleEditEvent = (id) => {
     const found = calendarEvents.find((ev) => ev.id === id);
     if (found) {
@@ -229,9 +254,11 @@ export default function BookingsSessions() {
       setEditEventOpen(true);
     }
   };
+  
   const handleDeleteEvent = (id) => {
     setCalendarEvents((prev) => prev.filter((ev) => ev.id !== id));
   };
+  
   const handleSaveEditedEvent = () => {
     if (!selectedEvent) return;
     setCalendarEvents((prev) =>
@@ -239,12 +266,8 @@ export default function BookingsSessions() {
     );
     setEditEventOpen(false);
   };
-
-  // ------------------ Booking Table Actions ------------------
-  const [viewBookingModal, setViewBookingModal] = useState(false);
-  const [editBookingModal, setEditBookingModal] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState(null);
-
+  
+  // ------------------ Booking Actions ------------------
   const handleViewBooking = (bookingId) => {
     const found = bookings.find((b) => b.BookingID === bookingId);
     if (found) {
@@ -252,6 +275,7 @@ export default function BookingsSessions() {
       setViewBookingModal(true);
     }
   };
+  
   const handleEditBooking = (bookingId) => {
     const found = bookings.find((b) => b.BookingID === bookingId);
     if (found) {
@@ -259,6 +283,7 @@ export default function BookingsSessions() {
       setEditBookingModal(true);
     }
   };
+  
   const handleCancelBooking = async (bookingId) => {
     try {
       await axios.post(`/booking/${bookingId}/cancel`);
@@ -268,12 +293,8 @@ export default function BookingsSessions() {
       console.error("Failed to cancel booking:", err);
     }
   };
-
-  // ------------------ Session Table Actions ------------------
-  const [viewSessionModal, setViewSessionModal] = useState(false);
-  const [editSessionModal, setEditSessionModal] = useState(false);
-  const [selectedSession, setSelectedSession] = useState(null);
-
+  
+  // ------------------ Session Actions ------------------
   const handleViewSession = (sessionId) => {
     const found = sessions.find((s) => s.SessionID === sessionId);
     if (found) {
@@ -281,6 +302,7 @@ export default function BookingsSessions() {
       setViewSessionModal(true);
     }
   };
+  
   const handleEditSession = (sessionId) => {
     const found = sessions.find((s) => s.SessionID === sessionId);
     if (found) {
@@ -288,6 +310,7 @@ export default function BookingsSessions() {
       setEditSessionModal(true);
     }
   };
+  
   const handleCancelSession = async (sessionId) => {
     try {
       await axios.post(`/booking/sessions/${sessionId}/cancel`);
@@ -297,8 +320,8 @@ export default function BookingsSessions() {
       console.error("Failed to cancel session:", err);
     }
   };
-
-  // ------------------ Column Definitions for DataGrid ------------------
+  
+  // ------------------ DataGrid Columns ------------------
   const bookingColumns = [
     { field: "BookingID", headerName: "Booking ID", width: 100 },
     { field: "Branch", headerName: "Branch", width: 150 },
@@ -339,7 +362,7 @@ export default function BookingsSessions() {
       ),
     },
   ];
-
+  
   const sessionColumns = [
     { field: "SessionID", headerName: "Session ID", width: 120 },
     { field: "Branch", headerName: "Branch", width: 150 },
@@ -391,17 +414,16 @@ export default function BookingsSessions() {
       ),
     },
   ];
-
+  
   const columns = activeTab === 0 ? bookingColumns : sessionColumns;
   const rows = activeTab === 0 ? filteredBookings : filteredSessions;
   const getRowId = (row) => (activeTab === 0 ? row.BookingID : row.SessionID);
-
-  // ------------------ Export Logic (CSV / PDF) ------------------
-  const [exportAnchor, setExportAnchor] = useState(null);
+  
+  // ------------------ Export Logic ------------------
   const openExport = Boolean(exportAnchor);
   const handleExportClick = (e) => setExportAnchor(e.currentTarget);
   const handleExportClose = () => setExportAnchor(null);
-
+  
   const csvHeadersBookings = [
     { label: "Booking ID", key: "BookingID" },
     { label: "Branch", key: "Branch" },
@@ -422,12 +444,11 @@ export default function BookingsSessions() {
     { label: "Participants", key: "Participants" },
     { label: "Status", key: "Status" },
   ];
-
+  
   const handleExportPDF = () => {
     handleExportClose();
     const doc = new jsPDF();
     if (activeTab === 0) {
-      // Bookings PDF
       doc.text("Bookings Export", 14, 10);
       const rowsForPDF = filteredBookings.map((b) => [
         b.BookingID,
@@ -446,7 +467,6 @@ export default function BookingsSessions() {
       });
       doc.save("Bookings.pdf");
     } else {
-      // Sessions PDF
       doc.text("Sessions Export", 14, 10);
       const rowsForPDF = filteredSessions.map((s) => [
         s.SessionID,
@@ -459,41 +479,27 @@ export default function BookingsSessions() {
         s.Status,
       ]);
       doc.autoTable({
-        head: [
-          ["ID", "SessionName", "Coach", "Start", "End", "Cap", "Participants", "Status"],
-        ],
+        head: [["ID", "SessionName", "Coach", "Start", "End", "Cap", "Participants", "Status"]],
         body: rowsForPDF,
         startY: 20,
       });
       doc.save("Sessions.pdf");
     }
   };
-
+  
   // ------------------ Add Booking / Session Dialogs ------------------
   const [isAddBookingOpen, setAddBookingOpen] = useState(false);
-  const [newBooking, setNewBooking] = useState({
-    MemberID: "",
-    FacilityID: "",
-    BookingDate: "",
-    BookingTime: "",
-    Duration: "",
-    PaymentID: null,
-    Status: "",
-    Branch: "",
-  });
-
-  // Because user must pick a branch first => then we filter facilities for that branch
-  const [selectedBranchForBooking, setSelectedBranchForBooking] = useState("");
-
-  // Filter facilities by selectedBranchForBooking
+  const [isAddSessionOpen, setAddSessionOpen] = useState(false);
+  
+  // For facility filtering in new booking, compare facility's BranchID with selectedBranchForBooking.
   const facilitiesForBranch = selectedBranchForBooking
-  ? facilities.filter((f) => f.BranchID === selectedBranchForBooking)
-  : facilities;
-
+    ? facilities.filter((f) => String(f.BranchID) === selectedBranchForBooking)
+    : facilities;
+  
   const handleCreateBooking = async () => {
     try {
       await axios.post("/booking", {
-        Branch: selectedBranchForBooking, // if your DB has a Branch column
+        Branch: selectedBranchForBooking,
         MemberID: newBooking.MemberID,
         FacilityID: newBooking.FacilityID,
         BookingDate: newBooking.BookingDate,
@@ -508,36 +514,20 @@ export default function BookingsSessions() {
       console.error("Failed to create booking:", err);
     }
   };
-
-  const [isAddSessionOpen, setAddSessionOpen] = useState(false);
-  const [newSession, setNewSession] = useState({
-    Branch: "",
-    SessionName: "",
-    SessionType: "",
-    CoachID: "",
-    StartDate: "",
-    StartTime: "",
-    EndDate: "",
-    EndTime: "",
-    Capacity: "",
-    Location: "",
-    Fee: "",
-  });
-
+  
   const handleCreateSession = async () => {
     try {
-      const startFull = dayjs(`${newSession.StartDate} ${newSession.StartTime}`, 'YYYY-MM-DD HH:mm:ss')
-      .format('YYYY-MM-DDTHH:mm');    
-      const endFull = dayjs(`${newSession.EndDate} ${newSession.EndTime}`, 'YYYY-MM-DD HH:mm:ss')
-      .format('YYYY-MM-DDTHH:mm');
-      // Use newSession.Branch here, not newSession.BranchID
+      const startFull = dayjs(`${newSession.StartDate} ${newSession.StartTime}`, "YYYY-MM-DD HH:mm:ss")
+        .format("YYYY-MM-DDTHH:mm");
+      const endFull = dayjs(`${newSession.EndDate} ${newSession.EndTime}`, "YYYY-MM-DD HH:mm:ss")
+        .format("YYYY-MM-DDTHH:mm");
       await axios.post("/booking/sessions", {
-        BranchID: newSession.BranchID,        
+        BranchID: newSession.BranchID,
         SessionName: newSession.SessionName,
         SessionType: newSession.SessionType,
         CoachID: newSession.CoachID,
-        StartTime: startFull, // e.g. "YYYY-MM-DD HH:mm:ss"
-        EndTime: endFull,        
+        StartTime: startFull,
+        EndTime: endFull,
         Capacity: newSession.Capacity,
         Location: newSession.Location,
         Fee: newSession.Fee,
@@ -548,7 +538,7 @@ export default function BookingsSessions() {
       console.error("Failed to create session:", err);
     }
   };
-
+  
   // ------------------ Update Booking / Session Dialogs ------------------
   const handleUpdateBooking = async () => {
     if (!selectedBooking) return;
@@ -569,16 +559,18 @@ export default function BookingsSessions() {
       console.error("Failed to update booking:", err);
     }
   };
-
+  
   const handleUpdateSession = async () => {
     if (!selectedSession) return;
     try {
-      const startFull = selectedSession.StartDate && selectedSession.StartTime
-      ? `${selectedSession.StartDate} ${selectedSession.StartTime}`
-      : "";
-    const endFull = selectedSession.EndDate && selectedSession.EndTime
-      ? `${selectedSession.EndDate} ${selectedSession.EndTime}`
-      : "";
+      const startFull =
+        selectedSession.StartDate && selectedSession.StartTime
+          ? `${selectedSession.StartDate} ${selectedSession.StartTime}`
+          : "";
+      const endFull =
+        selectedSession.EndDate && selectedSession.EndTime
+          ? `${selectedSession.EndDate} ${selectedSession.EndTime}`
+          : "";
       await axios.put(`/booking/sessions/${selectedSession.SessionID}`, {
         Branch: selectedSession.BranchID,
         SessionName: selectedSession.SessionName,
@@ -596,17 +588,16 @@ export default function BookingsSessions() {
       console.error("Failed to update session:", err);
     }
   };
-
-  // ------------------ Pagination for Event List ------------------
+  
+  // ------------------ Pagination for Calendar Events ------------------
   const indexOfLastEvent = eventPage * eventsPerPage;
   const indexOfFirstEvent = indexOfLastEvent - eventsPerPage;
   const currentEvents = calendarEvents.slice(indexOfFirstEvent, indexOfLastEvent);
-
+  
   const handleEventPageChange = (event, value) => {
     setEventPage(value);
   };
-
-  // ------------------ Render ------------------
+  
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Box sx={{ p: 4 }}>
@@ -620,12 +611,10 @@ export default function BookingsSessions() {
               <FullCalendar
                 plugins={[dayGridPlugin, interactionPlugin]}
                 initialView="dayGridMonth"
-                events={fullCalendarEvents}
+                events={calendarEvents}
                 height="auto"
                 editable
-                validRange={{
-                  start: new Date().toISOString().split("T")[0],
-                }}
+                validRange={{ start: new Date().toISOString().split("T")[0] }}
                 dateClick={handleDateClick}
                 eventDrop={handleEventDrop}
               />
@@ -634,7 +623,7 @@ export default function BookingsSessions() {
               </Typography>
             </Paper>
           </Grid>
-
+  
           {/* Event List */}
           <Grid item xs={12} md={4}>
             <Paper sx={{ p: 2, minHeight: 550 }}>
@@ -645,18 +634,11 @@ export default function BookingsSessions() {
               <List dense sx={{ maxHeight: 500, overflowY: "auto" }}>
                 {calendarEvents.length === 0 ? (
                   <ListItem>
-                    <ListItemText
-                      primary="No events for this month."
-                      primaryTypographyProps={{ color: "text.secondary" }}
-                    />
+                    <ListItemText primary="No events for this month." primaryTypographyProps={{ color: "text.secondary" }} />
                   </ListItem>
                 ) : (
                   currentEvents.map((ev) => (
-                    <Paper
-                      key={ev.id}
-                      variant="outlined"
-                      sx={{ mb: 1, p: 1, borderRadius: 2 }}
-                    >
+                    <Paper key={ev.id} variant="outlined" sx={{ mb: 1, p: 1, borderRadius: 2 }}>
                       <ListItem
                         secondaryAction={
                           <Box>
@@ -666,10 +648,7 @@ export default function BookingsSessions() {
                               </IconButton>
                             </Tooltip>
                             <Tooltip title="Delete Event">
-                              <IconButton
-                                onClick={() => handleDeleteEvent(ev.id)}
-                                sx={{ ml: 1 }}
-                              >
+                              <IconButton onClick={() => handleDeleteEvent(ev.id)} sx={{ ml: 1 }}>
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
@@ -679,10 +658,7 @@ export default function BookingsSessions() {
                       >
                         <ListItemText
                           primary={ev.title}
-                          primaryTypographyProps={{
-                            fontWeight: 600,
-                            fontSize: "0.95rem",
-                          }}
+                          primaryTypographyProps={{ fontWeight: 600, fontSize: "0.95rem" }}
                           secondary={`Date: ${ev.date}`}
                         />
                       </ListItem>
@@ -703,25 +679,24 @@ export default function BookingsSessions() {
             </Paper>
           </Grid>
         </Grid>
-
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
+  
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
           <Typography variant="h4" gutterBottom>
             Bookings & Sessions
           </Typography>
-          <Tabs value={activeTab} onChange={handleTabChange}>
+          <Tabs
+            value={activeTab}
+            onChange={(e, newVal) => {
+              setActiveTab(newVal);
+              setSearchTerm("");
+            }}
+          >
             <Tab icon={<CalendarTodayIcon />} label="Bookings" />
             <Tab icon={<FitnessCenterIcon />} label="Sessions" />
           </Tabs>
         </Box>
         &nbsp;
-
+  
         <Paper sx={{ p: 2, mb: 3 }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
             <Box sx={{ display: "flex", gap: 2 }}>
@@ -734,9 +709,9 @@ export default function BookingsSessions() {
                 size="small"
                 sx={{ width: 150 }}
               >
-                <MenuItem value="">All</MenuItem>
+                <MenuItem value="all">All</MenuItem>
                 {branches.map((b) => (
-                  <MenuItem key={b.value} value={b.value}>
+                  <MenuItem key={b.value} value={String(b.value)}>
                     {b.label}
                   </MenuItem>
                 ))}
@@ -745,7 +720,7 @@ export default function BookingsSessions() {
               <TextField
                 placeholder="Search"
                 value={searchTerm}
-                onChange={handleSearchChange}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 variant="outlined"
                 size="small"
                 sx={{ width: "100%", maxWidth: 300 }}
@@ -805,78 +780,61 @@ export default function BookingsSessions() {
                   </Box>
                 </MenuItem>
               </Menu>
-
+  
               {activeTab === 0 ? (
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={() => setAddBookingOpen(true)}
-                >
+                <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddBookingOpen(true)}>
                   Add Booking
                 </Button>
               ) : (
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={() => setAddSessionOpen(true)}
-                >
+                <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddSessionOpen(true)}>
                   Add Session
                 </Button>
               )}
             </Box>
           </Box>
-
+  
           <div style={{ height: 420, width: "100%" }}>
             <DataGrid
-              rows={rows}
-              columns={columns}
+              rows={activeTab === 0 ? filteredBookings : filteredSessions}
+              columns={activeTab === 0 ? bookingColumns : sessionColumns}
               pageSize={5}
               rowsPerPageOptions={[5, 10]}
-              getRowId={getRowId}
+              getRowId={(row) => (activeTab === 0 ? row.BookingID : row.SessionID)}
             />
           </div>
         </Paper>
-
+  
         {/* ==================== DIALOGS ==================== */}
-
+  
         {/* 1) Add Booking Dialog */}
-        <Dialog
-          open={isAddBookingOpen}
-          onClose={() => setAddBookingOpen(false)}
-          fullWidth
-          maxWidth="sm"
-        >
+        <Dialog open={isAddBookingOpen} onClose={() => setAddBookingOpen(false)} fullWidth maxWidth="sm">
           <DialogTitle>Add New Booking</DialogTitle>
           <DialogContent dividers>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {/* Branch (for the new booking) */}
+              {/* Branch for new booking */}
               <FormControl fullWidth margin="normal" size="small">
                 <InputLabel>Branch</InputLabel>
                 <Select
                   label="Branch"
                   value={selectedBranchForBooking}
-                  onChange={(e) => {
-                    setSelectedBranchForBooking(e.target.value);
-                  }}
+                  onChange={(e) => setSelectedBranchForBooking(e.target.value)}
                 >
-                  <MenuItem value=""> --Select Branch-- </MenuItem>
+                  <MenuItem value="">--Select Branch--</MenuItem>
                   {branches.map((b) => (
-                    <MenuItem key={b.value} value={b.value}>
+                    <MenuItem key={b.value} value={String(b.value)}>
                       {b.label}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
-
+  
               {/* Member Select */}
               <FormControl fullWidth margin="normal" size="small">
                 <InputLabel>Member</InputLabel>
                 <Select
                   label="Member"
                   value={newBooking.MemberID || ""}
-                  onChange={(e) =>
-                    setNewBooking({ ...newBooking, MemberID: e.target.value })
-                  }
+                  onChange={(e) => setNewBooking({ ...newBooking, MemberID: e.target.value })}
                 >
                   {members.map((m) => (
                     <MenuItem key={m.MemberID} value={m.MemberID}>
@@ -885,86 +843,70 @@ export default function BookingsSessions() {
                   ))}
                 </Select>
               </FormControl>
-
+  
               {/* Facility Select (filtered by branch) */}
               <FormControl fullWidth margin="normal" size="small">
                 <InputLabel>Facility</InputLabel>
                 <Select
                   label="Facility"
                   value={newBooking.FacilityID || ""}
-                  onChange={(e) =>
-                    setNewBooking({ ...newBooking, FacilityID: e.target.value })
-                  }
+                  onChange={(e) => setNewBooking({ ...newBooking, FacilityID: e.target.value })}
                 >
-                  {facilitiesForBranch.map((f) => (
-                    <MenuItem key={f.FacilityID} value={f.FacilityID}>
-                      {f.Name}
-                    </MenuItem>
-                  ))}
+                  {selectedBranchForBooking
+                    ? facilities
+                        .filter((f) => String(f.BranchID) === selectedBranchForBooking)
+                        .map((f) => (
+                          <MenuItem key={f.FacilityID} value={f.FacilityID}>
+                            {f.Name}
+                          </MenuItem>
+                        ))
+                    : facilities.map((f) => (
+                        <MenuItem key={f.FacilityID} value={f.FacilityID}>
+                          {f.Name}
+                        </MenuItem>
+                      ))}
                 </Select>
               </FormControl>
-
+  
               {/* Date Picker */}
               <DatePicker
                 label="Booking Date"
-                value={
-                  newBooking.BookingDate ? dayjs(newBooking.BookingDate) : null
-                }
+                value={newBooking.BookingDate ? dayjs(newBooking.BookingDate) : null}
                 onChange={(dayjsValue) => {
-                  const formattedString = dayjsValue
-                    ? dayjsValue.format("YYYY-MM-DD")
-                    : "";
-                  setNewBooking((prev) => ({
-                    ...prev,
-                    BookingDate: formattedString,
-                  }));
+                  const formattedString = dayjsValue ? dayjsValue.format("YYYY-MM-DD") : "";
+                  setNewBooking((prev) => ({ ...prev, BookingDate: formattedString }));
                 }}
                 renderInput={(params) => <TextField {...params} size="small" />}
               />
-
+  
               {/* Time Picker */}
               <TimePicker
                 label="Booking Time"
-                value={
-                  newBooking.BookingTime
-                    ? dayjs(newBooking.BookingTime, "HH:mm:ss")
-                    : null
-                }
+                value={newBooking.BookingTime ? dayjs(newBooking.BookingTime, "HH:mm:ss") : null}
                 onChange={(timeValue) => {
-                  const formatted = timeValue
-                    ? timeValue.format("HH:mm:ss")
-                    : "";
-                  setNewBooking((prev) => ({
-                    ...prev,
-                    BookingTime: formatted,
-                  }));
+                  const formatted = timeValue ? timeValue.format("HH:mm:ss") : "";
+                  setNewBooking((prev) => ({ ...prev, BookingTime: formatted }));
                 }}
                 renderInput={(params) => <TextField {...params} size="small" />}
               />
-
+  
               <TextField
                 label="Duration (hrs)"
                 size="small"
                 value={newBooking.Duration}
-                onChange={(e) =>
-                  setNewBooking({ ...newBooking, Duration: e.target.value })
-                }
+                onChange={(e) => setNewBooking({ ...newBooking, Duration: e.target.value })}
               />
               <TextField
                 label="Payment ID (optional)"
                 size="small"
                 value={newBooking.PaymentID || ""}
-                onChange={(e) =>
-                  setNewBooking({ ...newBooking, PaymentID: e.target.value })
-                }
+                onChange={(e) => setNewBooking({ ...newBooking, PaymentID: e.target.value })}
               />
               <TextField
                 label="Status"
                 size="small"
                 value={newBooking.Status}
-                onChange={(e) =>
-                  setNewBooking({ ...newBooking, Status: e.target.value })
-                }
+                onChange={(e) => setNewBooking({ ...newBooking, Status: e.target.value })}
               />
             </Box>
           </DialogContent>
@@ -975,147 +917,131 @@ export default function BookingsSessions() {
             </Button>
           </DialogActions>
         </Dialog>
-
+  
         {/* 2) Add Session Dialog */}
-        <Dialog
-  open={isAddSessionOpen}
-  onClose={() => setAddSessionOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>Add New Session</DialogTitle>
-  <DialogContent dividers>
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      {/* Branch Selector */}
-      <FormControl fullWidth margin="normal" size="small">
-        <InputLabel>Branch</InputLabel>
-        <Select
-          label="Branch"
-          value={newSession.BranchID || ""}
-          onChange={(e) =>
-            setNewSession({ ...newSession, BranchID: e.target.value })
-          }
-        >
-          {branches.map((b) => (
-            <MenuItem key={b.value} value={b.value}>
-              {b.label}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-
-      <TextField
-        label="Session Name"
-        size="small"
-        value={newSession.SessionName}
-        onChange={(e) =>
-          setNewSession({ ...newSession, SessionName: e.target.value })
-        }
-      />
-      <TextField
-        label="Session Type"
-        size="small"
-        value={newSession.SessionType}
-        onChange={(e) =>
-          setNewSession({ ...newSession, SessionType: e.target.value })
-        }
-      />
-
-      {/* Coach dropdown, if any */}
-      <FormControl fullWidth margin="normal" size="small">
-        <InputLabel>Coach</InputLabel>
-        <Select
-          label="Coach"
-          value={newSession.CoachID || ""}
-          onChange={(e) => setNewSession({ ...newSession, CoachID: e.target.value })}
-        >
-          {coaches.map((c) => (
-            <MenuItem key={c.CoachID} value={c.CoachID}>
-              {c.FullName}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-
-      {/* Start Date */}
-      <DatePicker
-        label="Start Date"
-        value={newSession.StartDate ? dayjs(newSession.StartDate) : null}
-        onChange={(dayjsVal) => {
-          const dateStr = dayjsVal ? dayjsVal.format("YYYY-MM-DD") : "";
-          setNewSession({ ...newSession, StartDate: dateStr });
-        }}
-        renderInput={(params) => <TextField {...params} size="small" />}
-      />
-
-      {/* Start Time */}
-      <TimePicker
-        label="Start Time"
-        value={newSession.StartTime ? dayjs(newSession.StartTime, "HH:mm:ss") : null}
-        onChange={(timeVal) => {
-          const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
-          setNewSession({ ...newSession, StartTime: timeStr });
-        }}
-        renderInput={(params) => <TextField {...params} size="small" />}
-      />
-
-      {/* End Date */}
-      <DatePicker
-        label="End Date"
-        value={newSession.EndDate ? dayjs(newSession.EndDate) : null}
-        onChange={(dayjsVal) => {
-          const dateStr = dayjsVal ? dayjsVal.format("YYYY-MM-DD") : "";
-          setNewSession({ ...newSession, EndDate: dateStr });
-        }}
-        renderInput={(params) => <TextField {...params} size="small" />}
-      />
-
-      {/* End Time */}
-      <TimePicker
-        label="End Time"
-        value={newSession.EndTime ? dayjs(newSession.EndTime, "HH:mm:ss") : null}
-        onChange={(timeVal) => {
-          const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
-          setNewSession({ ...newSession, EndTime: timeStr });
-        }}
-        renderInput={(params) => <TextField {...params} size="small" />}
-      />
-
-      <TextField
-        label="Capacity"
-        type="number"
-        size="small"
-        value={newSession.Capacity}
-        onChange={(e) =>
-          setNewSession({ ...newSession, Capacity: e.target.value })
-        }
-      />
-      <TextField
-        label="Location"
-        size="small"
-        value={newSession.Location}
-        onChange={(e) =>
-          setNewSession({ ...newSession, Location: e.target.value })
-        }
-      />
-      <TextField
-        label="Fee"
-        type="number"
-        size="small"
-        value={newSession.Fee}
-        onChange={(e) => setNewSession({ ...newSession, Fee: e.target.value })}
-      />
-    </Box>
-  </DialogContent>
-  <DialogActions>
-    <Button onClick={() => setAddSessionOpen(false)}>Cancel</Button>
-    <Button variant="contained" onClick={handleCreateSession}>
-      Save
-    </Button>
-  </DialogActions>
-</Dialog>
-
-
+        <Dialog open={isAddSessionOpen} onClose={() => setAddSessionOpen(false)} fullWidth maxWidth="sm">
+          <DialogTitle>Add New Session</DialogTitle>
+          <DialogContent dividers>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {/* Branch Selector */}
+              <FormControl fullWidth margin="normal" size="small">
+                <InputLabel>Branch</InputLabel>
+                <Select
+                  label="Branch"
+                  value={newSession.BranchID || ""}
+                  onChange={(e) => setNewSession({ ...newSession, BranchID: e.target.value })}
+                >
+                  {branches.map((b) => (
+                    <MenuItem key={b.value} value={String(b.value)}>
+                      {b.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+  
+              <TextField
+                label="Session Name"
+                size="small"
+                value={newSession.SessionName}
+                onChange={(e) => setNewSession({ ...newSession, SessionName: e.target.value })}
+              />
+              <TextField
+                label="Session Type"
+                size="small"
+                value={newSession.SessionType}
+                onChange={(e) => setNewSession({ ...newSession, SessionType: e.target.value })}
+              />
+  
+              {/* Coach dropdown */}
+              <FormControl fullWidth margin="normal" size="small">
+                <InputLabel>Coach</InputLabel>
+                <Select
+                  label="Coach"
+                  value={newSession.CoachID || ""}
+                  onChange={(e) => setNewSession({ ...newSession, CoachID: e.target.value })}
+                >
+                  {coaches.map((c) => (
+                    <MenuItem key={c.CoachID} value={c.CoachID}>
+                      {c.FullName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+  
+              {/* Start Date */}
+              <DatePicker
+                label="Start Date"
+                value={newSession.StartDate ? dayjs(newSession.StartDate) : null}
+                onChange={(dayjsVal) => {
+                  const dateStr = dayjsVal ? dayjsVal.format("YYYY-MM-DD") : "";
+                  setNewSession({ ...newSession, StartDate: dateStr });
+                }}
+                renderInput={(params) => <TextField {...params} size="small" />}
+              />
+  
+              {/* Start Time */}
+              <TimePicker
+                label="Start Time"
+                value={newSession.StartTime ? dayjs(newSession.StartTime, "HH:mm:ss") : null}
+                onChange={(timeVal) => {
+                  const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
+                  setNewSession({ ...newSession, StartTime: timeStr });
+                }}
+                renderInput={(params) => <TextField {...params} size="small" />}
+              />
+  
+              {/* End Date */}
+              <DatePicker
+                label="End Date"
+                value={newSession.EndDate ? dayjs(newSession.EndDate) : null}
+                onChange={(dayjsVal) => {
+                  const dateStr = dayjsVal ? dayjsVal.format("YYYY-MM-DD") : "";
+                  setNewSession({ ...newSession, EndDate: dateStr });
+                }}
+                renderInput={(params) => <TextField {...params} size="small" />}
+              />
+  
+              {/* End Time */}
+              <TimePicker
+                label="End Time"
+                value={newSession.EndTime ? dayjs(newSession.EndTime, "HH:mm:ss") : null}
+                onChange={(timeVal) => {
+                  const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
+                  setNewSession({ ...newSession, EndTime: timeStr });
+                }}
+                renderInput={(params) => <TextField {...params} size="small" />}
+              />
+  
+              <TextField
+                label="Capacity"
+                type="number"
+                size="small"
+                value={newSession.Capacity}
+                onChange={(e) => setNewSession({ ...newSession, Capacity: e.target.value })}
+              />
+              <TextField
+                label="Location"
+                size="small"
+                value={newSession.Location}
+                onChange={(e) => setNewSession({ ...newSession, Location: e.target.value })}
+              />
+              <TextField
+                label="Fee"
+                type="number"
+                size="small"
+                value={newSession.Fee}
+                onChange={(e) => setNewSession({ ...newSession, Fee: e.target.value })}
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddSessionOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={handleCreateSession}>
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+  
         {/* 3) Add Event from Calendar (Optional) */}
         <Dialog
           open={isAddCalendarEventOpen}
@@ -1151,7 +1077,7 @@ export default function BookingsSessions() {
             </Button>
           </DialogActions>
         </Dialog>
-
+  
         {/* 4) Edit Event from List (Optional) */}
         <Dialog
           open={isEditEventOpen}
@@ -1167,27 +1093,20 @@ export default function BookingsSessions() {
                   label="Title"
                   size="small"
                   value={selectedEvent.title}
-                  onChange={(e) =>
-                    setSelectedEvent({ ...selectedEvent, title: e.target.value })
-                  }
+                  onChange={(e) => setSelectedEvent({ ...selectedEvent, title: e.target.value })}
                 />
                 <TextField
                   label="Date (YYYY-MM-DD)"
                   size="small"
                   value={selectedEvent.date}
-                  onChange={(e) =>
-                    setSelectedEvent({ ...selectedEvent, date: e.target.value })
-                  }
+                  onChange={(e) => setSelectedEvent({ ...selectedEvent, date: e.target.value })}
                 />
                 <TextField
                   label="Description"
                   size="small"
                   value={selectedEvent.description || ""}
                   onChange={(e) =>
-                    setSelectedEvent({
-                      ...selectedEvent,
-                      description: e.target.value,
-                    })
+                    setSelectedEvent({ ...selectedEvent, description: e.target.value })
                   }
                 />
               </Box>
@@ -1200,7 +1119,7 @@ export default function BookingsSessions() {
             </Button>
           </DialogActions>
         </Dialog>
-
+  
         {/* 5) View Booking */}
         <Dialog
           open={viewBookingModal}
@@ -1217,86 +1136,65 @@ export default function BookingsSessions() {
             {selectedBooking && (
               <Box sx={{ p: 2 }}>
                 <Grid container spacing={2}>
-                  <Grid item xs={12}></Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Booking ID:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedBooking.BookingID}
-                    </Typography>
+                    <Typography variant="body1">{selectedBooking.BookingID}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Branch:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedBooking.Branch}
-                    </Typography>
+                    <Typography variant="body1">{selectedBooking.Branch}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Member Name:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedBooking.MemberName}
-                    </Typography>
+                    <Typography variant="body1">{selectedBooking.MemberName}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Facility Name:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedBooking.FacilityName}
-                    </Typography>
+                    <Typography variant="body1">{selectedBooking.FacilityName}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Date:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedBooking.BookingDate}
-                    </Typography>
+                    <Typography variant="body1">{selectedBooking.BookingDate}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Time:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedBooking.BookingTime}
-                    </Typography>
+                    <Typography variant="body1">{selectedBooking.BookingTime}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Duration:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedBooking.Duration}
-                    </Typography>
+                    <Typography variant="body1">{selectedBooking.Duration}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Status:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedBooking.Status}
-                    </Typography>
+                    <Typography variant="body1">{selectedBooking.Status}</Typography>
                   </Grid>
                 </Grid>
               </Box>
             )}
           </DialogContent>
           <DialogActions>
-            <Button
-              onClick={() => setViewBookingModal(false)}
-              variant="contained"
-              color="primary"
-            >
+            <Button onClick={() => setViewBookingModal(false)} variant="contained" color="primary">
               Close
             </Button>
           </DialogActions>
         </Dialog>
-
+  
         {/* 6) Edit Booking */}
         <Dialog
           open={editBookingModal}
@@ -1313,10 +1211,7 @@ export default function BookingsSessions() {
                   size="small"
                   value={selectedBooking.Branch}
                   onChange={(e) =>
-                    setSelectedBooking({
-                      ...selectedBooking,
-                      Branch: e.target.value,
-                    })
+                    setSelectedBooking({ ...selectedBooking, Branch: e.target.value })
                   }
                 />
                 <TextField
@@ -1324,10 +1219,7 @@ export default function BookingsSessions() {
                   size="small"
                   value={selectedBooking.MemberName}
                   onChange={(e) =>
-                    setSelectedBooking({
-                      ...selectedBooking,
-                      MemberName: e.target.value,
-                    })
+                    setSelectedBooking({ ...selectedBooking, MemberName: e.target.value })
                   }
                 />
                 <TextField
@@ -1335,25 +1227,15 @@ export default function BookingsSessions() {
                   size="small"
                   value={selectedBooking.FacilityName}
                   onChange={(e) =>
-                    setSelectedBooking({
-                      ...selectedBooking,
-                      FacilityName: e.target.value,
-                    })
+                    setSelectedBooking({ ...selectedBooking, FacilityName: e.target.value })
                   }
                 />
                 <DatePicker
                   label="Booking Date"
-                  value={
-                    selectedBooking.BookingDate
-                      ? dayjs(selectedBooking.BookingDate)
-                      : null
-                  }
+                  value={selectedBooking.BookingDate ? dayjs(selectedBooking.BookingDate) : null}
                   onChange={(newVal) => {
                     const str = newVal ? newVal.format("YYYY-MM-DD") : "";
-                    setSelectedBooking({
-                      ...selectedBooking,
-                      BookingDate: str,
-                    });
+                    setSelectedBooking({ ...selectedBooking, BookingDate: str });
                   }}
                   renderInput={(params) => <TextField {...params} size="small" />}
                 />
@@ -1362,10 +1244,7 @@ export default function BookingsSessions() {
                   size="small"
                   value={selectedBooking.BookingTime}
                   onChange={(e) =>
-                    setSelectedBooking({
-                      ...selectedBooking,
-                      BookingTime: e.target.value,
-                    })
+                    setSelectedBooking({ ...selectedBooking, BookingTime: e.target.value })
                   }
                 />
                 <TextField
@@ -1373,10 +1252,7 @@ export default function BookingsSessions() {
                   size="small"
                   value={selectedBooking.Duration}
                   onChange={(e) =>
-                    setSelectedBooking({
-                      ...selectedBooking,
-                      Duration: e.target.value,
-                    })
+                    setSelectedBooking({ ...selectedBooking, Duration: e.target.value })
                   }
                 />
                 <TextField
@@ -1384,10 +1260,7 @@ export default function BookingsSessions() {
                   size="small"
                   value={selectedBooking.Status}
                   onChange={(e) =>
-                    setSelectedBooking({
-                      ...selectedBooking,
-                      Status: e.target.value,
-                    })
+                    setSelectedBooking({ ...selectedBooking, Status: e.target.value })
                   }
                 />
               </Box>
@@ -1400,7 +1273,7 @@ export default function BookingsSessions() {
             </Button>
           </DialogActions>
         </Dialog>
-
+  
         {/* 7) View Session */}
         <Dialog
           open={viewSessionModal}
@@ -1417,86 +1290,65 @@ export default function BookingsSessions() {
             {selectedSession && (
               <Box sx={{ p: 2 }}>
                 <Grid container spacing={2}>
-                  <Grid item xs={12}></Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Session ID:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedSession.SessionID}
-                    </Typography>
+                    <Typography variant="body1">{selectedSession.SessionID}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Session Name:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedSession.SessionName}
-                    </Typography>
+                    <Typography variant="body1">{selectedSession.SessionName}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Coach Name:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedSession.CoachName}
-                    </Typography>
+                    <Typography variant="body1">{selectedSession.CoachName}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Start Time:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedSession.StartTime}
-                    </Typography>
+                    <Typography variant="body1">{selectedSession.StartTime}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       End Time:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedSession.EndTime}
-                    </Typography>
+                    <Typography variant="body1">{selectedSession.EndTime}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Capacity:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedSession.Capacity}
-                    </Typography>
+                    <Typography variant="body1">{selectedSession.Capacity}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Participants:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedSession.Participants}
-                    </Typography>
+                    <Typography variant="body1">{selectedSession.Participants}</Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="body2" color="textSecondary">
                       Status:
                     </Typography>
-                    <Typography variant="body1">
-                      {selectedSession.Status}
-                    </Typography>
+                    <Typography variant="body1">{selectedSession.Status}</Typography>
                   </Grid>
                 </Grid>
               </Box>
             )}
           </DialogContent>
           <DialogActions>
-            <Button
-              onClick={() => setViewSessionModal(false)}
-              variant="contained"
-              color="primary"
-            >
+            <Button onClick={() => setViewSessionModal(false)} variant="contained" color="primary">
               Close
             </Button>
           </DialogActions>
         </Dialog>
-
+  
         {/* 8) Edit Session */}
         <Dialog
           open={editSessionModal}
@@ -1521,10 +1373,7 @@ export default function BookingsSessions() {
                   size="small"
                   value={selectedSession.SessionName}
                   onChange={(e) =>
-                    setSelectedSession({
-                      ...selectedSession,
-                      SessionName: e.target.value,
-                    })
+                    setSelectedSession({ ...selectedSession, SessionName: e.target.value })
                   }
                 />
                 <TextField
@@ -1532,10 +1381,7 @@ export default function BookingsSessions() {
                   size="small"
                   value={selectedSession.SessionType}
                   onChange={(e) =>
-                    setSelectedSession({
-                      ...selectedSession,
-                      SessionType: e.target.value,
-                    })
+                    setSelectedSession({ ...selectedSession, SessionType: e.target.value })
                   }
                 />
                 <TextField
@@ -1543,80 +1389,51 @@ export default function BookingsSessions() {
                   size="small"
                   value={selectedSession.CoachName}
                   onChange={(e) =>
-                    setSelectedSession({
-                      ...selectedSession,
-                      CoachName: e.target.value,
-                    })
+                    setSelectedSession({ ...selectedSession, CoachName: e.target.value })
                   }
                 />
-{/* Start Date */}
-<DatePicker
-      label="Start Date"
-      value={
-        selectedSession.StartDate
-          ? dayjs(selectedSession.StartDate) 
-          : null
-      }
-      onChange={(dayjsVal) => {
-        const dateStr = dayjsVal ? dayjsVal.format("YYYY-MM-DD") : "";
-        setSelectedSession((prev) => ({ ...prev, StartDate: dateStr }));
-      }}
-      renderInput={(params) => <TextField {...params} size="small" />}
-    />
-
-    {/* Start Time */}
-    <TimePicker
-      label="Start Time"
-      value={
-        selectedSession.StartTime
-          ? dayjs(selectedSession.StartTime, "HH:mm:ss")
-          : null
-      }
-      onChange={(timeVal) => {
-        const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
-        setSelectedSession((prev) => ({ ...prev, StartTime: timeStr }));
-      }}
-      renderInput={(params) => <TextField {...params} size="small" />}
-    />
-
-    {/* End Date */}
-    <DatePicker
-      label="End Date"
-      value={
-        selectedSession.EndDate
-          ? dayjs(selectedSession.EndDate)
-          : null
-      }
-      onChange={(dayjsVal) => {
-        const dateStr = dayjsVal ? dayjsVal.format("YYYY-MM-DD") : "";
-        setSelectedSession((prev) => ({ ...prev, EndDate: dateStr }));
-      }}
-      renderInput={(params) => <TextField {...params} size="small" />}
-    />
-
-    {/* End Time */}
-    <TimePicker
-      label="End Time"
-      value={
-        selectedSession.EndTime
-          ? dayjs(selectedSession.EndTime, "HH:mm:ss")
-          : null
-      }
-      onChange={(timeVal) => {
-        const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
-        setSelectedSession((prev) => ({ ...prev, EndTime: timeStr }));
-      }}
-      renderInput={(params) => <TextField {...params} size="small" />}
-    />
+                <DatePicker
+                  label="Start Date"
+                  value={selectedSession.StartDate ? dayjs(selectedSession.StartDate) : null}
+                  onChange={(dayjsVal) => {
+                    const dateStr = dayjsVal ? dayjsVal.format("YYYY-MM-DD") : "";
+                    setSelectedSession((prev) => ({ ...prev, StartDate: dateStr }));
+                  }}
+                  renderInput={(params) => <TextField {...params} size="small" />}
+                />
+                <TimePicker
+                  label="Start Time"
+                  value={selectedSession.StartTime ? dayjs(selectedSession.StartTime, "HH:mm:ss") : null}
+                  onChange={(timeVal) => {
+                    const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
+                    setSelectedSession((prev) => ({ ...prev, StartTime: timeStr }));
+                  }}
+                  renderInput={(params) => <TextField {...params} size="small" />}
+                />
+                <DatePicker
+                  label="End Date"
+                  value={selectedSession.EndDate ? dayjs(selectedSession.EndDate) : null}
+                  onChange={(dayjsVal) => {
+                    const dateStr = dayjsVal ? dayjsVal.format("YYYY-MM-DD") : "";
+                    setSelectedSession((prev) => ({ ...prev, EndDate: dateStr }));
+                  }}
+                  renderInput={(params) => <TextField {...params} size="small" />}
+                />
+                <TimePicker
+                  label="End Time"
+                  value={selectedSession.EndTime ? dayjs(selectedSession.EndTime, "HH:mm:ss") : null}
+                  onChange={(timeVal) => {
+                    const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
+                    setSelectedSession((prev) => ({ ...prev, EndTime: timeStr }));
+                  }}
+                  renderInput={(params) => <TextField {...params} size="small" />}
+                />
                 <TextField
                   label="Capacity"
                   size="small"
                   value={selectedSession.Capacity}
                   onChange={(e) =>
-                    setSelectedSession({
-                      ...selectedSession,
-                      Capacity: e.target.value,
-                    })
+                    setSelectedSession({ ...selectedSession, Capacity: e.target.value })
                   }
                 />
                 <TextField
@@ -1624,10 +1441,7 @@ export default function BookingsSessions() {
                   size="small"
                   value={selectedSession.Location}
                   onChange={(e) =>
-                    setSelectedSession({
-                      ...selectedSession,
-                      Location: e.target.value,
-                    })
+                    setSelectedSession({ ...selectedSession, Location: e.target.value })
                   }
                 />
                 <TextField
@@ -1635,10 +1449,7 @@ export default function BookingsSessions() {
                   size="small"
                   value={selectedSession.Fee}
                   onChange={(e) =>
-                    setSelectedSession({
-                      ...selectedSession,
-                      Fee: e.target.value,
-                    })
+                    setSelectedSession({ ...selectedSession, Fee: e.target.value })
                   }
                 />
               </Box>

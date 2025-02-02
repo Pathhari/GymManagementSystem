@@ -21,10 +21,82 @@ class FinanceController extends Controller
         ]);
     }
 
+    public function generateDailyCashFlow(Request $request)
+    {
+        $request->validate([
+            'date'      => 'required|date',
+            'branch_id' => 'required|exists:branches,BranchID',
+        ]);
+    
+        $date     = $request->input('date');
+        $branchId = $request->input('branch_id');
+    
+        // Always set BusinessType = 'Gym' here, so PettyCash is 0
+        // (We do not carry petty cash in Gym record)
+        $dailyFlow = DailyCashFlow::firstOrCreate(
+            [
+                'Date'         => $date,
+                'BranchID'     => $branchId,
+                'BusinessType' => 'Gym',
+            ],
+            [
+                'CashSales'        => 0,
+                'GCashSales'       => 0,
+                'BPISales'         => 0,
+                'BDOSales'         => 0,
+                'WalkInCashSales'  => 0,
+                'WalkInGCashSales' => 0,
+                'WalkInBPISales'   => 0,
+                'WalkInBDOSales'   => 0,
+                'PettyCash'        => 0,   // Always 0 for Gym
+                'DepositedAmount'  => 0,
+                'TotalSales'       => 0,
+            ]
+        );
+    
+        // -- No leftover petty cash logic here since "Gym" does not hold PettyCash --
+    
+        // Sum membership payments for this date/branch
+        $payments = \App\Models\Payment::whereDate('PaymentDate', $date)
+            ->where('BranchID', $branchId)
+            ->get();
+    
+        $sumCash  = $payments->where('PaymentMethod', 'Cash')->sum('Amount');
+        $sumGCash = $payments->where('PaymentMethod', 'GCash')->sum('Amount');
+        $sumBPI   = $payments->where('PaymentMethod', 'BPI')->sum('Amount');
+        $sumBDO   = $payments->where('PaymentMethod', 'BDO')->sum('Amount');
+    
+        $dailyFlow->CashSales  = $sumCash;
+        $dailyFlow->GCashSales = $sumGCash;
+        $dailyFlow->BPISales   = $sumBPI;
+        $dailyFlow->BDOSales   = $sumBDO;
+    
+        // Recompute total
+        $dailyFlow->TotalSales =
+            ($dailyFlow->CashSales ?? 0) +
+            ($dailyFlow->GCashSales ?? 0) +
+            ($dailyFlow->BPISales ?? 0) +
+            ($dailyFlow->BDOSales ?? 0) +
+            ($dailyFlow->WalkInCashSales ?? 0) +
+            ($dailyFlow->WalkInGCashSales ?? 0) +
+            ($dailyFlow->WalkInBPISales ?? 0) +
+            ($dailyFlow->WalkInBDOSales ?? 0);
+    
+        $dailyFlow->save();
+    
+        return response()->json([
+            'success' => true,
+            'message' => 'Daily cash flow (Gym) generated/updated successfully.',
+            'data'    => $dailyFlow,
+        ], 200);
+    }
+    
+
+
     public function storeCashFlow(Request $request)
     {
         $staff = auth('staff')->user();
-
+    
         $data = $request->validate([
             'BranchID'         => 'required|exists:branches,BranchID',
             'Date'             => 'required|date',
@@ -32,24 +104,37 @@ class FinanceController extends Controller
             'CashSales'        => 'nullable|numeric|min:0',
             'GCashSales'       => 'nullable|numeric|min:0',
             'BPISales'         => 'nullable|numeric|min:0',
+            'BDOSales'         => 'nullable|numeric|min:0',
             'WalkInCashSales'  => 'nullable|numeric|min:0',
             'WalkInGCashSales' => 'nullable|numeric|min:0',
             'WalkInBPISales'   => 'nullable|numeric|min:0',
+            'WalkInBDOSales'   => 'nullable|numeric|min:0',
             'PettyCash'        => 'nullable|numeric|min:0',
             'DepositedAmount'  => 'nullable|numeric|min:0',
             'Remarks'          => 'nullable|string',
         ]);
-
-        // Compute TotalSales from available fields
-        $total = 0;
-        $total += $data['CashSales']        ?? 0;
-        $total += $data['GCashSales']       ?? 0;
-        $total += $data['BPISales']         ?? 0;
-        $total += $data['WalkInCashSales']  ?? 0;
-        $total += $data['WalkInGCashSales'] ?? 0;
-        $total += $data['WalkInBPISales']   ?? 0;
-        $data['TotalSales'] = $total;
-
+    
+        // Only "Overall" can have PettyCash. For Gym, Cafe, Yogurt, etc. => PettyCash=0
+        if ($data['BusinessType'] !== 'Overall') {
+            $data['PettyCash']       = 0;
+            $data['DepositedAmount'] = 0;
+        } else {
+            // If "Overall", optionally carry over from yesterday's Overall
+            $today = \Carbon\Carbon::parse($data['Date']);
+            $yesterday = (clone $today)->subDay();
+    
+            $yesterdaysOverall = DailyCashFlow::where('BranchID', $data['BranchID'])
+                ->where('BusinessType', 'Overall')
+                ->whereDate('Date', $yesterday)
+                ->first();
+    
+            if ($yesterdaysOverall) {
+                // Combine leftover with newly input
+                $data['PettyCash'] = ($data['PettyCash'] ?? 0) + ($yesterdaysOverall->PettyCash ?? 0);
+            }
+        }
+    
+        // staff check
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
             if (!in_array($data['BranchID'], $staffBranchIDs)) {
@@ -58,15 +143,28 @@ class FinanceController extends Controller
                 ], 403);
             }
         }
-
+    
+        // Sum up total
+        $total = 0;
+        $total += $data['CashSales']        ?? 0;
+        $total += $data['GCashSales']       ?? 0;
+        $total += $data['BPISales']         ?? 0;
+        $total += $data['BDOSales']         ?? 0;
+        $total += $data['WalkInCashSales']  ?? 0;
+        $total += $data['WalkInGCashSales'] ?? 0;
+        $total += $data['WalkInBPISales']   ?? 0;
+        $total += $data['WalkInBDOSales']   ?? 0;
+        $data['TotalSales'] = $total;
+    
         $flow = DailyCashFlow::create($data);
-
+    
         return response()->json([
             'success' => true,
             'message' => 'Cash flow recorded successfully.',
-            'data'    => $flow
+            'data'    => $flow,
         ], 201);
     }
+    
 
     public function indexCashFlow()
     {

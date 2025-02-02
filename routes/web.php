@@ -593,73 +593,95 @@ Route::prefix('operations')->group(function() {
         ->name('operations.visits.update');
 });
 
-/* 
-|--------------------------------------------------------------------------
-| 7) FinanceController
-|--------------------------------------------------------------------------
-*/
 use App\Http\Controllers\FinanceController;
 
 Route::prefix('finance')->group(function() {
 
+    // Points to: /finance/summary  (GET)
     Route::get('summary', [FinanceController::class, 'indexSummary'])
-     ->middleware('multiGuard:owner,admin,staff')
-     ->name('finance.summary.index');
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('finance.summary.index');
 
-     Route::get('/finance/summary', [FinanceController::class, 'getFinancialSummary'])
-     ->middleware('multiGuard:owner,admin,staff')
-     ->name('finance.summary');
+    // Points to: /finance/summary  (GET) -- if you want an alias
+    Route::get('financial-summary', [FinanceController::class, 'getFinancialSummary'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('finance.summary');
 
-Route::put('summary/{id}', [FinanceController::class, 'updateSummary'])
-     ->middleware('multiGuard:owner,admin')
-     ->name('finance.summary.update');
+    Route::put('summary/{id}', [FinanceController::class, 'updateSummary'])
+        ->middleware('multiGuard:owner,admin')
+        ->name('finance.summary.update');
 
-Route::delete('summary/{id}', [FinanceController::class, 'destroySummary'])
-     ->middleware('multiGuard:owner,admin')
-     ->name('finance.summary.destroy');
-
+    Route::delete('summary/{id}', [FinanceController::class, 'destroySummary'])
+        ->middleware('multiGuard:owner,admin')
+        ->name('finance.summary.destroy');
 
     // DailyCashFlow
+    // => GET /finance/cashflow/create
     Route::get('cashflow/create', [FinanceController::class, 'createCashFlow'])
         ->middleware('multiGuard:owner,admin')
         ->name('finance.cashflow.create');
+
+    // => POST /finance/cashflow
     Route::post('cashflow', [FinanceController::class, 'storeCashFlow'])
         ->middleware('multiGuard:owner,admin')
         ->name('finance.cashflow.store');
+
+    // => GET /finance/cashflow
     Route::get('cashflow', [FinanceController::class, 'indexCashFlow'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('finance.cashflow.index');
 
     // Expenses
+    // => GET /finance/expenses/create
     Route::get('expenses/create', [FinanceController::class, 'createExpense'])
         ->middleware('multiGuard:owner,admin')
         ->name('finance.expenses.create');
+
+    // => POST /finance/expenses
     Route::post('expenses', [FinanceController::class, 'storeExpense'])
         ->middleware('multiGuard:owner,admin')
         ->name('finance.expenses.store');
+
+    // => GET /finance/expenses
     Route::get('expenses', [FinanceController::class, 'indexExpenses'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('finance.expenses.index');
+
+    // => GET /finance/expenses/123/edit
     Route::get('expenses/{id}/edit', [FinanceController::class, 'editExpense'])
         ->middleware('multiGuard:owner,admin')
         ->name('finance.expenses.edit');
+
+    // => PUT /finance/expenses/123
     Route::put('expenses/{id}', [FinanceController::class, 'updateExpense'])
         ->middleware('multiGuard:owner,admin')
         ->name('finance.expenses.update');
+
+    // => DELETE /finance/expenses/123
     Route::delete('expenses/{id}', [FinanceController::class, 'destroyExpense'])
         ->middleware('multiGuard:owner,admin')
         ->name('finance.expenses.destroy');
 
     // Promotions
+    // => GET /finance/promotions
     Route::get('promotions', [FinanceController::class, 'indexPromotions'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('finance.promotions.index');
+
+    // => POST /finance/promotions
     Route::post('promotions', [FinanceController::class, 'storePromotion'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('finance.promotions.store');
+
+    // => POST /finance/promotions/123/toggle
     Route::post('promotions/{id}/toggle', [FinanceController::class, 'togglePromotion'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('finance.promotions.toggle');
+
+    // => POST /finance/generate-cashflow
+    Route::post('generate-cashflow', [FinanceController::class, 'generateDailyCashFlow'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('finance.generate-cashflow');
 });
 
 /* 
@@ -705,8 +727,9 @@ Route::prefix('owner/branches')->name('branches.')->group(function() {
         Route::post('/', [BranchController::class, 'storeJson'])->name('store');
         Route::put('/{id}', [BranchController::class, 'updateJson'])->name('update');
         Route::delete('/{id}', [BranchController::class, 'destroyJson'])->name('destroy');
+        // Change this:
         Route::get('/branch/stats', [BranchController::class, 'getBranchStats'])
-     ->middleware('multiGuard:owner,admin,staff')
-     ->name('branches.stats');
+             ->middleware('multiGuard:owner,admin,staff')
+             ->name('stats');
     });
 });

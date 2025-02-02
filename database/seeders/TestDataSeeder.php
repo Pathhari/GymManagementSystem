@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
 use Faker\Factory as Faker;
 
-// Models (adjust these as needed)
+// Models
 use App\Models\Branch;
 use App\Models\Owner;
 use App\Models\Admin;
@@ -112,7 +112,7 @@ class TestDataSeeder extends Seeder
                 'DateHired'  => $faker->date(),
                 'Notes'      => $faker->sentence,
             ]);
-            // Attach to pivot
+            // Attach staff to pivot
             $branchPick->staff()->attach($staff->StaffID);
             $staffList[] = $staff;
         }
@@ -275,13 +275,13 @@ class TestDataSeeder extends Seeder
         $promotions = [];
         for ($i = 1; $i <= 3; $i++) {
             $promotions[] = Promotions::create([
-                'Name'            => $faker->words(2, true),
-                'DiscountType'    => $faker->randomElement(['Percentage','FixedAmount']),
-                'DiscountValue'   => $faker->randomFloat(2, 5, 500),
-                'StartDate'       => $faker->dateTimeBetween('-5 days', 'now'),
-                'EndDate'         => $faker->dateTimeBetween('now', '+5 days'),
+                'Name'               => $faker->words(2, true),
+                'DiscountType'       => $faker->randomElement(['Percentage','FixedAmount']),
+                'DiscountValue'      => $faker->randomFloat(2, 5, 500),
+                'StartDate'          => $faker->dateTimeBetween('-5 days', 'now'),
+                'EndDate'            => $faker->dateTimeBetween('now', '+5 days'),
                 'TermsAndConditions' => $faker->sentence,
-                'Status'          => 'Active',
+                'Status'            => 'Active',
             ]);
         }
 
@@ -316,7 +316,7 @@ class TestDataSeeder extends Seeder
                     ]);
                     $invoiceSum += $subtotal;
                 }
-                // Update invoice total
+                // Update invoice total w/ promotion discount
                 $discountValue = 0;
                 if ($promo && $promo->DiscountType === 'Percentage') {
                     $discountValue = $invoiceSum * ($promo->DiscountValue / 100);
@@ -329,14 +329,14 @@ class TestDataSeeder extends Seeder
             }
         }
 
-        // 17) Payments & Payment Invoice pivot
+        // 17) Payments & pivot
         foreach ($invoices as $inv) {
             if ($faker->boolean(50)) {
                 $payment = Payment::create([
                     'BranchID'      => $inv->BranchID,
                     'MemberID'      => $inv->MemberID,
                     'PaymentFor'    => 'Invoice Payment',
-                    'PaymentMethod' => $faker->randomElement(['Cash','GCash','BPI']),
+                    'PaymentMethod' => $faker->randomElement(['Cash','GCash','BPI','BDO']),
                     'Amount'        => $inv->InvoiceTotal,
                     'PaymentDate'   => $faker->dateTimeBetween($inv->InvoiceDate, 'now'),
                     'Status'        => 'Completed',
@@ -388,17 +388,23 @@ class TestDataSeeder extends Seeder
             $walkInCash = $faker->randomFloat(2, 0, 500);
             $walkInGCash= $faker->randomFloat(2, 0, 500);
             $walkInBPI  = $faker->randomFloat(2, 0, 500);
+            $bdoSales   = $faker->randomFloat(2, 0, 800);
+            $walkInBDO  = $faker->randomFloat(2, 0, 800);
+
             DailyCashFlow::create([
                 'BranchID'         => $branchPick->BranchID,
                 'Date'             => $faker->dateTimeBetween('-10 days','now'),
-                'BusinessType'     => 'Gym',
+                'BusinessType'     => $faker->randomElement(['Gym','Cafe','Yogurt']),
                 'CashSales'        => $cashSales,
                 'GCashSales'       => $gCashSales,
                 'BPISales'         => $bpiSales,
+                'BDOSales'         => $bdoSales,
                 'WalkInCashSales'  => $walkInCash,
                 'WalkInGCashSales' => $walkInGCash,
                 'WalkInBPISales'   => $walkInBPI,
-                'TotalSales'       => ($cashSales + $gCashSales + $bpiSales + $walkInCash + $walkInGCash + $walkInBPI),
+                'WalkInBDOSales'   => $walkInBDO,
+                'TotalSales'       => ($cashSales + $gCashSales + $bpiSales + $bdoSales
+                                       + $walkInCash + $walkInGCash + $walkInBPI + $walkInBDO),
             ]);
         }
 
@@ -443,12 +449,12 @@ class TestDataSeeder extends Seeder
             }
         }
 
-      // 24) Coaches
+        // 24) Coaches
         $coaches = [];
         for ($i = 1; $i <= 5; $i++) {
             $branchPick = $faker->randomElement($branches);
             $coaches[] = Coach::create([
-                'BranchID'     => $branchPick->BranchID,  // a real branch ID
+                'BranchID'     => $branchPick->BranchID,
                 'FullName'     => $faker->name,
                 'Specialty'    => $faker->randomElement(['Yoga','Boxing','Zumba','Crossfit']),
                 'Availability' => 'Weekdays 5AM - 9PM',
@@ -461,7 +467,7 @@ class TestDataSeeder extends Seeder
         foreach ($coaches as $coach) {
             for ($i = 1; $i <= 2; $i++) {
                 $sessions[] = CoachingSession::create([
-                    'BranchID'    => $coach->BranchID,  // use coach's branch
+                    'BranchID'    => $coach->BranchID,
                     'SessionName' => $faker->sentence(2),
                     'SessionType' => $faker->randomElement(['Group Class','Personal Training']),
                     'CoachID'     => $coach->CoachID,
@@ -519,13 +525,12 @@ class TestDataSeeder extends Seeder
             for ($i = 1; $i <= 54; $i++) {
                 $lockers[] = Locker::create([
                     'BranchID'     => $branchPick->BranchID,
-                    'LockerNumber' => (string) $i, // or "LCK-$i" if you prefer
-                    'Status'       => 'Available',
+                    'LockerNumber' => (string) $i,
+                    'Status'       => $faker->randomElement(['Available','Occupied']),
                     'Notes'        => $faker->sentence,
                 ]);
             }
         }
-
 
         // 30) Locker Usage
         foreach ($lockers as $locker) {
@@ -628,6 +633,40 @@ class TestDataSeeder extends Seeder
                 'PaymentMethod'   => $faker->randomElement(['Cash','GCash','BPI']),
                 'StaffID'         => $faker->randomElement($staffList)->StaffID,
                 'Notes'           => $faker->sentence,
+            ]);
+        }
+
+        /*
+         * EXTRA: Create a couple of Payments specifically for "today" 
+         * so you can test your "Generate Gym Daily Cash Flow" button easily.
+         */
+        $today = Carbon::now()->format('Y-m-d');
+        $this->command->info("Creating extra test payments for $today ...");
+
+        if (!empty($members)) {
+            // Just pick the first branch & first couple of members for simplicity
+            $testBranchID = $branches[0]->BranchID;
+            $testMember1  = $members[0];
+            $testMember2  = $members[1];
+
+            Payment::create([
+                'BranchID'      => $testBranchID,
+                'MemberID'      => $testMember1->MemberID,
+                'PaymentFor'    => 'Test Gym Payment - Cash',
+                'PaymentMethod' => 'Cash',
+                'Amount'        => 1000.00,
+                'PaymentDate'   => $today,  // ensure it's exactly today
+                'Status'        => 'Completed',
+            ]);
+
+            Payment::create([
+                'BranchID'      => $testBranchID,
+                'MemberID'      => $testMember2->MemberID,
+                'PaymentFor'    => 'Test Gym Payment - BPI',
+                'PaymentMethod' => 'BPI',
+                'Amount'        => 500.00,
+                'PaymentDate'   => $today,
+                'Status'        => 'Completed',
             ]);
         }
 

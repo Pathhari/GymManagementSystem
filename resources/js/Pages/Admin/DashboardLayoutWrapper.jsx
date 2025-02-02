@@ -180,11 +180,8 @@ function DashboardLayoutSlots(props) {
 
   const handleLogout = async () => {
     try {
-      // Make a POST request to logout endpoint to destroy the session
-      await axios.post('/admin/logout');  // Ensure this URL matches your backend route
-  
-      // Redirect to the landing page using Inertia
-      Inertia.visit('/LandingPage');  // Inertia redirect to the home page (127.0.0.1:8000)
+      await axios.post('/owner/logout', {}, { withCredentials: true });
+      globalThis.location.href = '/';
     } catch (error) {
       console.error('Logout failed:', error);
     }

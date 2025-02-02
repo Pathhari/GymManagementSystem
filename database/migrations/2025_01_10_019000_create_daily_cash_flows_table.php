@@ -34,8 +34,7 @@ return new class extends Migration
         
             // If you have petty cash / deposited columns, keep them here:
             $table->decimal('PettyCash', 10, 2)->default(0);
-            $table->decimal('DepositedAmount', 10, 2)->default(0);
-        
+            $table->decimal('DepositedAmount', 10, 2)->default(0);     
             $table->text('Remarks')->nullable();
         
             $table->timestamps();

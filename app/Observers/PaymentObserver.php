@@ -61,7 +61,7 @@ class PaymentObserver
                 'WalkInBPISales'   => 0,
                 'WalkInBDOSales'   => 0,
                 'TotalSales'       => 0,
-            ]
+            ]  
         );
 
         // 3) Add the Payment->Amount to the correct column

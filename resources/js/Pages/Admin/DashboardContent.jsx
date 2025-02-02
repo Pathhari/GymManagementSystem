@@ -1,429 +1,1093 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import {
   Box,
   Typography,
   Grid,
   Card,
   CardContent,
-  CircularProgress,
+  Button,
+  TextField,
+  Tabs,
+  Tab,
   Paper,
+  CircularProgress,
+  useTheme,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
-  TextField,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  useTheme
+  IconButton,
+  Divider,
 } from '@mui/material';
-import { Line } from 'react-chartjs-2';
+import { DataGrid } from '@mui/x-data-grid';
+import {
+  MonetizationOn,
+  Dashboard,
+  AttachMoney,
+  Paid,
+  PersonAdd,
+  TrendingUp,
+  PieChart,
+  ShowChart,
+} from '@mui/icons-material';
+import { Line, Pie } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
-  BarElement,
+  ArcElement,
   Title,
   Tooltip,
   Legend,
-  ArcElement
 } from 'chart.js';
-import axios from 'axios';
-import {
-  Person,
-  AttachMoney,
-  People,
-  DirectionsRun,
-  NotificationImportant,
-  History as HistoryIcon
-} from '@mui/icons-material';
 
-// Register Chart.js components
 ChartJS.register(
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
-  BarElement,
+  ArcElement,
   Title,
   Tooltip,
-  Legend,
-  ArcElement
+  Legend
 );
 
-export default function DashboardContent() {
+const AdminDashboard = () => {
   const theme = useTheme();
   const darkMode = theme.palette.mode === 'dark';
 
-  // Set background gradient based on theme mode
-  const bgGradient = darkMode
-   
-  // States
-  const [keyMetrics, setKeyMetrics] = useState({
-    totalRevenue: 0,
-    totalEmailsSent: 0,
-    totalClients: 0,
-    trafficReceived: 0,
+  // Tabs: 0 = Overview, 1 = Daily Cash Flow
+  const [activeTab, setActiveTab] = useState(0);
+
+  // Loading & Error
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Overview states
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [netProfit, setNetProfit] = useState(0);
+  const [newMembersThisMonth, setNewMembersThisMonth] = useState(0);
+  const [attendanceRate, setAttendanceRate] = useState('0%');
+  const [mostPopularService, setMostPopularService] = useState('N/A');
+
+  // Staff & Branch data
+  const [staff, setStaff] = useState([]);
+  const [branches, setBranches] = useState([]);
+
+  // All flows
+  const [allFlows, setAllFlows] = useState([]);
+  // Filtered flows for the date filter
+  const [filteredFlows, setFilteredFlows] = useState([]);
+  // Additional arrays for each business
+  const [gymFlows, setGymFlows] = useState([]);
+  const [cafeFlows, setCafeFlows] = useState([]);
+  const [yogurtFlows, setYogurtFlows] = useState([]);
+  const [overallFlows, setOverallFlows] = useState([]);
+
+  // Date range filter
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  // Chart data
+  const [overallChartData, setOverallChartData] = useState(null);
+  const [paymentMethodPie, setPaymentMethodPie] = useState(null);
+  const [gymChartData, setGymChartData] = useState(null);
+  const [cafeChartData, setCafeChartData] = useState(null);
+  const [yogurtChartData, setYogurtChartData] = useState(null);
+
+  // Manual entry form
+  const [cashFlowForm, setCashFlowForm] = useState({
+    BranchID: '',
+    BusinessType: '',
+    Date: '',
+    CashSales: '',
+    GCashSales: '',
+    BPISales: '',
+    BDOSales: '',
+    WalkInCashSales: '',
+    WalkInGCashSales: '',
+    WalkInBPISales: '',
+    WalkInBDOSales: '',
+    PettyCash: '',
+    DepositedAmount: '',
+    Remarks: '',
   });
-  const [recentTransactions, setRecentTransactions] = useState([]);
-  const [currentPromotions, setCurrentPromotions] = useState([]);
-  const [systemLogs, setSystemLogs] = useState([]);
-  const [cashFlows, setCashFlows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [timePeriod, setTimePeriod] = useState('monthly');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [branch, setBranch] = useState('all');
-  const [branchOptions, setBranchOptions] = useState([]);
+  const [yesterdayPettyCash, setYesterdayPettyCash] = useState(0);
 
-  // Fetch Key Metrics
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        const response = await axios.get(
-          `/owner/dashboard-metrics?period=${timePeriod}&dateFrom=${dateFrom}&dateTo=${dateTo}&branch=${branch}`
-        );
-        setKeyMetrics(response.data.metrics);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching metrics:', error);
-        setLoading(false);
-      }
-    };
-    fetchMetrics();
-  }, [timePeriod, dateFrom, dateTo, branch]);
+  // For auto-generate Gym flow
+  const [selectedBranchId, setSelectedBranchId] = useState('');
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
-  // Fetch Branch Options
-  useEffect(() => {
-    const fetchBranches = async () => {
-      try {
-        const response = await axios.get('/owner/branches');
-        const fetched = response.data.branches.map(b => ({
-          value: b.BranchID.toString(),
-          label: b.BranchName,
-        }));
-        setBranchOptions([{ value: 'all', label: 'All Branches' }, ...fetched]);
-      } catch (error) {
-        console.error('Error fetching branches:', error);
-        setBranchOptions([{ value: 'all', label: 'All Branches' }]);
-      }
-    };
-    fetchBranches();
-  }, []);
-
-  // Fetch Recent Transactions
-  useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        const response = await axios.get('/payments');
-        const transactions = response.data.map(p => ({
-          id: p.PaymentID,
-          amount: p.Amount,
-          date: p.PaymentDate,
-          status: p.Status,
-        }));
-        setRecentTransactions(transactions);
-      } catch (error) {
-        console.error('Error fetching transactions:', error);
-      }
-    };
-    fetchTransactions();
-  }, []);
-
-  // Fetch Current Promotions
-  useEffect(() => {
-    const fetchPromotions = async () => {
-      try {
-        const response = await axios.get('/finance/promotions');
-        setCurrentPromotions(response.data.promos);
-      } catch (error) {
-        console.error('Error fetching promotions:', error);
-      }
-    };
-    fetchPromotions();
-  }, []);
-
-  // Fetch System Logs
-  useEffect(() => {
-    const fetchSystemLogs = async () => {
-      try {
-        const response = await axios.get('/system/logs');
-        setSystemLogs(response.data.logs);
-      } catch (error) {
-        console.error('Error fetching system logs:', error);
-      }
-    };
-    fetchSystemLogs();
-  }, []);
-
-  // Fetch Daily Cash Flow data for Revenue Trends
-  useEffect(() => {
-    const fetchCashFlows = async () => {
-      try {
-        const response = await axios.get(
-          `/finance/cashflow?dateFrom=${dateFrom}&dateTo=${dateTo}&branch=${branch}`
-        );
-        const sortedFlows = response.data.flows.sort(
-          (a, b) => new Date(a.Date) - new Date(b.Date)
-        );
-        setCashFlows(sortedFlows);
-      } catch (error) {
-        console.error('Error fetching cash flows:', error);
-      }
-    };
-    fetchCashFlows();
-  }, [dateFrom, dateTo, branch]);
-
-  // Build Revenue Trends chart data
-  const revenueChartData = {
-    labels: cashFlows.map(flow => flow.Date),
-    datasets: [
-      {
-        label: 'Revenue',
-        data: cashFlows.map(flow => Number(flow.TotalSales)),
-        borderColor: theme.palette.primary.main,
-        backgroundColor: theme.palette.primary.light,
-        fill: false,
-      },
-    ],
+  // Switch tabs
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
   };
 
-  // Handlers for filters
-  const handleTimePeriodChange = (e) => setTimePeriod(e.target.value);
-  const handleDateFromChange = (e) => setDateFrom(e.target.value);
-  const handleDateToChange = (e) => setDateTo(e.target.value);
-  const handleBranchChange = (e) => setBranch(e.target.value);
+  // On mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const [summaryRes, staffRes, branchRes, cfRes] = await Promise.all([
+          axios.get('/finance/summary'),
+          axios.get('/staff'),
+          axios.get('/owner/branches'),
+          axios.get('/finance/cashflow'),
+        ]);
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'Completed': return '#4CAF50';
-      case 'Pending': return '#FF9800';
-      case 'Failed': return '#F44336';
-      default: return '#9E9E9E';
+        // Summaries
+        const summary = summaryRes.data || {};
+        setTotalRevenue(summary.total_revenue || 0);
+        setNetProfit(summary.net_profit || 0);
+        setNewMembersThisMonth(summary.new_members_this_month || 0);
+        setAttendanceRate(summary.attendance_rate || '0%');
+        setMostPopularService(summary.most_popular_service || 'N/A');
+
+        // Staff & branches
+        setStaff(staffRes.data.staff || []);
+        setBranches(branchRes.data.branches || branchRes.data || []);
+
+        // Flows
+        const flows = cfRes.data.flows || [];
+        setAllFlows(flows);
+        setFilteredFlows(flows); // default
+
+        // Build initial charts
+        buildOverallChart(flows);
+        buildPaymentPie(flows);
+        buildBusinessCharts(flows);
+
+        // Separate by business
+        separateByBusiness(flows);
+      } catch (err) {
+        console.error(err);
+        setError('Failed to load data from server.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  // Build overall daily total chart
+  const buildOverallChart = (flows) => {
+    const grouped = flows.reduce((acc, f) => {
+      const d = f.Date;
+      if (!acc[d]) acc[d] = 0;
+      acc[d] += Number(f.TotalSales || 0);
+      return acc;
+    }, {});
+    const sortedDates = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
+    const data = {
+      labels: sortedDates,
+      datasets: [
+        {
+          label: 'Overall Daily Total',
+          data: sortedDates.map((d) => grouped[d]),
+          borderColor: '#4BC0C0',
+          backgroundColor: 'rgba(75,192,192,0.2)',
+          fill: true,
+        },
+      ],
+    };
+    setOverallChartData(data);
+  };
+
+  // Build payment method pie
+  const buildPaymentPie = (flows) => {
+    let cash = 0, gcash = 0, bpi = 0, bdo = 0;
+    flows.forEach((f) => {
+      cash += Number(f.CashSales || 0) + Number(f.WalkInCashSales || 0);
+      gcash += Number(f.GCashSales || 0) + Number(f.WalkInGCashSales || 0);
+      bpi += Number(f.BPISales || 0) + Number(f.WalkInBPISales || 0);
+      bdo += Number(f.BDOSales || 0) + Number(f.WalkInBDOSales || 0);
+    });
+    const data = {
+      labels: ['Cash', 'GCash', 'BPI', 'BDO'],
+      datasets: [
+        {
+          data: [cash, gcash, bpi, bdo],
+          backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#FF9F40'],
+        },
+      ],
+    };
+    setPaymentMethodPie(data);
+  };
+
+  // Build charts for Gym, Cafe, Yogurt
+  const buildBusinessCharts = (flows) => {
+    const gym = flows.filter((f) => f.BusinessType === 'Gym');
+    const cafe = flows.filter((f) => f.BusinessType === 'Cafe');
+    const yogurt = flows.filter((f) => f.BusinessType === 'Yogurt');
+
+    const buildChart = (arr, label) => {
+      const grouped = arr.reduce((acc, f) => {
+        const d = f.Date;
+        if (!acc[d]) {
+          acc[d] = { cash: 0, gcash: 0, bpi: 0, bdo: 0 };
+        }
+        acc[d].cash += Number(f.CashSales || 0) + Number(f.WalkInCashSales || 0);
+        acc[d].gcash += Number(f.GCashSales || 0) + Number(f.WalkInGCashSales || 0);
+        acc[d].bpi += Number(f.BPISales || 0) + Number(f.WalkInBPISales || 0);
+        acc[d].bdo += Number(f.BDOSales || 0) + Number(f.WalkInBDOSales || 0);
+        return acc;
+      }, {});
+
+      const sortedDates = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
+      return {
+        labels: sortedDates,
+        datasets: [
+          {
+            label: `${label} - Cash`,
+            data: sortedDates.map((d) => grouped[d].cash),
+            borderColor: '#4BC0C0',
+            backgroundColor: 'rgba(75,192,192,0.2)',
+            fill: true,
+          },
+          {
+            label: `${label} - GCash`,
+            data: sortedDates.map((d) => grouped[d].gcash),
+            borderColor: '#9966FF',
+            backgroundColor: 'rgba(153,102,255,0.2)',
+            fill: true,
+          },
+          {
+            label: `${label} - BPI`,
+            data: sortedDates.map((d) => grouped[d].bpi),
+            borderColor: '#FFCE56',
+            backgroundColor: 'rgba(255,206,86,0.2)',
+            fill: true,
+          },
+          {
+            label: `${label} - BDO`,
+            data: sortedDates.map((d) => grouped[d].bdo),
+            borderColor: '#FF9F40',
+            backgroundColor: 'rgba(255,159,64,0.2)',
+            fill: true,
+          },
+        ],
+      };
+    };
+
+    setGymChartData(buildChart(gym, 'Gym'));
+    setCafeChartData(buildChart(cafe, 'Cafe'));
+    setYogurtChartData(buildChart(yogurt, 'Yogurt'));
+  };
+
+  // Separate flows by business
+  const separateByBusiness = (arr) => {
+    const gym = arr.filter((f) => f.BusinessType === 'Gym');
+    const cafe = arr.filter((f) => f.BusinessType === 'Cafe');
+    const yogurt = arr.filter((f) => f.BusinessType === 'Yogurt');
+    const overall = arr.filter((f) => f.BusinessType === 'Overall');
+    setGymFlows(gym);
+    setCafeFlows(cafe);
+    setYogurtFlows(yogurt);
+    setOverallFlows(overall);
+  };
+
+  // Filter flows by date
+  const applyDateFilter = (flows, start, end) => {
+    if (!start && !end) return flows;
+    const s = start ? new Date(start) : null;
+    const e = end ? new Date(end) : null;
+    return flows.filter((f) => {
+      const d = new Date(f.Date);
+      if (s && d < s) return false;
+      if (e && d > e) return false;
+      return true;
+    });
+  };
+  const handleFilter = () => {
+    // Just do this as a test:
+    setFilteredFlows(allFlows);
+  };
+
+  // Listen for changes to BranchID, Date, BusinessType
+  useEffect(() => {
+    const { BranchID, Date, BusinessType } = cashFlowForm;
+    if (BranchID && Date && BusinessType) {
+      fetchYesterdaysPettyCash(BranchID, Date, BusinessType);
+    } else {
+      setYesterdayPettyCash(0);
+    }
+  }, [cashFlowForm.BranchID, cashFlowForm.Date, cashFlowForm.BusinessType]);
+
+  const fetchYesterdaysPettyCash = (branchID, dateStr, businessType) => {
+    if (!branchID || !dateStr || !businessType) return;
+    const dateObj = new Date(dateStr);
+    const yesterObj = new Date(dateObj.getTime() - 86400000);
+    const yyyy = yesterObj.getFullYear();
+    const mm = String(yesterObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(yesterObj.getDate()).padStart(2, '0');
+    const yDate = `${yyyy}-${mm}-${dd}`;
+
+    const match = allFlows.find(
+      (f) =>
+        Number(f.BranchID) === Number(branchID) &&
+        f.BusinessType === businessType &&
+        f.Date === yDate
+    );
+    if (match && match.PettyCash !== undefined) {
+      setYesterdayPettyCash(Number(match.PettyCash) || 0);
+    } else {
+      setYesterdayPettyCash(0);
     }
   };
 
+  const effectivePettyCash = () => {
+    const inputVal = parseFloat(cashFlowForm.PettyCash) || 0;
+    return yesterdayPettyCash + inputVal;
+  };
+
+  // Manual changes
+  const handleCashFlowChange = (e) => {
+    const { name, value } = e.target;
+    setCashFlowForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleCashFlowSubmit = async () => {
+    try {
+      await axios.post('/finance/cashflow', { ...cashFlowForm });
+      alert('Daily cash flow entry created successfully!');
+
+      // Reload from server
+      const cfRes = await axios.get('/finance/cashflow');
+      const flows = cfRes.data.flows || [];
+      setAllFlows(flows);
+
+      // Re-apply filter
+      const newFiltered = applyDateFilter(flows, startDate, endDate);
+      setFilteredFlows(newFiltered);
+      buildOverallChart(newFiltered);
+      buildPaymentPie(newFiltered);
+      buildBusinessCharts(newFiltered);
+      separateByBusiness(newFiltered);
+
+      // Reset form
+      setCashFlowForm({
+        BranchID: '',
+        BusinessType: '',
+        Date: '',
+        CashSales: '',
+        GCashSales: '',
+        BPISales: '',
+        BDOSales: '',
+        WalkInCashSales: '',
+        WalkInGCashSales: '',
+        WalkInBPISales: '',
+        WalkInBDOSales: '',
+        PettyCash: '',
+        DepositedAmount: '',
+        Remarks: '',
+      });
+      setYesterdayPettyCash(0);
+    } catch (err) {
+      console.error('Error creating daily flow:', err);
+      alert('Failed to create daily cash flow entry.');
+    }
+  };
+
+  // Generate Gym
+  const handleGenerateCashFlow = async () => {
+    try {
+      const formatted = selectedDate.toISOString().substring(0, 10);
+      await axios.post('/finance/generate-cashflow', {
+        date: formatted,
+        branch_id: selectedBranchId,
+      });
+      alert('Gym daily cash flow generated!');
+
+      // Refilter
+      handleFilter();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to generate gym daily flow');
+    }
+  };
+
+  // DataGrid columns (expanded)
+  const flowColumns = [
+    { field: 'Date', headerName: 'Date', width: 110 },
+    { field: 'BranchID', headerName: 'Branch', width: 100 },
+    { field: 'BusinessType', headerName: 'Type', width: 120 },
+    { field: 'CashSales', headerName: 'Cash', width: 80 },
+    { field: 'GCashSales', headerName: 'GCash', width: 80 },
+    { field: 'BPISales', headerName: 'BPI', width: 80 },
+    { field: 'BDOSales', headerName: 'BDO', width: 80 },
+    { field: 'WalkInCashSales', headerName: 'W-In Cash', width: 90 },
+    { field: 'WalkInGCashSales', headerName: 'W-In GCash', width: 100 },
+    { field: 'WalkInBPISales', headerName: 'W-In BPI', width: 90 },
+    { field: 'WalkInBDOSales', headerName: 'W-In BDO', width: 90 },
+    { field: 'TotalSales', headerName: 'Total', width: 80 },
+    { field: 'PettyCash', headerName: 'PettyCash', width: 90 },
+    { field: 'DepositedAmount', headerName: 'Deposited', width: 90 },
+    { field: 'Remarks', headerName: 'Remarks', width: 160 },
+  ];
+  
+  
+  // Combined table rows
+  const flowRows = filteredFlows.map((flow, i) => ({
+    id: i,
+    Date: flow.Date ?? '',
+    BranchID: flow.BranchID ?? '',
+    BusinessType: flow.BusinessType ?? '',
+    CashSales: parseFloat(flow.CashSales) || 0,
+    GCashSales: parseFloat(flow.GCashSales) || 0,
+    BPISales: parseFloat(flow.BPISales) || 0,
+    BDOSales: parseFloat(flow.BDOSales) || 0,
+    WalkInCashSales: parseFloat(flow.WalkInCashSales) || 0,
+    WalkInGCashSales: parseFloat(flow.WalkInGCashSales) || 0,
+    WalkInBPISales: parseFloat(flow.WalkInBPISales) || 0,
+    WalkInBDOSales: parseFloat(flow.WalkInBDOSales) || 0,
+    TotalSales: parseFloat(flow.TotalSales) || 0,
+    PettyCash: parseFloat(flow.PettyCash) || 0,
+    DepositedAmount: parseFloat(flow.DepositedAmount) || 0,
+    Remarks: flow.Remarks ?? '',
+  }));
+  
+  // Sub-tables (Gym, Cafe, Yogurt, Overall)
+  const gymRows = gymFlows.map((f, idx) => ({ id: `gym-${idx}`, ...f }));
+  const cafeRows = cafeFlows.map((f, idx) => ({ id: `cafe-${idx}`, ...f }));
+  const yogurtRows = yogurtFlows.map((f, idx) => ({ id: `yogurt-${idx}`, ...f }));
+  const overallRows = overallFlows.map((f, idx) => ({ id: `overall-${idx}`, ...f }));
+
   return (
-    <Box sx={{ p: 4, background: bgGradient, minHeight: '100vh' }}>
-      <Typography variant="h4" gutterBottom sx={{ mb: 4, fontWeight: 700, color: theme.palette.text.primary }}>
-        Dashboard
-      </Typography>
+    <Box
+      sx={{
+        minHeight: '100vh',
+        backgroundColor: darkMode ? theme.palette.background.default : '#f0f2f5',
+        py: 4,
+        px: { xs: 2, sm: 4 },
+        transition: 'background 0.5s ease',
+      }}
+    >
+      {/* Animated header */}
+      <Box
+        sx={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          color: '#fff',
+          borderRadius: 2,
+          mb: 4,
+          p: { xs: 2, sm: 4 },
+        }}
+      >
+        <Typography variant="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+          <IconButton sx={{ color: '#fff', mr: 1 }}>
+            <Dashboard />
+          </IconButton>
+          Continental Gym Admin Dashboard
+        </Typography>
+        <Typography variant="subtitle1">
+          A detailed overview of all business operations and daily cash flows
+        </Typography>
+      </Box>
 
-      {/* Top Controls */}
-      <Grid container spacing={2} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={2}>
-          <FormControl fullWidth variant="outlined" size="small">
-            <InputLabel>Time Period</InputLabel>
-            <Select value={timePeriod} onChange={handleTimePeriodChange} label="Time Period">
-              <MenuItem value="daily">Daily</MenuItem>
-              <MenuItem value="weekly">Weekly</MenuItem>
-              <MenuItem value="monthly">Monthly</MenuItem>
-              <MenuItem value="yearly">Yearly</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={12} sm={6} md={2}>
-          <TextField
-            fullWidth
-            label="From Date"
-            type="date"
-            variant="outlined"
-            size="small"
-            value={dateFrom}
-            onChange={handleDateFromChange}
-            InputLabelProps={{ shrink: true }}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={2}>
-          <TextField
-            fullWidth
-            label="To Date"
-            type="date"
-            variant="outlined"
-            size="small"
-            value={dateTo}
-            onChange={handleDateToChange}
-            InputLabelProps={{ shrink: true }}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3} sx={{ ml: 'auto' }}>
-          <FormControl fullWidth variant="outlined" size="small">
-            <InputLabel>Branch</InputLabel>
-            <Select value={branch} onChange={handleBranchChange} label="Branch">
-              {branchOptions.map(option => (
-                <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
-      </Grid>
+      {/* Tabs */}
+      <Tabs
+        value={activeTab}
+        onChange={handleTabChange}
+        indicatorColor="primary"
+        textColor="primary"
+        sx={{ mb: 3 }}
+      >
+        <Tab label="Overview" icon={<TrendingUp />} />
+        <Tab label="Daily Cash Flow" icon={<MonetizationOn />} />
+      </Tabs>
 
-      {/* Key Metrics Section */}
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          {/* Total Members */}
-          <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ backgroundColor: "#42A5F5", borderRadius: 2, boxShadow: 3, display: "flex", alignItems: "center", p: 1.5 }}>
-              <Person sx={{ fontSize: 30, color: "white", mr: 1.5 }} />
-              <CardContent sx={{ p: 1 }}>
-                <Typography variant="body2" sx={{ color: "white", mb: 0.5 }}>
-                  Members
-                </Typography>
-                <Typography variant="h6" sx={{ color: "white", fontWeight: "bold" }}>
-                  {loading ? <CircularProgress size={20} color="inherit" /> : keyMetrics.totalClients}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
+      {error && (
+        <Typography variant="body1" color="error" sx={{ mb: 2 }}>
+          {error}
+        </Typography>
+      )}
 
-          {/* Revenue Generated */}
-          <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ backgroundColor: "#66BB6A", borderRadius: 2, boxShadow: 3, display: "flex", alignItems: "center", p: 1.5 }}>
-              <AttachMoney sx={{ fontSize: 30, color: "white", mr: 1.5 }} />
-              <CardContent sx={{ p: 1 }}>
-                <Typography variant="body2" sx={{ color: "white", mb: 0.5 }}>
-                  Revenue
-                </Typography>
-                <Typography variant="h6" sx={{ color: "white", fontWeight: "bold" }}>
-                  {loading ? <CircularProgress size={20} color="inherit" /> : `₱${keyMetrics.totalRevenue.toLocaleString()}`}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
+      {loading ? (
+        <CircularProgress />
+      ) : (
+        <>
+          {/* OVERVIEW TAB */}
+          {activeTab === 0 && (
+            <Box sx={{ mt: 3 }}>
+              <Grid container spacing={3}>
+                {/* SUMMARY CARDS */}
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ boxShadow: 3, borderLeft: '5px solid #4BC0C0' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <AttachMoney sx={{ fontSize: 40, color: '#4BC0C0', mr: 1 }} />
+                        <Box>
+                          <Typography variant="h6">Total Revenue</Typography>
+                          <Typography variant="h5">
+                            ${parseFloat(totalRevenue).toLocaleString()}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ boxShadow: 3, borderLeft: '5px solid #FF9F40' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Paid sx={{ fontSize: 40, color: '#FF9F40', mr: 1 }} />
+                        <Box>
+                          <Typography variant="h6">Net Profit</Typography>
+                          <Typography variant="h5">
+                            ${parseFloat(netProfit).toLocaleString()}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ boxShadow: 3, borderLeft: '5px solid #9966FF' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <PersonAdd sx={{ fontSize: 40, color: '#9966FF', mr: 1 }} />
+                        <Box>
+                          <Typography variant="h6">New Members</Typography>
+                          <Typography variant="h5">{newMembersThisMonth}</Typography>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ boxShadow: 3, borderLeft: '5px solid #FFCE56' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <ShowChart sx={{ fontSize: 40, color: '#FFCE56', mr: 1 }} />
+                        <Box>
+                          <Typography variant="h6">Attendance Rate</Typography>
+                          <Typography variant="h5">{attendanceRate}</Typography>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
 
-          {/* New Members */}
-          <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ backgroundColor: "#FFB74D", borderRadius: 2, boxShadow: 3, display: "flex", alignItems: "center", p: 1.5 }}>
-              <People sx={{ fontSize: 30, color: "white", mr: 1.5 }} />
-              <CardContent sx={{ p: 1 }}>
-                <Typography variant="body2" sx={{ color: "white", mb: 0.5 }}>
-                  New Members
-                </Typography>
-                <Typography variant="h6" sx={{ color: "white", fontWeight: "bold" }}>
-                  {loading ? <CircularProgress size={20} color="inherit" /> : keyMetrics.totalClients}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Attendance */}
-          <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ backgroundColor: "#9C27B0", borderRadius: 2, boxShadow: 3, display: "flex", alignItems: "center", p: 1.5 }}>
-              <DirectionsRun sx={{ fontSize: 30, color: "white", mr: 1.5 }} />
-              <CardContent sx={{ p: 1 }}>
-                <Typography variant="body2" sx={{ color: "white", mb: 0.5 }}>
-                  Attendance
-                </Typography>
-                <Typography variant="h6" sx={{ color: "white", fontWeight: "bold" }}>
-                  {loading ? <CircularProgress size={20} color="inherit" /> : keyMetrics.trafficReceived}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-
-
-      {/* Revenue Trends & Recent Transactions */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={6}>
-          <Paper elevation={3} sx={{ p: 3, borderRadius: 2, height: '100%', backgroundColor: darkMode ? theme.palette.background.paper : '#fff' }}>
-            <Typography variant="h6" gutterBottom sx={{ mb: 2, color: theme.palette.text.primary }}>
-              Revenue Trends
-            </Typography>
-            <Box sx={{ height: 300 }}>
-              <Line data={revenueChartData} options={{ maintainAspectRatio: false }} />
-            </Box>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={6}>
-          <Paper elevation={3} sx={{ p: 3, borderRadius: 2, height: '100%', backgroundColor: darkMode ? theme.palette.background.paper : '#fff' }}>
-            <Typography variant="h6" gutterBottom sx={{ mb: 2, color: theme.palette.text.primary }}>
-              Recent Transactions
-            </Typography>
-            <TableContainer component={Paper} sx={{ maxHeight: 400, borderRadius: 2, backgroundColor: darkMode ? theme.palette.background.paper : '#fff' }}>
-              <Table stickyHeader>
-                <TableHead>
-                  <TableRow sx={{ backgroundColor: darkMode ? theme.palette.grey[800] : '#f5f5f5' }}>
-                    <TableCell sx={{ fontWeight: 'bold', color: theme.palette.text.primary }}>Transaction ID</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', color: theme.palette.text.primary }}>Amount</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', color: theme.palette.text.primary }}>Date</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', color: theme.palette.text.primary }}>Status</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {recentTransactions.slice(0, 8).map(transaction => (
-                    <TableRow key={transaction.id} sx={{ '&:hover': { backgroundColor: theme.palette.action.hover } }}>
-                      <TableCell>{transaction.id}</TableCell>
-                      <TableCell>₱{transaction.amount}</TableCell>
-                      <TableCell>{transaction.date}</TableCell>
-                      <TableCell>
-                        <Typography sx={{ color: getStatusColor(transaction.status), fontWeight: 'bold' }}>
-                          {transaction.status}
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-        </Grid>
-      </Grid>
-
-      {/* Current Promotions & System Logs */}
-      <Grid container spacing={3}>
-        <Grid item xs={12} sm={6} md={6}>
-          <Paper elevation={3} sx={{ p: 3, borderRadius: 2, height: '100%', backgroundColor: darkMode ? theme.palette.background.paper : '#fff' }}>
-            <Typography variant="h6" gutterBottom sx={{ mb: 2, color: theme.palette.text.primary }}>
-              Current Promotions
-            </Typography>
-            <TableContainer component={Paper} sx={{ borderRadius: 2, backgroundColor: darkMode ? theme.palette.background.paper : '#fff' }}>
-              <Table stickyHeader>
-                <TableHead>
-                  <TableRow sx={{ backgroundColor: darkMode ? theme.palette.grey[800] : '#f5f5f5' }}>
-                    <TableCell sx={{ fontWeight: 'bold', color: theme.palette.text.primary }}>Promotion Title</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', color: theme.palette.text.primary }}>Description</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', color: theme.palette.text.primary }}>Valid Till</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {currentPromotions.map(promo => (
-                    <TableRow key={promo.PromotionID}>
-                      <TableCell>{promo.Name}</TableCell>
-                      <TableCell>{promo.DiscountType} - {promo.DiscountValue}</TableCell>
-                      <TableCell>{promo.EndDate}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={6}>
-          <Paper elevation={3} sx={{ p: 3, borderRadius: 2, height: '100%', backgroundColor: darkMode ? theme.palette.background.paper : '#fff' }}>
-            <Typography variant="h6" gutterBottom sx={{ mb: 2, color: theme.palette.text.primary }}>
-              System Logs
-            </Typography>
-            <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
-              {systemLogs.slice(0, 8).map((log, index) => (
-                <Card key={index} sx={{ mb: 2, backgroundColor: darkMode ? theme.palette.grey[900] : '#F5F5F5', borderRadius: 2 }}>
-                  <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-                    <HistoryIcon sx={{ color: '#FF9800', mr: 1 }} />
-                    <Typography variant="body2" sx={{ fontWeight: 'bold', color: theme.palette.text.primary }}>
-                      {log.logId} - {log.actionDesc}
+                {/* CHARTS */}
+                <Grid item xs={12} md={8}>
+                  <Paper sx={{ p: 2, height: 400, boxShadow: 3 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Overall Daily Cash Flow
                     </Typography>
-                  </CardContent>
-                </Card>
-              ))}
+                    <Box sx={{ height: '80%' }}>
+                      {overallChartData ? (
+                        <Line
+                          data={overallChartData}
+                          options={{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { position: 'bottom' } },
+                          }}
+                        />
+                      ) : (
+                        <Typography>Loading chart...</Typography>
+                      )}
+                    </Box>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Paper sx={{ p: 2, height: 400, boxShadow: 3 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Payment Method Breakdown (All Biz)
+                    </Typography>
+                    <Box sx={{ height: '80%' }}>
+                      {paymentMethodPie ? (
+                        <Pie
+                          data={paymentMethodPie}
+                          options={{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { position: 'bottom' } },
+                          }}
+                        />
+                      ) : (
+                        <Typography>Loading pie chart...</Typography>
+                      )}
+                    </Box>
+                  </Paper>
+                </Grid>
+
+                {/* Per-Business charts */}
+                <Grid item xs={12}>
+                  <Typography variant="h5" sx={{ mt: 2, mb: 2 }}>
+                    Payment Breakdown by Business
+                  </Typography>
+                  <Divider />
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Paper sx={{ p: 2, height: 280, boxShadow: 3 }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Gym Payment Methods
+                    </Typography>
+                    {gymChartData ? (
+                      <Line
+                        data={gymChartData}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: { legend: { position: 'bottom' } },
+                        }}
+                      />
+                    ) : (
+                      <Typography>Loading...</Typography>
+                    )}
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Paper sx={{ p: 2, height: 280, boxShadow: 3 }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Cafe Payment Methods
+                    </Typography>
+                    {cafeChartData ? (
+                      <Line
+                        data={cafeChartData}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: { legend: { position: 'bottom' } },
+                        }}
+                      />
+                    ) : (
+                      <Typography>Loading...</Typography>
+                    )}
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Paper sx={{ p: 2, height: 280, boxShadow: 3 }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Yogurt Payment Methods
+                    </Typography>
+                    {yogurtChartData ? (
+                      <Line
+                        data={yogurtChartData}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: { legend: { position: 'bottom' } },
+                        }}
+                      />
+                    ) : (
+                      <Typography>Loading...</Typography>
+                    )}
+                  </Paper>
+                </Grid>
+              </Grid>
             </Box>
-          </Paper>
-        </Grid>
-      </Grid>
+          )}
+
+          {/* DAILY CASH FLOW TAB */}
+          {activeTab === 1 && (
+            <Box sx={{ mt: 3 }}>
+              {/* Filter */}
+              <Paper sx={{ p: 3, boxShadow: 3, mb: 4 }}>
+                <Typography variant="h6" gutterBottom>
+                  Filter Daily Cash Flow
+                </Typography>
+                <Grid container spacing={2} sx={{ mb: 2 }}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      label="Start Date"
+                      type="date"
+                      fullWidth
+                      size="small"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      label="End Date"
+                      type="date"
+                      fullWidth
+                      size="small"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Button
+                      variant="contained"
+                      onClick={handleFilter}
+                      sx={{ mt: 1 }}
+                    >
+                      Filter
+                    </Button>
+                  </Grid>
+                </Grid>
+
+                {/* Combined Table */}
+                <Typography variant="h6" gutterBottom>
+                  All Businesses (Combined)
+                </Typography>
+                <Box sx={{ height: 400, mb: 4 }}>
+                  <DataGrid
+                    rows={flowRows}
+                    columns={flowColumns}
+                    pageSize={5}
+                    rowsPerPageOptions={[5, 10]}
+                    disableSelectionOnClick
+                  />
+                </Box>
+
+                {/* Gym Table */}
+                <Typography variant="h6" gutterBottom>
+                  Gym Cash Flow
+                </Typography>
+                <Box sx={{ height: 400, mb: 4 }}>
+                  <DataGrid
+                    rows={gymRows}
+                    columns={flowColumns}
+                    pageSize={5}
+                    rowsPerPageOptions={[5, 10]}
+                    disableSelectionOnClick
+                  />
+                </Box>
+
+                {/* Cafe Table */}
+                <Typography variant="h6" gutterBottom>
+                  Cafe Cash Flow
+                </Typography>
+                <Box sx={{ height: 400, mb: 4 }}>
+                  <DataGrid
+                    rows={cafeRows}
+                    columns={flowColumns}
+                    pageSize={5}
+                    rowsPerPageOptions={[5, 10]}
+                    disableSelectionOnClick
+                  />
+                </Box>
+
+                {/* Yogurt Table */}
+                <Typography variant="h6" gutterBottom>
+                  Yogurt Cash Flow
+                </Typography>
+                <Box sx={{ height: 400, mb: 4 }}>
+                  <DataGrid
+                    rows={yogurtRows}
+                    columns={flowColumns}
+                    pageSize={5}
+                    rowsPerPageOptions={[5, 10]}
+                    disableSelectionOnClick
+                  />
+                </Box>
+
+                {/* Overall Table */}
+                <Typography variant="h6" gutterBottom>
+                  Overall (Petty Cash) Records
+                </Typography>
+                <Box sx={{ height: 400 }}>
+                  <DataGrid
+                    rows={overallRows}
+                    columns={flowColumns}
+                    pageSize={5}
+                    rowsPerPageOptions={[5, 10]}
+                    disableSelectionOnClick
+                  />
+                </Box>
+              </Paper>
+
+              {/* Manual Entry */}
+              <Paper sx={{ p: 3, boxShadow: 3, mb: 4 }}>
+                <Typography variant="h6" gutterBottom>
+                  Record a New Daily Cash Flow Entry
+                </Typography>
+                <Grid container spacing={2}>
+                  {/* Branch */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      select
+                      name="BranchID"
+                      value={cashFlowForm.BranchID}
+                      onChange={handleCashFlowChange}
+                      variant="outlined"
+                      size="small"
+                      SelectProps={{ native: true }}
+                    >
+                      <option value="">-- Select Branch --</option>
+                      {branches.map((b) => (
+                        <option key={b.BranchID} value={b.BranchID}>
+                          {b.BranchName || `Branch #${b.BranchID}`}
+                        </option>
+                      ))}
+                    </TextField>
+                  </Grid>
+
+                  {/* Business Type */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Business Type</InputLabel>
+                      <Select
+                        name="BusinessType"
+                        label="Business Type"
+                        value={cashFlowForm.BusinessType}
+                        onChange={handleCashFlowChange}
+                      >
+                        <MenuItem value=""><em>-- Select --</em></MenuItem>
+                        <MenuItem value="Gym">Gym</MenuItem>
+                        <MenuItem value="Cafe">Cafe</MenuItem>
+                        <MenuItem value="Yogurt">Yogurt</MenuItem>
+                        <MenuItem value="Overall">Overall (Petty Cash)</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  {/* Date */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      type="date"
+                      label="Date"
+                      name="Date"
+                      value={cashFlowForm.Date}
+                      onChange={handleCashFlowChange}
+                      InputLabelProps={{ shrink: true }}
+                      variant="outlined"
+                      size="small"
+                    />
+                  </Grid>
+
+                  {/* Cash Sales */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Cash Sales"
+                      name="CashSales"
+                      value={cashFlowForm.CashSales}
+                      onChange={handleCashFlowChange}
+                      variant="outlined"
+                      size="small"
+                    />
+                  </Grid>
+
+                  {/* GCash Sales */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="GCash Sales"
+                      name="GCashSales"
+                      value={cashFlowForm.GCashSales}
+                      onChange={handleCashFlowChange}
+                      variant="outlined"
+                      size="small"
+                    />
+                  </Grid>
+
+                  {/* BPI Sales */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="BPI Sales"
+                      name="BPISales"
+                      value={cashFlowForm.BPISales}
+                      onChange={handleCashFlowChange}
+                      variant="outlined"
+                      size="small"
+                    />
+                  </Grid>
+
+                  {/* BDO Sales */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="BDO Sales"
+                      name="BDOSales"
+                      value={cashFlowForm.BDOSales}
+                      onChange={handleCashFlowChange}
+                      variant="outlined"
+                      size="small"
+                    />
+                  </Grid>
+
+                  {/* Walk-In Sales */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Walk-In Cash Sales"
+                      name="WalkInCashSales"
+                      value={cashFlowForm.WalkInCashSales}
+                      onChange={handleCashFlowChange}
+                      variant="outlined"
+                      size="small"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Walk-In GCash Sales"
+                      name="WalkInGCashSales"
+                      value={cashFlowForm.WalkInGCashSales}
+                      onChange={handleCashFlowChange}
+                      variant="outlined"
+                      size="small"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Walk-In BPI Sales"
+                      name="WalkInBPISales"
+                      value={cashFlowForm.WalkInBPISales}
+                      onChange={handleCashFlowChange}
+                      variant="outlined"
+                      size="small"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Walk-In BDO Sales"
+                      name="WalkInBDOSales"
+                      value={cashFlowForm.WalkInBDOSales}
+                      onChange={handleCashFlowChange}
+                      variant="outlined"
+                      size="small"
+                    />
+                  </Grid>
+
+                  {/* Petty Cash (Overall only) */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Petty Cash"
+                      name="PettyCash"
+                      value={cashFlowForm.PettyCash}
+                      onChange={handleCashFlowChange}
+                      variant="outlined"
+                      size="small"
+                      disabled={cashFlowForm.BusinessType !== 'Overall'}
+                    />
+                  </Grid>
+
+                  {/* Effective Petty */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      label="Effective Petty Cash"
+                      value={effectivePettyCash()}
+                      variant="outlined"
+                      size="small"
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+
+                  {/* Deposited (Overall only) */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Deposited Amount"
+                      name="DepositedAmount"
+                      value={cashFlowForm.DepositedAmount}
+                      onChange={handleCashFlowChange}
+                      variant="outlined"
+                      size="small"
+                      disabled={cashFlowForm.BusinessType !== 'Overall'}
+                    />
+                  </Grid>
+
+                  {/* Remarks */}
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Remarks"
+                      name="Remarks"
+                      value={cashFlowForm.Remarks}
+                      onChange={handleCashFlowChange}
+                      variant="outlined"
+                      size="small"
+                      multiline
+                      rows={2}
+                    />
+                  </Grid>
+
+                  {/* Submit */}
+                  <Grid item xs={12}>
+                    <Button
+                      variant="contained"
+                      onClick={handleCashFlowSubmit}
+                    >
+                      Submit Cash Flow Entry
+                    </Button>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Auto-Generate Gym */}
+              <Paper sx={{ p: 3, boxShadow: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Generate Today's Gym Cash Flow Automatically
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="branchSelectLabel">Branch</InputLabel>
+                      <Select
+                        labelId="branchSelectLabel"
+                        label="Branch"
+                        value={selectedBranchId}
+                        onChange={(e) => setSelectedBranchId(e.target.value)}
+                      >
+                        <MenuItem value="">
+                          <em>-- Select Branch --</em>
+                        </MenuItem>
+                        {branches.map((b) => (
+                          <MenuItem key={b.BranchID} value={b.BranchID}>
+                            {b.BranchName || `Branch #${b.BranchID}`}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      label="Date"
+                      type="date"
+                      fullWidth
+                      size="small"
+                      value={selectedDate.toISOString().substr(0, 10)}
+                      onChange={(e) => setSelectedDate(new Date(e.target.value))}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Button
+                      variant="contained"
+                      color="secondary"
+                      onClick={handleGenerateCashFlow}
+                      disabled={!selectedBranchId}
+                    >
+                      Generate Gym Daily Cash Flow
+                    </Button>
+                  </Grid>
+                </Grid>
+              </Paper>
+            </Box>
+          )}
+        </>
+      )}
     </Box>
   );
-}
+};
+
+export default AdminDashboard;

@@ -155,4 +155,9 @@ class Branch extends Model
         'StaffID'
     );
 }
+
+    public function members()
+    {
+        return $this->hasMany(\App\Models\Member::class, 'StartedBranchID', 'BranchID');
+    }
 }

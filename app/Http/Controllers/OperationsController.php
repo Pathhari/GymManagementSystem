@@ -530,7 +530,7 @@ public function getMaintenanceStats()
     }
     
     return response()->json([
-        'pending_maintenance' => $query->where('status', 'pending')->count()
+        'pending_maintenance' => $query->where('Resolution', 'pending')->count()
     ]);
 }
 
