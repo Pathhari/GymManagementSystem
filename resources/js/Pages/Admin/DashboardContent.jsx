@@ -19,6 +19,12 @@ import {
   MenuItem,
   IconButton,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import {
@@ -81,7 +87,7 @@ const AdminDashboard = () => {
   const [allFlows, setAllFlows] = useState([]);
   // Filtered flows for the date filter
   const [filteredFlows, setFilteredFlows] = useState([]);
-  // Additional arrays for each business
+  // Separate arrays for each business
   const [gymFlows, setGymFlows] = useState([]);
   const [cafeFlows, setCafeFlows] = useState([]);
   const [yogurtFlows, setYogurtFlows] = useState([]);
@@ -121,12 +127,20 @@ const AdminDashboard = () => {
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date());
 
+  // New Overall flow dialog state
+  const [openOverallDialog, setOpenOverallDialog] = useState(false);
+  const [overallInput, setOverallInput] = useState({
+    pettyDeduction: '',
+    deposited: false,
+  });
+  const [computedOverallTotal, setComputedOverallTotal] = useState(0);
+
   // Switch tabs
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
   };
 
-  // On mount
+  // On mount: load summaries, staff, branches, flows
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -146,21 +160,19 @@ const AdminDashboard = () => {
         setAttendanceRate(summary.attendance_rate || '0%');
         setMostPopularService(summary.most_popular_service || 'N/A');
 
-        // Staff & branches
+        // Staff & Branches
         setStaff(staffRes.data.staff || []);
         setBranches(branchRes.data.branches || branchRes.data || []);
 
         // Flows
         const flows = cfRes.data.flows || [];
         setAllFlows(flows);
-        setFilteredFlows(flows); // default
+        setFilteredFlows(flows); // no filter initially
 
-        // Build initial charts
+        // Build initial charts and separate flows by business
         buildOverallChart(flows);
         buildPaymentPie(flows);
         buildBusinessCharts(flows);
-
-        // Separate by business
         separateByBusiness(flows);
       } catch (err) {
         console.error(err);
@@ -196,9 +208,12 @@ const AdminDashboard = () => {
     setOverallChartData(data);
   };
 
-  // Build payment method pie
+  // Build payment method pie chart (combined)
   const buildPaymentPie = (flows) => {
-    let cash = 0, gcash = 0, bpi = 0, bdo = 0;
+    let cash = 0,
+      gcash = 0,
+      bpi = 0,
+      bdo = 0;
     flows.forEach((f) => {
       cash += Number(f.CashSales || 0) + Number(f.WalkInCashSales || 0);
       gcash += Number(f.GCashSales || 0) + Number(f.WalkInGCashSales || 0);
@@ -217,7 +232,7 @@ const AdminDashboard = () => {
     setPaymentMethodPie(data);
   };
 
-  // Build charts for Gym, Cafe, Yogurt
+  // Build business-specific charts for Gym, Cafe, Yogurt
   const buildBusinessCharts = (flows) => {
     const gym = flows.filter((f) => f.BusinessType === 'Gym');
     const cafe = flows.filter((f) => f.BusinessType === 'Cafe');
@@ -289,7 +304,7 @@ const AdminDashboard = () => {
     setOverallFlows(overall);
   };
 
-  // Filter flows by date
+  // Filter flows by date range
   const applyDateFilter = (flows, start, end) => {
     if (!start && !end) return flows;
     const s = start ? new Date(start) : null;
@@ -301,12 +316,17 @@ const AdminDashboard = () => {
       return true;
     });
   };
+
   const handleFilter = () => {
-    // Just do this as a test:
-    setFilteredFlows(allFlows);
+    const newFiltered = applyDateFilter(allFlows, startDate, endDate);
+    setFilteredFlows(newFiltered);
+    buildOverallChart(newFiltered);
+    buildPaymentPie(newFiltered);
+    buildBusinessCharts(newFiltered);
+    separateByBusiness(newFiltered);
   };
 
-  // Listen for changes to BranchID, Date, BusinessType
+  // Listen for changes to BranchID, Date, BusinessType in manual form for petty cash calculation
   useEffect(() => {
     const { BranchID, Date, BusinessType } = cashFlowForm;
     if (BranchID && Date && BusinessType) {
@@ -343,7 +363,7 @@ const AdminDashboard = () => {
     return yesterdayPettyCash + inputVal;
   };
 
-  // Manual changes
+  // Manual form change handler
   const handleCashFlowChange = (e) => {
     const { name, value } = e.target;
     setCashFlowForm((prev) => ({ ...prev, [name]: value }));
@@ -353,20 +373,16 @@ const AdminDashboard = () => {
     try {
       await axios.post('/finance/cashflow', { ...cashFlowForm });
       alert('Daily cash flow entry created successfully!');
-
-      // Reload from server
+      // Reload flows
       const cfRes = await axios.get('/finance/cashflow');
       const flows = cfRes.data.flows || [];
       setAllFlows(flows);
-
-      // Re-apply filter
       const newFiltered = applyDateFilter(flows, startDate, endDate);
       setFilteredFlows(newFiltered);
       buildOverallChart(newFiltered);
       buildPaymentPie(newFiltered);
       buildBusinessCharts(newFiltered);
       separateByBusiness(newFiltered);
-
       // Reset form
       setCashFlowForm({
         BranchID: '',
@@ -391,7 +407,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // Generate Gym
+  // Auto-generate Gym flow
   const handleGenerateCashFlow = async () => {
     try {
       const formatted = selectedDate.toISOString().substring(0, 10);
@@ -400,8 +416,6 @@ const AdminDashboard = () => {
         branch_id: selectedBranchId,
       });
       alert('Gym daily cash flow generated!');
-
-      // Refilter
       handleFilter();
     } catch (err) {
       console.error(err);
@@ -409,7 +423,77 @@ const AdminDashboard = () => {
     }
   };
 
-  // DataGrid columns (expanded)
+  // NEW: Overall Flow Generation
+  // When manager clicks this, we compute overall totals for the current day (from Gym, Cafe, Yogurt),
+  // then open a dialog to collect petty cash deduction and deposit status.
+  const handleOpenOverallDialog = () => {
+    const today = new Date().toISOString().substring(0, 10);
+    // Sum totals for flows from today that are NOT Overall (i.e. Gym, Cafe, Yogurt)
+    const overallTotal = allFlows
+      .filter((f) => f.Date === today && f.BusinessType !== 'Overall')
+      .reduce((sum, f) => sum + parseFloat(f.TotalSales || "0.00"), 0);
+    setComputedOverallTotal(overallTotal);
+    setOpenOverallDialog(true);
+  };
+
+  const handleCloseOverallDialog = () => {
+    setOpenOverallDialog(false);
+    setOverallInput({ pettyDeduction: '', deposited: false });
+  };
+
+  const handleOverallInputChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setOverallInput((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
+  };
+
+  const handleSubmitOverallFlow = async () => {
+    // Calculate the final overall total: overallTotal minus petty deduction
+    const petty = parseFloat(overallInput.pettyDeduction) || 0;
+    const finalTotal = computedOverallTotal - petty;
+    try {
+      // Post an "Overall" record to the server.
+      // You may adjust endpoint and payload as needed.
+      await axios.post('/finance/cashflow', {
+        BranchID: selectedBranchId || (branches[0] && branches[0].BranchID), // default branch if not selected
+        Date: new Date().toISOString().substring(0, 10),
+        BusinessType: 'Overall',
+        CashSales: 0,
+        GCashSales: 0,
+        BPISales: 0,
+        BDOSales: 0,
+        WalkInCashSales: 0,
+        WalkInGCashSales: 0,
+        WalkInBPISales: 0,
+        WalkInBDOSales: 0,
+        TotalSales: finalTotal,
+        PettyCash: petty,
+        DepositedAmount: overallInput.deposited ? finalTotal : 0,
+        Remarks: overallInput.deposited
+          ? 'Overall flow generated; money deposited to owner.'
+          : 'Overall flow generated; pending deposit.',
+      });
+      alert('Overall daily cash flow record created successfully!');
+      handleCloseOverallDialog();
+      // Reload flows
+      const cfRes = await axios.get('/finance/cashflow');
+      const flows = cfRes.data.flows || [];
+      setAllFlows(flows);
+      const newFiltered = applyDateFilter(flows, startDate, endDate);
+      setFilteredFlows(newFiltered);
+      buildOverallChart(newFiltered);
+      buildPaymentPie(newFiltered);
+      buildBusinessCharts(newFiltered);
+      separateByBusiness(newFiltered);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to create overall daily cash flow record.');
+    }
+  };
+
+  // DataGrid columns (expanded) with optional chaining & parsing
   const flowColumns = [
     { field: 'Date', headerName: 'Date', width: 110 },
     { field: 'BranchID', headerName: 'Branch', width: 100 },
@@ -428,28 +512,28 @@ const AdminDashboard = () => {
     { field: 'Remarks', headerName: 'Remarks', width: 160 },
   ];
   
-  
-  // Combined table rows
   const flowRows = filteredFlows.map((flow, i) => ({
     id: i,
-    Date: flow.Date ?? '',
-    BranchID: flow.BranchID ?? '',
-    BusinessType: flow.BusinessType ?? '',
-    CashSales: parseFloat(flow.CashSales) || 0,
-    GCashSales: parseFloat(flow.GCashSales) || 0,
-    BPISales: parseFloat(flow.BPISales) || 0,
-    BDOSales: parseFloat(flow.BDOSales) || 0,
-    WalkInCashSales: parseFloat(flow.WalkInCashSales) || 0,
-    WalkInGCashSales: parseFloat(flow.WalkInGCashSales) || 0,
-    WalkInBPISales: parseFloat(flow.WalkInBPISales) || 0,
-    WalkInBDOSales: parseFloat(flow.WalkInBDOSales) || 0,
-    TotalSales: parseFloat(flow.TotalSales) || 0,
-    PettyCash: parseFloat(flow.PettyCash) || 0,
-    DepositedAmount: parseFloat(flow.DepositedAmount) || 0,
-    Remarks: flow.Remarks ?? '',
+    Date: flow.Date || '',
+    BranchID: flow.BranchID || '',
+    BusinessType: flow.BusinessType || '',
+    CashSales: flow.CashSales ? parseFloat(flow.CashSales) : 0,
+    GCashSales: flow.GCashSales ? parseFloat(flow.GCashSales) : 0,
+    BPISales: flow.BPISales ? parseFloat(flow.BPISales) : 0,
+    BDOSales: flow.BDOSales ? parseFloat(flow.BDOSales) : 0,
+    WalkInCashSales: flow.WalkInCashSales ? parseFloat(flow.WalkInCashSales) : 0,
+    WalkInGCashSales: flow.WalkInGCashSales ? parseFloat(flow.WalkInGCashSales) : 0,
+    WalkInBPISales: flow.WalkInBPISales ? parseFloat(flow.WalkInBPISales) : 0,
+    WalkInBDOSales: flow.WalkInBDOSales ? parseFloat(flow.WalkInBDOSales) : 0,
+    TotalSales: flow.TotalSales ? parseFloat(flow.TotalSales) : 0,
+    PettyCash: flow.PettyCash ? parseFloat(flow.PettyCash) : 0,
+    DepositedAmount: flow.DepositedAmount ? parseFloat(flow.DepositedAmount) : 0,
+    Remarks: flow.Remarks || '',
   }));
   
-  // Sub-tables (Gym, Cafe, Yogurt, Overall)
+  
+
+  // Sub-tables for each business
   const gymRows = gymFlows.map((f, idx) => ({ id: `gym-${idx}`, ...f }));
   const cafeRows = cafeFlows.map((f, idx) => ({ id: `cafe-${idx}`, ...f }));
   const yogurtRows = yogurtFlows.map((f, idx) => ({ id: `yogurt-${idx}`, ...f }));
@@ -678,14 +762,26 @@ const AdminDashboard = () => {
                     )}
                   </Paper>
                 </Grid>
+
+                {/* NEW: Overall Generation Button */}
+                <Grid item xs={12}>
+                  <Paper sx={{ p: 2, boxShadow: 3, mb: 4 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Generate Overall Daily Cash Flow
+                    </Typography>
+                    <Button variant="contained" color="primary" onClick={handleOpenOverallDialog}>
+                      Generate Overall Flow
+                    </Button>
+                  </Paper>
+                </Grid>
               </Grid>
             </Box>
           )}
 
-          {/* DAILY CASH FLOW TAB */}
+          {/* DAILY CASH FLOW TAB - Detailed Tables & Manual Entry */}
           {activeTab === 1 && (
             <Box sx={{ mt: 3 }}>
-              {/* Filter */}
+              {/* Filter Section */}
               <Paper sx={{ p: 3, boxShadow: 3, mb: 4 }}>
                 <Typography variant="h6" gutterBottom>
                   Filter Daily Cash Flow
@@ -714,11 +810,7 @@ const AdminDashboard = () => {
                     />
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
-                    <Button
-                      variant="contained"
-                      onClick={handleFilter}
-                      sx={{ mt: 1 }}
-                    >
+                    <Button variant="contained" onClick={handleFilter} sx={{ mt: 1 }}>
                       Filter
                     </Button>
                   </Grid>
@@ -806,6 +898,7 @@ const AdminDashboard = () => {
                     <TextField
                       fullWidth
                       select
+                      label="Branch"
                       name="BranchID"
                       value={cashFlowForm.BranchID}
                       onChange={handleCashFlowChange}
@@ -977,7 +1070,7 @@ const AdminDashboard = () => {
                     />
                   </Grid>
 
-                  {/* Effective Petty */}
+                  {/* Effective Petty Cash */}
                   <Grid item xs={12} sm={6} md={3}>
                     <TextField
                       fullWidth
@@ -989,7 +1082,7 @@ const AdminDashboard = () => {
                     />
                   </Grid>
 
-                  {/* Deposited (Overall only) */}
+                  {/* Deposited Amount (Overall only) */}
                   <Grid item xs={12} sm={6} md={3}>
                     <TextField
                       fullWidth
@@ -1021,10 +1114,7 @@ const AdminDashboard = () => {
 
                   {/* Submit */}
                   <Grid item xs={12}>
-                    <Button
-                      variant="contained"
-                      onClick={handleCashFlowSubmit}
-                    >
+                    <Button variant="contained" onClick={handleCashFlowSubmit}>
                       Submit Cash Flow Entry
                     </Button>
                   </Grid>
@@ -1086,6 +1176,43 @@ const AdminDashboard = () => {
           )}
         </>
       )}
+
+      {/* Overall Flow Dialog */}
+      <Dialog open={openOverallDialog} onClose={handleCloseOverallDialog}>
+        <DialogTitle>Generate Overall Daily Cash Flow</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Computed Overall Total from Gym, Cafe, and Yogurt: ${computedOverallTotal.toLocaleString()}
+          </Typography>
+          <TextField
+            fullWidth
+            label="Petty Cash Deduction"
+            name="pettyDeduction"
+            type="number"
+            value={overallInput.pettyDeduction}
+            onChange={handleOverallInputChange}
+            margin="normal"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={overallInput.deposited}
+                onChange={handleOverallInputChange}
+                name="deposited"
+              />
+            }
+            label="Deposited to owner"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseOverallDialog} color="secondary">
+            Cancel
+          </Button>
+          <Button onClick={handleSubmitOverallFlow} variant="contained" color="primary">
+            Submit Overall Flow
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
