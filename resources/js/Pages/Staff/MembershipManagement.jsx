@@ -46,6 +46,8 @@ import "jspdf-autotable";
 
 /* If you have a specialized layout for adding a new member: */
 import AddNewMemberLayout from "../../Layouts/AddNewMemberLayout";
+// NEW IMPORT:
+import ManagePlansLayout from "../../Layouts/ManagePlansLayout";
 
 export default function MembershipManagement() {
   // States for membership data
@@ -164,6 +166,7 @@ export default function MembershipManagement() {
   const [selectedMembership, setSelectedMembership] = useState(null);
   const [isViewMembershipOpen, setViewMembershipOpen] = useState(false);
   const [isEditMembershipOpen, setEditMembershipOpen] = useState(false);
+  const [branchFilter, setBranchFilter] = useState("all");
 
   const handleViewMembership = (row) => {
     setSelectedMembership(row);
@@ -821,8 +824,16 @@ async function handleAddRenewal() {
     },
   ];
 
-  const filteredMemberships = applySearchFilter(membershipRecords);
-  const filteredWalkIns = applySearchFilter(walkInRecords);
+  const filteredMemberships = membershipRecords.filter((m) => {
+    const branchMatches =
+      branchFilter === "all" ||
+      String(m.StartedBranchID) === branchFilter;
+    const searchMatches = Object.values(m).some((val) =>
+      String(val).toLowerCase().includes(searchTerm)
+    );
+    return branchMatches && searchMatches;
+  });
+    const filteredWalkIns = applySearchFilter(walkInRecords);
   const filteredRenewals = applySearchFilter(renewalRecords);
   const filteredFreezes = applySearchFilter(freezeRecords);
   const filteredLogs = applySearchFilter(activityLogs);
@@ -956,14 +967,30 @@ async function handleAddRenewal() {
 
       <Paper elevation={2} sx={{ p: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+        <FormControl variant="outlined" size="small" sx={{ width: 150, mr: 2 }}>
+        <InputLabel>Branch</InputLabel>
+        <Select
+          label="Branch"
+          value={branchFilter}
+          onChange={(e) => setBranchFilter(e.target.value)}
+        >
+          <MenuItem value="all">All</MenuItem>
+          {branches.map((b) => (
+            <MenuItem key={b.BranchID} value={String(b.BranchID)}>
+              {b.BranchName}
+            </MenuItem>
+          ))}
+        </Select>
+        </FormControl>
           <TextField
             variant="outlined"
             size="small"
             placeholder="Search..."
             value={searchTerm}
             onChange={handleSearchChange}
-            sx={{ width: 300, maxWidth: "100%" }}
+            sx={{ width: 350, maxWidth: "100%" }}
           />
+          
           <Box sx={{ display: "flex", gap: 1 }}>
             <Button
               variant="outlined"
@@ -992,7 +1019,12 @@ async function handleAddRenewal() {
               <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
             </Menu>
           
-     
+        <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1 }}>
+          {/* Example: a button to open ManagePlansLayout */}
+          <Button variant="outlined"  onClick={() => setManagePlansOpen(true)}  sx={{ color: "primary" }}>
+            Manage Plans
+          </Button>
+        </Box>
 
             {activeTab === 0 && (
               <Button

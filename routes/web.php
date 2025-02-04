@@ -17,12 +17,12 @@ Route::get('/', function() {
         return redirect()->route('staff.dashboard');
     }
     // If no one is logged in, show a public landing or Blade 'welcome'
-    return Inertia::render('LandingPage');// or Inertia::render('Public/Welcome')
+    return Inertia::render('LandingPage'); // or Inertia::render('Public/Welcome')
 })->name('root');
 
 use App\Http\Controllers\ProfileController;
-
 Route::middleware('auth:owner,admin,staff')->get('/profile', [ProfileController::class, 'show']);
+
 /*
 |--------------------------------------------------------------------------
 | Owner Dashboard
@@ -34,11 +34,9 @@ Route::middleware(['auth:owner'])->group(function () {
     Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index'])
         ->name('owner.dashboard');
 
- Route::get('/owner/dashboard-metrics', [OwnerDashboardController::class, 'metrics'])
-    ->middleware('auth:owner')
-    ->name('dashboard.metrics');
+    Route::get('/owner/dashboard-metrics', [OwnerDashboardController::class, 'metrics'])
+        ->name('dashboard.metrics');
 });
-
 
 /*
 |--------------------------------------------------------------------------
@@ -56,18 +54,25 @@ Route::middleware('auth:admin')->prefix('admin')->group(function () {
     Route::get('settings', [AdminDashboardController::class, 'settings'])->name('admin.settings');
 });
 
-
 /*
 |--------------------------------------------------------------------------
 | Staff Dashboard
 |--------------------------------------------------------------------------
+|
+| If you want ONLY "staff" to access these, keep 'auth:staff'.
+| But if you want owners/admin to also see them, you can do multiGuard:owner,admin,staff.
+| For a pure staff scenario, revert back to auth:staff only.
+|
 */
 use App\Http\Controllers\StaffDashboardController;
 
-Route::middleware('auth:staff')->prefix('staff')->group(function () {
-    
+// Example: let staff routes be accessible by staff, admin, or owner:
+Route::middleware('multiGuard:owner,admin,staff')->prefix('staff')->group(function () {
     Route::get('dashboard', [StaffDashboardController::class, 'index'])->name('staff.dashboard');
-    Route::get('/staff/branches', [StaffDashboardController::class, 'branches']);
+
+    // If you need a route like /staff/branches:
+    Route::get('branches', [StaffDashboardController::class, 'branches'])->name('staff.branches');
+
     Route::get('tasks', [StaffDashboardController::class, 'tasks'])->name('staff.tasks');
     Route::get('attendance', [StaffDashboardController::class, 'attendance'])->name('staff.attendance');
     Route::get('notifications', [StaffDashboardController::class, 'notifications'])->name('staff.notifications');
@@ -96,7 +101,6 @@ Route::get('/admin/login', [AdminAuthController::class, 'showLoginForm'])->name(
 Route::post('/admin/login', [AdminAuthController::class, 'login'])->name('admin.login.post');
 Route::post('/admin/logout', [AdminAuthController::class, 'logout'])->name('admin.logout');
 
-
 /*
 |--------------------------------------------------------------------------
 | Owner Authentication Routes
@@ -108,17 +112,15 @@ Route::get('/owner/login', [OwnerAuthController::class, 'showLoginForm'])->name(
 Route::post('/owner/login', [OwnerAuthController::class, 'login'])->name('owner.login.post');
 Route::post('/owner/logout', [OwnerAuthController::class, 'logout'])->name('owner.logout');
 
-
-/* 
+/*
 |--------------------------------------------------------------------------
-| 1) PaymentController
+| PaymentController
 |--------------------------------------------------------------------------
 */
 use App\Http\Controllers\PaymentController;
 
 Route::prefix('payments')->group(function() {
-
-    // A) Payment Setup & Configuration
+    // Example usage of multiGuard for various roles
     Route::get('setup/paymongo', [PaymentController::class, 'viewPayMongoCredentials'])
         ->middleware('auth:owner')
         ->name('payments.setup.paymongo');
@@ -141,7 +143,7 @@ Route::prefix('payments')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('payments.setup.methods.toggle');
 
-    // B) Transaction Logs
+    // Payment transactions
     Route::get('transactions', [PaymentController::class, 'indexTransactions'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.transactions.index');
@@ -149,7 +151,7 @@ Route::prefix('payments')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('payments.transactions.export');
 
-    // C) Issue Refunds
+    // Refunds
     Route::post('{paymentId}/refund/initiate', [PaymentController::class, 'initiateRefund'])
         ->middleware('multiGuard:owner,admin')
         ->name('payments.refund.initiate');
@@ -157,7 +159,7 @@ Route::prefix('payments')->group(function() {
         ->middleware('multiGuard:owner,admin')
         ->name('payments.refund.approve');
 
-    // K) Payment (Direct Table) CRUD
+    // Payment CRUD
     Route::get('create', [PaymentController::class, 'create'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.create');
@@ -178,7 +180,7 @@ Route::prefix('payments')->group(function() {
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.destroy');
 
-    // M) Partial / Multiple Payments
+    // Partial / Multiple
     Route::get('partial/create', [PaymentController::class, 'createPartialPayment'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.partial.create');
@@ -190,6 +192,11 @@ Route::prefix('payments')->group(function() {
         ->name('payments.link.invoices');
 });
 
+/*
+|--------------------------------------------------------------------------
+| InvoiceController
+|--------------------------------------------------------------------------
+*/
 use App\Http\Controllers\InvoiceController;
 
 Route::prefix('invoices')->middleware('multiGuard:owner,admin,staff')->group(function() {
@@ -200,16 +207,15 @@ Route::prefix('invoices')->middleware('multiGuard:owner,admin,staff')->group(fun
     Route::delete('{id}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');
 });
 
-/* 
+/*
 |--------------------------------------------------------------------------
-| 2) NotificationController
+| NotificationController
 |--------------------------------------------------------------------------
 */
 use App\Http\Controllers\NotificationController;
 
 Route::prefix('notifications')->group(function() {
-
-    // D) Notification Channels Setup
+    // Channels
     Route::get('channels/semaphore', [NotificationController::class, 'viewSemaphore'])
         ->middleware('auth:owner')
         ->name('notifications.channels.semaphore');
@@ -231,7 +237,7 @@ Route::prefix('notifications')->group(function() {
         ->middleware('auth:owner')
         ->name('notifications.channels.mailjet.update');
 
-    // E) Notification Sending & Management
+    // Sending notifications
     Route::post('send/bulk-sms', [NotificationController::class, 'sendBulkSMS'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('notifications.send.bulkSMS');
@@ -248,18 +254,16 @@ Route::prefix('notifications')->group(function() {
         ->middleware('auth:owner')
         ->name('notifications.mailjet.advanced');
 
-        Route::get('announcements', [NotificationController::class, 'indexAnnouncements'])
+    // Announcements
+    Route::get('announcements', [NotificationController::class, 'indexAnnouncements'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('notifications.announcements.index');
-
     Route::post('announcements', [NotificationController::class, 'storeAnnouncement'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('notifications.announcements.store');
-
     Route::put('announcements/{id}', [NotificationController::class, 'updateAnnouncement'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('notifications.announcements.update');
-
     Route::delete('announcements/{id}', [NotificationController::class, 'destroyAnnouncement'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('notifications.announcements.destroy');
@@ -269,7 +273,7 @@ Route::prefix('notifications')->group(function() {
         ->middleware('multiGuard:owner,admin,staff')
         ->name('notifications.send.staff');
 
-    // F) Notification Templates
+    // Templates
     Route::get('templates', [NotificationController::class, 'indexTemplates'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('notifications.templates.index');
@@ -287,9 +291,9 @@ Route::prefix('notifications')->group(function() {
         ->name('notifications.templates.approve');
 });
 
-/* 
+/*
 |--------------------------------------------------------------------------
-| 3) MembershipController
+| MembershipController
 |--------------------------------------------------------------------------
 */
 use App\Http\Controllers\MembershipController;
@@ -298,7 +302,7 @@ Route::prefix('membership')->group(function() {
 
     // 1) Members
     Route::get('members', [MembershipController::class, 'apiIndex'])
-        ->name('membership.members.apiIndex'); // or rename as you prefer
+        ->name('membership.members.apiIndex');
     Route::post('members', [MembershipController::class, 'apiStoreMember'])
         ->name('membership.members.apiStoreMember');
     Route::put('members/{id}', [MembershipController::class, 'apiUpdateMember'])
@@ -306,423 +310,323 @@ Route::prefix('membership')->group(function() {
     Route::delete('members/{id}', [MembershipController::class, 'apiDestroyMember'])
         ->name('membership.members.apiDestroyMember');
     Route::get('statuses', [MembershipController::class, 'indexMemberStatuses'])
-    ->name('membership.statuses.index');
+        ->name('membership.statuses.index');
     Route::get('members/search', [MembershipController::class, 'apiSearchMembers'])
-    ->name('membership.members.apiSearch');
+        ->name('membership.members.apiSearch');
     Route::get('growth', [MembershipController::class, 'growth'])->name('membership.growth');
 
-
     // 2) Plans
-    Route::get('plans', [MembershipController::class, 'indexPlans'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('membership.plans.indexPlans');
-    Route::post('plans', [MembershipController::class, 'storePlan'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('membership.plans.storePlan');
-    Route::put('plans/{id}', [MembershipController::class, 'updatePlan'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('membership.plans.updatePlan');
-    Route::delete('plans/{id}', [MembershipController::class, 'destroyPlan'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('membership.plans.destroyPlan');
-
-    // 3) Renewals
-    Route::post('renewals', [MembershipController::class, 'storeRenewal'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('membership.renewals.store');
-    Route::delete('renewals/{id}', [MembershipController::class, 'destroyRenewal'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('membership.renewals.destroy');
-    
-
-    // 4) Freezes
-    Route::post('freezes', [MembershipController::class, 'storeFreeze'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('membership.freezes.store');
-
-    Route::put('freezes/{id}', [MembershipController::class, 'updateFreeze'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('membership.freezes.update');
-
-    Route::delete('freezes/{id}', [MembershipController::class, 'destroyFreeze'])
-     ->middleware('multiGuard:owner,admin,staff')
-     ->name('membership.freezes.destroy');
-
-
-    Route::post('storeLockInMembership', [MembershipController::class, 'storeLockInMembership'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('membership.lockIn.store');
-    
-    Route::post('import-lock-in', [MembershipController::class, 'importLockInMember'])
-     ->middleware('multiGuard:owner,admin,staff')
-     ->name('membership.lockIn.import');
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        Route::get('plans', [MembershipController::class, 'indexPlans'])
+            ->name('membership.plans.indexPlans');
+        Route::post('plans', [MembershipController::class, 'storePlan'])
+            ->name('membership.plans.storePlan');
+        Route::put('plans/{id}', [MembershipController::class, 'updatePlan'])
+            ->name('membership.plans.updatePlan');
+        Route::delete('plans/{id}', [MembershipController::class, 'destroyPlan'])
+            ->name('membership.plans.destroyPlan');
     });
 
+    // 3) Renewals
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        Route::post('renewals', [MembershipController::class, 'storeRenewal'])
+            ->name('membership.renewals.store');
+        Route::delete('renewals/{id}', [MembershipController::class, 'destroyRenewal'])
+            ->name('membership.renewals.destroy');
+    });
 
+    // 4) Freezes
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        Route::post('freezes', [MembershipController::class, 'storeFreeze'])
+            ->name('membership.freezes.store');
+        Route::put('freezes/{id}', [MembershipController::class, 'updateFreeze'])
+            ->name('membership.freezes.update');
+        Route::delete('freezes/{id}', [MembershipController::class, 'destroyFreeze'])
+            ->name('membership.freezes.destroy');
 
-/* 
+        Route::post('storeLockInMembership', [MembershipController::class, 'storeLockInMembership'])
+            ->name('membership.lockIn.store');
+
+        Route::post('import-lock-in', [MembershipController::class, 'importLockInMember'])
+            ->name('membership.lockIn.import');
+    });
+});
+
+/*
 |--------------------------------------------------------------------------
-| 4) BookingController
+| BookingController
 |--------------------------------------------------------------------------
 */
 use App\Http\Controllers\BookingController;
 
 Route::prefix('booking')->group(function() {
 
-    // N) Bookings
-    Route::get('create', [BookingController::class, 'createBooking'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.create');
-    Route::post('/', [BookingController::class, 'storeBooking'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.store');
-    Route::get('/', [BookingController::class, 'indexBooking'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.index');
-    Route::get('most-popular', [BookingController::class, 'mostPopular'])
-        ->name('booking.mostPopular');
-    Route::get('{id}/edit', [BookingController::class, 'editBooking'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.edit');
-    Route::put('{id}', [BookingController::class, 'updateBooking'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.update');
-    Route::post('{id}/cancel', [BookingController::class, 'cancelBooking'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.cancel');
+    // Example: owners/admin/staff can do these
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        Route::get('create', [BookingController::class, 'createBooking'])->name('booking.create');
+        Route::post('/', [BookingController::class, 'storeBooking'])->name('booking.store');
+        Route::get('/', [BookingController::class, 'indexBooking'])->name('booking.index');
+        Route::get('{id}/edit', [BookingController::class, 'editBooking'])->name('booking.edit');
+        Route::put('{id}', [BookingController::class, 'updateBooking'])->name('booking.update');
+        Route::post('{id}/cancel', [BookingController::class, 'cancelBooking'])->name('booking.cancel');
+
+        Route::get('/coaches', [BookingController::class, 'index'])->name('coaches.index');
+
+        // Facilities
+        Route::get('facilities', [BookingController::class, 'indexFacilities'])
+            ->name('booking.facilities.index');
+
+        // Sessions
+        Route::get('sessions', [BookingController::class, 'indexSessions'])->name('booking.sessions.index');
+        Route::get('sessions/create', [BookingController::class, 'createSession'])->name('booking.sessions.create');
+        Route::post('sessions', [BookingController::class, 'storeSession'])->name('booking.sessions.store');
+        Route::put('sessions/{id}', [BookingController::class, 'updateSession'])->name('booking.sessions.update');
+        Route::post('sessions/{id}/cancel', [BookingController::class, 'cancelSession'])->name('booking.sessions.cancel');
+
+        Route::post('sessions/book', [BookingController::class, 'storeSessionBooking'])->name('booking.sessions.book');
+        Route::post('sessions/waitlist', [BookingController::class, 'addToWaitlist'])->name('booking.sessions.waitlist');
+        Route::post('sessions/attendance', [BookingController::class, 'markAttendance'])->name('booking.sessions.attendance');
+    });
+
+    // Some routes might not require staff
+    Route::get('most-popular', [BookingController::class, 'mostPopular'])->name('booking.mostPopular');
     Route::get('trends', [BookingController::class, 'bookingTrends'])->name('booking.trends');
-
-    
-    Route::get('/coaches', [BookingController::class, 'index'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('coaches.index');
-
-    // Facilities
-    Route::get('facilities', [BookingController::class, 'indexFacilities'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.facilities.index');
-
-    // O) Coaching Sessions
-    Route::get('sessions', [BookingController::class, 'indexSessions'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.sessions.index');
-    Route::get('sessions/create', [BookingController::class, 'createSession'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.sessions.create');
-    Route::post('sessions', [BookingController::class, 'storeSession'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.sessions.store');
-    // **NEW** Update & Cancel Session
-    Route::put('sessions/{id}', [BookingController::class, 'updateSession'])
-         ->middleware('multiGuard:owner,admin,staff')
-         ->name('booking.sessions.update');
-    Route::post('sessions/{id}/cancel', [BookingController::class, 'cancelSession'])
-         ->middleware('multiGuard:owner,admin,staff')
-         ->name('booking.sessions.cancel');
-
-    Route::post('sessions/book', [BookingController::class, 'storeSessionBooking'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.sessions.book');
-    Route::post('sessions/waitlist', [BookingController::class, 'addToWaitlist'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.sessions.waitlist');
-    Route::post('sessions/attendance', [BookingController::class, 'markAttendance'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('booking.sessions.attendance');
 });
 
 use App\Http\Controllers\StaffController;
 
-Route::middleware('auth:staff')->prefix('staff')->group(function () {
+// Everything under /staff
+Route::prefix('staff')->group(function () {
 
-    // Staff main CRUD
-    Route::get('/', [StaffController::class, 'indexStaffJson'])->name('staff.index');
-    Route::post('/', [StaffController::class, 'storeStaff'])->name('staff.store');
-    Route::put('/{id}', [StaffController::class, 'updateStaff'])->name('staff.update');
-    Route::delete('/{id}', [StaffController::class, 'destroyStaff'])->name('staff.destroy');
+    // 1) The routes for staff that owners, admins, and staff can all access:
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        // Staff main CRUD
+        Route::get('/', [StaffController::class, 'indexStaffJson'])->name('staff.index');
+        Route::post('/', [StaffController::class, 'storeStaff'])->name('staff.store');
+        Route::put('/{id}', [StaffController::class, 'updateStaff'])->name('staff.update');
+        Route::delete('/{id}', [StaffController::class, 'destroyStaff'])->name('staff.destroy');
 
-    // 1) Attendance
-    Route::get('/attendance', [StaffController::class, 'indexAttendance'])->name('attendance.index');
-    Route::put('/attendance/{id}', [StaffController::class, 'updateAttendance'])->name('attendance.update');
-    Route::delete('/attendance/{id}', [StaffController::class, 'destroyAttendance'])->name('attendance.destroy');
+        // Attendance
+        Route::get('attendance', [StaffController::class, 'indexAttendance'])->name('staff.attendance.index');
+        Route::put('attendance/{id}', [StaffController::class, 'updateAttendance'])->name('staff.attendance.update');
+        Route::delete('attendance/{id}', [StaffController::class, 'destroyAttendance'])->name('staff.attendance.destroy');
+        Route::post('attendance/clock-in-out', [StaffController::class, 'clockInOut'])->name('staff.attendance.clockInOut');
 
-    // 1A) Clock In/Out
-    Route::post('/attendance/clock-in-out', [StaffController::class, 'clockInOut'])
-         ->name('attendance.clockInOut');
+        // Tasks
+        Route::prefix('tasks')->group(function() {
+            Route::get('/', [StaffController::class, 'indexTasks'])->name('staff.tasks.index');
+            Route::post('/', [StaffController::class, 'storeTask'])->name('staff.tasks.store');
+            Route::put('/{id}', [StaffController::class, 'updateTask'])->name('staff.tasks.update');
+            Route::delete('/{id}', [StaffController::class, 'destroyTask'])->name('staff.tasks.destroy');
+        });
 
-    // 2) Tasks
-    Route::prefix('tasks')->group(function() {
-        Route::get('/', [StaffController::class, 'indexTasks'])->name('tasks.index');
-        Route::post('/', [StaffController::class, 'storeTask'])->name('tasks.store');
-        Route::put('/{id}', [StaffController::class, 'updateTask'])->name('tasks.update');
-        Route::delete('/{id}', [StaffController::class, 'destroyTask'])->name('tasks.destroy');
+        // Schedules
+        Route::prefix('schedules')->group(function() {
+            Route::get('/', [StaffController::class, 'indexSchedules'])->name('staff.schedules.index');
+            Route::post('/', [StaffController::class, 'storeSchedule'])->name('staff.schedules.store');
+            Route::put('/{id}', [StaffController::class, 'updateSchedule'])->name('staff.schedules.update');
+            Route::delete('/{id}', [StaffController::class, 'destroySchedule'])->name('staff.schedules.destroy');
+        });
+
+        // Additional
+        Route::get('performance', [StaffController::class, 'performance'])->name('staff.performance');
+        Route::get('dashboard-info', [StaffController::class, 'staffDashboardInfo'])->name('staff.dashboard.info');
     });
 
-    // 3) Schedules
-    Route::prefix('schedules')->group(function() {
-        Route::get('/', [StaffController::class, 'indexSchedules'])->name('schedules.index');
-        Route::post('/', [StaffController::class, 'storeSchedule'])->name('schedules.store');
-        Route::put('/{id}', [StaffController::class, 'updateSchedule'])->name('schedules.update');
-        Route::delete('/{id}', [StaffController::class, 'destroySchedule'])->name('schedules.destroy');
-    });
 
-    // 4) Additional routes, e.g. staff/performance, etc.
-    Route::get('/performance', [StaffController::class, 'performance'])->name('performance');
-    Route::get('/dashboard-info', [StaffController::class, 'staffDashboardInfo'])->name('dashboard.info');
+    // 2) The routes for payroll & bonus: owners and admins only
+    Route::middleware('multiGuard:owner,admin')->group(function() {
+
+        // /staff/payroll
+        Route::prefix('payroll')->group(function() {
+            // e.g. GET /staff/payroll => index all payrolls
+            Route::get('/', [StaffController::class, 'indexPayroll'])->name('staff.payroll.index');
+
+            // e.g. GET /staff/payroll/create => fetch staff list, etc.
+            Route::get('create', [StaffController::class, 'createPayroll'])->name('staff.payroll.create');
+
+            // e.g. POST /staff/payroll => store new payroll
+            Route::post('/', [StaffController::class, 'storePayroll'])->name('staff.payroll.store');
+
+            // e.g. PUT /staff/payroll/{id} => update existing payroll
+            Route::put('{id}', [StaffController::class, 'updatePayroll'])->name('staff.payroll.update');
+
+            // e.g. DELETE /staff/payroll/{id} => remove payroll
+            Route::delete('{id}', [StaffController::class, 'destroyPayroll'])->name('staff.payroll.destroy');
+        });
+
+        // /staff/bonus
+        Route::prefix('bonus')->group(function() {
+            // e.g. GET /staff/bonus/create => show staff for awarding bonus
+            Route::get('create', [StaffController::class, 'createBonus'])->name('staff.bonus.create');
+            
+            // e.g. POST /staff/bonus => store newly created bonus
+            Route::post('/', [StaffController::class, 'storeBonus'])->name('staff.bonus.store');
+
+            // If you have an index or a delete method for bonus, add them:
+            // Route::get('/', [StaffController::class, 'indexBonus'])->name('bonus.index');
+            // Route::delete('{id}', [StaffController::class, 'destroyBonus'])->name('bonus.destroy');
+        });
+    });
 });
-// routes/web.php (or api.php)
-
-
-/* 
+/*
 |--------------------------------------------------------------------------
-| 6) OperationsController
+| OperationsController
 |--------------------------------------------------------------------------
 */
 use App\Http\Controllers\OperationsController;
 
 Route::prefix('operations')->group(function() {
-    // Maintenance Logs (Consolidated)
-    Route::prefix('maintenance-logs')->name('maintenance.logs.')->group(function() {
-        Route::get('/', [OperationsController::class, 'indexMaintenanceLogs'])
-            ->middleware('multiGuard:owner,admin,staff')
-            ->name('index');
-            
-            
-        Route::post('/', [OperationsController::class, 'storeMaintenanceLog'])
-            ->middleware('multiGuard:owner,admin,staff')
-            ->name('store');
-            
-        Route::put('/{id}', [OperationsController::class, 'updateMaintenanceLog'])
-            ->middleware('multiGuard:owner,admin,staff')
-            ->name('update');
-            
-        Route::delete('/{id}', [OperationsController::class, 'destroyMaintenanceLog'])
-            ->middleware('multiGuard:owner,admin,staff')
-            ->name('destroy');
 
+    // Maintenance Logs
+    Route::prefix('maintenance-logs')->name('maintenance.logs.')->group(function() {
+        Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+            Route::get('/', [OperationsController::class, 'indexMaintenanceLogs'])->name('index');
+            Route::post('/', [OperationsController::class, 'storeMaintenanceLog'])->name('store');
+            Route::put('/{id}', [OperationsController::class, 'updateMaintenanceLog'])->name('update');
+            Route::delete('/{id}', [OperationsController::class, 'destroyMaintenanceLog'])->name('destroy');
             Route::get('/maintenance/stats', [OperationsController::class, 'getMaintenanceStats'])
-     ->middleware('multiGuard:owner,admin,staff')
-     ->name('maintenance.stats');
+                ->name('maintenance.stats');
+        });
     });
 
     // Inventory
     Route::get('products', [OperationsController::class, 'indexProducts'])
         ->middleware('multiGuard:owner,admin')
         ->name('operations.products.index');
+
     Route::post('products', [OperationsController::class, 'storeProduct'])
         ->middleware('multiGuard:owner,admin')
         ->name('operations.products.store');
+
     Route::post('products/adjust', [OperationsController::class, 'adjustStock'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('operations.products.adjust');
+
     Route::delete('products/{id}', [OperationsController::class, 'destroyProduct'])
         ->middleware('multiGuard:owner,admin')
         ->name('operations.products.destroy');
+
     Route::get('stock-levels', [OperationsController::class, 'viewStockLevels'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('operations.products.stockLevels');
 
     // Lockers
-    Route::get('lockers', [OperationsController::class, 'indexLockers'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('operations.lockers.index');    
-    Route::post('lockers', [OperationsController::class, 'storeLocker'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('operations.lockers.store');
-    Route::post('lockers/borrow', [OperationsController::class, 'borrowLockerKey'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('operations.lockers.borrow');
-    Route::post('lockers/{usageId}/return', [OperationsController::class, 'returnLockerKey'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('operations.lockers.return');
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        Route::get('lockers', [OperationsController::class, 'indexLockers'])->name('operations.lockers.index');
+        Route::post('lockers', [OperationsController::class, 'storeLocker'])->name('operations.lockers.store');
+        Route::post('lockers/borrow', [OperationsController::class, 'borrowLockerKey'])->name('operations.lockers.borrow');
+        Route::post('lockers/{usageId}/return', [OperationsController::class, 'returnLockerKey'])->name('operations.lockers.return');
+    });
 
     // Equipment
-    Route::get('equipment', [OperationsController::class, 'indexEquipment'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('operations.equipment.index');
-    Route::post('equipment', [OperationsController::class, 'storeEquipment'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('operations.equipment.store');
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        Route::get('equipment', [OperationsController::class, 'indexEquipment'])->name('operations.equipment.index');
+        Route::post('equipment', [OperationsController::class, 'storeEquipment'])->name('operations.equipment.store');
+    });
 
-    // Walk-Ins
-    Route::get('walk-ins', [OperationsController::class, 'indexWalkIns'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('operations.walkins.index');
-
-    Route::get('walk-ins/create', [OperationsController::class, 'createWalkIn'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('operations.walkins.create');
-
-    Route::post('walk-ins', [OperationsController::class, 'storeWalkIn'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('operations.walkins.store');
-
-    Route::get('walk-ins/{id}/edit', [OperationsController::class, 'editWalkIn'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('operations.walkins.edit');
-
-    Route::put('walk-ins/{id}', [OperationsController::class, 'updateWalkIn'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('operations.walkins.update');
-
-    Route::delete('walk-ins/{id}', [OperationsController::class, 'destroyWalkIn'])
-    ->middleware('multiGuard:owner,admin,staff')
-    ->name('operations.walkins.destroy');
-
+    // Walk-ins
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        Route::get('walk-ins', [OperationsController::class, 'indexWalkIns'])->name('operations.walkins.index');
+        Route::get('walk-ins/create', [OperationsController::class, 'createWalkIn'])->name('operations.walkins.create');
+        Route::post('walk-ins', [OperationsController::class, 'storeWalkIn'])->name('operations.walkins.store');
+        Route::get('walk-ins/{id}/edit', [OperationsController::class, 'editWalkIn'])->name('operations.walkins.edit');
+        Route::put('walk-ins/{id}', [OperationsController::class, 'updateWalkIn'])->name('operations.walkins.update');
+        Route::delete('walk-ins/{id}', [OperationsController::class, 'destroyWalkIn'])->name('operations.walkins.destroy');
+    });
 
     // Member Visits
-    Route::get('visits/create', [OperationsController::class, 'createVisit'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('operations.visits.create');
-    Route::post('visits', [OperationsController::class, 'storeVisit'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('operations.visits.store');
-    Route::get('visits', [OperationsController::class, 'indexVisits'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('operations.visits.index');
-    Route::get('visits/{id}/edit', [OperationsController::class, 'editVisit'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('operations.visits.edit');
-    Route::put('visits/{id}', [OperationsController::class, 'updateVisit'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('operations.visits.update');
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        Route::get('visits/create', [OperationsController::class, 'createVisit'])->name('operations.visits.create');
+        Route::post('visits', [OperationsController::class, 'storeVisit'])->name('operations.visits.store');
+        Route::get('visits', [OperationsController::class, 'indexVisits'])->name('operations.visits.index');
+        Route::get('visits/{id}/edit', [OperationsController::class, 'editVisit'])->name('operations.visits.edit');
+        Route::put('visits/{id}', [OperationsController::class, 'updateVisit'])->name('operations.visits.update');
+    });
 });
 
+/*
+|--------------------------------------------------------------------------
+| FinanceController
+|--------------------------------------------------------------------------
+*/
 use App\Http\Controllers\FinanceController;
 
 Route::prefix('finance')->group(function() {
 
-    // Points to: /finance/summary  (GET)
-    Route::get('summary', [FinanceController::class, 'indexSummary'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('finance.summary.index');
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        Route::get('summary', [FinanceController::class, 'indexSummary'])->name('finance.summary.index');
+        Route::get('financial-summary', [FinanceController::class, 'getFinancialSummary'])->name('finance.summary');
+    });
 
-    // Points to: /finance/summary  (GET) -- if you want an alias
-    Route::get('financial-summary', [FinanceController::class, 'getFinancialSummary'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('finance.summary');
+    Route::middleware('multiGuard:owner,admin')->group(function() {
+        Route::put('summary/{id}', [FinanceController::class, 'updateSummary'])->name('finance.summary.update');
+        Route::delete('summary/{id}', [FinanceController::class, 'destroySummary'])->name('finance.summary.destroy');
 
-    Route::put('summary/{id}', [FinanceController::class, 'updateSummary'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('finance.summary.update');
+        Route::get('cashflow/create', [FinanceController::class, 'createCashFlow'])->name('finance.cashflow.create');
+        Route::post('cashflow', [FinanceController::class, 'storeCashFlow'])->name('finance.cashflow.store');
+        Route::get('expenses/create', [FinanceController::class, 'createExpense'])->name('finance.expenses.create');
+        Route::post('expenses', [FinanceController::class, 'storeExpense'])->name('finance.expenses.store');
+        Route::get('expenses/{id}/edit', [FinanceController::class, 'editExpense'])->name('finance.expenses.edit');
+        Route::put('expenses/{id}', [FinanceController::class, 'updateExpense'])->name('finance.expenses.update');
+        Route::delete('expenses/{id}', [FinanceController::class, 'destroyExpense'])->name('finance.expenses.destroy');
+    });
 
-    Route::delete('summary/{id}', [FinanceController::class, 'destroySummary'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('finance.summary.destroy');
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        Route::get('cashflow', [FinanceController::class, 'indexCashFlow'])->name('finance.cashflow.index');
+        Route::get('expenses', [FinanceController::class, 'indexExpenses'])->name('finance.expenses.index');
 
-    // DailyCashFlow
-    // => GET /finance/cashflow/create
-    Route::get('cashflow/create', [FinanceController::class, 'createCashFlow'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('finance.cashflow.create');
+        Route::get('promotions', [FinanceController::class, 'indexPromotions'])->name('finance.promotions.index');
+        Route::post('promotions', [FinanceController::class, 'storePromotion'])->name('finance.promotions.store');
+        Route::post('promotions/{id}/toggle', [FinanceController::class, 'togglePromotion'])->name('finance.promotions.toggle');
 
-    // => POST /finance/cashflow
-    Route::post('cashflow', [FinanceController::class, 'storeCashFlow'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('finance.cashflow.store');
-
-    // => GET /finance/cashflow
-    Route::get('cashflow', [FinanceController::class, 'indexCashFlow'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('finance.cashflow.index');
-
-    // Expenses
-    // => GET /finance/expenses/create
-    Route::get('expenses/create', [FinanceController::class, 'createExpense'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('finance.expenses.create');
-
-    // => POST /finance/expenses
-    Route::post('expenses', [FinanceController::class, 'storeExpense'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('finance.expenses.store');
-
-    // => GET /finance/expenses
-    Route::get('expenses', [FinanceController::class, 'indexExpenses'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('finance.expenses.index');
-
-    // => GET /finance/expenses/123/edit
-    Route::get('expenses/{id}/edit', [FinanceController::class, 'editExpense'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('finance.expenses.edit');
-
-    // => PUT /finance/expenses/123
-    Route::put('expenses/{id}', [FinanceController::class, 'updateExpense'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('finance.expenses.update');
-
-    // => DELETE /finance/expenses/123
-    Route::delete('expenses/{id}', [FinanceController::class, 'destroyExpense'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('finance.expenses.destroy');
-
-    // Promotions
-    // => GET /finance/promotions
-    Route::get('promotions', [FinanceController::class, 'indexPromotions'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('finance.promotions.index');
-
-    // => POST /finance/promotions
-    Route::post('promotions', [FinanceController::class, 'storePromotion'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('finance.promotions.store');
-
-    // => POST /finance/promotions/123/toggle
-    Route::post('promotions/{id}/toggle', [FinanceController::class, 'togglePromotion'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('finance.promotions.toggle');
-
-    // => POST /finance/generate-cashflow
-    Route::post('generate-cashflow', [FinanceController::class, 'generateDailyCashFlow'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('finance.generate-cashflow');
+        Route::post('generate-cashflow', [FinanceController::class, 'generateDailyCashFlow'])->name('finance.generate-cashflow');
+    });
 });
 
-/* 
+/*
 |--------------------------------------------------------------------------
-| 8) SystemController
+| SystemController
 |--------------------------------------------------------------------------
 */
 use App\Http\Controllers\SystemController;
 
 Route::prefix('system')->group(function() {
-
     // System Logs
-    Route::get('logs', [SystemController::class, 'indexLogs'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('system.logs.index');
-    Route::delete('logs/{id}', [SystemController::class, 'destroyLog'])
-        ->middleware('auth:owner')
-        ->name('system.logs.destroy');
+    Route::middleware('multiGuard:owner,admin')->group(function() {
+        Route::get('logs', [SystemController::class, 'indexLogs'])->name('system.logs.index');
+        Route::delete('logs/{id}', [SystemController::class, 'destroyLog'])->name('system.logs.destroy');
+    });
 
     // Reports
-    Route::get('reports', [SystemController::class, 'generateReports'])
-        ->middleware('multiGuard:owner,admin')
-        ->name('system.reports');
-        Route::get('metrics', [SystemController::class, 'systemMetrics'])->name('system.metrics');
+    Route::middleware('multiGuard:owner,admin')->group(function() {
+        Route::get('reports', [SystemController::class, 'generateReports'])->name('system.reports');
+    });
 
+    // Everyone can see system metrics?
+    Route::get('metrics', [SystemController::class, 'systemMetrics'])->name('system.metrics');
 });
 
-/* 
-|-------------------------------------------------------------------------- 
-| 9) BranchController (Updated)
-|-------------------------------------------------------------------------- 
+/*
+|--------------------------------------------------------------------------
+| BranchController
+|--------------------------------------------------------------------------
 */
 use App\Http\Controllers\BranchController;
 
 Route::prefix('owner/branches')->name('branches.')->group(function() {
-    // Index accessible by owner, admin, staff
+    // Accessible by owner, admin, staff
     Route::get('/', [BranchController::class, 'indexJson'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('index');
 
-    // Write operations only for owner/admin
+    // Write ops only for owner/admin
     Route::middleware('multiGuard:owner,admin')->group(function() {
         Route::post('/', [BranchController::class, 'storeJson'])->name('store');
         Route::put('/{id}', [BranchController::class, 'updateJson'])->name('update');
         Route::delete('/{id}', [BranchController::class, 'destroyJson'])->name('destroy');
-        // Change this:
+
+        // If you want staff also:
         Route::get('/branch/stats', [BranchController::class, 'getBranchStats'])
              ->middleware('multiGuard:owner,admin,staff')
              ->name('stats');
