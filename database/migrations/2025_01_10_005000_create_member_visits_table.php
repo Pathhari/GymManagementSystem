@@ -11,12 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('member_visit', function (Blueprint $table) {
+        Schema::create('member_visits', function (Blueprint $table) {
             $table->id('VisitID');
             $table->unsignedBigInteger('BranchID')->nullable(); 
             $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->unsignedBigInteger('MemberID');
             $table->date('VisitDate');
+            $table->unique(['MemberID', 'VisitDate'], 'uniq_member_visit');
             $table->time('VisitTime');
             $table->string('CheckInMethod')->nullable(); // "Biometric", "Card"
             $table->text('Remarks')->nullable();
@@ -24,6 +25,7 @@ return new class extends Migration
             $table->timestamps();
         
             $table->foreign('MemberID')->references('MemberID')->on('members')->onDelete('cascade');
+
         });
         
     }

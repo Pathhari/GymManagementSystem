@@ -15,7 +15,29 @@ use Illuminate\Support\Arr;
 
 
 class StaffController extends Controller
+{   
+
+    public function staffDashboardInfo()
 {
+    // If your staff tasks have relationships (like 'staff', etc.), you can eager load:
+    // tasks = StaffTask::with('staff')->where(...)...
+    // Or just do a simple all() if you want every row.
+    $tasks = \App\Models\StaffTask::with(['staff'])->orderBy('TaskID', 'desc')->get();
+
+    // Eager load 'staff' on your Attendance model if you want staff info
+    $attendance = \App\Models\Attendance::with(['staff'])->orderBy('Date', 'desc')->get();
+
+    // Schedules with staff or anything else:
+    $schedules = \App\Models\StaffSchedule::with(['staff'])->orderBy('ShiftDate', 'desc')->get();
+
+    // Return all in one JSON
+    return response()->json([
+        'tasks'      => $tasks,
+        'attendance' => $attendance,
+        'schedule'   => $schedules,
+    ]);
+}
+
     /**
      * Return a JSON list of all staff members,
      * including single 'branch' and pivot 'branches'.
@@ -173,11 +195,13 @@ class StaffController extends Controller
     public function clockInOut(Request $request)
     {
         $data = $request->validate([
+            // Must actually exist in staff table
             'StaffID' => 'required|exists:staff,StaffID',
             'Date'    => 'required|date',
-            'TimeIn'  => 'nullable|date_format:H:i',
-            'TimeOut' => 'nullable|date_format:H:i|after:TimeIn',
-        ]);
+            // Accept "HH:mm:ss"
+            'TimeIn' => 'nullable|date_format:H:i',    // no seconds
+            'TimeOut' => 'nullable|date_format:H:i|after:TimeIn'
+            ]);
 
         $attendance = Attendance::firstOrNew([
             'StaffID' => $data['StaffID'],
@@ -191,7 +215,6 @@ class StaffController extends Controller
             $attendance->TimeOut = $data['TimeOut'];
         }
 
-        // Calculate hours if both TimeIn & TimeOut exist
         if ($attendance->TimeIn && $attendance->TimeOut) {
             $in  = strtotime($attendance->Date . ' ' . $attendance->TimeIn);
             $out = strtotime($attendance->Date . ' ' . $attendance->TimeOut);

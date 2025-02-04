@@ -6,18 +6,18 @@ use Illuminate\Database\Eloquent\Model;
 
 class MemberVisit extends Model
 {
-    protected $table = 'member_visit';  // or "member_visits"
+    protected $table = 'member_visits';
     protected $primaryKey = 'VisitID';
 
     protected $fillable = [
+        'BranchID',
         'MemberID',
         'VisitDate',
         'VisitTime',
         'CheckInMethod',
         'Remarks',
-        'BranchID', // <--- new column
     ];
-
+    
     // Relationship: This visit record belongs to one branch
     public function branch()
     {

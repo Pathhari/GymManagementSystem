@@ -545,91 +545,97 @@ public function destroyMaintenanceLog($id)
     ]);
 }
 
-    /* ------------------------------------------------------------------
-     * S. MEMBERVISIT
+/* ------------------------------------------------------------------
+     * S. MEMBER VISIT (JSON Endpoints)
      * ------------------------------------------------------------------ */
 
     /**
-     * 50. Log Visit => route:All
+     * Store a new member visit (check-in).
+     * Accepts biometric or card/manual check-in data.
      */
-    public function createVisit()
-    {
-        // Possibly staff can only pick members of their branch => if you wish
-        // For now, we show all members
-        $members = Member::orderBy('FullName')->get();
-
-        return Inertia::render('Operations/Visits/Create', compact('members'));
-    }
-
     public function storeVisit(Request $request)
     {
         $staff = auth('staff')->user();
 
         $data = $request->validate([
             'MemberID'      => 'required|exists:members,MemberID',
-            'VisitDate'     => 'required|date',
-            'VisitTime'     => 'required',
-            'CheckInMethod' => 'nullable|string|max:50',
+            'VisitDate'     => 'nullable|date',         // if omitted, defaults to today
+            'VisitTime'     => 'nullable',              // if omitted, defaults to now
+            'CheckInMethod' => 'nullable|string|max:50', // e.g., "biometric", "card", "manual"
             'Remarks'       => 'nullable|string',
             'BranchID'      => 'nullable|exists:branches,BranchID',
         ]);
 
-        // If staff, fix BranchID
+        // Set defaults if not provided.
+        if (empty($data['VisitDate'])) {
+            $data['VisitDate'] = Carbon::today()->toDateString();
+        }
+        if (empty($data['VisitTime'])) {
+            $data['VisitTime'] = Carbon::now()->format('H:i:s');
+        }
+        if (empty($data['CheckInMethod'])) {
+            // Default to "card" check-in if no method provided.
+            $data['CheckInMethod'] = 'card';
+        }
+
+        // If a staff member is logged in, force BranchID to their branch.
         if ($staff) {
             $data['BranchID'] = $staff->BranchID;
         }
 
-        MemberVisit::create($data);
+        // Attempt to create the visit record.
+        try {
+            $visit = MemberVisit::create($data);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // If a duplicate is attempted (e.g., due to unique constraint violation),
+            // return a 409 Conflict response.
+            return response()->json([
+                'message' => 'Member is already checked in for today.'
+            ], 409);
+        }
 
-        return redirect()
-            ->route('operations.visits.index')
-            ->with('success','Visit logged successfully.');
+        return response()->json([
+            'message' => 'Visit logged successfully.',
+            'visit'   => $visit
+        ], 201);
     }
 
-    // 51. View/Update => route:All
+    /**
+     * Display a list of visit logs.
+     */
     public function indexVisits()
     {
         $staff = auth('staff')->user();
 
         if ($staff) {
-            $visits = MemberVisit::where('BranchID',$staff->BranchID)
+            $visits = MemberVisit::where('BranchID', $staff->BranchID)
                 ->with('member')
-                ->orderBy('VisitDate','desc')
+                ->orderBy('VisitDate', 'desc')
+                ->orderBy('VisitTime', 'desc')
                 ->get();
         } else {
             $visits = MemberVisit::with('member')
-                ->orderBy('VisitDate','desc')
+                ->orderBy('VisitDate', 'desc')
+                ->orderBy('VisitTime', 'desc')
                 ->get();
         }
 
-        return Inertia::render('Operations/Visits/Index', compact('visits'));
-    }
-
-    public function editVisit($id)
-    {
-        $staff = auth('staff')->user();
-        $visit = MemberVisit::findOrFail($id);
-
-        // Check branch
-        if ($staff && $visit->BranchID != $staff->BranchID) {
-            abort(403,'Cannot edit a visit from another branch.');
-        }
-
-        $members = Member::orderBy('FullName')->get();
-
-        return Inertia::render('Operations/Visits/Edit', [
-            'visit'   => $visit,
-            'members' => $members
+        return response()->json([
+            'visits' => $visits
         ]);
     }
 
+    /**
+     * Update an existing visit log.
+     */
     public function updateVisit(Request $request, $id)
     {
         $staff = auth('staff')->user();
         $visit = MemberVisit::findOrFail($id);
 
+        // Ensure staff can only update visits for their branch.
         if ($staff && $visit->BranchID != $staff->BranchID) {
-            abort(403,'Cannot update a visit from another branch.');
+            return response()->json(['message' => 'Cannot update a visit from another branch.'], 403);
         }
 
         $data = $request->validate([
@@ -641,19 +647,37 @@ public function destroyMaintenanceLog($id)
             'BranchID'      => 'nullable|exists:branches,BranchID',
         ]);
 
-        // If staff, forcibly keep the old BranchID or staff->BranchID
+        // Enforce staff branch if applicable.
         if ($staff) {
             $data['BranchID'] = $staff->BranchID;
         }
 
         $visit->update($data);
 
-        return redirect()
-            ->route('operations.visits.index')
-            ->with('success','Visit updated successfully.');
+        return response()->json([
+            'message' => 'Visit updated successfully.',
+            'visit'   => $visit
+        ]);
     }
 
+    /**
+     * (Optional) Delete a visit log.
+     */
+    public function destroyVisit($id)
+    {
+        $staff = auth('staff')->user();
+        $visit = MemberVisit::findOrFail($id);
 
+        if ($staff && $visit->BranchID != $staff->BranchID) {
+            return response()->json(['message' => 'Cannot delete a visit from another branch.'], 403);
+        }
+
+        $visit->delete();
+
+        return response()->json([
+            'message' => 'Visit deleted successfully.'
+        ]);
+    }
 
        /**
      * Display a listing of Walk-In records.

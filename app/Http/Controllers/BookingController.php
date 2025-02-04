@@ -357,6 +357,5 @@ class BookingController extends Controller
         return response()->json($trends, 200);
     }
     
-
     
 }

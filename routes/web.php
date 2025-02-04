@@ -65,7 +65,9 @@ Route::middleware('auth:admin')->prefix('admin')->group(function () {
 use App\Http\Controllers\StaffDashboardController;
 
 Route::middleware('auth:staff')->prefix('staff')->group(function () {
+    
     Route::get('dashboard', [StaffDashboardController::class, 'index'])->name('staff.dashboard');
+    Route::get('/staff/branches', [StaffDashboardController::class, 'branches']);
     Route::get('tasks', [StaffDashboardController::class, 'tasks'])->name('staff.tasks');
     Route::get('attendance', [StaffDashboardController::class, 'attendance'])->name('staff.attendance');
     Route::get('notifications', [StaffDashboardController::class, 'notifications'])->name('staff.notifications');
@@ -429,54 +431,47 @@ Route::prefix('booking')->group(function() {
         ->name('booking.sessions.attendance');
 });
 
-/* 
-|-------------------------------------------------------------------------- 
-| 5) StaffController (Updated)
-|-------------------------------------------------------------------------- 
-*/
 use App\Http\Controllers\StaffController;
 
-Route::prefix('staff')->name('staff.')->group(function() {
-    Route::get('/', [StaffController::class, 'indexStaffJson'])->name('index');
-    Route::post('/', [StaffController::class, 'storeStaff'])->name('store');
-    Route::put('/{id}', [StaffController::class, 'updateStaff'])->name('update');
-    Route::delete('/{id}', [StaffController::class, 'destroyStaff'])->name('destroy');
-    Route::get('performance', [\App\Http\Controllers\StaffController::class, 'performance'])->name('performance');
-    Route::get('attendance-analytics', [StaffController::class, 'attendanceAnalytics'])->name('staff.attendance.analytics');
+Route::middleware('auth:staff')->prefix('staff')->group(function () {
 
-    // Attendance
-    Route::prefix('attendance')->name('attendance.')->group(function() {
-        Route::get('/', [StaffController::class, 'indexAttendance'])->name('index');
-        Route::put('/{id}', [StaffController::class, 'updateAttendance'])->name('update');
-        Route::delete('/{id}', [StaffController::class, 'destroyAttendance'])->name('destroy');
+    // Staff main CRUD
+    Route::get('/', [StaffController::class, 'indexStaffJson'])->name('staff.index');
+    Route::post('/', [StaffController::class, 'storeStaff'])->name('staff.store');
+    Route::put('/{id}', [StaffController::class, 'updateStaff'])->name('staff.update');
+    Route::delete('/{id}', [StaffController::class, 'destroyStaff'])->name('staff.destroy');
+
+    // 1) Attendance
+    Route::get('/attendance', [StaffController::class, 'indexAttendance'])->name('attendance.index');
+    Route::put('/attendance/{id}', [StaffController::class, 'updateAttendance'])->name('attendance.update');
+    Route::delete('/attendance/{id}', [StaffController::class, 'destroyAttendance'])->name('attendance.destroy');
+
+    // 1A) Clock In/Out
+    Route::post('/attendance/clock-in-out', [StaffController::class, 'clockInOut'])
+         ->name('attendance.clockInOut');
+
+    // 2) Tasks
+    Route::prefix('tasks')->group(function() {
+        Route::get('/', [StaffController::class, 'indexTasks'])->name('tasks.index');
+        Route::post('/', [StaffController::class, 'storeTask'])->name('tasks.store');
+        Route::put('/{id}', [StaffController::class, 'updateTask'])->name('tasks.update');
+        Route::delete('/{id}', [StaffController::class, 'destroyTask'])->name('tasks.destroy');
     });
 
-    
-
-    // Payroll
-    Route::prefix('payroll')->name('payroll.')->group(function() {
-        Route::get('/', [StaffController::class, 'indexPayroll'])->name('index');
-        Route::post('/', [StaffController::class, 'storePayroll'])->name('store');
-        Route::put('/{id}', [StaffController::class, 'updatePayroll'])->name('update');
-        Route::delete('/{id}', [StaffController::class, 'destroyPayroll'])->name('destroy');
+    // 3) Schedules
+    Route::prefix('schedules')->group(function() {
+        Route::get('/', [StaffController::class, 'indexSchedules'])->name('schedules.index');
+        Route::post('/', [StaffController::class, 'storeSchedule'])->name('schedules.store');
+        Route::put('/{id}', [StaffController::class, 'updateSchedule'])->name('schedules.update');
+        Route::delete('/{id}', [StaffController::class, 'destroySchedule'])->name('schedules.destroy');
     });
 
-    // Tasks
-    Route::prefix('tasks')->name('tasks.')->group(function() {
-        Route::get('/', [StaffController::class, 'indexTasks'])->name('index');
-        Route::post('/', [StaffController::class, 'storeTask'])->name('store');
-        Route::put('/{id}', [StaffController::class, 'updateTask'])->name('update');
-        Route::delete('/{id}', [StaffController::class, 'destroyTask'])->name('destroy');
-    });
-
-    // Schedules
-    Route::prefix('schedules')->name('schedules.')->group(function() {
-        Route::get('/', [StaffController::class, 'indexSchedules'])->name('index');
-        Route::post('/', [StaffController::class, 'storeSchedule'])->name('store');
-        Route::put('/{id}', [StaffController::class, 'updateSchedule'])->name('update');
-        Route::delete('/{id}', [StaffController::class, 'destroySchedule'])->name('destroy');
-    });
+    // 4) Additional routes, e.g. staff/performance, etc.
+    Route::get('/performance', [StaffController::class, 'performance'])->name('performance');
+    Route::get('/dashboard-info', [StaffController::class, 'staffDashboardInfo'])->name('dashboard.info');
 });
+// routes/web.php (or api.php)
+
 
 /* 
 |--------------------------------------------------------------------------

@@ -185,11 +185,20 @@ class TestDataSeeder extends Seeder
 
         // 9) Member Visits
         foreach ($members as $member) {
-            for ($i = 0; $i < 3; $i++) {
+            // Generate an array of 3 unique dates for this member.
+            $uniqueDates = collect();
+            while ($uniqueDates->count() < 3) {
+                $date = $faker->dateTimeBetween('-30 days', 'now')->format('Y-m-d');
+                if (!$uniqueDates->contains($date)) {
+                    $uniqueDates->push($date);
+                }
+            }
+            // Create a visit for each unique date.
+            foreach ($uniqueDates as $date) {
                 MemberVisit::create([
                     'BranchID'      => $member->StartedBranchID,
                     'MemberID'      => $member->MemberID,
-                    'VisitDate'     => $faker->dateTimeBetween('-30 days', 'now'),
+                    'VisitDate'     => $date,
                     'VisitTime'     => $faker->time(),
                     'CheckInMethod' => $faker->randomElement(['Biometric', 'Card']),
                     'Remarks'       => $faker->sentence,
