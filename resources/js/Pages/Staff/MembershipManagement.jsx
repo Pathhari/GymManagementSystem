@@ -967,21 +967,6 @@ async function handleAddRenewal() {
 
       <Paper elevation={2} sx={{ p: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-        <FormControl variant="outlined" size="small" sx={{ width: 150, mr: 2 }}>
-        <InputLabel>Branch</InputLabel>
-        <Select
-          label="Branch"
-          value={branchFilter}
-          onChange={(e) => setBranchFilter(e.target.value)}
-        >
-          <MenuItem value="all">All</MenuItem>
-          {branches.map((b) => (
-            <MenuItem key={b.BranchID} value={String(b.BranchID)}>
-              {b.BranchName}
-            </MenuItem>
-          ))}
-        </Select>
-        </FormControl>
           <TextField
             variant="outlined"
             size="small"
@@ -1019,13 +1004,6 @@ async function handleAddRenewal() {
               <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
             </Menu>
           
-        <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1 }}>
-          {/* Example: a button to open ManagePlansLayout */}
-          <Button variant="outlined"  onClick={() => setManagePlansOpen(true)}  sx={{ color: "primary" }}>
-            Manage Plans
-          </Button>
-        </Box>
-
             {activeTab === 0 && (
               <Button
                 variant="contained"

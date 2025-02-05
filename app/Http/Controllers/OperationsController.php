@@ -683,14 +683,39 @@ public function destroyMaintenanceLog($id)
      * Display a listing of Walk-In records.
      * route: operations.walkins.index
      */
-    public function indexWalkIns()
-    {
-        // however you store these
-        $walkIns = WalkIn::orderBy('WalkInID','desc')->get();
+  public function indexWalkIns()
+{
+    // 1) Identify who is logged in (staff/admin/owner).
+    $staff = auth('staff')->user();
+    
+    // 2) If we have a staff user, gather all the branches they belong to:
+    // (assuming the staff model has ->branches pivot)
+    if ($staff) {
+        $branchIDs = $staff->branches->pluck('BranchID');
+
+        // 3) If `walk_ins` table has a direct BranchID column:
+        $walkIns = WalkIn::whereIn('BranchID', $branchIDs)
+            ->orderBy('WalkInID','desc')
+            ->get();
         
-        // Return JSON so the front end can .then((res) => setWalkInRecords(res.data))
-        return response()->json($walkIns);
+        // Or if `walk_ins` references a member who has `StartedBranchID`:
+        /*
+        $walkIns = WalkIn::whereHas('member', function($q) use ($branchIDs) {
+            $q->whereIn('StartedBranchID', $branchIDs);
+        })
+        ->orderBy('WalkInID','desc')
+        ->get();
+        */
     }
+    else {
+        // 4) If this request is from admin or owner => show all walk-ins
+        $walkIns = WalkIn::orderBy('WalkInID','desc')->get();
+    }
+
+    // Finally return JSON:
+    return response()->json($walkIns);
+}
+
     /**
      * Show the form to create a new Walk-In record.
      * route: operations.walkins.create

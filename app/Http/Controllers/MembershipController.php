@@ -9,6 +9,8 @@ use App\Models\MembershipRenewal;
 use App\Models\MembershipFreeze;
 use App\Models\Invoice;
 use App\Models\InvoiceLineItem;
+use App\Models\WalkIn;
+use App\Models\SystemLog;
 use Carbon\Carbon;
 
 
@@ -23,39 +25,69 @@ class MembershipController extends Controller
      * GET /membership/members
      */
     public function apiIndex()
-    {
-        $staff = auth('staff')->user();
-    
-        // 1) Fetch members
-        if ($staff) {
-            $members = Member::where('StartedBranchID', $staff->BranchID)
-                             ->orderBy('MemberID','desc')
-                             ->get();
-            // Freeze records that belong to the staff's branch
-            $freezes = MembershipFreeze::whereHas('member', function ($query) use ($staff) {
-                $query->where('StartedBranchID', $staff->BranchID);
-            })
-            ->orderBy('FreezeID','desc')
-            ->get();
-        } else {
-            // If admin/owner => fetch them all
-            $members = Member::orderBy('MemberID','desc')->get();
-            $freezes = MembershipFreeze::orderBy('FreezeID','desc')->get();
-        }
-        
-        $renewals = MembershipRenewal::orderBy('RenewalID','desc')->get();
+{
+    $staff = auth('staff')->user();
 
-        $walkIns  = [];
-        $logs     = [];
-    
-        return response()->json([
-            'members'  => $members,
-            'walkIns'  => $walkIns,
-            'renewals' => $renewals,
-            'freezes'  => $freezes, // <--- Real freeze rows from DB
-            'logs'     => $logs,
-        ]);
+    if ($staff) {
+        // All BranchIDs from staff pivot
+        $branchIDs = $staff->branches->pluck('BranchID');
+
+        // 1) Members
+        $members = Member::whereIn('StartedBranchID', $branchIDs)
+            ->orderBy('MemberID','desc')
+            ->get();
+
+        // 2) Freezes
+        $freezes = MembershipFreeze::whereHas('member', function ($q) use ($branchIDs) {
+            $q->whereIn('StartedBranchID', $branchIDs);
+        })
+        ->orderBy('FreezeID','desc')
+        ->get();
+
+        // 3) Renewals
+        $renewals = MembershipRenewal::whereIn('MemberID', function ($sub) use ($branchIDs) {
+            $sub->select('MemberID')
+                ->from('members')
+                ->whereIn('StartedBranchID', $branchIDs);
+        })
+        ->orderBy('RenewalID','desc')
+        ->get();
+
+        // 4) Walk-Ins example, if each has BranchID directly:
+        $walkIns = WalkIn::whereIn('BranchID', $branchIDs)
+            ->orderBy('WalkInID','desc')
+            ->get();
+
+        // OR if `walk_ins` references a MemberID:
+        /*
+        $walkIns = WalkIn::whereHas('member', function($q) use($branchIDs) {
+            $q->whereIn('StartedBranchID', $branchIDs);
+        })->orderBy('WalkInID','desc')
+          ->get();
+        */
+
+        // 5) Logs example, if each log references a MemberID
+        //$logs = SystemLog::whereHas('member', function($q) use ($branchIDs) {
+         //   $q->whereIn('StartedBranchID', $branchIDs);})
+        //->orderBy('LogID','desc')
+        //->get();
+
+    } else {
+        // Admin or Owner => sees all
+        $members  = Member::orderBy('MemberID','desc')->get();
+        $freezes  = MembershipFreeze::orderBy('FreezeID','desc')->get();
+        $renewals = MembershipRenewal::orderBy('RenewalID','desc')->get();
+        $walkIns  = WalkIn::orderBy('WalkInID','desc')->get();
     }
+
+    return response()->json([
+        'members'  => $members,
+        'walkIns'  => $walkIns,
+        'renewals' => $renewals,
+        'freezes'  => $freezes,
+    ]);
+}
+
 
 
     /**
