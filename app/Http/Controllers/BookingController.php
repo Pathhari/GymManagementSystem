@@ -13,6 +13,7 @@ use App\Models\SessionAttendance;
 use App\Models\Coach;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
+use Carbon\Carbon;
 
 class BookingController extends Controller
 {
@@ -371,4 +372,31 @@ class BookingController extends Controller
 
         return response()->json($trends, 200);
     }
+
+    public function getTodayBookings()
+    {
+        // Use Carbon or now() to get today's date in Y-m-d format
+        $today = Carbon::now()->format('Y-m-d');
+    
+        // If staff can only see their branch, you might also filter by branch.
+        // For a simple example, just get all for today's date:
+        $bookings = Booking::with(['member', 'facility'])
+            ->whereDate('BookingDate', $today)
+            ->orderBy('BookingTime', 'asc')
+            ->get();
+    
+        // Transform each booking into the structure your front end expects
+        $results = $bookings->map(function ($b) {
+            return [
+                'BookingID'   => $b->BookingID,
+                'MemberName'  => optional($b->member)->FullName,  // fallback to null if no member
+                'BookingDate' => $b->BookingDate,
+                'BookingTime' => $b->BookingTime,
+                'FacilityName'=> optional($b->facility)->Name,     // fallback to null if no facility
+            ];
+        });
+    
+        return response()->json($results, 200);
+    }
+
 }

@@ -17,45 +17,40 @@ use Illuminate\Support\Facades\DB;
 
 class OperationsController extends Controller
 {
-    /* ------------------------------------------------------------------
-     * AC. INVENTORY MANAGEMENT
-     * Product + ProductInventoryLog
-     * ------------------------------------------------------------------ */
+ 
+    // ------------------------------------------------------------
+    // A) PRODUCT + INVENTORY
+    // ------------------------------------------------------------
 
     /**
-     * 74. Show (Create/Edit) Products => route:Owner,Admin
-     * Actually, this method displays all existing products.
+     * List products. Staff sees only their branches; Admin/Owner see all.
      */
     public function indexProducts()
     {
         $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
 
-        // Staff sees only their branch. Owner/Admin see all.
+        $query = Product::query()->orderBy('ProductName', 'asc');
+
         if ($staff) {
-            $products = Product::where('BranchID', $staff->BranchID)
-                ->orderBy('ProductName','asc')
-                ->get();
-        } else {
-            // Admin or Owner => show all
-            $products = Product::orderBy('ProductName','asc')->get();
+            $branchIDs = $staff->branches->pluck('BranchID');
+            $query->whereIn('BranchID', $branchIDs);
         }
 
-        return Inertia::render('Operations/Inventory/Index', compact('products'));
+        $products = $query->get();
+
+        // Return JSON (or Inertia data if you're using Inertia)
+        return response()->json([
+            'products' => $products
+        ]);
     }
 
     /**
-     * Store or update a Product in the DB.
-     * Called after a user submits a form for a new or edited product.
+     * Store or update a product. Staff => must match one of their branches.
      */
     public function storeProduct(Request $request)
     {
         $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
 
-        // Validate
         $data = $request->validate([
             'ProductID'      => 'nullable|exists:products,ProductID',
             'ProductName'    => 'required|string|max:255',
@@ -66,40 +61,43 @@ class OperationsController extends Controller
             'Cost'           => 'nullable|numeric|min:0',
             'Price'          => 'nullable|numeric|min:0',
             'Notes'          => 'nullable|string',
-            // Because branch-based:
             'BranchID'       => 'nullable|exists:branches,BranchID',
         ]);
 
-        // If staff => forcibly set BranchID to staff->BranchID
         if ($staff) {
-            $data['BranchID'] = $staff->BranchID;
-        } 
-        // If admin/owner => they can pass in BranchID from the form 
-        // (or you can auto-set a default if needed).
+            // Force to staff's branch if creating new
+            $branchIDs = $staff->branches->pluck('BranchID');
 
-        if (!empty($data['ProductID'])) {
-            // Update existing
-            $product = Product::findOrFail($data['ProductID']);
-
-            // Check if staff -> can only update if product->BranchID == staff->BranchID
-            if ($staff && $product->BranchID != $staff->BranchID) {
-                abort(403, 'You cannot update another branch’s product.');
+            if (!empty($data['ProductID'])) {
+                $product = Product::findOrFail($data['ProductID']);
+                if (!$branchIDs->contains($product->BranchID)) {
+                    return response()->json(['error' => 'Unauthorized: different branch'], 403);
+                }
+                $product->update($data);
+            } else {
+                // If new product but BranchID not in staff's branches => error
+                if (empty($data['BranchID']) || !$branchIDs->contains($data['BranchID'])) {
+                    return response()->json([
+                        'error' => 'Cannot create product in another branch'
+                    ], 403);
+                }
+                Product::create($data);
             }
-
-            $product->update($data);
         } else {
-            // Create new
-            Product::create($data);
+            // Admin/Owner => can create or update with any branch
+            if (!empty($data['ProductID'])) {
+                $product = Product::findOrFail($data['ProductID']);
+                $product->update($data);
+            } else {
+                Product::create($data);
+            }
         }
 
-        return redirect()
-            ->route('operations.products.index')
-            ->with('success','Product saved successfully.');
+        return response()->json(['message' => 'Product saved successfully.'], 200);
     }
 
     /**
-     * 75. Adjust Stock => route:Owner,Admin,Staff
-     * Creates a ProductInventoryLog entry for each stock adjustment.
+     * Adjust stock => create a ProductInventoryLog. Staff => branch check.
      */
     public function adjustStock(Request $request)
     {
@@ -112,21 +110,18 @@ class OperationsController extends Controller
             'Notes'           => 'nullable|string',
         ]);
 
-        // Ensure staff can only adjust products from their branch
-        if ($staff) {
-            $productCheck = Product::where('ProductID',$data['ProductID'])
-                ->where('BranchID',$staff->BranchID)
-                ->first();
-
-            if (!$productCheck) {
-                abort(403, 'You cannot adjust stock of another branch’s product.');
-            }
-        }
-
         DB::transaction(function () use ($data, $staff) {
-            // Lock row to avoid race conditions
-            $product = Product::lockForUpdate()->find($data['ProductID']);
+            // Check branch if staff
+            $product = Product::lockForUpdate()->findOrFail($data['ProductID']);
 
+            if ($staff) {
+                $branchIDs = $staff->branches->pluck('BranchID');
+                if (!$branchIDs->contains($product->BranchID)) {
+                    abort(403, 'Cannot adjust stock of another branch’s product.');
+                }
+            }
+
+            // Adjust
             $newStock = $product->StockLevel + $data['QuantityChange'];
             if ($newStock < 0) {
                 abort(400, 'Stock cannot go below zero.');
@@ -134,246 +129,266 @@ class OperationsController extends Controller
             $product->StockLevel = $newStock;
             $product->save();
 
-            // Insert a new inventory log
+            // Log
             ProductInventoryLog::create([
-                'ProductID'     => $product->ProductID,
-                'ChangeDate'    => now(),
-                'ChangeType'    => $data['ChangeType'] ?? 'Adjustment',
-                'QuantityChange'=> $data['QuantityChange'],
-                'NewStockLevel' => $newStock,
-                'StaffID'       => $staff ? $staff->StaffID : null,
-                'Notes'         => $data['Notes'] ?? null,
+                'ProductID'      => $product->ProductID,
+                'ChangeDate'     => now(),
+                'ChangeType'     => $data['ChangeType'] ?? 'Adjustment',
+                'QuantityChange' => $data['QuantityChange'],
+                'NewStockLevel'  => $newStock,
+                'StaffID'        => $staff ? $staff->StaffID : null,
+                'Notes'          => $data['Notes'] ?? null,
             ]);
         });
 
-        return redirect()->back()->with('success','Stock adjusted successfully.');
+        return response()->json(['message' => 'Stock adjusted successfully.'], 200);
     }
 
     /**
-     * 76. Delete Product => route:Owner,Admin
+     * Delete product. Staff => must match branch; otherwise admin/owner.
      */
     public function destroyProduct($id)
     {
         $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
 
         $product = Product::findOrFail($id);
 
-        // Staff not supposed to delete => but if your RBA matrix allows staff, 
-        // you can do the same branch check:
-        if ($staff && $product->BranchID != $staff->BranchID) {
-            abort(403, 'You cannot delete a product in another branch.');
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID');
+            if (!$branchIDs->contains($product->BranchID)) {
+                return response()->json([
+                    'error' => 'Cannot delete product from another branch.'
+                ], 403);
+            }
         }
-
         $product->delete();
 
-        return redirect()
-            ->route('operations.products.index')
-            ->with('success','Product removed successfully.');
+        return response()->json(['message' => 'Product removed successfully.'], 200);
     }
 
-    /**
-     * 77. View Stock => route:Owner,Admin,Staff
-     * Possibly partial logic if staff should see limited columns.
-     */
-    public function viewStockLevels()
-    {
-        $staff = auth('staff')->user();
-
-        if ($staff) {
-            $products = Product::where('BranchID',$staff->BranchID)
-                ->orderBy('ProductName')
-                ->get();
-        } else {
-            $products = Product::orderBy('ProductName')->get();
-        }
-
-        return Inertia::render('Operations/Inventory/StockLevels', [
-            'products' => $products
-        ]);
-    }
 
 
   /* ------------------------------------------------------------------
  * P. LOCKER & LOCKER USAGE (JSON Responses)
  * ------------------------------------------------------------------ */
-
- public function indexLockers()
- {
-     $staff = auth('staff')->user();
- 
-     $query = Locker::with(['lockerUsages' => function($q){
-         $q->where('Returned', false)
-           ->with('member')
-           ->orderBy('BorrowDate','desc');
-     }]);
- 
-     if ($staff) {
-         $query->where('BranchID', $staff->BranchID);
-     }
- 
-     $lockers = $query->get();
- 
-     // Map each locker to a structure with occupant if usage found
-     $response = $lockers->map(function($locker){
-         $activeUsage = $locker->lockerUsages->first(); 
-         return [
-             'LockerID'      => $locker->LockerID,
-             'LockerNumber'  => $locker->LockerNumber,
-             'Status'        => $locker->Status,
-             'BranchID'      => $locker->BranchID,
-             'occupant'      => $activeUsage ? [
-                 'UsageID'  => $activeUsage->UsageID,
-                 'MemberID' => $activeUsage->MemberID,
-                 'FullName' => $activeUsage->member->FullName ?? '',
-             ] : null,
-         ];
-     });
- 
-     return response()->json(['lockers' => $response], 200);
- }
- 
-
-public function storeLocker(Request $request)
-{
-    try {
+    public function indexLockers()
+    {
         $staff = auth('staff')->user();
 
-        $data = $request->validate([
-            'LockerID'     => 'nullable|exists:lockers,LockerID',
-            'LockerNumber' => 'required|string|max:50',
-            'Status'       => 'required|string|max:50',
-            'Notes'        => 'nullable|string',
-            'BranchID'     => 'nullable|exists:branches,BranchID',
-        ]);
-
-        // Force staff to their branch
-        if ($staff) {
-            $data['BranchID'] = $staff->BranchID;
-        }
-
-        if (!empty($data['LockerID'])) {
-            $locker = Locker::findOrFail($data['LockerID']);
-            if ($staff && $locker->BranchID !== $staff->BranchID) {
-                return response()->json(['error' => 'Cannot update locker of another branch.'], 403);
+        // Prepare the locker query
+        $query = Locker::with([
+            'lockerUsages' => function ($q) {
+                $q->where('Returned', false)
+                  ->with('member')
+                  ->orderBy('BorrowDate', 'desc');
             }
-            $locker->update($data);
-        } else {
-            $locker = Locker::create($data);
-        }
-
-        return response()->json([
-            'message' => 'Locker saved successfully.',
-            'locker'  => $locker
-        ], 200);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return response()->json([
-            'error'  => 'Validation failed.',
-            'errors' => $e->errors()
-        ], 422);
-    } catch (\Exception $e) {
-        return response()->json([
-            'error'   => 'Server error.',
-            'message' => $e->getMessage()
-        ], 500);
-    }
-}
-
-public function borrowLockerKey(Request $request)
-{
-    try {
-        $staff = auth('staff')->user();
-
-        $data = $request->validate([
-            'LockerID' => 'required|exists:lockers,LockerID',
-            'MemberID' => 'required|exists:members,MemberID',
-            'Notes'    => 'nullable|string',
         ]);
 
-        // Ensure staff only borrows lockers in their branch
+        // If staff is logged in, filter by their branch IDs
         if ($staff) {
-            $lockerCheck = Locker::where('LockerID', $data['LockerID'])
-                ->where('BranchID', $staff->BranchID)
-                ->first();
-            if (!$lockerCheck) {
-                return response()->json(['error' => 'Cannot borrow locker from another branch.'], 403);
-            }
+            $branchIDs = $staff->branches->pluck('BranchID');
+            $query->whereIn('BranchID', $branchIDs);
         }
 
-        LockerUsage::create([
-            'LockerID'    => $data['LockerID'],
-            'MemberID'    => $data['MemberID'],
-            'KeyBorrowed' => true,
-            'BorrowDate'  => now(),
-            'Returned'    => false,
-            'Notes'       => $data['Notes'] ?? null,
-        ]);
+        $lockers = $query->get();
 
-        // Optionally mark locker as Occupied
-        Locker::where('LockerID', $data['LockerID'])->update(['Status' => 'Occupied']);
+        // Format response data (include occupant info if a usage is active)
+        $response = $lockers->map(function ($locker) {
+            $activeUsage = $locker->lockerUsages->first();
+            return [
+                'LockerID'     => $locker->LockerID,
+                'LockerNumber' => $locker->LockerNumber,
+                'Status'       => $locker->Status,
+                'BranchID'     => $locker->BranchID,
+                'occupant'     => $activeUsage ? [
+                    'UsageID'  => $activeUsage->UsageID,
+                    'MemberID' => $activeUsage->MemberID,
+                    'FullName' => $activeUsage->member->FullName ?? '',
+                ] : null,
+            ];
+        });
 
-        return response()->json([
-            'message' => 'Locker key borrowed successfully.'
-        ], 200);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return response()->json([
-            'error'  => 'Validation failed.',
-            'errors' => $e->errors()
-        ], 422);
-    } catch (\Exception $e) {
-        return response()->json([
-            'error'   => 'Server error.',
-            'message' => $e->getMessage()
-        ], 500);
+        return response()->json(['lockers' => $response], 200);
     }
-}
 
-public function returnLockerKey($usageId)
-{
-    try {
-        $staff = auth('staff')->user();
-        $usage = LockerUsage::findOrFail($usageId);
+    /**
+     * Create or update a locker. Staff can only operate on their own branches.
+     */
+    public function storeLocker(Request $request)
+    {
+        try {
+            $staff = auth('staff')->user();
 
-        if ($staff && $usage->locker && $usage->locker->BranchID !== $staff->BranchID) {
-            return response()->json(['error' => 'Cannot return locker key from another branch.'], 403);
-        }
+            $data = $request->validate([
+                'LockerID'     => 'nullable|exists:lockers,LockerID',
+                'LockerNumber' => 'required|string|max:50',
+                'Status'       => 'required|string|max:50',
+                'Notes'        => 'nullable|string',
+                'BranchID'     => 'nullable|exists:branches,BranchID',
+            ]);
 
-        if ($usage->Returned) {
-            // Already returned, not an error but no change needed
+            // Enforce staff branch restrictions
+            if ($staff) {
+                $branchIDs = $staff->branches->pluck('BranchID');
+
+                // If new locker (LockerID empty):
+                // - If BranchID is not set or not in staff's branches, return error or pick a default
+                if (empty($data['LockerID'])) {
+                    if (empty($data['BranchID']) || !$branchIDs->contains($data['BranchID'])) {
+                        return response()->json([
+                            'error' => 'Cannot create locker in an unauthorized branch.'
+                        ], 403);
+                    }
+                }
+
+                // If updating an existing locker:
+                // - Check if the existing locker’s branch is in staff's branches
+                if (!empty($data['LockerID'])) {
+                    $locker = Locker::findOrFail($data['LockerID']);
+                    if (!$branchIDs->contains($locker->BranchID)) {
+                        return response()->json([
+                            'error' => 'Cannot update a locker from another branch.'
+                        ], 403);
+                    }
+                }
+            }
+
+            // If we are updating an existing locker
+            if (!empty($data['LockerID'])) {
+                $locker = Locker::findOrFail($data['LockerID']);
+                $locker->update($data);
+            } else {
+                // Creating a new locker
+                $locker = Locker::create($data);
+            }
+
             return response()->json([
-                'message' => 'Locker key was already returned.'
+                'message' => 'Locker saved successfully.',
+                'locker'  => $locker
             ], 200);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error'  => 'Validation failed.',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error'   => 'Server error.',
+                'message' => $e->getMessage()
+            ], 500);
         }
-
-        $usage->update([
-            'ReturnDate' => now(),
-            'Returned'   => true,
-        ]);
-
-        // Optionally set locker back to "Available"
-        if ($usage->locker) {
-            $usage->locker->update(['Status' => 'Available']);
-        }
-
-        return response()->json([
-            'message' => 'Locker key returned successfully.'
-        ], 200);
-
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        return response()->json([
-            'error' => 'Usage record not found.'
-        ], 404);
-    } catch (\Exception $e) {
-        return response()->json([
-            'error'   => 'Server error.',
-            'message' => $e->getMessage()
-        ], 500);
     }
-}
 
+    /**
+     * Borrow a locker key. Staff can only borrow lockers from their own branches.
+     */
+    public function borrowLockerKey(Request $request)
+    {
+        try {
+            $staff = auth('staff')->user();
+
+            $data = $request->validate([
+                'LockerID' => 'required|exists:lockers,LockerID',
+                'MemberID' => 'required|exists:members,MemberID',
+                'Notes'    => 'nullable|string',
+            ]);
+
+            // Check staff branch restrictions
+            if ($staff) {
+                $branchIDs = $staff->branches->pluck('BranchID');
+                $lockerCheck = Locker::where('LockerID', $data['LockerID'])
+                                     ->whereIn('BranchID', $branchIDs)
+                                     ->first();
+                if (!$lockerCheck) {
+                    return response()->json([
+                        'error' => 'Cannot borrow a locker from another branch.'
+                    ], 403);
+                }
+            }
+
+            // Create locker usage entry
+            LockerUsage::create([
+                'LockerID'    => $data['LockerID'],
+                'MemberID'    => $data['MemberID'],
+                'KeyBorrowed' => true,
+                'BorrowDate'  => now(),
+                'Returned'    => false,
+                'Notes'       => $data['Notes'] ?? null,
+            ]);
+
+            // Mark locker as occupied
+            Locker::where('LockerID', $data['LockerID'])->update(['Status' => 'Occupied']);
+
+            return response()->json([
+                'message' => 'Locker key borrowed successfully.'
+            ], 200);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error'  => 'Validation failed.',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error'   => 'Server error.',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Return a locker key. Staff can only return lockers from their own branches.
+     */
+    public function returnLockerKey($usageId)
+    {
+        try {
+            $staff = auth('staff')->user();
+            $usage = LockerUsage::findOrFail($usageId);
+
+            // Enforce staff branch restriction
+            if ($staff) {
+                $branchIDs = $staff->branches->pluck('BranchID');
+                if (!$branchIDs->contains($usage->locker->BranchID)) {
+                    return response()->json([
+                        'error' => 'Cannot return a locker key from another branch.'
+                    ], 403);
+                }
+            }
+
+            if ($usage->Returned) {
+                // Locker already returned - no further action needed
+                return response()->json([
+                    'message' => 'Locker key was already returned.'
+                ], 200);
+            }
+
+            // Update locker usage record
+            $usage->update([
+                'ReturnDate' => now(),
+                'Returned'   => true,
+            ]);
+
+            // Mark locker as available again
+            if ($usage->locker) {
+                $usage->locker->update(['Status' => 'Available']);
+            }
+
+            return response()->json([
+                'message' => 'Locker key returned successfully.'
+            ], 200);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'error' => 'Usage record not found.'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error'   => 'Server error.',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
 
   /* ------------------------------------------------------------------
      * Q. EQUIPMENT & MAINTENANCE
@@ -385,20 +400,23 @@ public function returnLockerKey($usageId)
     public function indexEquipment()
     {
         $staff = auth('staff')->user();
-    
-        $equipment = $staff
-            ? Equipment::where('BranchID', $staff->BranchID)
-                ->orderBy('Name', 'asc')
-                ->get()
-            : Equipment::orderBy('Name', 'asc')->get();
-    
+
+        $query = Equipment::orderBy('Name', 'asc');
+
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID');
+            $query->whereIn('BranchID', $branchIDs);
+        }
+
+        $equipment = $query->get();
+
         return response()->json([
             'equipment' => $equipment
         ]);
     }
-    
+
     /**
-     * Create or update an Equipment record
+     * Store or update an equipment record.
      */
     public function storeEquipment(Request $request)
     {
@@ -414,54 +432,65 @@ public function returnLockerKey($usageId)
             'BranchID'            => 'nullable|exists:branches,BranchID',
         ]);
 
-        // If staff, ensure equipment is always assigned to staff's branch.
         if ($staff) {
-            $data['BranchID'] = $staff->BranchID;
-        }
+            $branchIDs = $staff->branches->pluck('BranchID');
 
-        if (!empty($data['EquipmentID'])) {
-            // Update existing
-            $eq = Equipment::findOrFail($data['EquipmentID']);
-
-            // Staff: must match eq->BranchID
-            if ($staff && $eq->BranchID != $staff->BranchID) {
-                abort(403, 'Cannot update equipment of another branch.');
+            // Update
+            if (!empty($data['EquipmentID'])) {
+                $eq = Equipment::findOrFail($data['EquipmentID']);
+                if (!$branchIDs->contains($eq->BranchID)) {
+                    return response()->json(['error' => 'Cannot update another branch’s equipment.'], 403);
+                }
+                $eq->update($data);
+            } else {
+                // Create
+                if (empty($data['BranchID']) || !$branchIDs->contains($data['BranchID'])) {
+                    return response()->json([
+                        'error' => 'Cannot create equipment for another branch.'
+                    ], 403);
+                }
+                Equipment::create($data);
             }
-
-            $eq->update($data);
         } else {
-            // Create new
-            Equipment::create($data);
+            // Admin/Owner => any branch
+            if (!empty($data['EquipmentID'])) {
+                $eq = Equipment::findOrFail($data['EquipmentID']);
+                $eq->update($data);
+            } else {
+                Equipment::create($data);
+            }
         }
 
-        return redirect()
-            ->route('operations.equipment.index')
-            ->with('success', 'Equipment saved successfully.');
+        return response()->json(['message' => 'Equipment saved successfully.'], 200);
     }
 
+    /**
+     * Maintenance logs list, staff => only see logs for eq in their branch(es).
+     */
     public function indexMaintenanceLogs()
     {
         $staff = auth('staff')->user();
-        
-        $query = MaintenanceLog::with(['equipment', 'maintainer']);
-        
+
+        $query = MaintenanceLog::with(['equipment', 'maintainer'])->latest();
+
         if ($staff) {
-            $query->whereHas('equipment', function($q) use ($staff) {
-                $q->where('BranchID', $staff->BranchID);
+            $branchIDs = $staff->branches->pluck('BranchID');
+            // filter logs via equipment’s branch
+            $query->whereHas('equipment', function($q) use ($branchIDs) {
+                $q->whereIn('BranchID', $branchIDs);
             });
         }
-        
+
         return response()->json([
-            'logs' => $query->latest()->get()
+            'logs' => $query->get()
         ]);
     }
 
-/**
- * Store a new maintenance log (RESTful version)
- */
-public function storeMaintenanceLog(Request $request)
-{
-    try {
+    /**
+     * Create a new maintenance log record.
+     */
+    public function storeMaintenanceLog(Request $request)
+    {
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
@@ -476,23 +505,20 @@ public function storeMaintenanceLog(Request $request)
             'Notes'               => 'nullable|string',
         ]);
 
-        // Staff-specific branch validation
         if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID');
             $equipment = Equipment::findOrFail($data['EquipmentID']);
-            if ($equipment->BranchID !== $staff->BranchID) {
-                return response()->json([
-                    'error' => 'Unauthorized: Cannot log maintenance for equipment in another branch'
-                ], 403);
+            if (!$branchIDs->contains($equipment->BranchID)) {
+                return response()->json(['error' => 'Unauthorized: different branch'], 403);
             }
         }
 
-        // Set maintained by if not provided
         if (empty($data['MaintainedBy'])) {
             if ($staff) {
                 $data['MaintainedBy'] = $staff->StaffID;
-            } elseif ($admin || $owner) {
-                // Set to 0 or null for admin/owner initiated maintenance
-                $data['MaintainedBy'] = null; 
+            } else {
+                // Admin/Owner => set null or 0
+                $data['MaintainedBy'] = null;
             }
         }
 
@@ -500,50 +526,67 @@ public function storeMaintenanceLog(Request $request)
 
         return response()->json([
             'success' => true,
-            'log' => $log->load('equipment'),
+            'log'     => $log->load('equipment'),
             'message' => 'Maintenance log recorded successfully'
         ], 201);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return response()->json([
-            'error' => 'Validation error',
-            'errors' => $e->errors()
-        ], 422);
-    } catch (\Exception $e) {
-        return response()->json([
-            'error' => 'Server error',
-            'message' => $e->getMessage()
-        ], 500);
     }
-}
 
-public function getMaintenanceStats()
-{
-    $staff = auth('staff')->user();
-    
-    $query = MaintenanceLog::query();
-    
-    if ($staff) {
-        $query->whereHas('equipment', function($q) use ($staff) {
-            $q->where('BranchID', $staff->BranchID);
-        });
+    /**
+     * Update existing maintenance log (if you allow edits).
+     */
+    public function updateMaintenanceLog(Request $request, $id)
+    {
+        $staff = auth('staff')->user();
+
+        $log = MaintenanceLog::findOrFail($id);
+        $data = $request->validate([
+            'IssueDescription'    => 'nullable|string|max:255',
+            'Resolution'          => 'nullable|string|max:255',
+            'NextMaintenanceDate' => 'nullable|date',
+            'Notes'               => 'nullable|string',
+        ]);
+
+        // Check branch if staff
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID');
+            // ensure the equipment’s branch is in staff’s branches
+            if (!$branchIDs->contains($log->equipment->BranchID)) {
+                return response()->json(['error' => 'Unauthorized: different branch'], 403);
+            }
+        }
+
+        $log->update($data);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Maintenance log updated successfully.',
+            'log' => $log
+        ]);
     }
-    
-    return response()->json([
-        'pending_maintenance' => $query->where('Resolution', 'pending')->count()
-    ]);
-}
 
-public function destroyMaintenanceLog($id)
-{
-    $log = MaintenanceLog::findOrFail($id);
-    $log->delete();
+    /**
+     * Delete MaintenanceLog
+     */
+    public function destroyMaintenanceLog($id)
+    {
+        $staff = auth('staff')->user();
 
-    return response()->json([
-        'success' => true,
-        'message' => 'Maintenance log deleted successfully.'
-    ]);
-}
+        $log = MaintenanceLog::findOrFail($id);
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID');
+            if (!$branchIDs->contains($log->equipment->BranchID)) {
+                return response()->json(['error' => 'Unauthorized: different branch'], 403);
+            }
+        }
+
+        $log->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Maintenance log deleted successfully.'
+        ]);
+    }
+
 
 /* ------------------------------------------------------------------
      * S. MEMBER VISIT (JSON Endpoints)

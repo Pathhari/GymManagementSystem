@@ -247,22 +247,6 @@ export default function LockerManagement() {
         </Typography>
       </Paper>
 
-      {/* Branch Filter */}
-      <FormControl sx={{ mb: 2, minWidth: 180 }}>
-        <InputLabel>Filter by Branch</InputLabel>
-        <Select
-          label="Filter by Branch"
-          value={selectedBranch}
-          onChange={(e) => setSelectedBranch(e.target.value)}
-        >
-          <MenuItem value="All Branches">All Branches</MenuItem>
-          {branches.map((branch) => (
-            <MenuItem key={branch.BranchID} value={branch.BranchID}>
-              {branch.BranchName}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
 
       <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
         Locker Management

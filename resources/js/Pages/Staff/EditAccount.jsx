@@ -27,19 +27,21 @@ import axios from "axios";
 const roleOptions = ["Staff", "Admin", "Owner"];
 
 export default function EditProfile() {
-  // -------------------------- 1) MY ACCOUNT (CURRENT USER) --------------------------
+  // -------------------------- 1) MY ACCOUNT (CURRENT STAFF) --------------------------
   const [userEmail, setUserEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
-  // Fetch current profile details on mount.
+  // Fetch current logged-in staff's profile on mount
   useEffect(() => {
     const fetchProfile = async () => {
       try {
+        // /profile should return something like: { "Email": "user@example.com", ... }
         const res = await axios.get("/profile");
-        setUserEmail(res.data.email);
+        // Adjust the property name if your response uses something else (e.g., res.data.email)
+        setUserEmail(res.data.Email || "");
       } catch (error) {
         console.error("Error fetching profile:", error);
       }
@@ -57,7 +59,9 @@ export default function EditProfile() {
     }
     try {
       await axios.put("/profile", {
-        email: userEmail.trim(),
+        // Trim your inputs if you like
+        Email: userEmail.trim(),
+        // Only send the password if the user entered something
         password: newPassword.trim() ? newPassword.trim() : null
       });
       alert("Your account changes have been saved!");
@@ -69,22 +73,21 @@ export default function EditProfile() {
     }
   };
 
-  // -------------------------- 2) CREATE NEW STAFF --------------------------
+  // -------------------------- 2) CREATE NEW STAFF (OPTIONAL SECTION) --------------------------
   const [isAddStaffOpen, setAddStaffOpen] = useState(false);
   const [staffEmail, setStaffEmail] = useState("");
   const [staffPassword, setStaffPassword] = useState("");
   const [staffRole, setStaffRole] = useState("Staff");
   const [staffName, setStaffName] = useState("");
 
-  // We'll fetch real branches via GET /owner/branches.
+  // Branch dropdown
   const [branchOptions, setBranchOptions] = useState([]);
-  const [staffBranch, setStaffBranch] = useState(""); // Will store the numeric BranchID
+  const [staffBranch, setStaffBranch] = useState("");
 
   useEffect(() => {
     const loadBranches = async () => {
       try {
         const res = await axios.get("/owner/branches");
-        // Depending on your BranchController, the response may be wrapped in a "branches" key.
         setBranchOptions(res.data.branches || res.data);
       } catch (err) {
         console.error("Error loading branches:", err);
@@ -198,7 +201,6 @@ BranchID: ${res.data.BranchID}`
           </Button>
         </Box>
       </Paper>
-
     </Box>
   );
 }

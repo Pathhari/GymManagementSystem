@@ -63,7 +63,7 @@ function getListStyle(droppableId, isDraggingOver) {
   };
 }
 
-export default function TimeTaskManagement() {
+export default function TaskTimeManagement() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [tasks, setTasks] = useState([]);
   const [attendance, setAttendance] = useState([]);
@@ -80,13 +80,25 @@ export default function TimeTaskManagement() {
 
   // Fetch tasks, attendance, schedule on mount
   useEffect(() => {
+    // 1) Fetch /staff/tasks
     fetch("/staff/tasks")
       .then((res) => res.json())
       .then((data) => {
-        setTasks(Array.isArray(data) ? data : data.tasks || []);
+        // Option B: Normalize data
+        // If the API returns an array: [ {...}, {...} ]
+        // or if it returns { tasks: [ {...}, {...} ] }
+        const arr = Array.isArray(data) ? data : (data.tasks || []);
+        // Convert property "Status" -> "status", "TaskDescription" -> "description"
+        const normalized = arr.map(item => ({
+          ...item,
+          status: item.Status,
+          description: item.TaskDescription,
+        }));
+        setTasks(normalized);
       })
       .catch((err) => console.error("Failed to load tasks:", err));
 
+    // 2) Fetch /staff/attendance
     fetch("/staff/attendance")
       .then((res) => res.json())
       .then((data) => {
@@ -94,6 +106,7 @@ export default function TimeTaskManagement() {
       })
       .catch((err) => console.error("Failed to load attendance:", err));
 
+    // 3) Fetch /staff/schedules
     fetch("/staff/schedules")
       .then((res) => res.json())
       .then((data) => {
@@ -108,27 +121,35 @@ export default function TimeTaskManagement() {
   const completedTasks = tasks.filter((t) => t.status === "Completed");
 
   // Drag & Drop
-  const onDragEnd = (result) => {
+  const onDragEnd = async (result) => {
     const { source, destination } = result;
     if (!destination) return;
 
+    // reorder array in memory
     const updatedTasks = reorder(tasks, source.index, destination.index);
+    // find the movedTask
     const movedTask = updatedTasks[destination.index];
+    // update local status
     movedTask.status = destination.droppableId;
     setTasks(updatedTasks);
 
-    // Optionally persist changes
-    /*
-    fetch(`/staff/tasks/${movedTask.TaskID}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-      },
-      body: JSON.stringify({ status: movedTask.status }),
-    })
-    .then(...)
-    */
+    // Optionally persist changes:
+    if (movedTask.TaskID) {
+      try {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        // We'll do a PUT to /staff/tasks/:id, sending the updated status
+        await fetch(`/staff/tasks/${movedTask.TaskID}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-TOKEN": csrfToken,
+          },
+          body: JSON.stringify({ Status: movedTask.status }),
+        });
+      } catch (err) {
+        console.error("Failed to update task status:", err);
+      }
+    }
   };
 
   // Clock In/Out with StaffID=1
@@ -151,15 +172,13 @@ export default function TimeTaskManagement() {
     };
 
     try {
-      // Grab CSRF token from meta tag
       const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
-
       const response = await fetch("/staff/attendance/clock-in-out", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-CSRF-TOKEN": csrfToken,       // <--- CSRF token
-          "Accept": "application/json",    // to ensure JSON response
+          "X-CSRF-TOKEN": csrfToken,
+          "Accept": "application/json",
         },
         body: JSON.stringify(clockData),
       });
@@ -178,7 +197,6 @@ export default function TimeTaskManagement() {
       const finalData = await attendRes.json();
       setAttendance(Array.isArray(finalData) ? finalData : finalData.attendance || []);
 
-      // Toggle local isClockedIn
       setIsClockedIn(!isClockedIn);
 
     } catch (err) {
@@ -207,17 +225,14 @@ export default function TimeTaskManagement() {
           >
             <Box display="flex" justifyContent="space-between">
               <Typography variant="subtitle2">
-                {task.title || task.TaskDescription || "Untitled Task"}
+                {task.description || "Untitled Task"}
               </Typography>
               {statusChips[task.status]}
             </Box>
-            <Typography variant="body2" color="textSecondary">
-              {task.description || task.TaskDescription}
-            </Typography>
             <Box mt={1} display="flex" justifyContent="space-between">
-              {task.dueDate ? (
+              {task.TaskDate ? (
                 <Typography variant="caption">
-                  Due: {new Date(task.dueDate).toLocaleDateString()}
+                  Due: {new Date(task.TaskDate).toLocaleDateString()}
                 </Typography>
               ) : (
                 <Typography variant="caption" color="textSecondary">
@@ -225,10 +240,8 @@ export default function TimeTaskManagement() {
                 </Typography>
               )}
               <Avatar sx={{ width: 24, height: 24 }}>
-                {task.assignedTo
-                  ? task.assignedTo.charAt(0)
-                  : task.staff
-                  ? task.staff.FullName.charAt(0)
+                {task.staff
+                  ? (task.staff.FullName || "?").charAt(0)
                   : "?"}
               </Avatar>
             </Box>
@@ -238,6 +251,7 @@ export default function TimeTaskManagement() {
     );
   };
 
+  // Setup columns
   return (
     <Box sx={{ p: 4, display: "flex", gap: 3 }}>
       {/* LEFT: Time & Attendance */}
@@ -324,6 +338,7 @@ export default function TimeTaskManagement() {
 
         <DragDropContext onDragEnd={onDragEnd}>
           <Box display="flex" gap={3}>
+            {/* PENDING COLUMN */}
             <Droppable droppableId="Pending">
               {(provided, snapshot) => (
                 <Paper
@@ -340,6 +355,7 @@ export default function TimeTaskManagement() {
               )}
             </Droppable>
 
+            {/* IN-PROGRESS COLUMN */}
             <Droppable droppableId="InProgress">
               {(provided, snapshot) => (
                 <Paper
@@ -356,6 +372,7 @@ export default function TimeTaskManagement() {
               )}
             </Droppable>
 
+            {/* COMPLETED COLUMN */}
             <Droppable droppableId="Completed">
               {(provided, snapshot) => (
                 <Paper

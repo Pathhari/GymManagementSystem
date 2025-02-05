@@ -11,6 +11,7 @@ use App\Models\Attendance;
 use App\Models\Payroll;
 use App\Models\Bonus;
 use App\Models\Branch;
+use App\Models\MaintenanceLog;
 use Illuminate\Support\Arr;
 
 
@@ -185,6 +186,44 @@ class StaffController extends Controller
         return response()->json(['message' => 'Staff record removed.']);
     }
 
+    public function getStaffMetrics()
+{
+    // 1) Get the logged-in staff user
+    $staff = auth('staff')->user();
+    if (!$staff) {
+        return response()->json(['error' => 'Not authenticated as staff'], 401);
+    }
+
+    // 2) Gather the staff’s branch IDs from the pivot
+    $branchIDs = $staff->branches->pluck('BranchID');
+
+    // 3) Lockers in use for these branches
+    $lockersInUse = \DB::table('lockers')
+        ->whereIn('BranchID', $branchIDs)
+        ->where('Status', 'Occupied')
+        ->count();
+
+    // 4) Check-ins today, also branch filtered if needed
+    $today = now()->format('Y-m-d');
+    $checkInsToday = \DB::table('member_visits')
+        ->whereDate('VisitDate', $today)
+        ->whereIn('BranchID', $branchIDs)
+        ->count();
+
+    // 5) Possibly pending issues
+    $pendingIssues = MaintenanceLog::where('Resolution', 'pending')
+        ->whereHas('equipment', function ($query) use ($branchIDs) {
+        $query->whereIn('BranchID', $branchIDs);
+    })
+    ->count();
+
+    return response()->json([
+        'checkInsToday' => $checkInsToday,
+        'lockersInUse'  => $lockersInUse,
+        'pendingIssues' => $pendingIssues,
+    ]);
+}
+
     /* ------------------------------------------------------------------
      * V. ATTENDANCE (Attendance)
      * ------------------------------------------------------------------ */
@@ -234,13 +273,23 @@ class StaffController extends Controller
      */
     public function indexAttendance()
     {
-        $attendance = Attendance::with('staff')
-            ->orderBy('Date','desc')
-            ->get();
-
+        $staff = auth('staff')->user();
+        
+        if ($staff) {
+            $attendance = Attendance::with('staff')
+                ->where('StaffID', $staff->StaffID)
+                ->orderBy('Date','desc')
+                ->get();
+        } else {
+            // If needed, handle admin or non-staff scenario
+            $attendance = Attendance::with('staff')
+                ->orderBy('Date','desc')
+                ->get();
+        }
+    
         return response()->json($attendance);
     }
-
+    
     /**
      * Update attendance and return JSON.
      */
@@ -289,11 +338,27 @@ class StaffController extends Controller
     /**
      * Return a JSON list of tasks, including staff relationship.
      */
-    public function indexTasks()
-    {
+// Existing in StaffController:
+public function indexTasks()
+{
+    // If you're using Laravel’s 'auth:staff' guard, you can get the logged-in staff:
+    $staff = auth('staff')->user();
+    
+    // If staff is authenticated, filter tasks by staff->StaffID
+    // Or handle the case when $staff is null (like if admin is viewing all?)
+    if ($staff) {
+        $tasks = StaffTask::with('staff')
+            ->where('StaffID', $staff->StaffID)
+            ->orderBy('TaskDate','desc')
+            ->get();
+    } else {
+        // If no staff user, or if you allow admin, you can either return all or handle differently
         $tasks = StaffTask::with('staff')->orderBy('TaskDate','desc')->get();
-        return response()->json($tasks);
     }
+
+    return response()->json($tasks);
+}
+
 
     /**
      * Store a new task (POST /staff/tasks), return JSON.
@@ -325,8 +390,11 @@ class StaffController extends Controller
         {
             $task = StaffTask::findOrFail($id);
             
-            $data = $request->validate([/* ... */]);
-            $task->update($data);
+            $data = $request->validate([        
+                'TaskDescription' => 'sometimes|string|max:255',
+                'TaskDate'        => 'sometimes|date',
+                'Status'          => 'required|string|in:Pending,InProgress,Completed',]);
+                 $task->update($data);
 
             // Reload with relationships
             $updatedTask = StaffTask::with(['staff' => function($query) {
@@ -378,12 +446,26 @@ class StaffController extends Controller
      */
     public function indexSchedules()
     {
-        $schedules = StaffSchedule::with(['staff' => function($query) {
-            $query->select('StaffID', 'FullName');
-        }])->orderBy('ShiftDate', 'desc')->get();
-        
+        $staff = auth('staff')->user();
+    
+        if ($staff) {
+            $schedules = StaffSchedule::with(['staff' => function($query) {
+                    $query->select('StaffID', 'FullName');
+                }])
+                ->where('StaffID', $staff->StaffID)
+                ->orderBy('ShiftDate', 'desc')
+                ->get();
+        } else {
+            $schedules = StaffSchedule::with(['staff' => function($query) {
+                    $query->select('StaffID', 'FullName');
+                }])
+                ->orderBy('ShiftDate', 'desc')
+                ->get();
+        }
+    
         return response()->json($schedules);
     }
+    
 
     /**
      * (Optional) Return any needed data for creating a schedule.

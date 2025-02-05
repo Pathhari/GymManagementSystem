@@ -10,27 +10,25 @@ import {
   DialogActions,
   TextField,
   Divider,
-  IconButton,
   FormControl,
   InputLabel,
   MenuItem,
   Select,
-  Chip,
-  Tooltip,
+  Tabs,
+  Tab,
+  IconButton,
+  Chip
 } from "@mui/material";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import AddIcon from "@mui/icons-material/Add";
-import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank"; // For "Available"
-import BuildCircleIcon from "@mui/icons-material/BuildCircle"; // For "InMaintenance"
-import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline"; // For "OutOfService"
-import DomainIcon from "@mui/icons-material/Domain"; // For branch
-import ConfirmationNumberIcon from "@mui/icons-material/ConfirmationNumber"; // For SN
-import AccessTimeIcon from "@mui/icons-material/AccessTime"; // For clock
-import { grey } from "@mui/material/colors";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank";
+import BuildCircleIcon from "@mui/icons-material/BuildCircle";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import DomainIcon from "@mui/icons-material/Domain";
+import ConfirmationNumberIcon from "@mui/icons-material/ConfirmationNumber";
 
-// Reorder items in the same list
 const reorder = (list, startIndex, endIndex) => {
   const result = Array.from(list);
   const [removed] = result.splice(startIndex, 1);
@@ -38,11 +36,10 @@ const reorder = (list, startIndex, endIndex) => {
   return result;
 };
 
-// You could also use more distinct backgrounds or a theme-based approach
 const droppableBackground = {
-  availableList: "#c8e6c9",     // light-green
-  maintenanceList: "#fff9c4",  // light-yellow
-  outServiceList: "#ffccbc",   // light-orange
+  availableList: "#c8e6c9",
+  maintenanceList: "#fff9c4",
+  outServiceList: "#ffccbc"
 };
 
 const getItemStyle = (isDragging, draggableStyle) => ({
@@ -55,29 +52,25 @@ const getItemStyle = (isDragging, draggableStyle) => ({
   border: "1px solid #ddd",
   borderRadius: 6,
   transition: "all 0.2s ease",
-  // Slight hover effect:
   cursor: "grab",
-  "&:hover": {
-    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-  },
-  ...draggableStyle,
+  ...draggableStyle
 });
 
 const getListStyle = (droppableId, isDraggingOver) => ({
   background: isDraggingOver
-    ? grey[200]
+    ? "#e0e0e0"
     : droppableBackground[droppableId] || "#f5f5f5",
   padding: 8,
   width: 300,
   minHeight: 380,
   borderRadius: 4,
-  transition: "background 0.2s",
+  transition: "background 0.2s"
 });
 
-export default function MaintenanceEquip() {
-  // --------------------------------------------------------------------------
-  // 1) Clock
-  // --------------------------------------------------------------------------
+export default function MaintenanceEquipWithProducts() {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+  // Clock
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -85,148 +78,57 @@ export default function MaintenanceEquip() {
   }, []);
   const clockString = currentTime.toLocaleTimeString();
 
-  // --------------------------------------------------------------------------
-  // 2) Branches
-  // --------------------------------------------------------------------------
+  // Tabs: 0 = Equipment, 1 = Products
+  const [activeTab, setActiveTab] = useState(0);
+  const handleTabChange = (e, newVal) => setActiveTab(newVal);
+
+  // Branches
   const [branches, setBranches] = useState([]);
   useEffect(() => {
     fetch("/owner/branches")
       .then((res) => res.json())
-      .then((data) => {
-        setBranches(data.branches || []);
-      })
+      .then((data) => setBranches(data.branches || []))
       .catch((err) => console.error("Error fetching branches:", err));
   }, []);
 
-  // --------------------------------------------------------------------------
-  // 3) Equipment
-  // --------------------------------------------------------------------------
-  const csrfToken = document
-    .querySelector('meta[name="csrf-token"]')
-    ?.getAttribute('content');
+  const [selectedBranch, setSelectedBranch] = useState("All");
 
+  // -----------------------------------------------------------
+  // 1) Equipment + Maintenance
+  // -----------------------------------------------------------
   const [equipment, setEquipment] = useState([]);
+  const [logs, setLogs] = useState([]);
+
   const getEquipment = () => {
-    fetch("/operations/equipment", {
-      method: "GET",
-      headers: {
-        "X-CSRF-TOKEN": csrfToken,
-        "X-Requested-With": "XMLHttpRequest",
-      },
-    })
+    fetch("/operations/equipment")
       .then((res) => res.json())
-      .then((data) => {
-        const eq = data.equipment || data.props?.equipment || [];
-        setEquipment(eq);
-      })
+      .then((data) => setEquipment(data.equipment || []))
       .catch((err) => console.error("Error fetching equipment:", err));
+  };
+  const getLogs = () => {
+    fetch("/operations/maintenance-logs")
+      .then((res) => res.json())
+      .then((data) => setLogs(data.logs || []))
+      .catch((err) => console.error("Error fetching logs:", err));
   };
 
   useEffect(() => {
     getEquipment();
-  }, []);
-
-  // --------------------------------------------------------------------------
-  // 4) Maintenance Logs
-  // --------------------------------------------------------------------------
-  const [logs, setLogs] = useState([]);
-  const getLogs = () => {
-    fetch("/operations/maintenance-logs")
-      .then((res) => res.json())
-      .then((data) => {
-        setLogs(data.logs || []);
-      })
-      .catch((err) => console.error("Error fetching maintenance logs:", err));
-  };
-
-  useEffect(() => {
     getLogs();
   }, []);
 
-  // --------------------------------------------------------------------------
-  // 5) Branch Filter
-  // --------------------------------------------------------------------------
-  const [selectedBranch, setSelectedBranch] = useState("All");
+  // Branch filter
   const filteredEquipment =
     selectedBranch === "All"
       ? equipment
       : equipment.filter((eq) => String(eq.BranchID) === String(selectedBranch));
 
-  // Split into columns by status
+  // Split by status
   const availableEquip = filteredEquipment.filter((eq) => eq.Status === "Available");
   const maintenanceEquip = filteredEquipment.filter((eq) => eq.Status === "InMaintenance");
   const outOfServiceEquip = filteredEquipment.filter((eq) => eq.Status === "OutOfService");
 
-  // --------------------------------------------------------------------------
-  // 6) Add Equipment
-  // --------------------------------------------------------------------------
-  const [isAddOpen, setAddOpen] = useState(false);
-  const [newEquipData, setNewEquipData] = useState({
-    Name: "",
-    SerialNumber: "",
-    BranchID: "",
-  });
-  const [addError, setAddError] = useState("");
-
-  const handleAddOpen = () => {
-    setNewEquipData({ Name: "", SerialNumber: "", BranchID: "" });
-    setAddError("");
-    setAddOpen(true);
-  };
-
-  const handleAddEquipChange = (e) => {
-    const { name, value } = e.target;
-    setNewEquipData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const refetchEquipment = () => {
-    fetch("/operations/equipment")
-      .then((res) => res.json())
-      .then((data) => {
-        const eq = data.equipment || data.props?.equipment || [];
-        setEquipment(eq);
-      })
-      .catch((err) => console.error("Error refetching equipment:", err));
-  };
-
-  const handleAddEquipSubmit = () => {
-    if (!newEquipData.Name || !newEquipData.SerialNumber) {
-      setAddError("Please fill out required fields (Name, SerialNumber).");
-      return;
-    }
-    const payload = {
-      Name: newEquipData.Name,
-      SerialNumber: newEquipData.SerialNumber,
-      Status: "Available",
-      BranchID: newEquipData.BranchID || null,
-    };
-
-    fetch("/operations/equipment", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-TOKEN": csrfToken,
-        "X-Requested-With": "XMLHttpRequest",
-      },
-      body: JSON.stringify(payload),
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Could not save equipment.");
-        return res;
-      })
-      .then(() => {
-        refetchEquipment();
-        setAddOpen(false);
-      })
-      .catch((err) => {
-        console.error(err);
-        setAddError("Error saving new equipment.");
-      });
-  };
-
-  // --------------------------------------------------------------------------
-  // 7) Drag & Drop
-  // --------------------------------------------------------------------------
+  // Drag & Drop for equipment
   const onDragEnd = (result) => {
     const { source, destination } = result;
     if (!destination) return;
@@ -238,80 +140,71 @@ export default function MaintenanceEquip() {
       let updatedList = [];
       if (source.droppableId === "availableList") {
         updatedList = reorder(availableEquip, source.index, destination.index);
-        applyReorderToEquipment(updatedList, "Available");
+        applyReorder(updatedList, "Available");
       } else if (source.droppableId === "maintenanceList") {
         updatedList = reorder(maintenanceEquip, source.index, destination.index);
-        applyReorderToEquipment(updatedList, "InMaintenance");
-      } else if (source.droppableId === "outServiceList") {
+        applyReorder(updatedList, "InMaintenance");
+      } else {
         updatedList = reorder(outOfServiceEquip, source.index, destination.index);
-        applyReorderToEquipment(updatedList, "OutOfService");
+        applyReorder(updatedList, "OutOfService");
       }
       return;
     }
     if (source.droppableId !== destination.droppableId) {
+      // Changing status
       handleChangeStatus(source, destination);
     }
   };
 
-  const applyReorderToEquipment = (newArr, status) => {
+  const applyReorder = (newArr, status) => {
     const others = equipment.filter((eq) => eq.Status !== status);
     const final = [...others, ...newArr.map((item) => ({ ...item, Status: status }))];
     setEquipment(final);
   };
 
-  const getListFromDroppable = (droppableId) => {
-    if (droppableId === "availableList") return availableEquip;
-    if (droppableId === "maintenanceList") return maintenanceEquip;
+  const getListFromId = (id) => {
+    if (id === "availableList") return availableEquip;
+    if (id === "maintenanceList") return maintenanceEquip;
     return outOfServiceEquip;
   };
 
-  // --------------------------------------------------------------------------
-  // 8) Status-Change Modal
-  // --------------------------------------------------------------------------
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalData, setModalData] = useState({
+  // Status change modal
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
+  const [statusData, setStatusData] = useState({
     EquipmentID: null,
     oldStatus: "",
     newStatus: "",
     reason: "",
     date: "",
-    time: "",
+    time: ""
   });
   const [modalEquipItem, setModalEquipItem] = useState(null);
 
   const handleChangeStatus = (source, destination) => {
-    const srcList = getListFromDroppable(source.droppableId);
-    const [movedItem] = srcList.splice(source.index, 1);
+    const srcList = getListFromId(source.droppableId);
+    const [moved] = srcList.splice(source.index, 1);
 
     let newStatus = "Available";
     if (destination.droppableId === "maintenanceList") newStatus = "InMaintenance";
     if (destination.droppableId === "outServiceList") newStatus = "OutOfService";
 
-    setModalEquipItem(movedItem);
-    setModalData({
-      EquipmentID: movedItem.EquipmentID,
-      oldStatus: movedItem.Status,
+    setModalEquipItem(moved);
+    setStatusData({
+      EquipmentID: moved.EquipmentID,
+      oldStatus: moved.Status,
       newStatus,
       reason: "",
       date: "",
-      time: "",
+      time: ""
     });
-    setModalOpen(true);
+    setStatusModalOpen(true);
   };
 
-  const handleModalChange = (e) => {
-    const { name, value } = e.target;
-    setModalData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleModalCancel = () => {
-    setModalOpen(false);
-  };
-
-  const handleModalSave = () => {
-    const { EquipmentID, oldStatus, newStatus, reason, date, time } = modalData;
+  const saveStatusChange = () => {
+    // For example, update equipment status, optionally create a maintenance log
+    const { EquipmentID, oldStatus, newStatus, reason, date, time } = statusData;
     if (!EquipmentID || !date || !time) {
-      alert("Please specify date/time for the status change.");
+      alert("Please specify date/time");
       return;
     }
     const eq = modalEquipItem || {};
@@ -320,7 +213,7 @@ export default function MaintenanceEquip() {
       Name: eq.Name,
       SerialNumber: eq.SerialNumber,
       Status: newStatus,
-      BranchID: eq.BranchID,
+      BranchID: eq.BranchID
     };
 
     fetch("/operations/equipment", {
@@ -328,178 +221,211 @@ export default function MaintenanceEquip() {
       headers: {
         "Content-Type": "application/json",
         "X-CSRF-TOKEN": csrfToken,
-        "X-Requested-With": "XMLHttpRequest",
+        "X-Requested-With": "XMLHttpRequest"
       },
-      body: JSON.stringify(updatePayload),
+      body: JSON.stringify(updatePayload)
     })
       .then((res) => {
-        if (!res.ok) throw new Error("Failed to update equipment status.");
-        return res;
-      })
-      .then(() => {
+        if (!res.ok) throw new Error("Failed to update equipment.");
+        // If going to maintenance or out of service, create log
         if (newStatus === "InMaintenance" || newStatus === "OutOfService") {
           const logPayload = {
-            EquipmentID: eq.EquipmentID,
+            EquipmentID,
             MaintenanceDate: date,
             IssueDescription: reason,
             Resolution: "",
             MaintainedBy: null,
             NextMaintenanceDate: null,
-            Notes: `Status changed from ${oldStatus} to ${newStatus} at ${time}.`,
+            Notes: `Status changed from ${oldStatus} to ${newStatus} at ${time}.`
           };
           return fetch("/operations/maintenance-logs", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               "X-CSRF-TOKEN": csrfToken,
-              "X-Requested-With": "XMLHttpRequest",
+              "X-Requested-With": "XMLHttpRequest"
             },
-            body: JSON.stringify(logPayload),
+            body: JSON.stringify(logPayload)
           });
         }
       })
       .then(() => {
         setEquipment((prev) =>
           prev.map((item) =>
-            item.EquipmentID === EquipmentID
-              ? { ...item, Status: newStatus }
-              : item
+            item.EquipmentID === EquipmentID ? { ...item, Status: newStatus } : item
           )
         );
         getLogs();
-        setModalOpen(false);
+        setStatusModalOpen(false);
       })
       .catch((err) => {
         console.error(err);
-        alert("Error updating status or adding maintenance log.");
+        alert("Error updating status or adding log.");
       });
   };
 
-  // --------------------------------------------------------------------------
-  // 9) Remove Equipment (Optional)
-  // --------------------------------------------------------------------------
+  // Remove equipment example (optional)
   const removeEquipment = (EquipmentID) => {
-    if (!window.confirm("Are you sure you want to delete this equipment?")) return;
+    if (!window.confirm("Delete equipment?")) return;
+    // Or call a delete route if you have one
     setEquipment((prev) => prev.filter((eq) => eq.EquipmentID !== EquipmentID));
-    // If you had a DELETE route, call it here.
   };
 
-  // --------------------------------------------------------------------------
-  // 10) Activity Logs
-  // --------------------------------------------------------------------------
-  const [editLogIndex, setEditLogIndex] = useState(null);
-  const [editLogText, setEditLogText] = useState("");
+  // -----------------------------------------------------------
+  // 2) Products
+  // -----------------------------------------------------------
+  const [products, setProducts] = useState([]);
+  const fetchProducts = () => {
+    fetch("/operations/products", {
+      headers: { "X-Requested-With": "XMLHttpRequest" }
+    })
+      .then((res) => res.json())
+      .then((data) => setProducts(data.products || []))
+      .catch((err) => console.error("Error fetching products:", err));
+  };
+  useEffect(() => {
+    fetchProducts();
+  }, []);
 
-  const handleEditLog = (logItem, idx) => {
-    setEditLogIndex(idx);
-    const combined = `Issue: ${logItem.IssueDescription}\nResolution: ${logItem.Resolution}\nNotes: ${logItem.Notes}`;
-    setEditLogText(combined);
+  const filteredProducts =
+    selectedBranch === "All"
+      ? products
+      : products.filter((p) => String(p.BranchID) === String(selectedBranch));
+
+  // Add/Edit product
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [productForm, setProductForm] = useState({
+    ProductID: null,
+    ProductName: "",
+    Category: "",
+    StockLevel: 0,
+    ReorderLevel: 0,
+    Cost: 0,
+    Price: 0,
+    BranchID: ""
+  });
+  const [productError, setProductError] = useState("");
+
+  const openNewProductDialog = () => {
+    setProductForm({
+      ProductID: null,
+      ProductName: "",
+      Category: "",
+      StockLevel: 0,
+      ReorderLevel: 0,
+      Cost: 0,
+      Price: 0,
+      BranchID: ""
+    });
+    setProductError("");
+    setProductDialogOpen(true);
   };
 
-  const handleSaveLogEdit = () => {
-    if (editLogIndex == null) return;
-    const logToEdit = logs[editLogIndex];
-    if (!logToEdit) {
-      setEditLogIndex(null);
+  const handleProductFormChange = (e) => {
+    setProductForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const saveProduct = () => {
+    if (!productForm.ProductName) {
+      setProductError("ProductName required.");
       return;
     }
-    const updatedLog = { ...logToEdit, Notes: editLogText };
-
-    fetch(`/operations/maintenance-logs/${logToEdit.MaintenanceID}`, {
-      method: "PUT",
+    fetch("/operations/products", {
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-CSRF-TOKEN": csrfToken,
-        "X-Requested-With": "XMLHttpRequest",
+        "X-Requested-With": "XMLHttpRequest"
       },
-      body: JSON.stringify(updatedLog),
+      body: JSON.stringify(productForm)
     })
       .then((res) => {
-        if (!res.ok) throw new Error("Failed to update maintenance log.");
+        if (!res.ok) throw new Error("Failed to save product");
         return res.json();
       })
       .then(() => {
-        getLogs();
-        setEditLogIndex(null);
-        setEditLogText("");
+        setProductDialogOpen(false);
+        fetchProducts();
       })
-      .catch((err) => console.error(err));
+      .catch((err) => {
+        console.error(err);
+        setProductError("Error saving product");
+      });
   };
 
-  const handleCancelLogEdit = () => {
-    setEditLogIndex(null);
-    setEditLogText("");
+  // Stock adjustment
+  const [stockDialogOpen, setStockDialogOpen] = useState(false);
+  const [stockForm, setStockForm] = useState({
+    ProductID: null,
+    QuantityChange: 0,
+    ChangeType: "Adjustment",
+    Notes: ""
+  });
+  const [stockError, setStockError] = useState("");
+
+  const openStockAdjustDialog = (prod) => {
+    setStockForm({
+      ProductID: prod.ProductID,
+      QuantityChange: 0,
+      ChangeType: "Adjustment",
+      Notes: ""
+    });
+    setStockError("");
+    setStockDialogOpen(true);
   };
 
-  const deleteLog = (logId) => {
-    if (!window.confirm("Are you sure you want to delete this log entry?")) return;
-    fetch(`/operations/maintenance-logs/${logId}`, {
-      method: "DELETE",
+  const handleStockFormChange = (e) => {
+    setStockForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const adjustStock = () => {
+    if (!stockForm.ProductID || !stockForm.QuantityChange) {
+      setStockError("Need ProductID + QuantityChange > 0");
+      return;
+    }
+    fetch("/operations/products/adjust-stock", {
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-CSRF-TOKEN": csrfToken,
-        "X-Requested-With": "XMLHttpRequest",
+        "X-Requested-With": "XMLHttpRequest"
       },
+      body: JSON.stringify(stockForm)
     })
       .then((res) => {
-        if (!res.ok) throw new Error("Error deleting log.");
-        getLogs();
+        if (!res.ok) throw new Error("Failed to adjust stock");
+        return res.text();
+      })
+      .then(() => {
+        setStockDialogOpen(false);
+        fetchProducts();
+      })
+      .catch((err) => {
+        console.error(err);
+        setStockError("Error adjusting stock.");
+      });
+  };
+
+  // Delete product
+  const deleteProduct = (prod) => {
+    if (!window.confirm(`Remove ${prod.ProductName}?`)) return;
+    fetch(`/operations/products/${prod.ProductID}`, {
+      method: "DELETE",
+      headers: {
+        "X-CSRF-TOKEN": csrfToken,
+        "X-Requested-With": "XMLHttpRequest"
+      }
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to delete product");
+        fetchProducts();
       })
       .catch((err) => console.error(err));
   };
 
-  const clearAllLogs = () => {
-    if (!window.confirm("Really delete all logs?")) return;
-    const promises = logs.map((log) =>
-      fetch(`/operations/maintenance-logs/${log.MaintenanceID}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-TOKEN": csrfToken,
-          "X-Requested-With": "XMLHttpRequest",
-        },
-      })
-    );
-    Promise.all(promises)
-      .then(() => getLogs())
-      .catch((err) => console.error("Failed clearing all logs:", err));
-  };
-
-  const truncatedLogs = logs.slice(0, 15);
-
-  // --------------------------------------------------------------------------
-  // 11) Rendering Draggable Items
-  // --------------------------------------------------------------------------
-  const statusChips = {
-    Available: (
-      <Chip
-        size="small"
-        label="Available"
-        icon={<CheckBoxOutlineBlankIcon style={{ fontSize: 16 }} />}
-        color="success"
-        sx={{ fontSize: "0.7rem" }}
-      />
-    ),
-    InMaintenance: (
-      <Chip
-        size="small"
-        label="Maintenance"
-        icon={<BuildCircleIcon style={{ fontSize: 16 }} />}
-        color="warning"
-        sx={{ fontSize: "0.7rem" }}
-      />
-    ),
-    OutOfService: (
-      <Chip
-        size="small"
-        label="Out of Service"
-        icon={<ErrorOutlineIcon style={{ fontSize: 16 }} />}
-        color="error"
-        sx={{ fontSize: "0.7rem" }}
-      />
-    ),
-  };
-
+  // -----------------------------------------------------------
+  // 3) Rendering
+  // -----------------------------------------------------------
   const renderDraggableItem = (item, index) => (
     <Draggable
       key={String(item.EquipmentID)}
@@ -515,7 +441,7 @@ export default function MaintenanceEquip() {
           sx={{
             ...getItemStyle(snapshot.isDragging, provided.draggableProps.style),
             p: 1.5,
-            mb: 1,
+            mb: 1
           }}
         >
           <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
@@ -530,234 +456,177 @@ export default function MaintenanceEquip() {
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Box>
-          <Box sx={{ mb: 0.5 }}>
-            <Typography variant="subtitle2" sx={{ lineHeight: 1.2 }}>
-              {statusChips[item.Status]}
-            </Typography>
-          </Box>
-          <Typography variant="body2" sx={{ lineHeight: 1.4, mb: 0.5 }}>
-            <Tooltip title="Equipment Name">
-              <strong>{item.Name}</strong>
-            </Tooltip>
+          <Typography variant="body2" sx={{ mb: 0.5 }}>
+            <strong>{item.Name}</strong>
           </Typography>
-          <Typography variant="body2" sx={{ fontSize: "0.8rem", color: "text.secondary" }}>
-            <Tooltip title="Serial Number">
-              <span>
-                <ConfirmationNumberIcon fontSize="inherit" sx={{ mr: 0.5 }} />
-                {item.SerialNumber}
-              </span>
-            </Tooltip>
+          <Typography variant="body2" sx={{ fontSize: 13, color: "text.secondary" }}>
+            <ConfirmationNumberIcon fontSize="inherit" sx={{ mr: 0.5 }} />
+            {item.SerialNumber}
           </Typography>
-          <Typography variant="body2" sx={{ fontSize: "0.8rem" }}>
-            <Tooltip title="Branch">
-              <span>
-                <DomainIcon fontSize="inherit" sx={{ mr: 0.5 }} />
-                {item.BranchID}
-              </span>
-            </Tooltip>
+          <Typography variant="body2" sx={{ fontSize: 13 }}>
+            <DomainIcon fontSize="inherit" sx={{ mr: 0.5 }} />
+            {item.BranchID}
           </Typography>
         </Paper>
       )}
     </Draggable>
   );
 
-  // --------------------------------------------------------------------------
-  // 12) Final Return
-  // --------------------------------------------------------------------------
+  const logsToShow = logs.slice(0, 12);
+
   return (
-    <Box sx={{ display: "flex", gap: 3, p: 4, flexWrap: "wrap" }}>
-      {/* Left side: Equipment DnD */}
-      <Box flex={1} minWidth={600}>
-        <FormControl sx={{ mb: 2, minWidth: 180 }}>
-          <InputLabel>Filter by Branch</InputLabel>
-          <Select
-            label="Filter by Branch"
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-          >
-            <MenuItem value="All">All Branches</MenuItem>
-            {branches.map((b) => (
-              <MenuItem key={b.BranchID} value={String(b.BranchID)}>
-                {b.BranchName}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        <Typography variant="h4" gutterBottom fontWeight="bold">
-          Equipment Management
-        </Typography>
-        <Divider sx={{ mb: 2 }} />
-
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleAddOpen}
-          sx={{ mb: 3 }}
-        >
-          Add Equipment
-        </Button>
-
-        <DragDropContext onDragEnd={onDragEnd}>
-          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-            {/* Available */}
-            <Droppable droppableId="availableList">
-              {(provided, snapshot) => (
-                <Paper
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  sx={{ p: 2 }}
-                  style={getListStyle("availableList", snapshot.isDraggingOver)}
-                >
-                  <Typography variant="h6" gutterBottom textAlign="center">
-                    <CheckBoxOutlineBlankIcon /> Available
-                  </Typography>
-                  {availableEquip.map((eq, idx) => renderDraggableItem(eq, idx))}
-                  {provided.placeholder}
-                </Paper>
-              )}
-            </Droppable>
-
-            {/* In Maintenance */}
-            <Droppable droppableId="maintenanceList">
-              {(provided, snapshot) => (
-                <Paper
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  sx={{ p: 2 }}
-                  style={getListStyle("maintenanceList", snapshot.isDraggingOver)}
-                >
-                  <Typography variant="h6" gutterBottom textAlign="center">
-                    <BuildCircleIcon /> In Maintenance
-                  </Typography>
-                  {maintenanceEquip.map((eq, idx) => renderDraggableItem(eq, idx))}
-                  {provided.placeholder}
-                </Paper>
-              )}
-            </Droppable>
-
-            {/* Out of Service */}
-            <Droppable droppableId="outServiceList">
-              {(provided, snapshot) => (
-                <Paper
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  sx={{ p: 2 }}
-                  style={getListStyle("outServiceList", snapshot.isDraggingOver)}
-                >
-                  <Typography variant="h6" gutterBottom textAlign="center">
-                    <ErrorOutlineIcon /> Out of Service
-                  </Typography>
-                  {outOfServiceEquip.map((eq, idx) => renderDraggableItem(eq, idx))}
-                  {provided.placeholder}
-                </Paper>
-              )}
-            </Droppable>
-          </Box>
-        </DragDropContext>
-      </Box>
-
-      {/* Right side: Activity Logs & Clock */}
-      <Box sx={{ width: 360, maxWidth: "100%" }}>
-        {/* Real-Time Clock */}
-        <Paper
-          sx={{
-            p: 1.5,
-            mb: 2,
-            backgroundColor: "#424242",
-            color: "#fff",
-            textAlign: "center",
-            borderRadius: 2,
-          }}
-          elevation={3}
-        >
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <AccessTimeIcon sx={{ mr: 1 }} />
-            <Typography variant="h6" sx={{ fontWeight: "bold", mb: 0 }}>
-              {clockString}
-            </Typography>
+    <Box sx={{ display: "flex", gap: 3, p: 3, flexWrap: "wrap" }}>
+      {/* Left: Branch Filter, Tabs, and main content */}
+      <Box sx={{ flex: 1, minWidth: 600 }}>
+        {/* Branch filter and clock */}
+        <Paper sx={{ p: 2, mb: 2 }} elevation={3}>
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <AccessTimeIcon />
+              <Typography variant="body1">{clockString}</Typography>
+            </Box>
           </Box>
         </Paper>
 
-        <Typography variant="h5" gutterBottom sx={{ fontWeight: "bold" }}>
-          Activity
-        </Typography>
-        <Divider sx={{ mb: 2 }} />
+        {/* Tabs: 0 => Equipment, 1 => Products */}
+        <Paper elevation={3}>
+          <Tabs value={activeTab} onChange={handleTabChange}>
+            <Tab label="Equipment" />
+            <Tab label="Products" />
+          </Tabs>
 
-        <Box sx={{ textAlign: "right", mb: 1 }}>
-          <Button variant="outlined" color="secondary" onClick={clearAllLogs}>
-            Clear All
-          </Button>
-        </Box>
+          {activeTab === 0 && (
+            <Box sx={{ p: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Equipment Management
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
 
-        <Paper
-          sx={{
-            p: 2,
-            borderRadius: 2,
-            backgroundColor: "#212121",
-            color: "#fafafa",
-            maxHeight: 600,
-            overflowY: "auto",
-          }}
-          elevation={4}
-        >
-          {truncatedLogs.length === 0 ? (
-            <Typography variant="body2" color="#ccc">
-              No recent logs...
-            </Typography>
-          ) : (
-            truncatedLogs.map((log, idx) => (
-              <Paper
-                key={String(log.MaintenanceID)}
-                variant="outlined"
-                sx={{
-                  p: 1.5,
-                  mb: 2,
-                  backgroundColor: "#333",
-                  borderRadius: 2,
-                  borderColor: "#555",
-                }}
-              >
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    mb: 1,
-                  }}
+              <DragDropContext onDragEnd={onDragEnd}>
+                <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                  {/* Available */}
+                  <Droppable droppableId="availableList">
+                    {(provided, snapshot) => (
+                      <Paper
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        sx={{ p: 2 }}
+                        style={getListStyle("availableList", snapshot.isDraggingOver)}
+                      >
+                        <Typography variant="h6" textAlign="center" mb={1}>
+                          <CheckBoxOutlineBlankIcon /> Available
+                        </Typography>
+                        {availableEquip.map((eq, idx) => renderDraggableItem(eq, idx))}
+                        {provided.placeholder}
+                      </Paper>
+                    )}
+                  </Droppable>
+
+                  {/* In Maintenance */}
+                  <Droppable droppableId="maintenanceList">
+                    {(provided, snapshot) => (
+                      <Paper
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        sx={{ p: 2 }}
+                        style={getListStyle("maintenanceList", snapshot.isDraggingOver)}
+                      >
+                        <Typography variant="h6" textAlign="center" mb={1}>
+                          <BuildCircleIcon /> In Maintenance
+                        </Typography>
+                        {maintenanceEquip.map((eq, idx) => renderDraggableItem(eq, idx))}
+                        {provided.placeholder}
+                      </Paper>
+                    )}
+                  </Droppable>
+
+                  {/* Out of Service */}
+                  <Droppable droppableId="outServiceList">
+                    {(provided, snapshot) => (
+                      <Paper
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        sx={{ p: 2 }}
+                        style={getListStyle("outServiceList", snapshot.isDraggingOver)}
+                      >
+                        <Typography variant="h6" textAlign="center" mb={1}>
+                          <ErrorOutlineIcon /> Out of Service
+                        </Typography>
+                        {outOfServiceEquip.map((eq, idx) => renderDraggableItem(eq, idx))}
+                        {provided.placeholder}
+                      </Paper>
+                    )}
+                  </Droppable>
+                </Box>
+              </DragDropContext>
+            </Box>
+          )}
+
+          {activeTab === 1 && (
+            <Box sx={{ p: 2 }}>
+              <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+                <Typography variant="h6">Products</Typography>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={openNewProductDialog}>
+                  Add Product
+                </Button>
+              </Box>
+              <Divider sx={{ mb: 2 }} />
+
+              {filteredProducts.map((prod) => (
+                <Paper
+                  key={prod.ProductID}
+                  sx={{ p: 1.5, mb: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}
                 >
-                  <Typography variant="subtitle2" sx={{ color: "#ccc" }}>
-                    <strong>Log #{log.MaintenanceID}</strong>
-                  </Typography>
                   <Box>
-                    <IconButton
+                    <Typography variant="subtitle1"><strong>{prod.ProductName}</strong></Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Stock: {prod.StockLevel} | Cat: {prod.Category || "N/A"}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Button
+                      variant="outlined"
                       size="small"
-                      color="inherit"
-                      onClick={() => handleEditLog(log, idx)}
-                      sx={{ ml: 1, color: "#aaa" }}
+                      sx={{ mr: 1 }}
+                      onClick={() => openStockAdjustDialog(prod)}
                     >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="inherit"
-                      onClick={() => deleteLog(log.MaintenanceID)}
-                      sx={{ ml: 1, color: "red" }}
-                    >
+                      Adjust Stock
+                    </Button>
+                    <IconButton size="small" color="error" onClick={() => deleteProduct(prod)}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Box>
-                </Box>
-                <Divider sx={{ mb: 1, borderColor: "#444" }} />
-                <Typography variant="body2" sx={{ fontSize: "0.8rem", color: "#ddd" }}>
-                  <strong>Equipment #{log.EquipmentID}</strong> | Date: {log.MaintenanceDate}
+                </Paper>
+              ))}
+            </Box>
+          )}
+        </Paper>
+      </Box>
+
+      {/* Right: Logs */}
+      <Box sx={{ width: 350, maxWidth: "100%" }}>
+        <Typography variant="h5" sx={{ mb: 2 }}>
+          Maintenance Logs
+        </Typography>
+        <Divider sx={{ mb: 2 }} />
+        <Paper sx={{ p: 2, maxHeight: 600, overflowY: "auto" }}>
+          {logsToShow.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No logs available...
+            </Typography>
+          ) : (
+            logsToShow.map((log) => (
+              <Paper
+                key={log.MaintenanceID}
+                sx={{ p: 1.5, mb: 2, backgroundColor: "#333", color: "#fafafa" }}
+              >
+                <Typography variant="subtitle2">
+                  Log #{log.MaintenanceID} | Equip #{log.EquipmentID}
                 </Typography>
-                <Typography variant="body2" sx={{ fontSize: "0.8rem", color: "#ddd" }}>
-                  Issue: {log.IssueDescription || "N/A"}
-                  <br />
-                  Resolution: {log.Resolution || "N/A"}
-                </Typography>
-                <Typography variant="body2" sx={{ fontSize: "0.8rem", color: "#bbb" }}>
+                <Typography variant="body2" sx={{ fontSize: 13 }}>
+                  Date: {log.MaintenanceDate} <br />
+                  Issue: {log.IssueDescription || "None"} <br />
+                  Resolution: {log.Resolution || "N/A"} <br />
                   Notes: {log.Notes || ""}
                 </Typography>
               </Paper>
@@ -766,63 +635,12 @@ export default function MaintenanceEquip() {
         </Paper>
       </Box>
 
-      {/* Dialog: Add Equipment */}
-      <Dialog open={isAddOpen} onClose={() => setAddOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Add Equipment</DialogTitle>
-        <DialogContent dividers>
-          <TextField
-            label="Name"
-            name="Name"
-            fullWidth
-            margin="normal"
-            value={newEquipData.Name}
-            onChange={handleAddEquipChange}
-          />
-          <TextField
-            label="Serial Number"
-            name="SerialNumber"
-            fullWidth
-            margin="normal"
-            value={newEquipData.SerialNumber}
-            onChange={handleAddEquipChange}
-          />
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Select Branch</InputLabel>
-            <Select
-              label="Select Branch"
-              name="BranchID"
-              value={newEquipData.BranchID}
-              onChange={handleAddEquipChange}
-            >
-              {branches.map((b) => (
-                <MenuItem key={b.BranchID} value={String(b.BranchID)}>
-                  {b.BranchName}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          {addError && (
-            <Typography variant="body2" color="error" sx={{ mt: 1 }}>
-              {addError}
-            </Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleAddEquipSubmit}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Dialog: Status Transition */}
-      <Dialog open={modalOpen} onClose={handleModalCancel} fullWidth maxWidth="sm">
-        <DialogTitle>Change Status</DialogTitle>
+      {/* Dialog: Status change */}
+      <Dialog open={statusModalOpen} onClose={() => setStatusModalOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Change Equipment Status</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" gutterBottom>
-            Equipment: {modalData.EquipmentID}
-            <br />
-            Changing from "{modalData.oldStatus}" to "{modalData.newStatus}".
+            Changing from "{statusData.oldStatus}" to "{statusData.newStatus}".
           </Typography>
           <TextField
             label="Date"
@@ -831,8 +649,8 @@ export default function MaintenanceEquip() {
             margin="normal"
             fullWidth
             InputLabelProps={{ shrink: true }}
-            value={modalData.date}
-            onChange={handleModalChange}
+            value={statusData.date}
+            onChange={(e) => setStatusData((prev) => ({ ...prev, date: e.target.value }))}
           />
           <TextField
             label="Time"
@@ -841,48 +659,160 @@ export default function MaintenanceEquip() {
             margin="normal"
             fullWidth
             InputLabelProps={{ shrink: true }}
-            value={modalData.time}
-            onChange={handleModalChange}
+            value={statusData.time}
+            onChange={(e) => setStatusData((prev) => ({ ...prev, time: e.target.value }))}
           />
           <TextField
-            label="Reason / Notes"
+            label="Reason"
             name="reason"
             margin="normal"
             fullWidth
             multiline
             rows={3}
-            value={modalData.reason}
-            onChange={handleModalChange}
+            value={statusData.reason}
+            onChange={(e) => setStatusData((prev) => ({ ...prev, reason: e.target.value }))}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleModalCancel}>Cancel</Button>
-          <Button variant="contained" onClick={handleModalSave}>
+          <Button onClick={() => setStatusModalOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={saveStatusChange}>
             Save
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Dialog: Edit Log Entry */}
-      <Dialog
-        open={editLogIndex !== null}
-        onClose={handleCancelLogEdit}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Edit Maintenance Log</DialogTitle>
+      {/* Dialog: Add/Edit product */}
+      <Dialog open={productDialogOpen} onClose={() => setProductDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Add Product</DialogTitle>
         <DialogContent dividers>
           <TextField
+            label="Product Name"
+            name="ProductName"
             fullWidth
-            multiline
-            rows={3}
-            value={editLogText}
-            onChange={(e) => setEditLogText(e.target.value)}
+            margin="normal"
+            value={productForm.ProductName}
+            onChange={handleProductFormChange}
           />
+          <TextField
+            label="Category"
+            name="Category"
+            fullWidth
+            margin="normal"
+            value={productForm.Category}
+            onChange={handleProductFormChange}
+          />
+          <TextField
+            label="Stock Level"
+            name="StockLevel"
+            type="number"
+            fullWidth
+            margin="normal"
+            value={productForm.StockLevel}
+            onChange={handleProductFormChange}
+          />
+          <TextField
+            label="Reorder Level"
+            name="ReorderLevel"
+            type="number"
+            fullWidth
+            margin="normal"
+            value={productForm.ReorderLevel}
+            onChange={handleProductFormChange}
+          />
+          <TextField
+            label="Cost"
+            name="Cost"
+            type="number"
+            fullWidth
+            margin="normal"
+            value={productForm.Cost}
+            onChange={handleProductFormChange}
+          />
+          <TextField
+            label="Price"
+            name="Price"
+            type="number"
+            fullWidth
+            margin="normal"
+            value={productForm.Price}
+            onChange={handleProductFormChange}
+          />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Select Branch</InputLabel>
+            <Select
+              label="Select Branch"
+              name="BranchID"
+              value={productForm.BranchID || ""}
+              onChange={handleProductFormChange}
+            >
+              <MenuItem value="">No Branch</MenuItem>
+              {branches.map((b) => (
+                <MenuItem key={b.BranchID} value={String(b.BranchID)}>
+                  {b.BranchName}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {productError && (
+            <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+              {productError}
+            </Typography>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCancelLogEdit}>Cancel</Button>
-          <Button variant="contained" onClick={handleSaveLogEdit}>
+          <Button onClick={() => setProductDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={saveProduct}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog: Stock Adjustment */}
+      <Dialog open={stockDialogOpen} onClose={() => setStockDialogOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Adjust Stock</DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            label="Quantity Change"
+            name="QuantityChange"
+            type="number"
+            fullWidth
+            margin="normal"
+            value={stockForm.QuantityChange}
+            onChange={handleStockFormChange}
+          />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Change Type</InputLabel>
+            <Select
+              name="ChangeType"
+              label="Change Type"
+              value={stockForm.ChangeType}
+              onChange={handleStockFormChange}
+            >
+              <MenuItem value="Adjustment">Adjustment</MenuItem>
+              <MenuItem value="Sale">Sale</MenuItem>
+              <MenuItem value="Restock">Restock</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            label="Notes"
+            name="Notes"
+            multiline
+            rows={2}
+            fullWidth
+            margin="normal"
+            value={stockForm.Notes}
+            onChange={handleStockFormChange}
+          />
+          {stockError && (
+            <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+              {stockError}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setStockDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={adjustStock}>
             Save
           </Button>
         </DialogActions>

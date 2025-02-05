@@ -369,6 +369,7 @@ Route::prefix('booking')->group(function() {
         Route::get('{id}/edit', [BookingController::class, 'editBooking'])->name('booking.edit');
         Route::put('{id}', [BookingController::class, 'updateBooking'])->name('booking.update');
         Route::post('{id}/cancel', [BookingController::class, 'cancelBooking'])->name('booking.cancel');
+        Route::get('today', [BookingController::class, 'getTodayBookings'])->name('booking.today');
 
         Route::get('/coaches', [BookingController::class, 'index'])->name('coaches.index');
 
@@ -405,12 +406,14 @@ Route::prefix('staff')->group(function () {
         Route::post('/', [StaffController::class, 'storeStaff'])->name('staff.store');
         Route::put('/{id}', [StaffController::class, 'updateStaff'])->name('staff.update');
         Route::delete('/{id}', [StaffController::class, 'destroyStaff'])->name('staff.destroy');
-
+        // For staff/metrics
+        Route::get('/metrics', [StaffController::class, 'getStaffMetrics'])->name('staff.metrics');
         // Attendance
         Route::get('attendance', [StaffController::class, 'indexAttendance'])->name('staff.attendance.index');
         Route::put('attendance/{id}', [StaffController::class, 'updateAttendance'])->name('staff.attendance.update');
         Route::delete('attendance/{id}', [StaffController::class, 'destroyAttendance'])->name('staff.attendance.destroy');
         Route::post('attendance/clock-in-out', [StaffController::class, 'clockInOut'])->name('staff.attendance.clockInOut');
+        Route::get('attendance-analytics', [StaffController::class, 'attendanceAnalytics'])->name('staff.attendance.analytics');
 
         // Tasks
         Route::prefix('tasks')->group(function() {
@@ -492,19 +495,19 @@ Route::prefix('operations')->group(function() {
 
     // Inventory
     Route::get('products', [OperationsController::class, 'indexProducts'])
-        ->middleware('multiGuard:owner,admin')
+        ->middleware('multiGuard:owner,admin,staff')
         ->name('operations.products.index');
 
     Route::post('products', [OperationsController::class, 'storeProduct'])
-        ->middleware('multiGuard:owner,admin')
+        ->middleware('multiGuard:owner,admin,staff')
         ->name('operations.products.store');
 
     Route::post('products/adjust', [OperationsController::class, 'adjustStock'])
-        ->middleware('multiGuard:owner,admin,staff')
+        ->middleware('multiGuard:owner,admin,staff,staff')
         ->name('operations.products.adjust');
 
     Route::delete('products/{id}', [OperationsController::class, 'destroyProduct'])
-        ->middleware('multiGuard:owner,admin')
+        ->middleware('multiGuard:owner,admin,staff')
         ->name('operations.products.destroy');
 
     Route::get('stock-levels', [OperationsController::class, 'viewStockLevels'])
