@@ -11,7 +11,7 @@ use App\Models\SessionBooking;
 use App\Models\SessionWaitlist;
 use App\Models\SessionAttendance;
 use App\Models\Coach;
-use Illuminate\Support\Facades\DB;  // ADD THIS LINE
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class BookingController extends Controller
@@ -22,25 +22,24 @@ class BookingController extends Controller
 
     /**
      * Returns all Bookings in JSON form, including Branch info.
-     * Also supports staff branch-check and optional server-side ?branch= filtering.
+     * Supports staff branch-check and an optional server-side ?branch= filter.
      */
     public function indexBooking(Request $request)
     {
-        $staff = auth('staff')->user(); 
-        $admin = auth('admin')->user(); 
-        $owner = auth('owner')->user();
-
+        $staff = auth('staff')->user();
         // Start a query that eager-loads facility->branch
         $query = Booking::with(['member', 'facility.branch']);
 
-        // If staff, limit to staff's branch only
+        // If a staff user is logged in, filter bookings by the staff’s branch(es)
         if ($staff) {
-            $query->whereHas('facility', function($q) use ($staff) {
-                $q->where('BranchID', $staff->BranchID);
+            // Get the branch IDs associated with the staff from the pivot table
+            $branchIDs = $staff->branches->pluck('BranchID')->toArray();
+            $query->whereHas('facility', function($q) use ($branchIDs) {
+                $q->whereIn('BranchID', $branchIDs);
             });
         }
 
-        // (Optional) server-side filter: e.g. GET /booking?branch=Branch2
+        // Optional server-side filter: e.g. GET /booking?branch=Branch2
         if ($request->filled('branch')) {
             $branchName = $request->get('branch');
             $query->whereHas('facility.branch', function($q) use ($branchName) {
@@ -50,23 +49,22 @@ class BookingController extends Controller
 
         $bookings = $query->orderBy('BookingDate', 'desc')->get();
 
-        // Transform each booking into an array that includes "Branch"
+        // Transform each booking into an array that includes Branch info
         $data = $bookings->map(function($b) {
             return [
                 'BookingID'    => $b->BookingID,
                 'MemberName'   => optional($b->member)->FullName ?? '',
-                'FacilityID'   => optional($b->facility)->FacilityID ?? null,  // add this
+                'FacilityID'   => optional($b->facility)->FacilityID ?? null,
                 'FacilityName' => optional($b->facility)->Name ?? '',
                 'BookingDate'  => $b->BookingDate,
                 'BookingTime'  => $b->BookingTime,
                 'Duration'     => $b->Duration,
                 'Status'       => $b->Status ?? '',
                 'Branch'       => optional(optional($b->facility)->branch)->BranchName ?? '',
-                'BranchID'     => optional(optional($b->facility)->branch)->BranchID ?? null,  // add this
+                'BranchID'     => optional(optional($b->facility)->branch)->BranchID ?? null,
             ];
-                });
+        });
 
-        // Return JSON for your React front end
         return response()->json(['bookings' => $data]);
     }
 
@@ -75,23 +73,23 @@ class BookingController extends Controller
      */
     public function storeBooking(Request $request)
     {
-        $staff = auth('staff')->user(); 
-        $admin = auth('admin')->user(); 
-        $owner = auth('owner')->user();
-
+        $staff = auth('staff')->user();
+        // Validate incoming data
         $data = $request->validate([
             'MemberID'    => 'required|exists:members,MemberID',
             'FacilityID'  => 'required|exists:facilities,FacilityID',
             'PaymentID'   => 'nullable|exists:payments,PaymentID',
             'BookingDate' => 'required|date',
-            'BookingTime' => 'required|string|max:20', 
+            'BookingTime' => 'required|string|max:20',
             'Duration'    => 'nullable|integer|min:1',
             'Status'      => 'nullable|string|max:50'
         ]);
 
+        // If a staff user is logged in, ensure that the facility belongs to one of their branches
         if ($staff) {
             $facility = Facility::findOrFail($data['FacilityID']);
-            if ($facility->BranchID != $staff->BranchID) {
+            $branchIDs = $staff->branches->pluck('BranchID')->toArray();
+            if (!in_array($facility->BranchID, $branchIDs)) {
                 abort(403, 'You cannot create a booking for a facility outside your branch.');
             }
         }
@@ -106,10 +104,7 @@ class BookingController extends Controller
      */
     public function updateBooking(Request $request, $id)
     {
-        $staff = auth('staff')->user(); 
-        $admin = auth('admin')->user(); 
-        $owner = auth('owner')->user();
-
+        $staff = auth('staff')->user();
         $booking = Booking::findOrFail($id);
 
         $data = $request->validate([
@@ -124,7 +119,8 @@ class BookingController extends Controller
 
         if ($staff) {
             $facility = Facility::findOrFail($data['FacilityID']);
-            if ($facility->BranchID != $staff->BranchID) {
+            $branchIDs = $staff->branches->pluck('BranchID')->toArray();
+            if (!in_array($facility->BranchID, $branchIDs)) {
                 abort(403, 'You cannot update a booking for a facility outside your branch.');
             }
         }
@@ -142,8 +138,11 @@ class BookingController extends Controller
         $staff = auth('staff')->user();
         $booking = Booking::with('facility')->findOrFail($id);
 
-        if ($staff && $booking->facility->BranchID != $staff->BranchID) {
-            abort(403, 'You cannot cancel a booking from another branch.');
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID')->toArray();
+            if (!in_array(optional($booking->facility)->BranchID, $branchIDs)) {
+                abort(403, 'You cannot cancel a booking from another branch.');
+            }
         }
 
         if (empty($booking->Status) || $booking->Status !== 'Cancelled') {
@@ -154,20 +153,21 @@ class BookingController extends Controller
         return response()->json(['message' => 'Booking cancelled.']);
     }
 
-        public function index()
+    /**
+     * Returns a list of coaches.
+     */
+    public function index()
     {
         $coaches = Coach::orderBy('FullName')->get();
-
-        // return { "coaches": [ { CoachID, FullName, ... }, ... ] }
         return response()->json(['coaches' => $coaches]);
     }
 
-
+    /**
+     * Returns a list of facilities.
+     */
     public function indexFacilities()
     {
-        $facilities = Facility::orderBy('Name','asc')->get();
-
-        // Return as { "facilities": [ {FacilityID, Name, ...}, ... ] }
+        $facilities = Facility::orderBy('Name', 'asc')->get();
         return response()->json(['facilities' => $facilities]);
     }
 
@@ -176,32 +176,33 @@ class BookingController extends Controller
      * ------------------------------------------------------------------ */
 
     /**
-     * Index Coaching Sessions in JSON form, with optional branch filtering if relevant.
+     * Returns coaching sessions in JSON form, with branch filtering for staff.
      */
     public function indexSessions(Request $request)
     {
         $staff = auth('staff')->user();
-        $admin = auth('admin')->user();
-        $owner = auth('owner')->user();
-
-        // If your sessions have a direct branch reference, you can do with('branch') or something similar.
-        // We'll just do with('coach') for now:
         $query = CoachingSession::with(['coach', 'branch']);
-            
-        // If there's a branch param: ?branch=Branch2
-        if ($request->filled('branch')) {
-            $branchParam = $request->get('branch');
-            // If your coaching_sessions table has a 'BranchName' or 'BranchID' column:
-            // $query->where('BranchName', $branchParam);
+
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID');
+            $query->whereHas('branch', function($q) use ($branchIDs) {
+                $q->whereIn('BranchID', $branchIDs);
+            });
         }
 
-        $sessions = $query->orderBy('StartTime','desc')->get();
+        if ($request->filled('branch')) {
+            $branchParam = $request->get('branch');
+            $query->whereHas('branch', function($q) use ($branchParam) {
+                $q->where('BranchName', $branchParam);
+            });
+        }
 
-        // Transform for JSON
+        $sessions = $query->orderBy('StartTime', 'desc')->get();
+
         $data = $sessions->map(function($s) {
             return [
                 'SessionID'    => $s->SessionID,
-                'Branch'       => optional($s->branch)->BranchName ?? '',                
+                'Branch'       => optional($s->branch)->BranchName ?? '',
                 'SessionName'  => $s->SessionName,
                 'CoachName'    => optional($s->coach)->FullName ?? '',
                 'StartTime'    => $s->StartTime,
@@ -215,12 +216,15 @@ class BookingController extends Controller
         return response()->json(['sessions' => $data]);
     }
 
+    /**
+     * Store a new Coaching Session.
+     */
     public function storeSession(Request $request)
     {
         $data = $request->validate([
-           'BranchID' => 'required|integer|exists:branches,BranchID',
+            'BranchID'     => 'required|integer|exists:branches,BranchID',
             'SessionName'  => 'required|string|max:255',
-            'SessionType'  => 'required|string|max:50', 
+            'SessionType'  => 'required|string|max:50',
             'CoachID'      => 'required|exists:coaches,CoachID',
             'StartTime'    => 'required|date_format:Y-m-d\TH:i',
             'EndTime'      => 'nullable|date_format:Y-m-d\TH:i|after:StartTime',
@@ -237,11 +241,14 @@ class BookingController extends Controller
         ], 201);
     }
 
+    /**
+     * Update an existing Coaching Session.
+     */
     public function updateSession(Request $request, $id)
     {
         $data = $request->validate([
             'SessionName'  => 'required|string|max:255',
-           'BranchID' => 'required|integer|exists:branches,BranchID',
+            'BranchID'     => 'required|integer|exists:branches,BranchID',
             'SessionType'  => 'required|string|max:50',
             'CoachID'      => 'required|exists:coaches,CoachID',
             'StartTime'    => 'required|date_format:Y-m-d\TH:i',
@@ -258,6 +265,9 @@ class BookingController extends Controller
         return response()->json(['message' => 'Session updated successfully.']);
     }
 
+    /**
+     * Cancel a Coaching Session.
+     */
     public function cancelSession($id)
     {
         $session = CoachingSession::findOrFail($id);
@@ -270,17 +280,17 @@ class BookingController extends Controller
         return response()->json(['message' => 'Session cancelled.']);
     }
 
-    /* ------------------------------------------------------------------
-     * 41. SessionBooking
-     * ------------------------------------------------------------------ */
+    /**
+     * Store a Session Booking.
+     */
     public function storeSessionBooking(Request $request)
     {
         $data = $request->validate([
-            'SessionID'    => 'required|exists:coaching_sessions,SessionID',
-            'MemberID'     => 'required|exists:members,MemberID',
-            'BookingDate'  => 'required|date',
-            'PaymentID'    => 'nullable|exists:payments,PaymentID',
-            'Status'       => 'nullable|string|max:50',
+            'SessionID'   => 'required|exists:coaching_sessions,SessionID',
+            'MemberID'    => 'required|exists:members,MemberID',
+            'BookingDate' => 'required|date',
+            'PaymentID'   => 'nullable|exists:payments,PaymentID',
+            'Status'      => 'nullable|string|max:50',
         ]);
 
         SessionBooking::create($data);
@@ -288,16 +298,16 @@ class BookingController extends Controller
         return response()->json(['message' => 'Session booked successfully.']);
     }
 
-    /* ------------------------------------------------------------------
-     * 42. SessionWaitlist
-     * ------------------------------------------------------------------ */
+    /**
+     * Add a Member to the Session Waitlist.
+     */
     public function addToWaitlist(Request $request)
     {
         $data = $request->validate([
-            'SessionID'     => 'required|exists:coaching_sessions,SessionID',
-            'MemberID'      => 'required|exists:members,MemberID',
-            'WaitlistDate'  => 'nullable|date',
-            'Status'        => 'nullable|string|max:50',
+            'SessionID'    => 'required|exists:coaching_sessions,SessionID',
+            'MemberID'     => 'required|exists:members,MemberID',
+            'WaitlistDate' => 'nullable|date',
+            'Status'       => 'nullable|string|max:50',
         ]);
 
         SessionWaitlist::create($data);
@@ -305,47 +315,52 @@ class BookingController extends Controller
         return response()->json(['message' => 'Added to waitlist.']);
     }
 
-    /* ------------------------------------------------------------------
-     * 43. SessionAttendance
-     * ------------------------------------------------------------------ */
+    /**
+     * Mark Session Attendance.
+     */
     public function markAttendance(Request $request)
     {
         $data = $request->validate([
-            'SessionID'       => 'required|exists:coaching_sessions,SessionID',
-            'MemberID'        => 'required|exists:members,MemberID',
-            'AttendanceDate'  => 'required|date',
+            'SessionID'      => 'required|exists:coaching_sessions,SessionID',
+            'MemberID'       => 'required|exists:members,MemberID',
+            'AttendanceDate' => 'required|date',
         ]);
 
         SessionAttendance::create($data);
 
         return response()->json(['message' => 'Attendance marked successfully.']);
     }
+
+    /**
+     * Returns the most popular booking (facility) this month.
+     */
     public function mostPopular()
     {
-        // Example logic: find the top facility used this month
-        $popularBooking = \DB::table('bookings')
-            ->select('FacilityID', \DB::raw("COUNT(*) as count"))
+        $popularBooking = DB::table('bookings')
+            ->select('FacilityID', DB::raw("COUNT(*) as count"))
             ->whereYear('BookingDate', date('Y'))
             ->whereMonth('BookingDate', date('m'))
             ->groupBy('FacilityID')
             ->orderByDesc('count')
             ->first();
-    
+
         $mostPopular = 'N/A';
         if ($popularBooking) {
-            $facility = \DB::table('facilities')->where('FacilityID', $popularBooking->FacilityID)->first();
+            $facility = DB::table('facilities')->where('FacilityID', $popularBooking->FacilityID)->first();
             if ($facility) {
                 $mostPopular = $facility->Name;
             }
         }
-    
+
         return response()->json([
             'most_popular_service' => $mostPopular,
             'booking_count'        => $popularBooking->count ?? 0,
         ], 200);
     }
-    
 
+    /**
+     * Returns booking trends grouped by month.
+     */
     public function bookingTrends()
     {
         $trends = DB::table('bookings')
@@ -356,6 +371,4 @@ class BookingController extends Controller
 
         return response()->json($trends, 200);
     }
-    
-    
 }
