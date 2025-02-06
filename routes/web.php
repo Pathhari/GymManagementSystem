@@ -488,7 +488,7 @@ Route::prefix('operations')->group(function() {
             Route::post('/', [OperationsController::class, 'storeMaintenanceLog'])->name('store');
             Route::put('/{id}', [OperationsController::class, 'updateMaintenanceLog'])->name('update');
             Route::delete('/{id}', [OperationsController::class, 'destroyMaintenanceLog'])->name('destroy');
-            Route::get('/maintenance/stats', [OperationsController::class, 'getMaintenanceStats'])
+            Route::get('/maintenance-stats', [OperationsController::class, 'getMaintenanceStats'])
                 ->name('maintenance.stats');
         });
     });

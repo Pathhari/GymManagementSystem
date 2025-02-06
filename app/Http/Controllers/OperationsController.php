@@ -587,6 +587,31 @@ class OperationsController extends Controller
         ]);
     }
 
+    public function getMaintenanceStats()
+    {
+        // Identify the logged-in user from possible guards
+        $staff = auth('staff')->user();
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+    
+        if ($staff) {
+            // Staff: filter logs by equipment's BranchID matching one of staff's branches
+            $branchIDs = $staff->branches->pluck('BranchID');
+            $pendingCount = MaintenanceLog::where('Resolution', 'pending')
+                ->whereHas('equipment', function($q) use ($branchIDs) {
+                    $q->whereIn('BranchID', $branchIDs);
+                })->count();
+        } else {
+            // Admin/Owner: no branch filtering (full access)
+            $pendingCount = MaintenanceLog::where('Resolution', 'pending')->count();
+        }
+    
+        return response()->json([
+            'pending_maintenance' => $pendingCount
+        ]);
+    }
+    
+
 
 /* ------------------------------------------------------------------
      * S. MEMBER VISIT (JSON Endpoints)
