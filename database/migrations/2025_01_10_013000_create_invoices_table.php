@@ -24,7 +24,7 @@ return new class extends Migration
             $table->timestamps();
         
             $table->foreign('MemberID')->references('MemberID')->on('members')->onDelete('set null');
-            $table->foreign('PromotionID')->references('PromotionID')->on('promotions')->onDelete('set null');
+            $table->foreign('PromotionID')->references('PromotionID')->on('Promotions')->onDelete('set null');
         });
         
     }
