@@ -281,9 +281,9 @@ class TestDataSeeder extends Seeder
         }
 
         // 15) Promotions
-        $promotions = [];
+        $Promotions = [];
         for ($i = 1; $i <= 3; $i++) {
-            $promotions[] = Promotions::create([
+            $Promotions[] = Promotions::create([
                 'Name'               => $faker->words(2, true),
                 'DiscountType'       => $faker->randomElement(['Percentage','FixedAmount']),
                 'DiscountValue'      => $faker->randomFloat(2, 5, 500),
@@ -298,7 +298,7 @@ class TestDataSeeder extends Seeder
         $invoices = [];
         foreach ($members as $member) {
             if ($faker->boolean(50)) {
-                $promo = $faker->boolean(30) ? $faker->randomElement($promotions) : null;
+                $promo = $faker->boolean(30) ? $faker->randomElement($Promotions) : null;
                 $invoice = Invoice::create([
                     'BranchID'     => $member->StartedBranchID,
                     'MemberID'     => $member->MemberID,
