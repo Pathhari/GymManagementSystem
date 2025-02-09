@@ -32,7 +32,7 @@ import {
   TrendingUp,
   ShowChart,
   ReceiptLong,
-  TableView
+  TableView,
 } from '@mui/icons-material';
 import { DataGrid } from '@mui/x-data-grid';
 import { Line, Pie } from 'react-chartjs-2';
@@ -48,7 +48,7 @@ import {
   Legend,
 } from 'chart.js';
 
-// Create a custom "peso" icon component
+// Custom "peso" icon
 const PesosIcon = ({ fontSize = 40, color = 'inherit', sx = {} }) => (
   <Typography
     component="span"
@@ -98,7 +98,7 @@ const AdminDashboard = () => {
   const [yogurtFlows, setYogurtFlows] = useState([]);
   const [overallFlows, setOverallFlows] = useState([]);
 
-  // Date range
+  // Date range for flows
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -108,6 +108,9 @@ const AdminDashboard = () => {
   const [gymChartData, setGymChartData] = useState(null);
   const [cafeChartData, setCafeChartData] = useState(null);
   const [yogurtChartData, setYogurtChartData] = useState(null);
+
+  // New: Daily expenses chart
+  const [expenseChartData, setExpenseChartData] = useState(null);
 
   // Manual daily flow form
   const [cashFlowForm, setCashFlowForm] = useState({
@@ -126,7 +129,7 @@ const AdminDashboard = () => {
     Remarks: '',
   });
 
-  // For auto-generate Gym
+  // Auto-generate Gym
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date());
 
@@ -151,31 +154,8 @@ const AdminDashboard = () => {
   });
 
   const [expenseFormOpen, setExpenseFormOpen] = useState(false);
-  const handleExpenseChange = (e) => {
-    const { name, value } = e.target;
-    setExpenseForm((prev) => ({ ...prev, [name]: value }));
-  };
-  const handleSubmitExpense = async () => {
-    try {
-      await axios.post('/finance/expenses', { ...expenseForm });
-      alert('Expense created successfully!');
-      setExpenseFormOpen(false);
 
-      // Reload the expense list
-      const expRes = await axios.get('/finance/expenses');
-      const allExp = expRes.data.expenses || [];
-      setAllExpenses(allExp);
-
-      // Re-filter
-      const newFiltered = applyDateFilter(allExp, expenseStartDate, expenseEndDate);
-      setFilteredExpenses(newFiltered);
-    } catch (err) {
-      console.error('Failed to create expense:', err);
-      alert('Error creating expense. Check console.');
-    }
-  };
-
-  // Consolidated data
+  // Consolidated
   const [consolidatedRows, setConsolidatedRows] = useState([]);
   const [selectedConsolidatedRow, setSelectedConsolidatedRow] = useState(null);
 
@@ -189,6 +169,7 @@ const AdminDashboard = () => {
 
   const handleTabChange = (e, v) => setActiveTab(v);
 
+  // ===================== Initial Load =====================
   useEffect(() => {
     (async () => {
       try {
@@ -203,7 +184,6 @@ const AdminDashboard = () => {
           axios.get('/finance/expenses'),
         ]);
 
-        // Summaries
         const summary = summaryRes.data || {};
         setTotalRevenue(summary.total_revenue || 0);
         setNetProfit(summary.net_profit || 0);
@@ -215,7 +195,7 @@ const AdminDashboard = () => {
         setStaff(staffRes.data.staff || staffRes.data || []);
         setBranches(branchRes.data.branches || branchRes.data || []);
 
-        // Flows
+        // Cash Flows
         const flows = cfRes.data.flows || [];
         setAllFlows(flows);
         setFilteredFlows(flows);
@@ -228,6 +208,9 @@ const AdminDashboard = () => {
         const allExp = expRes.data.expenses || [];
         setAllExpenses(allExp);
         setFilteredExpenses(allExp);
+
+        // Build daily expenses line chart
+        buildExpenseChart(allExp);
       } catch (err) {
         console.error(err);
         setError('Failed to load data from server.');
@@ -237,12 +220,13 @@ const AdminDashboard = () => {
     })();
   }, []);
 
+  // Rebuild consolidated table whenever flows or expenses change
   useEffect(() => {
     buildConsolidatedRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredFlows, allExpenses]);
 
-  // Chart builders, flow grouping, etc.
+  // ===================== Chart Builders =====================
   const buildOverallChart = (flows) => {
     const grouped = flows.reduce((acc, f) => {
       const d = f.Date;
@@ -266,7 +250,10 @@ const AdminDashboard = () => {
   };
 
   const buildPaymentPie = (flows) => {
-    let cash = 0, gcash = 0, bpi = 0, bdo = 0;
+    let cash = 0,
+      gcash = 0,
+      bpi = 0,
+      bdo = 0;
     flows.forEach((f) => {
       cash += parseFloat(f.CashSales || 0) + parseFloat(f.WalkInCashSales || 0);
       gcash += parseFloat(f.GCashSales || 0) + parseFloat(f.WalkInGCashSales || 0);
@@ -292,9 +279,7 @@ const AdminDashboard = () => {
     function buildChart(arr, label) {
       const grouped = arr.reduce((acc, f) => {
         const d = f.Date;
-        if (!acc[d]) {
-          acc[d] = { cash: 0, gcash: 0, bpi: 0, bdo: 0 };
-        }
+        if (!acc[d]) acc[d] = { cash: 0, gcash: 0, bpi: 0, bdo: 0 };
         acc[d].cash += parseFloat(f.CashSales || 0) + parseFloat(f.WalkInCashSales || 0);
         acc[d].gcash += parseFloat(f.GCashSales || 0) + parseFloat(f.WalkInGCashSales || 0);
         acc[d].bpi += parseFloat(f.BPISales || 0) + parseFloat(f.WalkInBPISales || 0);
@@ -342,6 +327,29 @@ const AdminDashboard = () => {
     setYogurtChartData(buildChart(yogurt, 'Yogurt'));
   };
 
+  // New: buildExpenseChart for daily expenses
+  const buildExpenseChart = (expenses) => {
+    const grouped = expenses.reduce((acc, e) => {
+      const d = (e.ExpenseDate || '').slice(0, 10);
+      if (!acc[d]) acc[d] = 0;
+      acc[d] += parseFloat(e.Amount || 0);
+      return acc;
+    }, {});
+    const sortedDates = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
+    setExpenseChartData({
+      labels: sortedDates,
+      datasets: [
+        {
+          label: 'Daily Expenses',
+          data: sortedDates.map((d) => grouped[d]),
+          borderColor: '#f55d5d',
+          backgroundColor: 'rgba(255, 99, 132, 0.2)',
+          fill: true,
+        },
+      ],
+    });
+  };
+
   const separateByBusiness = (arr) => {
     setGymFlows(arr.filter((f) => f.BusinessType === 'Gym'));
     setCafeFlows(arr.filter((f) => f.BusinessType === 'Cafe'));
@@ -349,6 +357,7 @@ const AdminDashboard = () => {
     setOverallFlows(arr.filter((f) => f.BusinessType === 'Overall'));
   };
 
+  // ===================== Filters =====================
   function applyDateFilter(arr, start, end) {
     if (!start && !end) return arr;
     const s = start ? new Date(start) : null;
@@ -370,7 +379,13 @@ const AdminDashboard = () => {
     separateByBusiness(newFiltered);
   };
 
-  // Consolidated
+  const handleFilterExpenses = () => {
+    const newFiltered = applyDateFilter(allExpenses, expenseStartDate, expenseEndDate);
+    setFilteredExpenses(newFiltered);
+    // If you want the chart filtered too, you can call buildExpenseChart(newFiltered) instead of the full list
+  };
+
+  // ===================== Consolidated =====================
   const buildConsolidatedRows = () => {
     const groupByDate = {};
     filteredFlows.forEach((flow) => {
@@ -386,20 +401,17 @@ const AdminDashboard = () => {
         };
       }
       const t = parseFloat(flow.TotalSales || 0);
-      if (flow.BusinessType === 'Gym') {
-        groupByDate[d].gym += t;
-      } else if (flow.BusinessType === 'Cafe') {
-        groupByDate[d].cafe += t;
-      } else if (flow.BusinessType === 'Yogurt') {
-        groupByDate[d].yogurt += t;
-      } else if (flow.BusinessType === 'Overall') {
+      if (flow.BusinessType === 'Gym') groupByDate[d].gym += t;
+      else if (flow.BusinessType === 'Cafe') groupByDate[d].cafe += t;
+      else if (flow.BusinessType === 'Yogurt') groupByDate[d].yogurt += t;
+      else if (flow.BusinessType === 'Overall') {
         groupByDate[d].overall += t;
         groupByDate[d].pettyCash = parseFloat(flow.PettyCash || 0);
         groupByDate[d].deposited = parseFloat(flow.DepositedAmount || 0);
       }
     });
 
-    // sum expenses
+    // Sum expenses
     const expenseMap = {};
     allExpenses.forEach((exp) => {
       const dt = (exp.ExpenseDate || '').slice(0, 10);
@@ -438,9 +450,8 @@ const AdminDashboard = () => {
     { field: 'Yogurt', headerName: 'Yogurt', width: 80 },
     { field: 'Overall', headerName: 'Overall', width: 80 },
     { field: 'DailyExpenses', headerName: 'Expenses', width: 90 },
-    { field: 'PettyCash', headerName: 'PettyCash', width: 90 },
-    { field: 'Deposited', headerName: 'Deposited', width: 90 },
     { field: 'NetProfit', headerName: 'Net Profit', width: 90 },
+    { field: 'PettyCash', headerName: 'PettyCash', width: 90 },
     { field: 'TakeHome', headerName: 'Take-Home', width: 100 },
   ];
 
@@ -478,12 +489,10 @@ const AdminDashboard = () => {
       alert(`Petty Cash for ${dateStr} saved!`);
       setPettyDialogOpen(false);
 
-      // Reload flows
+      // Reload flows and re-apply filter
       const cfRes = await axios.get('/finance/cashflow');
       const flows = cfRes.data.flows || [];
       setAllFlows(flows);
-
-      // Re-apply date filter
       const newFiltered = applyDateFilter(flows, startDate, endDate);
       setFilteredFlows(newFiltered);
       buildOverallChart(newFiltered);
@@ -496,12 +505,33 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleFilterExpenses = () => {
-    const newFiltered = applyDateFilter(allExpenses, expenseStartDate, expenseEndDate);
-    setFilteredExpenses(newFiltered);
+  // ===================== Expenses =====================
+  const handleExpenseChange = (e) => {
+    const { name, value } = e.target;
+    setExpenseForm((prev) => ({ ...prev, [name]: value }));
+  };
+  const handleSubmitExpense = async () => {
+    try {
+      await axios.post('/finance/expenses', { ...expenseForm });
+      alert('Expense created successfully!');
+      setExpenseFormOpen(false);
+
+      // Reload the expense list
+      const expRes = await axios.get('/finance/expenses');
+      const allExp = expRes.data.expenses || [];
+      setAllExpenses(allExp);
+
+      // Re-filter the list, rebuild chart
+      const newFiltered = applyDateFilter(allExp, expenseStartDate, expenseEndDate);
+      setFilteredExpenses(newFiltered);
+      buildExpenseChart(allExp);
+    } catch (err) {
+      console.error('Failed to create expense:', err);
+      alert('Error creating expense. Check console.');
+    }
   };
 
-  // Manual flows
+  // ===================== Manual/Auto Cash Flows =====================
   const handleCashFlowChange = (e) => {
     const { name, value } = e.target;
     setCashFlowForm((prev) => ({ ...prev, [name]: value }));
@@ -513,13 +543,14 @@ const AdminDashboard = () => {
       const cfRes = await axios.get('/finance/cashflow');
       const flows = cfRes.data.flows || [];
       setAllFlows(flows);
+
       const newFiltered = applyDateFilter(flows, startDate, endDate);
       setFilteredFlows(newFiltered);
       buildOverallChart(newFiltered);
       buildPaymentPie(newFiltered);
       buildBusinessCharts(newFiltered);
       separateByBusiness(newFiltered);
-      // Reset form
+
       setCashFlowForm({
         BranchID: '',
         BusinessType: '',
@@ -540,8 +571,6 @@ const AdminDashboard = () => {
       alert('Failed to create daily cash flow entry.');
     }
   };
-
-  // Auto-generate Gym
   const handleGenerateCashFlow = async () => {
     try {
       const formatted = selectedDate.toISOString().substring(0, 10);
@@ -557,7 +586,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // Overall Flow Generation
+  // ===================== Overall Flow Generation =====================
   const handleOpenOverallDialog = () => {
     const today = new Date().toISOString().substring(0, 10);
     const overallTotal = allFlows
@@ -600,9 +629,11 @@ const AdminDashboard = () => {
       alert('Overall daily cash flow record created successfully!');
       handleCloseOverallDialog();
 
+      // Reload flows
       const cfRes = await axios.get('/finance/cashflow');
       const flows = cfRes.data.flows || [];
       setAllFlows(flows);
+
       const newFiltered = applyDateFilter(flows, startDate, endDate);
       setFilteredFlows(newFiltered);
       buildOverallChart(newFiltered);
@@ -615,7 +646,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // DataGrid columns
+  // ===================== DataGrid Setup =====================
   const flowColumns = [
     { field: 'Date', headerName: 'Date', width: 110 },
     { field: 'BranchID', headerName: 'Branch', width: 100 },
@@ -642,7 +673,7 @@ const AdminDashboard = () => {
       .filter(
         (exp) =>
           Number(exp.BranchID) === Number(flow.BranchID) &&
-          (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10),
+          (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10)
       )
       .reduce((acc, e) => acc + parseFloat(e.Amount || 0), 0);
 
@@ -674,7 +705,6 @@ const AdminDashboard = () => {
     };
   });
 
-  // Expense columns + rows
   const expenseColumns = [
     { field: 'ExpenseDate', headerName: 'Date', width: 110 },
     { field: 'BranchID', headerName: 'Branch', width: 100 },
@@ -756,7 +786,7 @@ const AdminDashboard = () => {
           {activeTab === 0 && (
             <Box sx={{ mt: 3 }}>
               <Grid container spacing={3}>
-                {/* SUMMARY CARDS */}
+                {/* Summary Cards */}
                 <Grid item xs={12} sm={6} md={3}>
                   <Card sx={{ boxShadow: 3, borderLeft: '5px solid #4BC0C0' }}>
                     <CardContent>
@@ -814,7 +844,7 @@ const AdminDashboard = () => {
                   </Card>
                 </Grid>
 
-                {/* CHARTS */}
+                {/* Overall Daily Cash Flow */}
                 <Grid item xs={12} md={8}>
                   <Paper sx={{ p: 2, height: 400, boxShadow: 3 }}>
                     <Typography variant="h6" gutterBottom>
@@ -836,6 +866,8 @@ const AdminDashboard = () => {
                     </Box>
                   </Paper>
                 </Grid>
+
+                {/* Payment Method Breakdown */}
                 <Grid item xs={12} md={4}>
                   <Paper sx={{ p: 2, height: 400, boxShadow: 3 }}>
                     <Typography variant="h6" gutterBottom>
@@ -858,7 +890,30 @@ const AdminDashboard = () => {
                   </Paper>
                 </Grid>
 
-                {/* Per-Business charts */}
+                {/* Daily Expenses Trend */}
+                <Grid item xs={12}>
+                  <Paper sx={{ p: 2, height: 400, boxShadow: 3 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Daily Expenses Trend
+                    </Typography>
+                    <Box sx={{ height: '80%' }}>
+                      {expenseChartData ? (
+                        <Line
+                          data={expenseChartData}
+                          options={{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { position: 'bottom' } },
+                          }}
+                        />
+                      ) : (
+                        <Typography>Loading expenses chart...</Typography>
+                      )}
+                    </Box>
+                  </Paper>
+                </Grid>
+
+                {/* Per-Business Charts */}
                 <Grid item xs={12}>
                   <Typography variant="h5" sx={{ mt: 2, mb: 2 }}>
                     Payment Breakdown by Business
@@ -923,7 +978,7 @@ const AdminDashboard = () => {
                   </Paper>
                 </Grid>
 
-                {/* Overall Generation Button */}
+                {/* Generate Overall Flow Button */}
                 <Grid item xs={12}>
                   <Paper sx={{ p: 2, boxShadow: 3, mb: 4 }}>
                     <Typography variant="h6" gutterBottom>
@@ -1400,12 +1455,10 @@ const AdminDashboard = () => {
         <DialogTitle>Set Petty Cash for {selectedConsolidatedRow?.Date || ''}</DialogTitle>
         <DialogContent dividers>
           {selectedConsolidatedRow && (
-            <>
-              <Typography gutterBottom>
-                Net Profit: ₱{selectedConsolidatedRow.NetProfit} (Take Home before petty: ₱
-                {selectedConsolidatedRow.TakeHome + selectedConsolidatedRow.PettyCash})
-              </Typography>
-            </>
+            <Typography gutterBottom>
+              Net Profit: ₱{selectedConsolidatedRow.NetProfit} (Take Home before petty: ₱
+              {selectedConsolidatedRow.TakeHome + selectedConsolidatedRow.PettyCash})
+            </Typography>
           )}
           <TextField
             label="Petty Cash"
@@ -1447,7 +1500,12 @@ const AdminDashboard = () => {
       </Dialog>
 
       {/* Create Expense Form Dialog */}
-      <Dialog open={expenseFormOpen} onClose={() => setExpenseFormOpen(false)} fullWidth maxWidth="sm">
+      <Dialog
+        open={expenseFormOpen}
+        onClose={() => setExpenseFormOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>Add New Expense</DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2}>
