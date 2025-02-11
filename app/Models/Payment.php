@@ -19,7 +19,11 @@ class Payment extends Model
         'Status',
         'FailureReason',
     ];
-
+    fffff
+    protected $casts = [
+        'PaymentFor' => 'array', // Eloquent auto-converts JSON <-> array
+    ];
+    
     public function branch()
     {
         return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');

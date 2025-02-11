@@ -16,7 +16,7 @@ return new class extends Migration
             $table->unsignedBigInteger('BranchID')->nullable(); 
             $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->unsignedBigInteger('MemberID')->nullable();  // if walk-ins, might be null
-            $table->string('PaymentFor')->nullable();            // "Membership", "Session", "Facility", etc.
+            $table->text('PaymentFor')->nullable()->change();           
             $table->string('PaymentMethod')->nullable();         // "Cash", "GCash", "BPI"
             $table->decimal('Amount', 10, 2);
             $table->dateTime('PaymentDate')->nullable();

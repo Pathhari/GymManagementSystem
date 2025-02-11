@@ -593,33 +593,6 @@ export default function PromotionsSegments() {
         </div>
       </Paper>
 
-   {/* CHARTS INSIDE CARDS */}
-          <Grid container spacing={2} sx={{ mb: 4 }}>
-          {/* Promotions Over Time */}
-          <Grid item xs={12} md={6}>
-            <Card sx={{ bgcolor: "background.paper", p: 2, height: 350, display: "flex", flexDirection: "column" }}>
-              <CardContent sx={{ flexGrow: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                <Typography variant="h6" sx={{ mb: 2 }}>Promotions Over Time</Typography>
-                <Box sx={{ flexGrow: 1 }}>
-                  <Line data={lineChartData} options={{ ...lineChartOptions, maintainAspectRatio: false }} />
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Promotion Segments */}
-          <Grid item xs={12} md={6}>
-            <Card sx={{ bgcolor: "background.paper", p: 2, height: 350, display: "flex", flexDirection: "column" }}>
-              <CardContent sx={{ flexGrow: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                <Typography variant="h6" sx={{ mb: 2 }}>Promotion Segments</Typography>
-                <Box sx={{ flexGrow: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Doughnut data={donutData} options={{ ...donutOptions, maintainAspectRatio: false }} />
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-
       {/* ADD PROMOTION DIALOG */}
       <Dialog open={isAddOpen} onClose={() => setAddOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Add Promotion</DialogTitle>

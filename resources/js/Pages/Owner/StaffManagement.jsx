@@ -1196,57 +1196,6 @@ const handleTabChange = (e, newValue) => {
           </Select>
         </FormControl>
       </Box>
-
-      {/* ------------------- OVERVIEW CARDS ------------------- */}
-      <Box sx={{ mb: 3 }}>
-      <Grid container spacing={2}>
-            {/* Total Staff */}
-            <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1.5, boxShadow: 2 }}>
-                <GroupsIcon sx={{ fontSize: 30, color: "gray", mr: 1.5 }} />
-                <CardContent sx={{ p: 0.5 }}>
-                  <Typography variant="body2">Total Staff</Typography>
-                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>{totalStaff}</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Trainers */}
-            <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1.5, boxShadow: 2 }}>
-                <FitnessCenterIcon sx={{ fontSize: 30, color: "limegreen", mr: 1.5 }} />
-                <CardContent sx={{ p: 0.5 }}>
-                  <Typography variant="body2">Trainers</Typography>
-                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>{trainerCount}</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Managers */}
-            <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1.5, boxShadow: 2 }}>
-                <SupervisorAccountIcon sx={{ fontSize: 30, color: "gray", mr: 1.5 }} />
-                <CardContent sx={{ p: 0.5 }}>
-                  <Typography variant="body2">Managers</Typography>
-                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>{managerCount}</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Recent Hires (last 30 days) */}
-            <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1.5, boxShadow: 2 }}>
-                <CleanHandsIcon sx={{ fontSize: 30, color: "blue", mr: 1.5 }} />
-                <CardContent sx={{ p: 0.5 }}>
-                  <Typography variant="body2">Recent Hires</Typography>
-                  <Typography variant="h6" sx={{ fontWeight: "bold" }}>{recentHiresCount}</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-
-    </Box>
-
       {/* ------------------- TITLE & TABS ------------------- */}
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
         <Typography variant="h4" gutterBottom>

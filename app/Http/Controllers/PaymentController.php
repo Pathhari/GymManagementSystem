@@ -250,7 +250,8 @@ class PaymentController extends Controller
         $data = $request->validate([
             'BranchID'       => 'nullable|exists:branches,BranchID',
             'MemberID'       => 'nullable|exists:members,MemberID',
-            'PaymentFor'     => 'required|string|max:50',
+            'PaymentFor'     => 'required|array|min:1',
+            'PaymentFor.*'   => 'string|max:50',            
             'PaymentMethod'  => 'required|string|max:50',
             'Amount'         => 'required|numeric|min:0',
             'PaymentDate'    => 'required|date',
@@ -258,6 +259,7 @@ class PaymentController extends Controller
             'FailureReason'  => 'nullable|string|max:255',
         ]);
 
+        $data['PaymentFor'] = json_encode($data['PaymentFor']);
         Payment::create($data);
 
         return redirect()
@@ -292,11 +294,12 @@ class PaymentController extends Controller
     public function update(Request $request, $id)
     {
         $payment = Payment::findOrFail($id);
-
+        
         $data = $request->validate([
             'BranchID'       => 'nullable|exists:branches,BranchID',
             'MemberID'       => 'nullable|exists:members,MemberID',
-            'PaymentFor'     => 'required|string|max:50',
+            'PaymentFor'     => 'required|array|min:1',
+            'PaymentFor.*'   => 'string|max:50',            
             'PaymentMethod'  => 'required|string|max:50',
             'Amount'         => 'required|numeric|min:0',
             'PaymentDate'    => 'required|date',
@@ -304,7 +307,8 @@ class PaymentController extends Controller
             'FailureReason'  => 'nullable|string|max:255',
         ]);
 
-        $payment->update($data);
+        $data['PaymentFor'] = json_encode($data['PaymentFor']);
+        Payment::create($data);
 
         return redirect()
             ->route('payments.index')
