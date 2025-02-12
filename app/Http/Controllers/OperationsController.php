@@ -13,6 +13,11 @@ use App\Models\MaintenanceLog;
 use App\Models\MemberVisit;
 use App\Models\Member;
 use App\Models\WalkIn; 
+use App\Models\Payment;
+use App\Models\Invoice;
+use App\Models\InvoiceLineItem;
+use App\Models\PaymentInvoice;
+use App\Models\DailyCashFlow;
 use Illuminate\Support\Facades\DB;
 
 class OperationsController extends Controller
@@ -808,31 +813,159 @@ class OperationsController extends Controller
      */
     public function storeWalkIn(Request $request)
     {
+        // We check which guard is authenticated:
         $staff = auth('staff')->user();
-
+        $admin = auth('admin')->user();
+        $owner = auth('owner')->user();
+    
+        // Validate input
         $data = $request->validate([
-            'PaymentID'      => 'nullable|exists:payments,PaymentID',
-            'BranchID'       => 'nullable|exists:branches,BranchID',
-            'FullName'       => 'nullable|string|max:255',
-            'VisitDate'      => 'required|date',       // or dateTime if you want '2023-01-01 10:00'
-            'Notes'          => 'nullable|string',      
+            'BranchID'      => 'nullable|exists:branches,BranchID',
+            'FullName'      => 'nullable|string|max:255',
+            'VisitDate'     => 'required|date',
+            'Notes'         => 'nullable|string',
+    
+            'PaymentMethod' => 'nullable|string|max:50',
+            'PaymentAmount' => 'nullable|numeric|min:0',
+            'PaymentFor'    => 'nullable|string', // possibly a JSON array
+        ]);
+    
+        /**
+         *  CASE 1: Staff => force BranchID to staff’s single assigned branch
+         */
+        if ($staff) {
+            // If staff has a single column `BranchID`
+            // or if staff->BranchID is null, but staff->branches pivot is multiple => pick one
+            $data['BranchID'] = $staff->BranchID;
+            // or if staff->branches is a collection:
+            // $data['BranchID'] = $staff->branches->first()->BranchID ?? null;
+        }
+    
+        /**
+         *  CASE 2: Owner/Admin => let them pick from front end
+         *  i.e. if user passes BranchID in the request
+         *  If user doesn’t pass one, we can default to 1 or throw an error
+         */
+        elseif ($admin || $owner) {
+            // If request didn’t supply a BranchID, you can decide to require it:
+            if (empty($data['BranchID'])) {
+                // e.g. default or throw:
+                $data['BranchID'] = 1; 
+            }
+        }
+    
+        // By now, $data['BranchID'] is set (unless we abort).
+        $branchID = $data['BranchID'] ?? null;
+    
+        // If still null, daily flow won't update
+        if (!$branchID) {
+            // handle it or throw an exception
+            abort(422, 'No valid BranchID was set.');
+        }
+    
+        // 1) Create the WalkIn
+        $walkIn = WalkIn::create([
+            'BranchID'  => $branchID,
+            'FullName'  => $data['FullName'] ?? null,
+            'VisitDate' => $data['VisitDate'],
+            'Notes'     => $data['Notes'] ?? null,
+        ]);
+    
+        // 2) Create Payment if PaymentMethod & PaymentAmount
+        if (!empty($data['PaymentMethod']) && !empty($data['PaymentAmount'])) {
+            $paymentFor = ["Walk-In Payment"];
+            if (!empty($data['PaymentFor'])) {
+                $decoded = json_decode($data['PaymentFor'], true);
+                if (is_array($decoded)) {
+                    $paymentFor = $decoded;
+                }
+            }
+    
+            $payment = Payment::create([
+                'BranchID'      => $branchID,
+                'WalkInName'    => $data['FullName'] ?? 'Walk-In',
+                'PaymentMethod' => $data['PaymentMethod'],
+                'Amount'        => $data['PaymentAmount'],
+                'PaymentFor'    => $paymentFor,
+                'PaymentDate'   => now(),
+                'Status'        => 'Completed',
+            ]);
+    
+            $walkIn->PaymentID = $payment->PaymentID;
+            $walkIn->save();
+    
+            // Update daily flow
+            $this->updateDailyFlowForWalkIn(
+                $branchID,
+                $data['VisitDate'],
+                $data['PaymentMethod'],
+                $data['PaymentAmount']
+            );
+        }
+    
+        return response()->json($walkIn, 201);
+    }
+    
+
+    /**
+     *  Increment the daily cash flow with the correct "WalkIn" field
+     *  based on the PaymentMethod. E.g. "W-In Cash" => WalkInCashSales.
+     */
+    protected function updateDailyFlowForWalkIn($branchID, $visitDate, $method, $amount)
+    {
+        if (!$branchID) {
+            return; // If no branch, skip
+        }
+
+        // 1) Find or create the daily flow row
+        //    Suppose we put all walk-ins under "Gym" business type, or use "Cafe," etc.
+        $flow = DailyCashFlow::firstOrNew([
+            'BranchID'     => $branchID,
+            'Date'         => date('Y-m-d', strtotime($visitDate)),
+            'BusinessType' => 'Gym',
         ]);
 
-        // If staff => force the BranchID to staff->BranchID
-        if ($staff) {
-            $data['BranchID'] = $staff->BranchID;
+        // 2) Figure out which WalkIn column to increment
+        $field = null;
+        switch ($method) {
+            case 'W-In Cash':
+                $field = 'WalkInCashSales';
+                break;
+            case 'W-In GCash':
+                $field = 'WalkInGCashSales';
+                break;
+            case 'W-In BPI':
+                $field = 'WalkInBPISales';
+                break;
+            case 'W-In BDO':
+                $field = 'WalkInBDOSales';
+                break;
+            default:
+                // fallback if your PaymentMethod doesn't match these
+                $field = 'WalkInCashSales';
+                break;
         }
 
-        // If PaymentStatus isn't provided, we can set default:
-        if (!isset($data['PaymentStatus'])) {
-            $data['PaymentStatus'] = 'Pending';
+        // 3) Increment that field by $amount
+        if ($field) {
+            $existing = (float) $flow->{$field};
+            $flow->{$field} = $existing + (float) $amount;
         }
 
-        WalkIn::create($data);
+        // 4) Recalc total
+        $flow->TotalSales = (
+            (float) $flow->CashSales
+            + (float) $flow->GCashSales
+            + (float) $flow->BPISales
+            + (float) $flow->BDOSales
+            + (float) $flow->WalkInCashSales
+            + (float) $flow->WalkInGCashSales
+            + (float) $flow->WalkInBPISales
+            + (float) $flow->WalkInBDOSales
+        );
 
-        return redirect()
-            ->route('operations.walkins.index')
-            ->with('success','Walk-In record created.');
+        // 5) Save
+        $flow->save();
     }
 
     /**

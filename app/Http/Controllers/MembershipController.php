@@ -9,7 +9,9 @@ use App\Models\MembershipRenewal;
 use App\Models\MembershipFreeze;
 use App\Models\Invoice;
 use App\Models\InvoiceLineItem;
+use App\Models\PaymentInvoice;
 use App\Models\WalkIn;
+use App\Models\Payment;
 use App\Models\SystemLog;
 use Carbon\Carbon;
 
@@ -86,15 +88,7 @@ class MembershipController extends Controller
         'renewals' => $renewals,
         'freezes'  => $freezes,
     ]);
-}
-
-
-
-    /**
-     * Create a new member via Axios JSON.
-     * POST /membership/members
-     */
-
+}  
          // ** New: Search by name **
     public function apiSearchMembers(Request $request)
     {
@@ -107,7 +101,10 @@ class MembershipController extends Controller
         
         return response()->json($members);
     }
-    
+      /**
+     * Create a new member via Axios JSON.
+     * POST /membership/members
+     */
     public function apiStoreMember(Request $request)
     {
         $data = $request->validate([
@@ -119,14 +116,20 @@ class MembershipController extends Controller
             'MembershipCardNumber' => 'nullable|unique:members,MembershipCardNumber',
             'MembershipCardIssued' => 'boolean',
             'MemberStatusID'       => 'nullable|exists:member_statuses,MemberStatusID',
-            'MembershipStartDate'  => 'nullable|date', // optional if front end wants to set
+            'MembershipStartDate'  => 'nullable|date',
             'MembershipEndDate'    => 'nullable|date|after_or_equal:MembershipStartDate',
             'Biometrics'           => 'nullable|string',
             'FreeSessions'         => 'nullable|integer',
             'Notes'                => 'nullable|string',
-            'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048'
+            'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048',
+
+            // Payment
+            'PaymentMethod'        => 'nullable|string|max:50',
+            'PaymentAmount'        => 'nullable|numeric|min:0',
+            // We'll store PaymentFor as JSON array => validated as string
+            'PaymentFor'           => 'nullable|string',
         ]);
-    
+
         // If staff => override BranchID
         $staff = auth('staff')->user();
         if ($staff) {
@@ -134,39 +137,62 @@ class MembershipController extends Controller
         } else {
             $data['StartedBranchID'] = $data['BranchID'] ?? null;
         }
-    
+
         // Handle photo upload
         if ($request->hasFile('PhotoFile')) {
             $filename = 'member_' . time() . '.' . $request->file('PhotoFile')->extension();
             $photoPath = $request->file('PhotoFile')->storeAs('member_photos', $filename, 'public');
             $data['PhotoPath'] = $photoPath;
         }
-    
+
         // Default new members to Active if not specified
         $data['MemberStatusID'] = $data['MemberStatusID'] ?? 1;
-    
+
         // 1) Create the member
         $member = Member::create($data);
-    
-        // 2) If a PlanID is given, auto-calc membership date
+
+        // 2) If PaymentMethod & PaymentAmount => create Payment
+        if (!empty($data['PaymentMethod']) && !empty($data['PaymentAmount'])) {
+            // decode PaymentFor if provided
+            $paymentFor = null;
+            if (!empty($data['PaymentFor'])) {
+                // e.g. user passed '["New Membership"]'
+                $paymentFor = json_decode($data['PaymentFor'], true);
+            } else {
+                // If you want a default, set it here:
+                $paymentFor = ["New Membership"];
+            }
+
+            Payment::create([
+                'MemberID'      => $member->MemberID,
+                'PaymentMethod' => $data['PaymentMethod'],
+                'Amount'        => $data['PaymentAmount'],
+                'PaymentDate'   => now(),
+                'PaymentFor'    => $paymentFor,  // Store as array
+                'Status'        => 'Completed',
+            ]);
+        }
+
+        // 3) If a PlanID is given, auto-calc membership date
         if (!empty($data['PlanID'])) {
             $plan = MembershipPlan::find($data['PlanID']);
             if ($plan) {
-                $durationDays = (int)$plan->Duration;
+                $durationDays = (int) $plan->Duration;
                 $startDate = $member->MembershipStartDate 
                     ? Carbon::parse($member->MembershipStartDate)
                     : Carbon::today();
-        
+    
                 $endDate = $startDate->copy()->addDays($durationDays - 1);
                 $member->MembershipStartDate = $startDate->format('Y-m-d');
                 $member->MembershipEndDate   = $endDate->format('Y-m-d');
                 $member->save();
             }
         }
-    
+
         return response()->json([
             'member' => $member
-          ], 201);    }
+        ], 201); 
+    }
 
     public function storeLockInMembership(Request $request)
     {
@@ -184,9 +210,14 @@ class MembershipController extends Controller
             'Biometrics'           => 'nullable|string',
             'FreeSessions'         => 'nullable|integer',
             'Notes'                => 'nullable|string',
-            'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048'
+            'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048',
+
+            // Payment
+            'PaymentMethod'        => 'nullable|string|max:50',
+            'PaymentAmount'        => 'nullable|numeric|min:0',
+            'PaymentFor'           => 'nullable|string',
         ]);
-    
+
         $staff = auth('staff')->user();
         if ($staff) {
             $data['StartedBranchID'] = $staff->BranchID;
@@ -200,33 +231,52 @@ class MembershipController extends Controller
             $photoPath = $request->file('PhotoFile')->storeAs('member_photos', $filename, 'public');
             $data['PhotoPath'] = $photoPath;
         }
-    
+
         // Suppose ID=5 is "New Member (Lock-In)"
         $data['MemberStatusID']      = 5;
-        $startDate                   = \Carbon\Carbon::today();
+        $startDate                   = Carbon::today();
         $data['MembershipStartDate'] = $startDate->format('Y-m-d');
-    
+
         // 1) Create the member
         $member = Member::create($data);
-    
-        // 2) Retrieve the plan (with LockInMonths, Price, etc.)
+
+        // 2) Payment creation
+        if (!empty($data['PaymentMethod']) && !empty($data['PaymentAmount'])) {
+            $paymentFor = null;
+            if (!empty($data['PaymentFor'])) {
+                $paymentFor = json_decode($data['PaymentFor'], true);
+            } else {
+                $paymentFor = ["New Lock-In"]; 
+            }
+
+            Payment::create([
+                'MemberID'      => $member->MemberID,
+                'PaymentMethod' => $data['PaymentMethod'],
+                'Amount'        => $data['PaymentAmount'],
+                'PaymentDate'   => now(),
+                'PaymentFor'    => $paymentFor,
+                'Status'        => 'Completed',
+            ]);
+        }
+
+        // 3) Retrieve the plan (with LockInMonths, Price, etc.)
         $plan = MembershipPlan::findOrFail($request->PlanID);
         $lockInMonths = $plan->LockInMonths ?? 3;
-    
+
         // End date = start date + lockInMonths months - 1 day
         $lockInEnd = $startDate->copy()->addMonths($lockInMonths)->subDay();
         $member->MembershipEndDate = $lockInEnd->format('Y-m-d');
         $member->save();
-    
-        // 3) Figure out billing day (15 or 30)
+
+        // 4) Figure out billing day (15 or 30)
         $dayOfMonth = (int) $startDate->format('d');
         $billingDay = ($dayOfMonth <= 15) ? 15 : 30;
-    
-        // 4) Create monthly invoices
+
+        // 5) Create monthly invoices
         $currentDate = $startDate->copy();
         for ($i = 1; $i <= $lockInMonths; $i++) {
             $dueDate = $this->getInvoiceDueDate($currentDate, $billingDay);
-    
+
             $invoice = Invoice::create([
                 'BranchID'     => $member->StartedBranchID,
                 'MemberID'     => $member->MemberID,
@@ -234,10 +284,10 @@ class MembershipController extends Controller
                 'DueDate'      => $dueDate,
                 'InvoiceTotal' => 0,
             ]);
-    
-            // If plan->Price is total for the entire lock-in, use (Price / lockInMonths).
+
+            // If plan->Price is total for entire lock-in, do (Price / lockInMonths).
             $monthlyFee = $plan->Price;
-    
+
             InvoiceLineItem::create([
                 'InvoiceID'   => $invoice->InvoiceID,
                 'ItemType'    => 'Membership',
@@ -247,20 +297,32 @@ class MembershipController extends Controller
                 'UnitPrice'   => $monthlyFee,
                 'Subtotal'    => $monthlyFee,
             ]);
-    
+
             $invoice->load('lineItems');
             $invoice->InvoiceTotal = $invoice->lineItems->sum('Subtotal');
             $invoice->save();
-    
+
             $currentDate->addMonthNoOverflow();
         }
-    
+
         return response()->json([
             'message' => 'Lock-in membership created with monthly invoices!',
             'member'  => $member,
         ], 201);
     }
-    
+
+    private function getInvoiceDueDate(Carbon $referenceDate, int $billingDay): Carbon
+    {
+        $year  = $referenceDate->year;
+        $month = $referenceDate->month;
+
+        $candidate = Carbon::create($year, $month, $billingDay, 0, 0, 0);
+        if ($candidate->lessThan($referenceDate)) {
+            $candidate->addMonthNoOverflow();
+        }
+        return $candidate;
+    }
+
 
     /**
      * Update an existing member via Axios JSON.
@@ -290,7 +352,9 @@ class MembershipController extends Controller
         'Biometrics'           => 'nullable|string',
         'FreeSessions'         => 'nullable|integer',
         'Notes'                => 'nullable|string',
-        'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048'
+        'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048',
+        'PaymentMethod' => 'nullable|string|max:50',
+        'PaymentAmount' => 'nullable|numeric|min:0',
     ]);
 
     // If staff => branch must remain the same
@@ -487,21 +551,6 @@ private function generateRemainingLockInInvoices(Member $member, $planID)
     ], 201);
 }
 
-/**
- * Same getInvoiceDueDate logic from storeLockInMembership
- */
-    private function getInvoiceDueDate(Carbon $referenceDate, int $billingDay): Carbon
-    {
-    $year  = $referenceDate->year;
-    $month = $referenceDate->month;
-
-    $candidate = Carbon::create($year, $month, $billingDay, 0, 0, 0);
-    if ($candidate->lessThan($referenceDate)) {
-        $candidate->addMonthNoOverflow();
-    }
-    return $candidate;
-    }
-
     /**
      * Example of how you might automatically update the member status 
      * after lock-in ends or if they renew to a normal plan, etc.
@@ -587,48 +636,117 @@ private function generateRemainingLockInInvoices(Member $member, $planID)
     // For demonstration, we show a single store method:
 
     public function storeRenewal(Request $request)
-{
-    $data = $request->validate([
-        'MemberID'      => 'required|exists:members,MemberID',
-        'PlanID'        => 'required|exists:membership_plans,PlanID',
-        'RenewalAmount' => 'required|numeric|min:0',
-    ]);
-    $data['RenewalDate'] = now();
-
-    // 1) Create the renewal record (we store RenewalDate for reference)
-    $renewal = MembershipRenewal::create($data);
-
-    // 2) Figure out the new membership period for the member
-    $member = Member::findOrFail($data['MemberID']);
-    $plan   = MembershipPlan::findOrFail($data['PlanID']);
-
-    $currentEnd = $member->MembershipEndDate 
-      ? Carbon::parse($member->MembershipEndDate) 
-      : null;
-    $today = Carbon::today();
-    $durationDays = (int) $plan->Duration;
-
-    if ($currentEnd && $currentEnd->isFuture()) {
-       // membership still active, so new membership starts next day
-       $newStartDate = $currentEnd->copy()->addDay();
-    } else {
-       // membership expired or blank => start from today
-       $newStartDate = $today;
-    }
-
-    // new end date is newStartDate + (durationDays - 1)
-    $newEndDate = $newStartDate->copy()->addDays($durationDays - 1);
-
-    // 3) Update the member’s membership
-    $member->MembershipStartDate = $newStartDate->format('Y-m-d');
-    $member->MembershipEndDate   = $newEndDate->format('Y-m-d');
-    $member->MemberStatusID      = 1; // set them Active
-    $member->save();
-
-    // Return the created renewal record
-    return response()->json($renewal, 201);
-}
-
+    {
+        $data = $request->validate([
+            'MemberID'      => 'required|exists:members,MemberID',
+            'PlanID'        => 'required|exists:membership_plans,PlanID',
+            'RenewalAmount' => 'required|numeric|min:0',
+    
+            // Payment fields
+            'PaymentMethod' => 'nullable|string|max:50',
+            'PaymentAmount' => 'nullable|numeric|min:0',
+            'PaymentFor'    => 'nullable|string',
+        ]);
+    
+        // 1) Create the renewal record
+        //    (assuming you have a MembershipRenewal model/table)
+        $data['RenewalDate'] = now();
+        $renewal = MembershipRenewal::create($data);
+    
+        // 2) Extend membership end date
+        $member = Member::findOrFail($data['MemberID']);
+        $plan   = MembershipPlan::findOrFail($data['PlanID']);
+    
+        $currentEnd = $member->MembershipEndDate
+            ? Carbon::parse($member->MembershipEndDate)
+            : null;
+        $today = Carbon::today();
+        $durationDays = (int) $plan->Duration;
+    
+        if ($currentEnd && $currentEnd->isFuture()) {
+            $newStartDate = $currentEnd->copy()->addDay();
+        } else {
+            $newStartDate = $today;
+        }
+        $newEndDate = $newStartDate->copy()->addDays($durationDays - 1);
+    
+        $member->MembershipStartDate = $newStartDate->format('Y-m-d');
+        $member->MembershipEndDate   = $newEndDate->format('Y-m-d');
+        $member->MemberStatusID      = 1; // set to Active
+        $member->save();
+    
+        // 3) Create an invoice for the renewal
+        $invoice = Invoice::create([
+            'BranchID'     => $member->StartedBranchID, // or however you track branch
+            'MemberID'     => $member->MemberID,
+            'InvoiceDate'  => Carbon::now(),
+            'DueDate'      => Carbon::now(), // or some due date logic
+            'InvoiceTotal' => $data['RenewalAmount'],
+        ]);
+    
+        // Add one line item for the renewal
+        InvoiceLineItem::create([
+            'InvoiceID'   => $invoice->InvoiceID,
+            'ItemType'    => 'Renewal',
+            'ItemID'      => $plan->PlanID, // or 'RenewalID' if you track it
+            'Description' => "Membership Renewal",
+            'Quantity'    => 1,
+            'UnitPrice'   => $data['RenewalAmount'],
+            'Subtotal'    => $data['RenewalAmount'],
+        ]);
+    
+        // 4) If PaymentMethod & PaymentAmount => create Payment
+        if (!empty($data['PaymentMethod']) && !empty($data['PaymentAmount'])) {
+            // decode PaymentFor if present
+            $paymentFor = null;
+            if (!empty($data['PaymentFor'])) {
+                // e.g. '["Renewal Fee"]'
+                $paymentFor = json_decode($data['PaymentFor'], true);
+            } else {
+                // fallback
+                $paymentFor = ["Membership Renewal"];
+            }
+    
+            $payment = Payment::create([
+                'MemberID'      => $member->MemberID,
+                'BranchID'      => $member->StartedBranchID,
+                'PaymentMethod' => $data['PaymentMethod'],
+                'Amount'        => $data['PaymentAmount'],
+                'PaymentDate'   => now(),
+                'PaymentFor'    => $paymentFor, 
+                'Status'        => 'Completed',
+            ]);
+    
+            // 5) Optionally link Payment to this Invoice (PaymentInvoices pivot)
+            // only if you want partial allocations. 
+            PaymentInvoice::create([
+                'PaymentID'       => $payment->PaymentID,
+                'InvoiceID'       => $invoice->InvoiceID,
+                'AmountAllocated' => $payment->Amount, // or partial
+            ]);
+    
+            // If full payment covers entire renewal, mark invoice as paid
+            if ($payment->Amount >= $data['RenewalAmount']) {
+                $invoice->PaymentStatus = 'Paid';
+                $invoice->save();
+            } else {
+                $invoice->PaymentStatus = 'Partially Paid';
+                $invoice->save();
+            }
+        } else {
+            // If no payment data => invoice remains unpaid
+            $invoice->PaymentStatus = 'Unpaid';
+            $invoice->save();
+        }
+    
+        // Return the renewal record
+        return response()->json([
+            'renewal' => $renewal,
+            'invoice' => $invoice,
+            'payment' => $payment ?? null,
+          ], 201);
+              }
+    
 public function destroyRenewal($id)
 {
     $renewal = MembershipRenewal::findOrFail($id);

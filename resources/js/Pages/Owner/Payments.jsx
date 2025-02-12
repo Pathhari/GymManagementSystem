@@ -144,18 +144,27 @@ export default function PaymentsAndInvoices() {
     axios
       .get("/payments")
       .then((res) => {
-        const mapped = res.data.map((p) => ({
-          paymentId: p.PaymentID,
-          memberName: p.member ? p.member.FullName : "N/A",
-          memberId: p.MemberID || "",
-          paymentDate: p.PaymentDate,
-          amountPaid: Number(p.Amount),
-          method: p.PaymentMethod,
-          status: p.Status,
-          branchId: p.BranchID ? p.BranchID.toString() : "",
-          // if PaymentFor is JSON in DB, decode in backend or parse here if needed
-          paymentFor: Array.isArray(p.PaymentFor) ? p.PaymentFor : [],
-        }));
+        const mapped = res.data.map((p) => {
+          // If the Payment is for a member, p.member exists
+          // If the Payment is for a walk-in, p.WalkInName might exist
+          let payer = "N/A";
+          if (p.member) {
+            payer = p.member.FullName;
+          } else if (p.WalkInName) {
+            payer = p.WalkInName;
+          }
+        
+          return {
+            paymentId: p.PaymentID,
+            payerName: payer,  // <-- single field that can hold either member FullName or WalkInName
+            paymentDate: p.PaymentDate,
+            amountPaid: Number(p.Amount),
+            method: p.PaymentMethod,
+            status: p.Status,
+            branchId: p.BranchID ? p.BranchID.toString() : "",
+            paymentFor: Array.isArray(p.PaymentFor) ? p.PaymentFor : [],          
+          };
+        });
         setPayments(mapped);
       })
       .catch((err) => console.error(err));
@@ -225,25 +234,22 @@ export default function PaymentsAndInvoices() {
   const paymentColumns = [
     { field: "paymentId", headerName: "Payment ID", width: 120 },
     {
-      field: "PayerName",
+      field: "payerName",
       headerName: "Payer",
+      width: 180,
+      // If you just want a direct field binding, you can omit renderCell:
+      // But here's how you'd do it:
       renderCell: (params) => {
-        const { MemberID, WalkInID } = params.row;
-    
-        // 1) If there's a MemberID, show the member's name.
-        if (MemberID) {
-          const member = membershipRecords.find((m) => m.MemberID === MemberID);
-          return member ? member.FullName : "N/A";
-        }
-    
-        // 2) Otherwise, if there's a WalkInID, show the walk-in's name.
-        if (WalkInID) {
-          const walkin = walkInRecords.find((w) => w.WalkInID === WalkInID);
-          return walkin ? walkin.FullName : "N/A";
-        }
-    
-        // 3) Fallback
-        return "N/A";
+        return params.row.payerName;  // the property we mapped above
+      },
+    },
+    {
+      field: "paymentFor",
+      headerName: "Payment For",
+      width: 200,
+      renderCell: (params) => {
+        // params.row.paymentFor is an array
+        return params.row.paymentFor.join(", ");
       },
     },
     { field: "paymentDate", headerName: "Payment Date", width: 140 },

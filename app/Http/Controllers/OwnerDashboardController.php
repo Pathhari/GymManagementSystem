@@ -6,6 +6,7 @@ use Inertia\Inertia;
 use Illuminate\Http\Request;
 use App\Models\Payment;
 use App\Models\Member;
+use App\Models\Expense; // Make sure you have this model
 
 class OwnerDashboardController extends Controller
 {
@@ -38,7 +39,7 @@ class OwnerDashboardController extends Controller
         $dateTo   = $request->query('dateTo');
         $branch   = $request->query('branch', 'all');
 
-        // Build query for completed payments
+        // Build query for completed payments to calculate total revenue
         $paymentsQuery = Payment::where('Status', 'Completed');
         if ($branch !== 'all') {
             $paymentsQuery->where('BranchID', $branch);
@@ -51,7 +52,20 @@ class OwnerDashboardController extends Controller
         }
         $totalRevenue = $paymentsQuery->sum('Amount');
 
-        // For demonstration, we use the Member count for totalEmailsSent and totalClients.
+        // Calculate total expenses based on Expense model
+        $expensesQuery = Expense::query();
+        if ($branch !== 'all') {
+            $expensesQuery->where('BranchID', $branch);
+        }
+        if ($dateFrom) {
+            $expensesQuery->whereDate('ExpenseDate', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $expensesQuery->whereDate('ExpenseDate', '<=', $dateTo);
+        }
+        $totalExpenses = $expensesQuery->sum('Amount');
+
+        // For demonstration, use the Member count for totalEmailsSent and totalClients.
         $totalEmailsSent = Member::count();
         $totalClients    = Member::count();
 
@@ -74,10 +88,11 @@ class OwnerDashboardController extends Controller
 
         return response()->json([
             'metrics' => [
-                'totalRevenue'     => $totalRevenue,
-                'totalEmailsSent'  => $totalEmailsSent,
-                'totalClients'     => $totalClients,
-                'trafficReceived'  => $trafficReceived,
+                'totalRevenue'    => $totalRevenue,
+                'totalExpenses'   => $totalExpenses,
+                'totalEmailsSent' => $totalEmailsSent,
+                'totalClients'    => $totalClients,
+                'trafficReceived' => $trafficReceived,
             ],
             'notifications' => $notifications,
         ]);

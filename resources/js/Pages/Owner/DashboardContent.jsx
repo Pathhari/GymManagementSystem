@@ -213,7 +213,9 @@ export default function OwnerDashboard() {
         const paymentsRes = await axios.get('/payments');
         const transactions = paymentsRes.data.map((p) => ({
           id: p.PaymentID,
+          payer: p.member ? p.member.FullName : (p.WalkInName || 'Walk-In'),
           amount: p.Amount,
+          method: p.PaymentMethod,
           date: p.PaymentDate,
           status: p.Status,
         }));
@@ -853,7 +855,7 @@ export default function OwnerDashboard() {
                     <AttachMoney sx={{ fontSize: 30, color: 'white', mr: 1.5 }} />
                     <CardContent sx={{ p: 1 }}>
                       <Typography variant="body2" sx={{ color: 'white', mb: 0.5 }}>
-                        Revenue
+                        Payments Received
                       </Typography>
                       <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
                         ₱{keyMetrics.totalRevenue.toLocaleString()}
@@ -886,27 +888,29 @@ export default function OwnerDashboard() {
                 </Grid>
 
                 <Grid item xs={12} sm={6} md={3}>
-                  <Card
-                    sx={{
-                      backgroundColor: '#9C27B0',
-                      borderRadius: 2,
-                      boxShadow: 3,
-                      display: 'flex',
-                      alignItems: 'center',
-                      p: 1.5,
-                    }}
-                  >
-                    <DirectionsRun sx={{ fontSize: 30, color: 'white', mr: 1.5 }} />
-                    <CardContent sx={{ p: 1 }}>
-                      <Typography variant="body2" sx={{ color: 'white', mb: 0.5 }}>
-                        Attendance
-                      </Typography>
-                      <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
-                        {keyMetrics.trafficReceived}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
+                <Card
+                  sx={{
+                    backgroundColor: '#9C27B0',
+                    borderRadius: 2,
+                    boxShadow: 3,
+                    display: 'flex',
+                    alignItems: 'center',
+                    p: 1.5,
+                  }}
+                >
+                  {/* You can swap this icon with one that better represents expenses if needed */}
+                  <AttachMoney sx={{ fontSize: 30, color: 'white', mr: 1.5 }} />
+                  <CardContent sx={{ p: 1 }}>
+                    <Typography variant="body2" sx={{ color: 'white', mb: 0.5 }}>
+                      Total Expenses
+                    </Typography>
+                    <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
+                      ₱{keyMetrics.totalExpenses?.toLocaleString() || 0}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+
 
                 {/* Revenue Trends Chart */}
                 <Grid item xs={12} md={8}>
@@ -1040,6 +1044,43 @@ export default function OwnerDashboard() {
                     )}
                   </Paper>
                 </Grid>
+                <Grid item xs={12} md={6}>
+                  <Paper sx={{ p: 2, boxShadow: 3 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Recent Transactions (incl. Walk-Ins)
+                    </Typography>
+                    <Box sx={{ height: 300 }}>
+                      <DataGrid
+                        rows={recentTransactions}
+                        columns={[
+                          { field: 'id', headerName: 'ID', width: 70 },
+                          { field: 'payer', headerName: 'Payer', width: 150 },
+                          { field: 'method', headerName: 'Method', width: 100 },
+                          {
+                            field: 'amount',
+                            headerName: 'Amount',
+                            width: 100,
+                            renderCell: (params) => `₱${params.value}`,
+                          },
+                          {
+                            field: 'date',
+                            headerName: 'Date',
+                            width: 150,
+                          },
+                          {
+                            field: 'status',
+                            headerName: 'Status',
+                            width: 100,
+                          },
+                        ]}
+                        pageSize={5}
+                        rowsPerPageOptions={[5, 10]}
+                        disableSelectionOnClick
+                      />
+                    </Box>
+                  </Paper>
+                </Grid>
+
               </Grid>
             </Box>
           )}

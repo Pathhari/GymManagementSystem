@@ -640,24 +640,6 @@ export default function Reports() {
         </Grid>
       </Grid>
 
-
-
-      {/* Daily Cashflow Section */}
-      <Paper elevation={3} sx={{ p: 2, mb: 4, borderRadius: 2 }}>
-        <Typography variant="h6" gutterBottom>
-          Daily Cashflow Report
-        </Typography>
-        <Box sx={{ height: 320, width: "100%" }}>
-          <DataGrid
-            rows={filteredCashFlowRecords}
-            columns={dailyCashFlowColumns}
-            pageSize={5}
-            rowsPerPageOptions={[5]}
-            getRowId={(row) => row.CashFlowID}
-          />
-        </Box>
-      </Paper>
-
       {/* Membership Reports Section */}
       <Grid container spacing={2} sx={{ mb: 4 }}>
         <Grid item xs={12} md={6}>

@@ -20,6 +20,7 @@ return new class extends Migration
             $table->dateTime('InvoiceDate')->nullable();
             $table->date('DueDate')->nullable();
             $table->decimal('InvoiceTotal', 10, 2)->default(0);
+            $table->string('PaymentStatus')->nullable()->default(null);
         
             $table->timestamps();
         

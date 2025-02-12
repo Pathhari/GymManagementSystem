@@ -18,6 +18,9 @@ import {
   FormControlLabel,
   Radio,
   RadioGroup,
+  Select,
+  InputLabel,
+  FormControl,
 } from "@mui/material";
 import Webcam from "react-webcam";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
@@ -26,7 +29,8 @@ import FileUploadIcon from "@mui/icons-material/FileUpload";
 
 export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   const [errors, setErrors] = useState({});
-  
+
+  // Membership fields
   const [membershipType, setMembershipType] = useState("regular");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -38,11 +42,19 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   const [branch, setBranch] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Payment fields
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState("");
+
+  // Photo states
   const [photoFile, setPhotoFile] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
+
+  // Data from backend
   const [plans, setPlans] = useState([]);
   const [branches, setBranches] = useState([]);
 
+  // Webcam
   const [openWebcam, setOpenWebcam] = useState(false);
   const webcamRef = useRef(null);
 
@@ -61,7 +73,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
       .catch((err) => console.error("Error fetching branches:", err));
   }, []);
 
-  // Simple validations
+  // Basic validations
   const validateEmail = (str) => /\S+@\S+\.\S+/.test(str);
   const validatePhoneNumber = (str) => {
     const phRegex = /^(\+63|0)9\d{9}$/;
@@ -74,7 +86,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     if (!fullName.trim()) newErrors.FullName = ["Full Name is required"];
     if (!email.trim()) newErrors.Email = ["Email is required"];
     else if (!validateEmail(email)) newErrors.Email = ["Invalid email format"];
-    
+
     if (!phoneNumber.trim()) newErrors.Phone = ["Phone Number is required"];
     else if (!validatePhoneNumber(phoneNumber))
       newErrors.Phone = ["Must be 09xxxxxxxxx or +639xxxxxxxxx"];
@@ -115,7 +127,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     }
   }, []);
 
-  // Photo from disk
+  // Photo upload
   const handleBiometricUpload = (e) => {
     if (e.target.files && e.target.files[0]) {
       setPhotoFile(e.target.files[0]);
@@ -142,7 +154,20 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     formData.append("Notes", notes);
     formData.append("BranchID", branch);
 
-    // Append file or webcam capture
+    // Payment fields
+    formData.append("PaymentMethod", paymentMethod);
+    formData.append("PaymentAmount", paymentAmount);
+
+    // Provide PaymentFor so the back end can store "New Membership"
+    // in the payments table. We'll pass it as a JSON array if your DB
+    // uses a JSON column for PaymentFor:
+    const paymentFor = ["New Membership"];
+    formData.append("PaymentFor", JSON.stringify(paymentFor));
+
+    // If you prefer a simple string column,
+    // formData.append("PaymentFor", "New Membership");
+
+    // File or webcam
     if (photoFile) {
       formData.append("PhotoFile", photoFile);
     } else if (capturedImage) {
@@ -152,7 +177,9 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
 
     // Decide endpoint
     let url = "/membership/members";
-    if (membershipType === "lockin") url = "/membership/storeLockInMembership";
+    if (membershipType === "lockin") {
+      url = "/membership/storeLockInMembership";
+    }
 
     try {
       const res = await axios.post(url, formData, {
@@ -207,11 +234,12 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
           </Box>
 
           <form onSubmit={handleSubmit}>
-            <Grid container direction="row" spacing={3}>
+            <Grid container spacing={3}>
               {/* LEFT SIDE */}
               <Grid
                 item
-                xs={6}
+                xs={12}
+                md={6}
                 sx={{
                   backgroundColor: "rgba(0,0,0,0.02)",
                   p: 2,
@@ -293,7 +321,9 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       fullWidth
                       required
                       value={membershipCardNumber}
-                      onChange={(e) => setMembershipCardNumber(e.target.value)}
+                      onChange={(e) =>
+                        setMembershipCardNumber(e.target.value)
+                      }
                       error={!!errors.MembershipCardNumber}
                       helperText={errors.MembershipCardNumber?.[0]}
                     />
@@ -304,7 +334,9 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       control={
                         <Checkbox
                           checked={membershipCardIssued}
-                          onChange={(e) => setMembershipCardIssued(e.target.checked)}
+                          onChange={(e) =>
+                            setMembershipCardIssued(e.target.checked)
+                          }
                         />
                       }
                       label="Membership Card Issued?"
@@ -352,7 +384,8 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
               {/* RIGHT SIDE */}
               <Grid
                 item
-                xs={6}
+                xs={12}
+                md={6}
                 sx={{
                   backgroundColor: "rgba(0,0,0,0.02)",
                   p: 2,
@@ -365,7 +398,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
 
                 <Grid container spacing={2}>
                   <Grid item xs={12}>
-                    <Box sx={{ display: "flex", gap: 2 }}>
+                    <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
                       <Button
                         sx={{ bgcolor: "#ffffff", color: "black" }}
                         variant="contained"
@@ -389,6 +422,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                         Capture Picture
                       </Button>
                     </Box>
+
                     {photoFile && (
                       <Typography variant="caption" sx={{ ml: 2 }}>
                         {photoFile.name}
@@ -420,6 +454,34 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       />
                     </Grid>
                   )}
+
+                  {/* Payment Fields */}
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth margin="dense">
+                      <InputLabel>Payment Method</InputLabel>
+                      <Select
+                        label="Payment Method"
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                      >
+                        <MenuItem value="">-- Select --</MenuItem>
+                        <MenuItem value="Cash">Cash</MenuItem>
+                        <MenuItem value="BDO">BDO</MenuItem>
+                        <MenuItem value="BPI">BPI</MenuItem>
+                        <MenuItem value="GCash">GCash</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Payment Amount"
+                      type="number"
+                      fullWidth
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                    />
+                  </Grid>
                 </Grid>
               </Grid>
             </Grid>

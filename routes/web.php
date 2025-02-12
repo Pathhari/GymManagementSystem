@@ -52,7 +52,12 @@ Route::middleware('auth:admin')->prefix('admin')->group(function () {
     Route::get('system-logs', [AdminDashboardController::class, 'systemLogs'])->name('admin.systemLogs');
     Route::get('notifications', [AdminDashboardController::class, 'notifications'])->name('admin.notifications');
     Route::get('settings', [AdminDashboardController::class, 'settings'])->name('admin.settings');
+
+    // NEW: admin dashboard metrics
+    Route::get('dashboard-metrics', [AdminDashboardController::class, 'metrics'])
+         ->name('admin.dashboard.metrics');
 });
+
 
 /*
 |--------------------------------------------------------------------------
