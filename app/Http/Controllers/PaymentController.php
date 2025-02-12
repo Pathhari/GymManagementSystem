@@ -248,15 +248,18 @@ class PaymentController extends Controller
     {
         // Add BranchID if your system requires it, e.g.: 'BranchID' => 'required|exists:branches,BranchID',
         $data = $request->validate([
-            'BranchID'       => 'nullable|exists:branches,BranchID',
-            'MemberID'       => 'nullable|exists:members,MemberID',
-            'PaymentFor'     => 'required|array|min:1',
-            'PaymentFor.*'   => 'string|max:50',            
-            'PaymentMethod'  => 'required|string|max:50',
-            'Amount'         => 'required|numeric|min:0',
-            'PaymentDate'    => 'required|date',
-            'Status'         => 'required|string|max:50',
-            'FailureReason'  => 'nullable|string|max:255',
+            'BranchID'     => 'nullable|exists:branches,BranchID',
+            'MemberID'     => 'nullable|exists:members,MemberID',
+            'WalkInName'   => 'nullable|string|max:100',
+            'BookingRef'   => 'nullable|string|max:100',
+            'SessionRef'   => 'nullable|string|max:100',
+            'PaymentFor'   => 'required|array|min:1',
+            'PaymentFor.*' => 'string|max:50',
+            'PaymentMethod'=> 'required|string|max:50',
+            'Amount'       => 'required|numeric|min:0',
+            'PaymentDate'  => 'required|date',
+            'Status'       => 'required|string|max:50',
+            'FailureReason'=> 'nullable|string|max:255',
         ]);
 
         $data['PaymentFor'] = json_encode($data['PaymentFor']);
@@ -296,15 +299,18 @@ class PaymentController extends Controller
         $payment = Payment::findOrFail($id);
         
         $data = $request->validate([
-            'BranchID'       => 'nullable|exists:branches,BranchID',
-            'MemberID'       => 'nullable|exists:members,MemberID',
-            'PaymentFor'     => 'required|array|min:1',
-            'PaymentFor.*'   => 'string|max:50',            
-            'PaymentMethod'  => 'required|string|max:50',
-            'Amount'         => 'required|numeric|min:0',
-            'PaymentDate'    => 'required|date',
-            'Status'         => 'required|string|max:50',
-            'FailureReason'  => 'nullable|string|max:255',
+            'BranchID'     => 'nullable|exists:branches,BranchID',
+            'MemberID'     => 'nullable|exists:members,MemberID',
+            'WalkInName'   => 'nullable|string|max:100',
+            'BookingRef'   => 'nullable|string|max:100',
+            'SessionRef'   => 'nullable|string|max:100',
+            'PaymentFor'   => 'required|array|min:1',
+            'PaymentFor.*' => 'string|max:50',
+            'PaymentMethod'=> 'required|string|max:50',
+            'Amount'       => 'required|numeric|min:0',
+            'PaymentDate'  => 'required|date',
+            'Status'       => 'required|string|max:50',
+            'FailureReason'=> 'nullable|string|max:255',
         ]);
 
         $data['PaymentFor'] = json_encode($data['PaymentFor']);

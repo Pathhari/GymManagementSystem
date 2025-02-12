@@ -13,16 +13,19 @@ return new class extends Migration
     {
         Schema::create('facilities', function (Blueprint $table) {
             $table->id('FacilityID');
-            $table->unsignedBigInteger('BranchID')->nullable(); 
-            $table->foreign('BranchID')->references('BranchID')->on('branches');
-            $table->string('Name');
-            $table->string('FacilityType')->nullable(); // "Room", "Court", "Equipment"
-            $table->string('Status')->default('Available'); // "Available", "UnderMaintenance"
-            $table->unsignedInteger('Capacity')->nullable();
-            $table->string('Location')->nullable();
-            $table->text('Notes')->nullable();
-        
+            $table->unsignedBigInteger('BranchID')->nullable();
+            $table->string('FacilityName');
+            $table->text('Description')->nullable();
+            $table->string('Status')->default('Available'); 
+            // e.g. "Available", "Under Maintenance", "Closed"
+    
             $table->timestamps();
+    
+            // If a facility belongs to a single branch
+            $table->foreign('BranchID')
+                  ->references('BranchID')
+                  ->on('branches')
+                  ->onDelete('set null');
         });
         
     }

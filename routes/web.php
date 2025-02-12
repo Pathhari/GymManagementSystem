@@ -166,10 +166,11 @@ Route::prefix('payments')->group(function() {
     Route::post('/', [PaymentController::class, 'store'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.store');
-
     Route::get('/', [PaymentController::class, 'index'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.index');
+    Route::get('{id}', [PaymentController::class, 'show'])->name('payments.show');
+
     Route::get('{id}/edit', [PaymentController::class, 'edit'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.edit');
@@ -635,3 +636,30 @@ Route::prefix('owner/branches')->name('branches.')->group(function() {
              ->name('stats');
     });
 });
+
+/*
+|--------------------------------------------------------------------------
+| FacilityController
+|--------------------------------------------------------------------------
+*/
+
+use App\Http\Controllers\FacilityController;
+     // Accessible by owner, admin
+    Route::prefix('facilities')->group(function() {
+        // GET /facilities
+        Route::get('/', [FacilityController::class, 'index'])->middleware('multiGuard:owner,admin')->name('facilities.index');
+    
+        // POST /facilities
+        Route::post('/', [FacilityController::class, 'store'])->middleware('multiGuard:owner,admin')->name('facilities.store');
+    
+        // GET /facilities/{id}
+        Route::get('{id}', [FacilityController::class, 'show'])->middleware('multiGuard:owner,admin')->name('facilities.show');
+    
+        // PUT /facilities/{id}
+        Route::put('{id}', [FacilityController::class, 'update'])->middleware('multiGuard:owner,admin')->name('facilities.update');
+    
+        // DELETE /facilities/{id}
+        Route::delete('{id}', [FacilityController::class, 'destroy'])->middleware('multiGuard:owner,admin')->name('facilities.destroy');
+    });
+    
+    

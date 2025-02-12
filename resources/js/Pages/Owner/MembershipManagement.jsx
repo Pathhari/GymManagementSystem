@@ -183,28 +183,33 @@ export default function MembershipManagement() {
     if (!selectedMembership) return;
     try {
       const memberID = selectedMembership.MemberID;
-
-      // We'll pass MemberStatusID in the payload
-      // But also keep PlanID, etc.
-      await axios.put(`/membership/members/${memberID}`, {
-        FullName: selectedMembership.FullName,
-        Email: selectedMembership.Email,
-        Phone: selectedMembership.Phone,
-        PlanID: selectedMembership.PlanID,
-        MembershipCardNumber: selectedMembership.MembershipCardNumber,
-        MembershipCardIssued: selectedMembership.MembershipCardIssued,
-        // membershipRecords used to store a string "MemberStatusID",
-        // now we pass "MemberStatusID" (numeric).
-        MemberStatusID: selectedMembership.MemberStatusID,
-
-        MembershipStartDate: selectedMembership.MembershipStartDate,
-        MembershipEndDate: selectedMembership.MembershipEndDate,
-        Biometrics: selectedMembership.Biometrics,
-        FreeSessions: selectedMembership.FreeSessions,
-        Notes: selectedMembership.Notes,
+      
+      // Construct FormData
+      const formData = new FormData();
+      formData.append("FullName", selectedMembership.FullName);
+      formData.append("Email", selectedMembership.Email);
+      formData.append("Phone", selectedMembership.Phone || "");
+      formData.append("PlanID", selectedMembership.PlanID || "");
+      formData.append("MembershipCardNumber", selectedMembership.MembershipCardNumber || "");
+      formData.append("MembershipCardIssued", selectedMembership.MembershipCardIssued ? "1" : "0");
+      formData.append("MemberStatusID", selectedMembership.MemberStatusID);
+      formData.append("MembershipStartDate", selectedMembership.MembershipStartDate || "");
+      formData.append("MembershipEndDate", selectedMembership.MembershipEndDate || "");
+      formData.append("Biometrics", selectedMembership.Biometrics || "");
+      formData.append("FreeSessions", selectedMembership.FreeSessions || "0");
+      formData.append("Notes", selectedMembership.Notes || "");
+      
+      // If a new file was selected, append it
+      if (selectedMembership.PhotoFile) {
+        formData.append("PhotoFile", selectedMembership.PhotoFile);
+      }
+  
+      // Send as multipart/form-data
+      await axios.put(`/membership/members/${memberID}`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
-
-      // Update local
+  
+      // Locally update membership array
       setMembershipRecords((prev) =>
         prev.map((m) => (m.MemberID === memberID ? selectedMembership : m))
       );
@@ -215,6 +220,8 @@ export default function MembershipManagement() {
       alert("Update error. Check console for details.");
     }
   };
+  
+
   const handleDeleteMembership = async (memberID) => {
     if (!window.confirm("Delete this member?")) return;
     try {
@@ -679,7 +686,6 @@ async function handleAddRenewal() {
     setAddRenewalOpen(false);
 
     showSuccessMessage("Renewal created successfully!");
-    window.location.reload();
   } catch (err) {
     console.error("Error creating renewal:", err);
     alert("Create error. Check console for details.");
@@ -1264,36 +1270,34 @@ async function handleAddRenewal() {
   open={isViewMembershipOpen}
   onClose={() => setViewMembershipOpen(false)}
   fullWidth
-  maxWidth="md" // or "sm"
+  maxWidth="md"
 >
   <DialogTitle>Membership Details</DialogTitle>
   <DialogContent dividers>
     {selectedMembership && (
       <Box sx={{ p: 2 }}>
-        {/* -- Profile Photo or Biometrics -- */}
-        {selectedMembership.Biometrics ? (
-          // If it’s Base64 or a direct URL, adapt accordingly:
+        {/* Display photo if PhotoPath is available */}
+        {selectedMembership.PhotoPath ? (
           <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
             <img
-              src={selectedMembership.Biometrics} 
-              alt="Member Biometrics"
-              style={{ maxWidth: "150px", borderRadius: "50%" }}
+              src={`/storage/${selectedMembership.PhotoPath}`}
+              alt="Member Photo"
+              style={{ maxWidth: "150px", borderRadius: "8px" }}
             />
           </Box>
         ) : (
           <Typography variant="body2" align="center" sx={{ color: "gray" }}>
-            No photo/biometrics available.
+            No photo available.
           </Typography>
         )}
 
-        {/* -- Core Details -- */}
         <Typography variant="h6" gutterBottom>
           Personal Information
         </Typography>
         <Typography>Name: {selectedMembership.FullName}</Typography>
         <Typography>Email: {selectedMembership.Email}</Typography>
         <Typography>Phone: {selectedMembership.Phone || "—"}</Typography>
-        
+
         <Divider sx={{ my: 2 }} />
 
         <Typography variant="h6" gutterBottom>
@@ -1303,7 +1307,7 @@ async function handleAddRenewal() {
           Plan: {selectedMembership.PlanID /* or do plan name lookup */}
         </Typography>
         <Typography>
-          Status: {/* e.g. do getStatusNameByID(selectedMembership.MemberStatusID) */}
+          Status: {getStatusNameByID(selectedMembership.MemberStatusID)}
         </Typography>
         <Typography>
           Start Date: {selectedMembership.MembershipStartDate || "—"}
@@ -1324,7 +1328,6 @@ async function handleAddRenewal() {
 
         <Divider sx={{ my: 2 }} />
 
-        {/* -- Other Optional Fields -- */}
         <Typography variant="h6" gutterBottom>
           Notes
         </Typography>
@@ -1342,6 +1345,7 @@ async function handleAddRenewal() {
     </Button>
   </DialogActions>
 </Dialog>
+
 
 
 {/* EDIT Membership Dialog */}
@@ -1476,7 +1480,7 @@ async function handleAddRenewal() {
 
         {/* Upload a new photo/biometric */}
         <Box sx={{ mt: 2 }}>
-          <Button variant="contained" component="label">
+        <Button variant="contained" component="label">
             Upload Biometric/Photo
             <input
               type="file"
@@ -1484,10 +1488,9 @@ async function handleAddRenewal() {
               accept="image/*"
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
-                  // Store the file in state so we can send it to back end
                   setSelectedMembership((prev) => ({
                     ...prev,
-                    BiometricFile: e.target.files[0], // a new key storing the File object
+                    PhotoFile: e.target.files[0], // store the actual File object
                   }));
                 }
               }}

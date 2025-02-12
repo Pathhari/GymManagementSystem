@@ -12,14 +12,17 @@ class Payment extends Model
     protected $fillable = [
         'BranchID',
         'MemberID',
-        'PaymentFor',
+        'WalkInName',
+        'BookingRef',
+        'SessionRef',
+        'PaymentFor',      
         'PaymentMethod',
         'Amount',
         'PaymentDate',
         'Status',
         'FailureReason',
     ];
-    fffff
+
     protected $casts = [
         'PaymentFor' => 'array', // Eloquent auto-converts JSON <-> array
     ];

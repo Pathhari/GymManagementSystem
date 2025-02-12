@@ -14,8 +14,6 @@ import {
   Tab,
   Tooltip,
   Grid,
-  Card,
-  CardContent,
   FormControl,
   InputLabel,
   Select,
@@ -42,39 +40,75 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { CSVLink } from "react-csv";
 
+/**
+ * This component has two tabs:
+ *   1) Payments (Member / Walk-In / Booking / Session / Partial Payment)
+ *   2) Invoices
+ *
+ * PaymentFor is stored as an array, so each flow sets PaymentFor like
+ * ["Membership"], ["Walk-In"], ["Booking"], ["Session"], or ["Partial"].
+ *
+ * For partial payments, we let the user pick multiple invoices and allocate amounts.
+ * The backend would handle the logic of linking Payment to those Invoices.
+ */
 export default function PaymentsAndInvoices() {
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Data arrays
+  // Arrays
   const [payments, setPayments] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [members, setMembers] = useState([]);
   const [branchOptions, setBranchOptions] = useState([]);
 
-  // Selected branch ("all" or a BranchID as string)
+  // Selected branch, date filters
   const [branch, setBranch] = useState("all");
+  const [timePeriod, setTimePeriod] = useState("daily");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
-  // Payment dialogs
+  // =============== Payment Dialogs ===============
   const [isAddPaymentOpen, setAddPaymentOpen] = useState(false);
   const [isEditPaymentOpen, setEditPaymentOpen] = useState(false);
   const [isViewPaymentOpen, setViewPaymentOpen] = useState(false);
 
-  // Invoice dialogs
-  const [isAddInvoiceOpen, setAddInvoiceOpen] = useState(false);
-  const [isEditInvoiceOpen, setEditInvoiceOpen] = useState(false);
-  const [isViewInvoiceOpen, setViewInvoiceOpen] = useState(false);
+  // Payment form states
+  // paymentMode => "member", "walkIn", "booking", "session", "partial"
+  const [paymentMode, setPaymentMode] = useState("");
 
-  // Payment forms
+  // Common newPayment fields
   const [newPayment, setNewPayment] = useState({
     memberId: "",
+    walkInName: "",
+    bookingRef: "",
+    sessionRef: "",
     paymentDate: "",
     amountPaid: 0,
     method: "",
     status: "",
   });
+
   const [editPayment, setEditPayment] = useState({});
   const [viewPayment, setViewPayment] = useState(null);
+
+  // =============== Partial Payment Dialog ===============
+  const [partialDialogOpen, setPartialDialogOpen] = useState(false);
+  // We'll store the partialPayment form:
+  const [partialPayment, setPartialPayment] = useState({
+    memberId: "",
+    paymentDate: "",
+    method: "",
+    amount: 0,
+    status: "Pending",
+    allocatedInvoices: [], // e.g. [{invoiceId, amountAllocated}, ...]
+  });
+  // We'll also store some "open" or "unpaid" invoices in a local state to pick from
+  const [unpaidInvoices, setUnpaidInvoices] = useState([]);
+
+  // =============== Invoice Dialogs ===============
+  const [isAddInvoiceOpen, setAddInvoiceOpen] = useState(false);
+  const [isEditInvoiceOpen, setEditInvoiceOpen] = useState(false);
+  const [isViewInvoiceOpen, setViewInvoiceOpen] = useState(false);
 
   // Invoice forms
   const [newInvoice, setNewInvoice] = useState({
@@ -85,39 +119,25 @@ export default function PaymentsAndInvoices() {
     status: "",
   });
   const [editInvoice, setEditInvoice] = useState({});
-
-  // The invoice we’re viewing in the dialog, including line items
   const [viewInvoice, setViewInvoice] = useState(null);
 
-  // Summaries & filters
-  const [timePeriod, setTimePeriod] = useState("daily");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-
-  // ----------------- Fetch Data on Mount -----------------
+  // On mount: fetch members, payments, invoices, branches
   useEffect(() => {
     fetchMembers();
     fetchPayments();
     fetchInvoices();
     fetchBranches();
+    fetchUnpaidInvoices(); // for partial payment
   }, []);
 
   const fetchMembers = () => {
     axios
       .get("/membership/members")
       .then((res) => {
-        if (Array.isArray(res.data)) {
-          setMembers(res.data);
-        } else if (res.data.members) {
-          setMembers(res.data.members);
-        } else {
-          setMembers([]);
-        }
+        const data = Array.isArray(res.data) ? res.data : res.data.members || [];
+        setMembers(data);
       })
-      .catch((err) => {
-        console.error(err);
-        setMembers([]);
-      });
+      .catch((err) => console.error(err));
   };
 
   const fetchPayments = () => {
@@ -129,10 +149,12 @@ export default function PaymentsAndInvoices() {
           memberName: p.member ? p.member.FullName : "N/A",
           memberId: p.MemberID || "",
           paymentDate: p.PaymentDate,
-          amountPaid: Number(p.Amount), // Ensure it's a number
+          amountPaid: Number(p.Amount),
           method: p.PaymentMethod,
           status: p.Status,
           branchId: p.BranchID ? p.BranchID.toString() : "",
+          // if PaymentFor is JSON in DB, decode in backend or parse here if needed
+          paymentFor: Array.isArray(p.PaymentFor) ? p.PaymentFor : [],
         }));
         setPayments(mapped);
       })
@@ -149,7 +171,7 @@ export default function PaymentsAndInvoices() {
           invoiceDate: inv.InvoiceDate,
           dueDate: inv.DueDate,
           invoiceTotal: inv.InvoiceTotal,
-          status: inv.PaymentStatus, // Use the PaymentStatus field
+          status: inv.PaymentStatus,
         }));
         setInvoices(mapped);
       })
@@ -164,7 +186,6 @@ export default function PaymentsAndInvoices() {
           value: b.BranchID.toString(),
           label: b.BranchName,
         }));
-        // Include "All Branches" as the first option
         setBranchOptions([{ value: "all", label: "All Branches" }, ...fetched]);
       })
       .catch((err) => {
@@ -173,194 +194,34 @@ export default function PaymentsAndInvoices() {
       });
   };
 
-  // ----------------- Payment Handlers -----------------
-  const handleAddPaymentChange = (e) => {
-    const { name, value } = e.target;
-    setNewPayment((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleAddPaymentSubmit = () => {
-    const payload = {
-      MemberID: newPayment.memberId,
-      PaymentMethod: newPayment.method,
-      Amount: newPayment.amountPaid,
-      PaymentDate: newPayment.paymentDate,
-      Status: newPayment.status,
-      PaymentFor: "Membership",
-    };
-
+  // For partial payments, we might need a list of unpaid or partially paid invoices
+  const fetchUnpaidInvoices = () => {
     axios
-      .post("/payments", payload)
-      .then(() => fetchPayments())
-      .then(() => {
-        setAddPaymentOpen(false);
-        setNewPayment({
-          memberId: "",
-          paymentDate: "",
-          amountPaid: 0,
-          method: "",
-          status: "",
-        });
-      })
-      .catch((err) => console.error(err));
-  };
-
-  const handleEditPaymentOpen = (row) => {
-    setEditPayment(row);
-    setEditPaymentOpen(true);
-  };
-
-  const handleEditPaymentChange = (e) => {
-    const { name, value } = e.target;
-    setEditPayment((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleEditPaymentSubmit = () => {
-    const payload = {
-      MemberID: editPayment.memberId,
-      PaymentMethod: editPayment.method,
-      Amount: editPayment.amountPaid,
-      PaymentDate: editPayment.paymentDate,
-      Status: editPayment.status,
-    };
-
-    axios
-      .put(`/payments/${editPayment.paymentId}`, payload)
-      .then(() => fetchPayments())
-      .then(() => {
-        setEditPaymentOpen(false);
-      })
-      .catch((err) => console.error(err));
-  };
-
-  const handleViewPaymentOpen = (row) => {
-    setViewPayment(row);
-    setViewPaymentOpen(true);
-  };
-
-  const handleRefundPayment = (row) => {
-    axios
-      .post(`/payments/${row.paymentId}/refund/initiate`)
-      .then(() => fetchPayments())
-      .catch((err) => console.error(err));
-  };
-
-  // ----------------- Invoice Handlers -----------------
-  const handleAddInvoiceChange = (e) => {
-    const { name, value } = e.target;
-    setNewInvoice((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleAddInvoiceSubmit = () => {
-    const payload = {
-      MemberID: newInvoice.memberId,
-      InvoiceDate: newInvoice.invoiceDate,
-      DueDate: newInvoice.dueDate,
-      InvoiceTotal: newInvoice.invoiceTotal,
-    };
-
-    axios
-      .post("/invoices", payload)
-      .then(() => fetchInvoices())
-      .then(() => {
-        setAddInvoiceOpen(false);
-        setNewInvoice({
-          memberId: "",
-          invoiceDate: "",
-          dueDate: "",
-          invoiceTotal: 0,
-          status: "",
-        });
-      })
-      .catch((err) => console.error(err));
-  };
-
-  const handleEditInvoiceOpen = (row) => {
-    setEditInvoice(row);
-    setEditInvoiceOpen(true);
-  };
-
-  const handleEditInvoiceChange = (e) => {
-    const { name, value } = e.target;
-    setEditInvoice((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleEditInvoiceSubmit = () => {
-    const payload = {
-      MemberID: editInvoice.memberId,
-      InvoiceDate: editInvoice.invoiceDate,
-      DueDate: editInvoice.dueDate,
-      InvoiceTotal: editInvoice.invoiceTotal,
-    };
-
-    axios
-      .put(`/invoices/${editInvoice.invoiceId}`, payload)
-      .then(() => fetchInvoices())
-      .then(() => {
-        setEditInvoiceOpen(false);
-      })
-      .catch((err) => console.error(err));
-  };
-
-  const handleViewInvoiceOpen = (row) => {
-    axios
-      .get(`/invoices/${row.invoiceId}`)
+      .get("/invoices?status=unpaid_or_partial") // or however you filter
       .then((res) => {
-        const fetched = {
-          invoiceId: res.data.InvoiceID,
-          memberName: res.data.member ? res.data.member.FullName : "N/A",
-          invoiceDate: res.data.InvoiceDate,
-          dueDate: res.data.DueDate,
-          invoiceTotal: res.data.InvoiceTotal,
-          lineItems: res.data.line_items || [],
-        };
-        setViewInvoice(fetched);
-        setViewInvoiceOpen(true);
+        // shape it to your liking
+        setUnpaidInvoices(res.data || []);
       })
       .catch((err) => console.error(err));
   };
 
-  const handleDeleteInvoice = (row) => {
-    if (!window.confirm(`Are you sure you want to delete Invoice #${row.invoiceId}?`)) return;
-
-    axios
-      .delete(`/invoices/${row.invoiceId}`)
-      .then(() => fetchInvoices())
-      .catch((err) => console.error(err));
-  };
-
-  // ----------------- Summary Stats & Filtering -----------------
-  // Apply branch filtering to payments for summaries and table rows
-  const paymentsByBranch = branch === "all" ? payments : payments.filter((p) => p.branchId === branch);
-  const totalRevenue = paymentsByBranch
-    .filter((p) => p.status === "Completed")
-    .reduce((acc, cur) => acc + cur.amountPaid, 0);
-
-  const totalInvoices = invoices.length;
-  const outstandingAmount = invoices
-    .filter((inv) => inv.status === "Unpaid" || inv.status === "Partially Paid")
-    .reduce((acc, inv) => acc + Number(inv.invoiceTotal), 0);
-
-  const filteredPayments = paymentsByBranch.filter((p) =>
-    Object.values(p).some((val) => String(val).toLowerCase().includes(searchTerm))
-  );
-
-  const filteredInvoices = invoices.filter((i) =>
-    Object.values(i).some((val) => String(val).toLowerCase().includes(searchTerm))
-  );
-
-  const handleTimePeriodChange = (e) => setTimePeriod(e.target.value);
-  const handleDateFromChange = (e) => setDateFrom(e.target.value);
-  const handleDateToChange = (e) => setDateTo(e.target.value);
-  const handleBranchChange = (e) => setBranch(e.target.value);
-
-  const handleSearchChange = (e) => setSearchTerm(e.target.value.toLowerCase());
+  // =============== Payment Tab Logic ===============
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
     setSearchTerm("");
   };
 
-  // ----------------- Table Columns -----------------
+  // Searching / Filtering
+  const paymentsByBranch = branch === "all" ? payments : payments.filter((p) => p.branchId === branch);
+
+  const filteredPayments = paymentsByBranch.filter((p) =>
+    Object.values(p).some((val) => String(val).toLowerCase().includes(searchTerm))
+  );
+  const filteredInvoices = invoices.filter((i) =>
+    Object.values(i).some((val) => String(val).toLowerCase().includes(searchTerm))
+  );
+
+  // Payment or Invoice columns
   const paymentColumns = [
     { field: "paymentId", headerName: "Payment ID", width: 120 },
     { field: "memberName", headerName: "Member Name", width: 150 },
@@ -458,7 +319,272 @@ export default function PaymentsAndInvoices() {
   const getInvoiceRowId = (row) => row.invoiceId;
   const rowIdGetter = activeTab === 0 ? getPaymentRowId : getInvoiceRowId;
 
-  // ----------------- Export Menu -----------------
+  // =============== Payment Buttons & Dialogs ===============
+  const openPaymentDialog = (mode) => {
+    // This is for the older approach, we keep newPayment. But we have a separate partial approach
+    setPaymentMode(mode);
+    setNewPayment({
+      memberId: "",
+      walkInName: "",
+      bookingRef: "",
+      sessionRef: "",
+      paymentDate: "",
+      amountPaid: 0,
+      method: "",
+      status: "Pending",
+    });
+    setAddPaymentOpen(true);
+  };
+
+  const closePaymentDialog = () => {
+    setAddPaymentOpen(false);
+  };
+
+  const handleAddPaymentOpen = (mode) => {
+    if (mode === "partial") {
+      // open partial payment dialog
+      setPartialPayment({
+        memberId: "",
+        paymentDate: "",
+        method: "",
+        amount: 0,
+        status: "Pending",
+        allocatedInvoices: [],
+      });
+      setPartialDialogOpen(true);
+    } else {
+      // Normal payment flows
+      openPaymentDialog(mode);
+    }
+  };
+
+  // For partial, we have a separate approach:
+  const closePartialDialog = () => {
+    setPartialDialogOpen(false);
+  };
+
+  // --- SUBMIT PARTIAL Payment
+  const handleSubmitPartialPayment = () => {
+    // We'll post to e.g. /payments/partial with allocatedInvoices
+    // allocatedInvoices = [{ invoiceId, amountAllocated }, ...]
+    // Then the backend does partial logic
+    const payload = {
+      // If you have BranchID, etc.
+      MemberID: partialPayment.memberId ? Number(partialPayment.memberId) : null,
+      PaymentFor: "Partial",
+      PaymentMethod: partialPayment.method,
+      Amount: Number(partialPayment.amount),
+      PaymentDate: partialPayment.paymentDate,
+      Status: partialPayment.status,
+      allocatedInvoices: partialPayment.allocatedInvoices.map((alloc) => ({
+        invoiceId: alloc.invoiceId,
+        amountAllocated: Number(alloc.amountAllocated),
+      })),
+    };
+
+    axios
+      .post("/payments/partial", payload)
+      .then(() => {
+        alert("Partial payment created successfully!");
+        fetchPayments();
+        setPartialDialogOpen(false);
+      })
+      .catch((err) => console.error(err));
+  };
+
+  // Example of how user picks multiple invoices for partial
+  // We might show a mini table or list of unpaid invoices
+  const handleAddInvoiceAlloc = (inv) => {
+    // Add or update the partialPayment.allocatedInvoices
+    const existing = partialPayment.allocatedInvoices.find((x) => x.invoiceId === inv.invoiceId);
+    if (!existing) {
+      setPartialPayment((prev) => ({
+        ...prev,
+        allocatedInvoices: [...prev.allocatedInvoices, { invoiceId: inv.invoiceId, amountAllocated: inv.InvoiceTotal }],
+      }));
+    }
+  };
+
+  // =============== Payment - Create & Edit ===============
+  const handleAddPaymentChange = (e) => {
+    const { name, value } = e.target;
+    setNewPayment((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddPaymentSubmit = () => {
+    // Decide PaymentFor array based on paymentMode
+    let paymentForArr = [];
+    switch (paymentMode) {
+      case "member":
+        paymentForArr = ["Membership"];
+        break;
+      case "walkIn":
+        paymentForArr = ["Walk-In"];
+        break;
+      case "booking":
+        paymentForArr = ["Booking"];
+        break;
+      case "session":
+        paymentForArr = ["Session"];
+        break;
+      default:
+        paymentForArr = ["Others"];
+    }
+
+    const payload = {
+      MemberID: paymentMode === "walkIn" ? null : newPayment.memberId,
+      PaymentFor: paymentForArr,
+      PaymentMethod: newPayment.method,
+      Amount: Number(newPayment.amountPaid),
+      PaymentDate: newPayment.paymentDate,
+      Status: newPayment.status || "Pending",
+      // For storing references if your DB can handle it:
+      WalkInName: paymentMode === "walkIn" ? newPayment.walkInName : null,
+      BookingRef: paymentMode === "booking" ? newPayment.bookingRef : null,
+      SessionRef: paymentMode === "session" ? newPayment.sessionRef : null,
+    };
+
+    axios
+      .post("/payments", payload)
+      .then(() => {
+        fetchPayments();
+        setAddPaymentOpen(false);
+      })
+      .catch((err) => console.error(err));
+  };
+
+  const handleEditPaymentOpen = (row) => {
+    setEditPayment(row);
+    setEditPaymentOpen(true);
+  };
+
+  const handleEditPaymentChange = (e) => {
+    const { name, value } = e.target;
+    setEditPayment((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditPaymentSubmit = () => {
+    // Keep the same PaymentFor array if row had it
+    const existingFor = Array.isArray(editPayment.paymentFor) && editPayment.paymentFor.length > 0
+      ? editPayment.paymentFor
+      : ["Membership"]; // fallback
+
+    const payload = {
+      MemberID: editPayment.memberId || null,
+      PaymentFor: existingFor,
+      PaymentMethod: editPayment.method,
+      Amount: Number(editPayment.amountPaid),
+      PaymentDate: editPayment.paymentDate,
+      Status: editPayment.status,
+      // If we also want to update references, do so if we have them
+    };
+
+    axios
+      .put(`/payments/${editPayment.paymentId}`, payload)
+      .then(() => {
+        fetchPayments();
+        setEditPaymentOpen(false);
+      })
+      .catch((err) => console.error(err));
+  };
+
+  const handleViewPaymentOpen = (row) => {
+    setViewPayment(row);
+    setViewPaymentOpen(true);
+  };
+
+  const handleRefundPayment = (row) => {
+    axios
+      .post(`/payments/${row.paymentId}/refund/initiate`)
+      .then(() => fetchPayments())
+      .catch((err) => console.error(err));
+  };
+
+  // =============== Invoice: Add, Edit, View ===============
+  const handleAddInvoiceChange = (e) => {
+    const { name, value } = e.target;
+    setNewInvoice((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddInvoiceSubmit = () => {
+    const payload = {
+      MemberID: newInvoice.memberId,
+      InvoiceDate: newInvoice.invoiceDate,
+      DueDate: newInvoice.dueDate,
+      InvoiceTotal: newInvoice.invoiceTotal,
+    };
+
+    axios
+      .post("/invoices", payload)
+      .then(() => fetchInvoices())
+      .then(() => {
+        setAddInvoiceOpen(false);
+        setNewInvoice({
+          memberId: "",
+          invoiceDate: "",
+          dueDate: "",
+          invoiceTotal: 0,
+          status: "",
+        });
+      })
+      .catch((err) => console.error(err));
+  };
+
+  const handleEditInvoiceOpen = (row) => {
+    setEditInvoice(row);
+    setEditInvoiceOpen(true);
+  };
+
+  const handleEditInvoiceChange = (e) => {
+    const { name, value } = e.target;
+    setEditInvoice((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditInvoiceSubmit = () => {
+    const payload = {
+      MemberID: editInvoice.memberId,
+      InvoiceDate: editInvoice.invoiceDate,
+      DueDate: editInvoice.dueDate,
+      InvoiceTotal: editInvoice.invoiceTotal,
+    };
+
+    axios
+      .put(`/invoices/${editInvoice.invoiceId}`, payload)
+      .then(() => fetchInvoices())
+      .then(() => {
+        setEditInvoiceOpen(false);
+      })
+      .catch((err) => console.error(err));
+  };
+
+  const handleViewInvoiceOpen = (row) => {
+    axios
+      .get(`/invoices/${row.invoiceId}`)
+      .then((res) => {
+        const fetched = {
+          invoiceId: res.data.InvoiceID,
+          memberName: res.data.member ? res.data.member.FullName : "N/A",
+          invoiceDate: res.data.InvoiceDate,
+          dueDate: res.data.DueDate,
+          invoiceTotal: res.data.InvoiceTotal,
+          lineItems: res.data.line_items || [],
+        };
+        setViewInvoice(fetched);
+        setViewInvoiceOpen(true);
+      })
+      .catch((err) => console.error(err));
+  };
+
+  const handleDeleteInvoice = (row) => {
+    if (!window.confirm(`Are you sure you want to delete Invoice #${row.invoiceId}?`)) return;
+
+    axios
+      .delete(`/invoices/${row.invoiceId}`)
+      .then(() => fetchInvoices())
+      .catch((err) => console.error(err));
+  };
+
+  // =============== Export Menu ===============
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
   const openExportMenu = Boolean(exportAnchorEl);
 
@@ -529,7 +655,7 @@ export default function PaymentsAndInvoices() {
 
   return (
     <Box sx={{ p: 4 }}>
-      {/* ---------- OVERVIEW PANEL ---------- */}
+      {/* Time Period, Branch, etc. at top */}
       <Box sx={{ mb: 3 }}>
         <Box
           sx={{
@@ -543,7 +669,7 @@ export default function PaymentsAndInvoices() {
         >
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <InputLabel>Time Period</InputLabel>
-            <Select value={timePeriod} label="Time Period" onChange={handleTimePeriodChange}>
+            <Select value={timePeriod} label="Time Period" onChange={(e) => setTimePeriod(e.target.value)}>
               <MenuItem value="daily">Daily</MenuItem>
               <MenuItem value="weekly">Weekly</MenuItem>
               <MenuItem value="monthly">Monthly</MenuItem>
@@ -556,7 +682,7 @@ export default function PaymentsAndInvoices() {
             label="From"
             InputLabelProps={{ shrink: true }}
             value={dateFrom}
-            onChange={handleDateFromChange}
+            onChange={(e) => setDateFrom(e.target.value)}
           />
           <TextField
             type="date"
@@ -564,11 +690,11 @@ export default function PaymentsAndInvoices() {
             label="To"
             InputLabelProps={{ shrink: true }}
             value={dateTo}
-            onChange={handleDateToChange}
+            onChange={(e) => setDateTo(e.target.value)}
           />
           <FormControl size="small" sx={{ minWidth: 140 }}>
             <InputLabel>Branch</InputLabel>
-            <Select value={branch} label="Branch" onChange={handleBranchChange}>
+            <Select value={branch} label="Branch" onChange={(e) => setBranch(e.target.value)}>
               {branchOptions.map((option) => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
@@ -577,13 +703,9 @@ export default function PaymentsAndInvoices() {
             </Select>
           </FormControl>
         </Box>
-
-        <Grid container spacing={2}>
-</Grid>
-
       </Box>
 
-      {/* ---------- Title & Tabs ---------- */}
+      {/* Tabs */}
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Typography variant="h4" gutterBottom>
           Payments & Invoices
@@ -594,13 +716,13 @@ export default function PaymentsAndInvoices() {
         </Tabs>
       </Box>
 
-      {/* ---------- Search & Action Buttons ---------- */}
+      {/* Search & Export */}
       <Paper elevation={2} sx={{ mt: 3, p: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
           <TextField
             placeholder="Search"
             value={searchTerm}
-            onChange={handleSearchChange}
+            onChange={(e) => setSearchTerm(e.target.value.toLowerCase())}
             variant="outlined"
             size="small"
             sx={{ width: "100%", maxWidth: 300 }}
@@ -643,15 +765,51 @@ export default function PaymentsAndInvoices() {
               </MenuItem>
               <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
             </Menu>
+
             {activeTab === 0 ? (
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => setAddPaymentOpen(true)}
-              >
-                Add Payment
-              </Button>
+              <>
+                {/* 5 buttons now: Member, Walk-In, Booking, Session, Partial */}
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<AddIcon />}
+                  onClick={() => handleAddPaymentOpen("member")}
+                >
+                  Member Payment
+                </Button>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<AddIcon />}
+                  onClick={() => handleAddPaymentOpen("walkIn")}
+                >
+                  Walk-In Payment
+                </Button>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<AddIcon />}
+                  onClick={() => handleAddPaymentOpen("booking")}
+                >
+                  Booking Payment
+                </Button>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<AddIcon />}
+                  onClick={() => handleAddPaymentOpen("session")}
+                >
+                  Session Payment
+                </Button>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  startIcon={<AddIcon />}
+                  onClick={() => handleAddPaymentOpen("partial")}
+                >
+                  Partial Payment
+                </Button>
+              </>
             ) : (
               <Button
                 variant="contained"
@@ -676,27 +834,73 @@ export default function PaymentsAndInvoices() {
         </div>
       </Paper>
 
-      {/* ----------------- ADD Payment Dialog ----------------- */}
-      <Dialog open={isAddPaymentOpen} onClose={() => setAddPaymentOpen(false)}>
-        <DialogTitle>Add Payment</DialogTitle>
+      {/* ================= ADD Payment Dialog (non-partial) ================= */}
+      <Dialog open={isAddPaymentOpen} onClose={closePaymentDialog}>
+        <DialogTitle>
+          {paymentMode === "member" && "Add Member Payment"}
+          {paymentMode === "walkIn" && "Add Walk-In Payment"}
+          {paymentMode === "booking" && "Add Booking Payment"}
+          {paymentMode === "session" && "Add Session Payment"}
+        </DialogTitle>
         <DialogContent dividers>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Member Name</InputLabel>
-            <Select
-              label="Member Name"
-              name="memberId"
-              value={newPayment.memberId || ""}
-              onChange={(e) =>
-                setNewPayment((prev) => ({ ...prev, memberId: e.target.value }))
-              }
-            >
-              {(members || []).map((m) => (
-                <MenuItem key={m.MemberID} value={m.MemberID}>
-                  {m.FullName}
+          {/* If not walkIn, show member select */}
+          {paymentMode !== "walkIn" && (
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Member Name</InputLabel>
+              <Select
+                label="Member Name"
+                name="memberId"
+                value={newPayment.memberId}
+                onChange={handleAddPaymentChange}
+              >
+                <MenuItem value="">
+                  <em>-- Select Member --</em>
                 </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+                {members.map((m) => (
+                  <MenuItem key={m.MemberID} value={m.MemberID}>
+                    {m.FullName}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
+          {/* If walkIn => ask for name */}
+          {paymentMode === "walkIn" && (
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Walk-In Name"
+              name="walkInName"
+              value={newPayment.walkInName}
+              onChange={handleAddPaymentChange}
+            />
+          )}
+
+          {/* bookingRef if booking */}
+          {paymentMode === "booking" && (
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Booking Reference"
+              name="bookingRef"
+              value={newPayment.bookingRef}
+              onChange={handleAddPaymentChange}
+            />
+          )}
+
+          {/* sessionRef if session */}
+          {paymentMode === "session" && (
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Session Reference"
+              name="sessionRef"
+              value={newPayment.sessionRef}
+              onChange={handleAddPaymentChange}
+            />
+          )}
+
           <TextField
             fullWidth
             margin="normal"
@@ -734,14 +938,148 @@ export default function PaymentsAndInvoices() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddPaymentOpen(false)}>Cancel</Button>
-          <Button onClick={handleAddPaymentSubmit} variant="contained">
+          <Button onClick={closePaymentDialog}>Cancel</Button>
+          <Button variant="contained" onClick={handleAddPaymentSubmit}>
             Save
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* ----------------- EDIT Payment Dialog ----------------- */}
+      {/* ================= PARTIAL PAYMENT DIALOG ================= */}
+      <Dialog open={partialDialogOpen} onClose={closePartialDialog} fullWidth maxWidth="md">
+        <DialogTitle>Create Partial Payment</DialogTitle>
+        <DialogContent dividers>
+          {/* For partial, we let user pick a member, date, method, total amount, plus allocate to multiple invoices */}
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Member</InputLabel>
+                <Select
+                  name="memberId"
+                  label="Member"
+                  value={partialPayment.memberId}
+                  onChange={(e) =>
+                    setPartialPayment((prev) => ({ ...prev, memberId: e.target.value }))
+                  }
+                >
+                  <MenuItem value="">
+                    <em>-- None --</em>
+                  </MenuItem>
+                  {members.map((m) => (
+                    <MenuItem key={m.MemberID} value={m.MemberID}>
+                      {m.FullName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Payment Date"
+                type="date"
+                fullWidth
+                size="small"
+                value={partialPayment.paymentDate}
+                onChange={(e) =>
+                  setPartialPayment((prev) => ({ ...prev, paymentDate: e.target.value }))
+                }
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Payment Method"
+                fullWidth
+                size="small"
+                value={partialPayment.method}
+                onChange={(e) =>
+                  setPartialPayment((prev) => ({ ...prev, method: e.target.value }))
+                }
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Payment Status"
+                fullWidth
+                size="small"
+                value={partialPayment.status}
+                onChange={(e) =>
+                  setPartialPayment((prev) => ({ ...prev, status: e.target.value }))
+                }
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Total Amount"
+                type="number"
+                fullWidth
+                size="small"
+                value={partialPayment.amount}
+                onChange={(e) =>
+                  setPartialPayment((prev) => ({ ...prev, amount: e.target.value }))
+                }
+                helperText="The sum of allocated to each invoice doesn't need to match exactly, depending on your logic."
+              />
+            </Grid>
+          </Grid>
+
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle1">Allocate to these Invoices</Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  Unpaid Invoices (select to add):
+                </Typography>
+                <Paper sx={{ maxHeight: 200, overflowY: "auto", p: 1 }}>
+                  {unpaidInvoices.map((inv) => (
+                    <Box
+                      key={inv.InvoiceID}
+                      sx={{ mb: 1, border: "1px solid #ccc", p: 1, borderRadius: 1, cursor: "pointer" }}
+                      onClick={() => handleAddInvoiceAlloc({ invoiceId: inv.InvoiceID, InvoiceTotal: inv.InvoiceTotal })}
+                    >
+                      Invoice #{inv.InvoiceID} - ₱{inv.InvoiceTotal} - {inv.PaymentStatus}
+                    </Box>
+                  ))}
+                </Paper>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  Allocated Invoices:
+                </Typography>
+                <Paper sx={{ maxHeight: 200, overflowY: "auto", p: 1 }}>
+                  {partialPayment.allocatedInvoices.map((alloc, idx) => (
+                    <Box key={`${alloc.invoiceId}-${idx}`} sx={{ mb: 1, p: 1, border: "1px solid #ccc", borderRadius: 1 }}>
+                      InvoiceID: {alloc.invoiceId}
+                      <TextField
+                        label="Amount Allocated"
+                        type="number"
+                        size="small"
+                        value={alloc.amountAllocated}
+                        onChange={(e) => {
+                          const newAlloc = [...partialPayment.allocatedInvoices];
+                          newAlloc[idx].amountAllocated = e.target.value;
+                          setPartialPayment((prev) => ({ ...prev, allocatedInvoices: newAlloc }));
+                        }}
+                        sx={{ ml: 2, width: 100 }}
+                      />
+                    </Box>
+                  ))}
+                </Paper>
+              </Grid>
+            </Grid>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closePartialDialog}>Cancel</Button>
+          <Button variant="contained" onClick={handleSubmitPartialPayment}>
+            Submit Partial Payment
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ================= EDIT Payment Dialog ================= */}
       <Dialog open={isEditPaymentOpen} onClose={() => setEditPaymentOpen(false)}>
         <DialogTitle>Edit Payment</DialogTitle>
         <DialogContent dividers>
@@ -760,9 +1098,7 @@ export default function PaymentsAndInvoices() {
               label="Member Name"
               name="memberId"
               value={editPayment.memberId || ""}
-              onChange={(e) =>
-                setEditPayment((prev) => ({ ...prev, memberId: e.target.value }))
-              }
+              onChange={handleEditPaymentChange}
             >
               {(members || []).map((m) => (
                 <MenuItem key={m.MemberID} value={m.MemberID}>
@@ -809,19 +1145,15 @@ export default function PaymentsAndInvoices() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditPaymentOpen(false)}>Cancel</Button>
-          <Button onClick={handleEditPaymentSubmit} variant="contained">
+          <Button variant="contained" onClick={handleEditPaymentSubmit}>
             Save
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* ----------------- VIEW Payment Dialog ----------------- */}
+      {/* ================= VIEW Payment Dialog ================= */}
       <Dialog open={isViewPaymentOpen} onClose={() => setViewPaymentOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>
-          <Typography variant="h6" color="primary">
-            Payment Details
-          </Typography>
-        </DialogTitle>
+        <DialogTitle>Payment Details</DialogTitle>
         <DialogContent dividers>
           {viewPayment && (
             <Box sx={{ p: 2 }}>
@@ -848,7 +1180,7 @@ export default function PaymentsAndInvoices() {
                   <Typography variant="body2" color="textSecondary">
                     Amount Paid:
                   </Typography>
-                  <Typography variant="body1">${viewPayment.amountPaid}</Typography>
+                  <Typography variant="body1">₱{viewPayment.amountPaid}</Typography>
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
@@ -862,6 +1194,18 @@ export default function PaymentsAndInvoices() {
                   </Typography>
                   <Typography variant="body1">{viewPayment.status}</Typography>
                 </Grid>
+
+                {/* PaymentFor array */}
+                {viewPayment.paymentFor && viewPayment.paymentFor.length > 0 && (
+                  <Grid item xs={12}>
+                    <Typography variant="body2" color="textSecondary">
+                      Payment For:
+                    </Typography>
+                    <Typography variant="body1">
+                      {viewPayment.paymentFor.join(", ")}
+                    </Typography>
+                  </Grid>
+                )}
               </Grid>
             </Box>
           )}
@@ -873,7 +1217,7 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ----------------- ADD Invoice Dialog ----------------- */}
+      {/* ================= ADD Invoice Dialog ================= */}
       <Dialog open={isAddInvoiceOpen} onClose={() => setAddInvoiceOpen(false)}>
         <DialogTitle>Add Invoice</DialogTitle>
         <DialogContent dividers>
@@ -883,9 +1227,7 @@ export default function PaymentsAndInvoices() {
               label="Member Name"
               name="memberId"
               value={newInvoice.memberId || ""}
-              onChange={(e) =>
-                setNewInvoice((prev) => ({ ...prev, memberId: e.target.value }))
-              }
+              onChange={handleAddInvoiceChange}
             >
               {(members || []).map((m) => (
                 <MenuItem key={m.MemberID} value={m.MemberID}>
@@ -933,7 +1275,7 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ----------------- EDIT Invoice Dialog ----------------- */}
+      {/* ================= EDIT Invoice Dialog ================= */}
       <Dialog open={isEditInvoiceOpen} onClose={() => setEditInvoiceOpen(false)}>
         <DialogTitle>Edit Invoice</DialogTitle>
         <DialogContent dividers>
@@ -951,9 +1293,7 @@ export default function PaymentsAndInvoices() {
               label="Member Name"
               name="memberId"
               value={editInvoice.memberId || ""}
-              onChange={(e) =>
-                setEditInvoice((prev) => ({ ...prev, memberId: e.target.value }))
-              }
+              onChange={handleEditInvoiceChange}
             >
               {(members || []).map((m) => (
                 <MenuItem key={m.MemberID} value={m.MemberID}>
@@ -1000,13 +1340,9 @@ export default function PaymentsAndInvoices() {
         </DialogActions>
       </Dialog>
 
-      {/* ----------------- VIEW Invoice Dialog ----------------- */}
+      {/* ================= VIEW Invoice Dialog ================= */}
       <Dialog open={isViewInvoiceOpen} onClose={() => setViewInvoiceOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>
-          <Typography variant="h6" color="primary">
-            Invoice Details
-          </Typography>
-        </DialogTitle>
+        <DialogTitle>Invoice Details</DialogTitle>
         <DialogContent dividers>
           {viewInvoice && (
             <Box sx={{ p: 2 }}>

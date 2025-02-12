@@ -10,13 +10,10 @@ class Facility extends Model
     protected $primaryKey = 'FacilityID';
 
     protected $fillable = [
-        'Name',
-        'FacilityType',
+        'BranchID',
+        'FacilityName',
+        'Description',
         'Status',
-        'Capacity',
-        'Location',
-        'Notes',
-        'BranchID', // <--- new column
     ];
 
     // Relationship: A facility belongs to one branch

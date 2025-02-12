@@ -13,32 +13,19 @@ import {
   Tabs,
   Tab,
   Tooltip,
-  Grid,
-  Card,
-  CardContent,
+  Menu,
+  MenuItem,
   FormControl,
   InputLabel,
   Select,
-  MenuItem,
-  Menu,
-  useTheme,
-  Divider,
+  useTheme
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
-
 import AddIcon from "@mui/icons-material/Add";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
-import PeopleIcon from "@mui/icons-material/People";
-import BusinessIcon from "@mui/icons-material/Business";
-import MonetizationOnIcon from "@mui/icons-material/MonetizationOn";
-import GroupIcon from "@mui/icons-material/Group";
-import BuildIcon from "@mui/icons-material/Build";
 import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import DeleteIcon from "@mui/icons-material/Delete";
-import Skeleton from '@mui/material/Skeleton';
-import Alert from '@mui/material/Alert';
-
 import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
@@ -46,121 +33,19 @@ import "jspdf-autotable";
 export default function BranchManagement() {
   const theme = useTheme();
 
-// Inside your component
-const [stats, setStats] = useState({
-  totalBranches: null,
-  totalRevenue: null,
-  membersPerBranch: null,
-  pendingMaintenance: null
-});
+  // General loading & error state
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-const [loading, setLoading] = useState(true);
-const [error, setError] = useState(null);
-  
-  // 1) Add these states
-  const [timePeriod, setTimePeriod] = useState("daily");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-
-  // 2) Keep the rest of your code the same
-  const [branches, setBranches] = useState([]);
-  const [staff, setStaff] = useState([]);
-  const [maintenanceLogs, setMaintenanceLogs] = useState([]);
-  const [financials, setFinancials] = useState([]);
-
-  // ==================== Lifecycle: Load data once on mount ====================
-  useEffect(() => { 
-    const fetchStats = async () => {
-      try {
-        setLoading(true);
-        const [branches, finance, maintenance] = await Promise.all([
-          axios.get(route('branches.stats')),
-          axios.get(route('finance.summary')),
-          axios.get(route('maintenance.logs.maintenance.stats'))
-        ]);
-  
-        setStats({
-          totalBranches: branches.data.total_branches,
-          totalRevenue: finance.data.total_revenue,
-          membersPerBranch: branches.data.members_per_branch,
-          pendingMaintenance: maintenance.data.pending_maintenance
-        });
-      } catch (err) {
-        setError('Failed to load dashboard statistics');
-        console.error('Stats fetch error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchStats();
-    fetchData();
-  }, []);
-
-  // Helper component for loading state
-const StatSkeleton = () => (
-  <Skeleton 
-    variant="rectangular" 
-    width="100%" 
-    height={80}
-    sx={{ borderRadius: 2 }}
-  />
-);
-
-// Error display component
-const ErrorAlert = () => (
-  <Alert severity="error" sx={{ mb: 3 }}>
-    {error} - <Button onClick={() => window.location.reload()}>Retry</Button>
-  </Alert>
-);
-
-  const fetchData = async () => {
-    try {
-      // 1) Branch Directory
-      const branchRes = await axios.get(route('branches.index')); // Named route
-      setBranches(branchRes.data.branches || []);
-  
-      // 2) Staff 
-      const staffRes = await axios.get(route('staff.index')); // Named route
-      setStaff(staffRes.data || []);
-  
-      // 3) Maintenance Logs
-      const maintRes = await axios.get(route('maintenance.logs.index')); 
-      console.log('Maintenance logs response:', JSON.stringify(maintRes.data.logs, null, 2));
-      setMaintenanceLogs(maintRes.data.logs || []);
-  
-      // 4) Financials
-      const finRes = await axios.get(route('finance.summary')); 
-      setFinancials(finRes.data.summaries || []);
-    } catch (err) {
-      if (err.response?.status === 500) {
-        setError('Server error - please try again later');
-      } else {
-        setError('Failed to load data');
-      }
-      console.error("Data fetch error:", err);
-    }
-  };
-
-
-  // ==================== Tab & Search & Export ====================
-  // 0 = Branch Directory, 1 = Staff Assignment, 2 = Maintenance Log, 3 = Financial
-  const [activeTab, setActiveTab] = useState(0);
+  // Searching & exporting
   const [searchTerm, setSearchTerm] = useState("");
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
 
-  const handleTabChange = (e, newVal) => {
-    setActiveTab(newVal);
-    setSearchTerm("");
-  };
-  const handleSearchChange = (e) => {
-    setSearchTerm(e.target.value.toLowerCase());
-  };
+  // Tab state: 0 = Branches, 1 = Facilities
+  const [activeTab, setActiveTab] = useState(0);
 
-  const handleExportMenuOpen = (event) => setExportAnchorEl(event.currentTarget);
-  const handleExportMenuClose = () => setExportAnchorEl(null);
-
-  // ==================== ADD: Branch & Staff ====================
+  // ============ Branch State & CRUD ============
+  const [branches, setBranches] = useState([]);
   const [isAddBranchOpen, setAddBranchOpen] = useState(false);
   const [newBranch, setNewBranch] = useState({
     BranchName: "",
@@ -168,179 +53,134 @@ const ErrorAlert = () => (
     Status: "Active",
     Contact: "",
   });
-
-  const [isAddStaffOpen, setAddStaffOpen] = useState(false);
-  const [newStaff, setNewStaff] = useState({
-    FullName: "",
-    Role: "Staff",
-    Email: "",
-    Phone: "",
-    // etc.
-  });
-
-  // ==================== EDIT: Branch, Staff, Maintenance, Financial ====================
   const [isEditBranchOpen, setEditBranchOpen] = useState(false);
   const [editBranch, setEditBranch] = useState(null);
-
-  const [isEditStaffOpen, setEditStaffOpen] = useState(false);
-  const [editStaffData, setEditStaffData] = useState(null);
-
-  const [isEditMaintenanceOpen, setEditMaintenanceOpen] = useState(false);
-  const [editMaintenance, setEditMaintenance] = useState(null);
-
-  const [isEditFinancialOpen, setEditFinancialOpen] = useState(false);
-  const [editFinancial, setEditFinancial] = useState(null);
-
-  // ==================== VIEW: Branch, Staff, Maintenance, Financial ====================
   const [isViewBranchOpen, setViewBranchOpen] = useState(false);
   const [viewBranch, setViewBranch] = useState(null);
 
-  const [isViewStaffOpen, setViewStaffOpen] = useState(false);
-  const [viewStaffData, setViewStaffData] = useState(null);
+  // ============ Facility State & CRUD ============
+  const [facilities, setFacilities] = useState([]);
+  const [isAddFacilityOpen, setAddFacilityOpen] = useState(false);
+  const [newFacility, setNewFacility] = useState({
+    BranchID: "",
+    FacilityName: "",
+    Description: "",
+    Status: "Available",
+  });
+  const [isEditFacilityOpen, setEditFacilityOpen] = useState(false);
+  const [editFacility, setEditFacility] = useState(null);
+  const [isViewFacilityOpen, setViewFacilityOpen] = useState(false);
+  const [viewFacility, setViewFacility] = useState(null);
 
-  const [isViewMaintenanceOpen, setViewMaintenanceOpen] = useState(false);
-  const [viewMaintenanceData, setViewMaintenanceData] = useState(null);
+  // ============ Lifecycle: Fetch on Mount ============
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-  const [isViewFinancialOpen, setViewFinancialOpen] = useState(false);
-  const [viewFinancialData, setViewFinancialData] = useState(null);
-
-  // ==================== Branch CRUD (Create / Edit / Delete) ====================
-  const handleCreateBranch = async () => {
+  const fetchData = async () => {
     try {
-      const res = await axios.post(route('branches.store'), newBranch); // Named route
-      setBranches(prev => [...prev, res.data]); // Use response data directly
-      setAddBranchOpen(false);
+      setLoading(true);
+
+      const [branchRes, facilityRes] = await Promise.all([
+        axios.get(route("branches.index")),     // e.g. returns {branches: [...]}
+        axios.get(route("facilities.index"))    // e.g. returns {facilities: [...]}
+      ]);
+
+      setBranches(branchRes.data.branches || []);
+      setFacilities(facilityRes.data.facilities || []);
+
+      setLoading(false);
     } catch (err) {
-      console.error("Create failed:", err);
+      setError("Failed to load data");
+      console.error("Data fetch error:", err);
+      setLoading(false);
     }
   };
-  
-// Update Branch
-const handleUpdateBranch = async () => {
-  try {
-    const res = await axios.put(route('branches.update', editBranch.BranchID), editBranch);
-    setBranches(prev => prev.map(b => b.BranchID === res.data.BranchID ? res.data : b));
-    setEditBranchOpen(false);
-  } catch (err) {
-    console.error("Update failed:", err);
-  }
-};
 
-// Delete Branch
-const handleDeleteBranch = async (branchID) => {
-  try {
-    await axios.delete(route('branches.destroy', branchID)); // Named route
-    setBranches(prev => prev.filter(b => b.BranchID !== branchID));
-  } catch (err) {
-    console.error("Delete failed:", err);
-  }
-};
+  // ============ Branch CRUD ============
+  const handleCreateBranch = async () => {
+    try {
+      const res = await axios.post(route("branches.store"), newBranch);
+      // res.data is the newly created branch
+      setBranches((prev) => [...prev, res.data]);
+      setAddBranchOpen(false);
+    } catch (err) {
+      console.error("Create branch failed:", err);
+    }
+  };
 
-  const [selectedBranch, setSelectedBranch] = useState(null);
-  const [staffList, setStaffList] = useState([]);
+  const handleUpdateBranch = async () => {
+    try {
+      const res = await axios.put(route("branches.update", editBranch.BranchID), editBranch);
+      setBranches((prev) =>
+        prev.map((b) => (b.BranchID === res.data.BranchID ? res.data : b))
+      );
+      setEditBranchOpen(false);
+    } catch (err) {
+      console.error("Update branch failed:", err);
+    }
+  };
 
-  // ==================== Staff CRUD (Create / Edit / Delete) ====================
-// Create Staff
-const handleCreateStaff = async () => {
-  try {
-    const res = await axios.post(route('staff.store'), newStaff); // Named route
-    setStaff(prev => [...prev, res.data.staff]); // Use staff from response
-    setAddStaffOpen(false);
-  } catch (err) {
-    console.error("Create failed:", err);
-  }
-};
+  const handleDeleteBranch = async (branchID) => {
+    try {
+      await axios.delete(route("branches.destroy", branchID));
+      setBranches((prev) => prev.filter((b) => b.BranchID !== branchID));
+    } catch (err) {
+      console.error("Delete branch failed:", err);
+    }
+  };
 
-// Update Staff
-async function handleUpdateStaff() {
-  try {
-    const res = await axios.put(route('staff.update', editStaffData.StaffID), editStaffData);
-    setStaff(prev => prev.map(s => s.StaffID === res.data.staff.StaffID ? res.data.staff : s));
-    setEditStaffOpen(false);
-  } catch (error) {
-    console.error("Update failed:", error);
-  }
-}
+  // ============ Facility CRUD ============
+  const handleCreateFacility = async () => {
+    try {
+      const res = await axios.post(route("facilities.store"), newFacility);
+      setFacilities((prev) => [...prev, res.data]);
+      setAddFacilityOpen(false);
+    } catch (err) {
+      console.error("Create facility failed:", err);
+    }
+  };
 
-// Delete Staff
-const handleDeleteStaff = async (staffID) => {
-  try {
-    await axios.delete(route('staff.destroy', staffID)); // Named route
-    setStaff(prev => prev.filter(s => s.StaffID !== staffID));
-  } catch (err) {
-    console.error("Delete failed:", err);
-  }
-};
+  const handleUpdateFacility = async () => {
+    try {
+      const res = await axios.put(route("facilities.update", editFacility.FacilityID), editFacility);
+      setFacilities((prev) =>
+        prev.map((f) => (f.FacilityID === res.data.FacilityID ? res.data : f))
+      );
+      setEditFacilityOpen(false);
+    } catch (err) {
+      console.error("Update facility failed:", err);
+    }
+  };
 
-  // ==================== Maintenance CRUD ====================
-// Add Maintenance Log
-const handleUpdateMaintenance = async () => {
-  try {
-    const res = await axios.put(
-      route('maintenance.logs.update', editMaintenance.MaintenanceID),
-      editMaintenance
-    );
-    setMaintenanceLogs(prev => 
-      prev.map(m => m.MaintenanceID === res.data.log.MaintenanceID ? res.data.log : m)
-    );
-    setEditMaintenanceOpen(false);
-  } catch (err) {
-    console.error("Update failed:", err);
-  }
-};
+  const handleDeleteFacility = async (facilityID) => {
+    try {
+      await axios.delete(route("facilities.destroy", facilityID));
+      setFacilities((prev) => prev.filter((f) => f.FacilityID !== facilityID));
+    } catch (err) {
+      console.error("Delete facility failed:", err);
+    }
+  };
 
-// Delete Maintenance Log
-const handleDeleteMaintenance = async (logID) => {
-  try {
-    await axios.delete(route('maintenance.logs.destroy', logID));
-    setMaintenanceLogs(prev => prev.filter(m => m.MaintenanceID !== logID));
-  } catch (err) {
-    console.error("Delete failed:", err);
-  }
-};
-
-  // ==================== Financial CRUD ====================
-  // Suppose your route is /finance/summary
-// Update Financial
-const handleUpdateFinancial = async () => {
-  try {
-    const res = await axios.put(
-      route('finance.summary.update', editFinancial.SummaryID),
-      editFinancial
-    );
-    setFinancials(prev => prev.map(f => f.SummaryID === res.data.summary.SummaryID ? res.data.summary : f));
-    setEditFinancialOpen(false);
-  } catch (err) {
-    console.error("Update failed:", err);
-  }
-};
-
-// Delete Financial
-const handleDeleteFinancial = async (summaryID) => {
-  try {
-    await axios.delete(route('finance.summary.destroy', summaryID));
-    setFinancials(prev => prev.filter(f => f.SummaryID !== summaryID));
-  } catch (err) {
-    console.error("Delete failed:", err);
-  }
-};
-
-  // ==================== Column definitions & CSV/PDF ====================
+  // ============ Columns & Tab Logic ============
   const branchColumns = [
-    { field: "BranchID", headerName: "Branch ID", width: 100 },
+    { field: "BranchID", headerName: "ID", width: 80 },
     { field: "BranchName", headerName: "Branch Name", width: 180 },
     { field: "Location", headerName: "Location", width: 180 },
     {
       field: "Status",
       headerName: "Status",
-      width: 130,
-      renderCell: (params) => (
-        <span style={{ color: params.value === "Active" ? "green" : "gray" }}>
-          {params.value}
-        </span>
-      )
+      width: 100,
+      renderCell: (params) => {
+        const val = params.value;
+        return val === "Active" ? (
+          <span style={{ color: "green" }}>Active</span>
+        ) : (
+          <span style={{ color: "gray" }}>{val}</span>
+        );
+      },
     },
-    { field: "Contact", headerName: "Contact", width: 130 },
+    { field: "Contact", headerName: "Contact", width: 140 },
     {
       field: "Actions",
       headerName: "Actions",
@@ -387,240 +227,34 @@ const handleDeleteFinancial = async (summaryID) => {
       ),
     },
   ];
-  const averageMembersPerBranch =
-  stats.membersPerBranch && stats.membersPerBranch.length > 0
-    ? stats.membersPerBranch.reduce((sum, branch) => sum + (branch.members_count || 0), 0) / stats.membersPerBranch.length
-    : 0;
-  const staffColumns = [
-    { field: "StaffID", headerName: "Staff ID", width: 80 },
-    { field: "FullName", headerName: "Name", width: 160 },
-    { field: "Role", headerName: "Role", width: 120 },
-    { field: "Email", headerName: "Email", width: 180 },
-    { field: "Phone", headerName: "Phone", width: 130 },
-    {
-      field: "DateHired",
-      headerName: "Hired",
-      width: 100,
-    },
-    {
-      field: "DailyRate",
-      headerName: "Daily",
-      width: 80,
-      // Optional custom render to format currency:
-      renderCell: (params) => {
-        let rate = params.value;
-        if (typeof rate !== "number") {
-          rate = Number(rate) || 0;
-        }
-        return `₱${rate.toFixed(2)}`;
-      },
 
-    },
-    {
-      field: "HourlyRate",
-      headerName: "Hourly",
-      width: 80,
-      renderCell: (params) => {
-        let rate = params.value;
-        if (typeof rate !== "number") {
-          rate = Number(rate) || 0;
-        }
-        return `₱${rate.toFixed(2)}`;
-      },
-      
-    },
-    {
-      field: "OvertimeRate",
-      headerName: "Overtime",
-      width: 90,
-      renderCell: (params) => {
-        let rate = params.value;
-        if (typeof rate !== "number") {
-          rate = Number(rate) || 0;
-        }
-        return `₱${rate.toFixed(2)}`;
-      },
-      
-    },
-    // If each staff has a single `branch` relationship:
-    // (If many-to-many, see the note below)
-    {
-      field: "branches",
-      headerName: "Branches",
-      width: 180,
-      renderCell: (params) => {
-        // An array of branches
-        const branchArray = params.row.branches || [];
-        return branchArray.length
-          ? branchArray.map((b) => b.BranchName).join(", ")
-          : "—";
-      },
-    },
-    // Actions
-    {
-      field: "Actions",
-      headerName: "Actions",
-      width: 240,
-      sortable: false,
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", gap: 1 }}>
-          <Tooltip title="View Staff">
-            <Button
-              variant="outlined"
-              size="small"
-              color="success"
-              onClick={() => {
-                setViewStaffData(params.row);
-                setViewStaffOpen(true);
-              }}
-            >
-              <VisibilityIcon fontSize="small" />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Edit Staff">
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => {
-                setEditStaffData({ ...params.row });
-                setEditStaffOpen(true);
-              }}
-            >
-              <EditIcon fontSize="small" />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Delete Staff">
-            <Button
-              variant="outlined"
-              size="small"
-              color="error"
-              onClick={() => handleDeleteStaff(params.row.StaffID)}
-            >
-              <DeleteIcon fontSize="small" />
-            </Button>
-          </Tooltip>
-        </Box>
-      ),
-    },
-  ];
-
-
-  const maintColumns = [
-    {
-      field: "MaintenanceID",
-      headerName: "Log ID",
-      width: 100
-    },
-    {
-      field: "EquipmentName",
-      headerName: "Equipment",
-      width: 180,
-      renderCell: (params) => {
-        const eq = params.row.equipment;
-        return eq ? eq.Name : "N/A";
-      }
-    },
-    {
-      field: "IssueDescription",
-      headerName: "Issue",
-      width: 250
-    },
+  const facilityColumns = [
+    { field: "FacilityID", headerName: "ID", width: 80 },
+    { field: "FacilityName", headerName: "Facility Name", width: 180 },
+    { field: "Description", headerName: "Description", width: 220 },
     {
       field: "Status",
       headerName: "Status",
+      width: 120,
+      renderCell: (params) => {
+        const val = params.value;
+        if (val === "Available") return <span style={{ color: "green" }}>Available</span>;
+        if (val === "Under Maintenance")
+          return <span style={{ color: "orange" }}>Maintenance</span>;
+        if (val === "Closed") return <span style={{ color: "red" }}>Closed</span>;
+        return val;
+      },
+    },
+    {
+      field: "BranchID",
+      headerName: "Branch",
       width: 130,
       renderCell: (params) => {
+        // If you eager-loaded 'branch' in the controller, you can do:
         const row = params.row;
-        if (!row.NextMaintenanceDate) return "N/A";
-        const nextDate = new Date(row.NextMaintenanceDate);
-        return Date.now() > nextDate ? "Overdue" : "Pending";
-      }
+        return row.branch ? row.branch.BranchName : "—";
+      },
     },
-    {
-      field: "MaintenanceDate",
-      headerName: "Maintenance Date",
-      width: 150,
-      renderCell: (params) => {
-        const dateVal = params.row.MaintenanceDate;
-        return dateVal ? new Date(dateVal).toLocaleDateString() : "N/A";
-      }
-    },
-    {
-      field: "NextMaintenanceDate",
-      headerName: "Next Due",
-      width: 150,
-      renderCell: (params) => {
-        const dateVal = params.row.NextMaintenanceDate;
-        return dateVal ? new Date(dateVal).toLocaleDateString() : "N/A";
-      }
-    },
-    {
-      field: "MaintainerName",
-      headerName: "Staff",
-      width: 180,
-      renderCell: (params) => {
-        const staff = params.row.maintainer;
-        return staff ? staff.FullName : "Unknown";
-      }
-    },
-    {
-      field: "Actions",
-      headerName: "Actions",
-      width: 240,
-      sortable: false,
-      renderCell: (params) => {
-        if (!params?.row) return null;
-        return (
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Tooltip title="View Maintenance">
-              <Button
-                variant="outlined"
-                size="small"
-                color="success"
-                onClick={() => {
-                  setViewMaintenanceData(params.row);
-                  setViewMaintenanceOpen(true);
-                }}
-              >
-                <VisibilityIcon fontSize="small" />
-              </Button>
-            </Tooltip>
-            <Tooltip title="Edit Maintenance">
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={() => {
-                  setEditMaintenance({ ...params.row });
-                  setEditMaintenanceOpen(true);
-                }}
-              >
-                <EditIcon fontSize="small" />
-              </Button>
-            </Tooltip>
-            <Tooltip title="Delete Maintenance">
-              <Button
-                variant="outlined"
-                size="small"
-                color="error"
-                onClick={() => handleDeleteMaintenance(params.row.MaintenanceID)}
-              >
-                <DeleteIcon fontSize="small" />
-              </Button>
-            </Tooltip>
-          </Box>
-        );
-      }
-    }
-  ];
-  
-
-  const financialColumns = [
-    { field: "SummaryID", headerName: "Summary ID", width: 100 },
-    { field: "BranchName", headerName: "Branch Name", width: 150 },
-    { field: "CashSales", headerName: "Cash Sales", width: 130 },
-    { field: "GCashSales", headerName: "GCash Sales", width: 130 },
-    { field: "BPISales", headerName: "BPI Sales", width: 130 },
-    { field: "TotalRevenue", headerName: "Total Revenue", width: 130 },
     {
       field: "Actions",
       headerName: "Actions",
@@ -628,37 +262,37 @@ const handleDeleteFinancial = async (summaryID) => {
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
-          <Tooltip title="View Financial">
+          <Tooltip title="View Facility">
             <Button
               variant="outlined"
               size="small"
               color="success"
               onClick={() => {
-                setViewFinancialData(params.row);
-                setViewFinancialOpen(true);
+                setViewFacility(params.row);
+                setViewFacilityOpen(true);
               }}
             >
               <VisibilityIcon fontSize="small" />
             </Button>
           </Tooltip>
-          <Tooltip title="Edit Summary">
+          <Tooltip title="Edit Facility">
             <Button
               variant="outlined"
               size="small"
               onClick={() => {
-                setEditFinancial({ ...params.row });
-                setEditFinancialOpen(true);
+                setEditFacility({ ...params.row });
+                setEditFacilityOpen(true);
               }}
             >
               <EditIcon fontSize="small" />
             </Button>
           </Tooltip>
-          <Tooltip title="Delete Summary">
+          <Tooltip title="Delete Facility">
             <Button
               variant="outlined"
               size="small"
               color="error"
-              onClick={() => handleDeleteFinancial(params.row.SummaryID)}
+              onClick={() => handleDeleteFacility(params.row.FacilityID)}
             >
               <DeleteIcon fontSize="small" />
             </Button>
@@ -668,12 +302,14 @@ const handleDeleteFinancial = async (summaryID) => {
     },
   ];
 
-  // Pick columns & rows based on active tab
+  // Determine which columns & data to show based on the active tab
   let tableColumns = [];
   let tableRows = [];
   let csvHeaders = [];
   let csvFilename = "";
+
   if (activeTab === 0) {
+    // Branch Tab
     tableColumns = branchColumns;
     tableRows = branches;
     csvHeaders = [
@@ -684,39 +320,17 @@ const handleDeleteFinancial = async (summaryID) => {
       { label: "Contact", key: "Contact" },
     ];
     csvFilename = "BranchDirectory.csv";
-  } else if (activeTab === 1) {
-    tableColumns = staffColumns;
-    tableRows = staff;
+  } else {
+    // Facilities Tab
+    tableColumns = facilityColumns;
+    tableRows = facilities;
     csvHeaders = [
-      { label: "StaffID", key: "StaffID" },
-      { label: "FullName", key: "FullName" },
-      { label: "Role", key: "Role" },
-      { label: "Email", key: "Email" },
-      { label: "Phone", key: "Phone" },
-    ];
-    csvFilename = "StaffAssignment.csv";
-  } else if (activeTab === 2) {
-    tableColumns = maintColumns;
-    tableRows = maintenanceLogs;
-    csvHeaders = [
-      { label: "MaintenanceID", key: "MaintenanceID" },
-      { label: "IssueDescription", key: "IssueDescription" },
+      { label: "FacilityID", key: "FacilityID" },
+      { label: "FacilityName", key: "FacilityName" },
+      { label: "Description", key: "Description" },
       { label: "Status", key: "Status" },
-      { label: "NextMaintenanceDate", key: "NextMaintenanceDate" },
     ];
-    csvFilename = "MaintenanceLog.csv";
-  } else if (activeTab === 3) {
-    tableColumns = financialColumns;
-    tableRows = financials;
-    csvHeaders = [
-      { label: "SummaryID", key: "SummaryID" },
-      { label: "BranchName", key: "BranchName" },
-      { label: "CashSales", key: "CashSales" },
-      { label: "GCashSales", key: "GCashSales" },
-      { label: "BPISales", key: "BPISales" },
-      { label: "TotalRevenue", key: "TotalRevenue" },
-    ];
-    csvFilename = "FinancialSummary.csv";
+    csvFilename = "Facilities.csv";
   }
 
   // Filter rows by searchTerm
@@ -724,113 +338,121 @@ const handleDeleteFinancial = async (summaryID) => {
     Object.values(row).join(" ").toLowerCase().includes(searchTerm)
   );
 
-  // ==================== PDF Export logic ====================
+  // ============ Export PDF =============
+  const handleExportMenuOpen = (event) => setExportAnchorEl(event.currentTarget);
+  const handleExportMenuClose = () => setExportAnchorEl(null);
+
   const handleExportPDF = () => {
     handleExportMenuClose();
     const doc = new jsPDF();
 
     if (activeTab === 0) {
+      // Branch PDF
       doc.text("Branch Directory Export", 14, 10);
-      const body = branches.map((b) => [b.BranchID, b.BranchName, b.Location, b.Status, b.Contact]);
+      const body = branches.map((b) => [
+        b.BranchID,
+        b.BranchName,
+        b.Location,
+        b.Status,
+        b.Contact,
+      ]);
       doc.autoTable({
         head: [["ID", "Name", "Location", "Status", "Contact"]],
         body,
         startY: 20,
       });
       doc.save("BranchDirectory.pdf");
-    } else if (activeTab === 1) {
-      doc.text("Staff Export", 14, 10);
-      const body = staff.map((s) => [s.StaffID, s.FullName, s.Role, s.Email, s.Phone]);
-      doc.autoTable({
-        head: [["ID", "FullName", "Role", "Email", "Phone"]],
-        body,
-        startY: 20,
-      });
-      doc.save("StaffAssignment.pdf");
-    } else if (activeTab === 2) {
-      doc.text("Maintenance Log Export", 14, 10);
-      const body = maintenanceLogs.map((m) => [
-        m.MaintenanceID,
-        m.IssueDescription,
-        m.Status,
-        m.NextMaintenanceDate,
+    } else {
+      // Facility PDF
+      doc.text("Facilities Export", 14, 10);
+      const body = facilities.map((f) => [
+        f.FacilityID,
+        f.FacilityName,
+        f.Description,
+        f.Status,
       ]);
       doc.autoTable({
-        head: [["LogID", "IssueDescription", "Status", "NextMaintenanceDate"]],
+        head: [["ID", "Name", "Description", "Status"]],
         body,
         startY: 20,
       });
-      doc.save("MaintenanceLog.pdf");
-    } else if (activeTab === 3) {
-      doc.text("Financial Summary Export", 14, 10);
-      const body = financials.map((f) => [
-        f.SummaryID,
-        f.BranchName,
-        f.CashSales,
-        f.GCashSales,
-        f.BPISales,
-        f.TotalRevenue,
-      ]);
-      doc.autoTable({
-        head: [
-          ["SummaryID", "Branch", "CashSales", "GCashSales", "BPISales", "TotalRevenue"],
-        ],
-        body,
-        startY: 20,
-      });
-      doc.save("FinancialSummary.pdf");
+      doc.save("Facilities.pdf");
     }
   };
-  
-  // ==================== Render ====================
-  return (
-    <>
-      {error && <ErrorAlert />}
+
+  // ============ Handlers for Tab & Search ============
+  const handleTabChange = (event, newVal) => {
+    setActiveTab(newVal);
+    setSearchTerm("");
+  };
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value.toLowerCase());
+  };
+
+  // ============ UI =============
+  if (error) {
+    return (
       <Box sx={{ p: 4 }}>
-        {/* Title */}
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-          <Typography variant="h4" sx={{ fontWeight: 600 }}>
-            Branch Management - Directory
-          </Typography>
-        </Box>
-  
-        {/* Search & Export Row */}
-        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-          <TextField
-            placeholder="Search..."
-            size="small"
-            value={searchTerm}
-            onChange={handleSearchChange}
-            sx={{ width: "100%", maxWidth: 300 }}
-          />
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Button
-              variant="outlined"
-              startIcon={<FileDownloadIcon />}
-              onClick={handleExportMenuOpen}
-              sx={{ textTransform: "none" }}
-            >
-              Export
-            </Button>
-            <Menu
-              anchorEl={exportAnchorEl}
-              open={Boolean(exportAnchorEl)}
-              onClose={handleExportMenuClose}
-              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-            >
-              <MenuItem>
-                <CSVLink
-                  data={filteredRows}
-                  headers={csvHeaders}
-                  filename={csvFilename}
-                  style={{ textDecoration: "none", color: "inherit" }}
-                >
-                  Export CSV
-                </CSVLink>
-              </MenuItem>
-              <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
-            </Menu>
-  
+        <Typography color="error" variant="h6">
+          {error}
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ p: 4 }}>
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="h4" sx={{ fontWeight: 600, mb: 2 }}>
+          Branch & Facility Management
+        </Typography>
+
+        {/* Tabs: 0=Branches, 1=Facilities */}
+        <Tabs value={activeTab} onChange={handleTabChange} sx={{ mb: 2 }}>
+          <Tab label="Branches" />
+          <Tab label="Facilities" />
+        </Tabs>
+      </Box>
+
+      {/* Search & Export */}
+      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+        <TextField
+          placeholder="Search..."
+          size="small"
+          value={searchTerm}
+          onChange={handleSearchChange}
+          sx={{ width: "100%", maxWidth: 300 }}
+        />
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={<FileDownloadIcon />}
+            onClick={handleExportMenuOpen}
+            sx={{ textTransform: "none" }}
+          >
+            Export
+          </Button>
+          <Menu
+            anchorEl={exportAnchorEl}
+            open={Boolean(exportAnchorEl)}
+            onClose={handleExportMenuClose}
+            anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+          >
+            <MenuItem>
+              <CSVLink
+                data={filteredRows}
+                headers={csvHeaders}
+                filename={csvFilename}
+                style={{ textDecoration: "none", color: "inherit" }}
+              >
+                Export CSV
+              </CSVLink>
+            </MenuItem>
+            <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
+          </Menu>
+
+          {/* Add button depends on tab */}
+          {activeTab === 0 ? (
             <Button
               variant="contained"
               color="primary"
@@ -839,25 +461,439 @@ const handleDeleteFinancial = async (summaryID) => {
             >
               Add Branch
             </Button>
-          </Box>
+          ) : (
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={() => setAddFacilityOpen(true)}
+            >
+              Add Facility
+            </Button>
+          )}
         </Box>
-  
-        {/* Branch Directory Table */}
-        <Paper elevation={3} sx={{ width: "100%", height: 450 }}>
-          <DataGrid
-            rows={filteredRows}
-            columns={tableColumns}
-            getRowId={(row) => row.BranchID}
-            pageSize={5}
-            rowsPerPageOptions={[5, 10]}
-          />
-        </Paper>
-  
-        {/* Add/Edit/View Branch Dialogs here... */}
-        {/* ...dialog code remains the same... */}
       </Box>
-    </>
+
+      {/* DataGrid */}
+      <Paper elevation={3} sx={{ width: "100%", height: 450 }}>
+        <DataGrid
+          rows={filteredRows}
+          columns={tableColumns}
+          getRowId={(row) =>
+            activeTab === 0 ? row.BranchID : row.FacilityID
+          }
+          pageSize={5}
+          rowsPerPageOptions={[5, 10]}
+          loading={loading}
+        />
+      </Paper>
+
+      {/* ========== Branch Dialogs ========== */}
+      {/* Add Branch */}
+      <Dialog open={isAddBranchOpen} onClose={() => setAddBranchOpen(false)}>
+        <DialogTitle>Add Branch</DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            label="Branch Name"
+            fullWidth
+            margin="normal"
+            size="small"
+            value={newBranch.BranchName}
+            onChange={(e) =>
+              setNewBranch((prev) => ({ ...prev, BranchName: e.target.value }))
+            }
+          />
+          <TextField
+            label="Location"
+            fullWidth
+            margin="normal"
+            size="small"
+            value={newBranch.Location}
+            onChange={(e) =>
+              setNewBranch((prev) => ({ ...prev, Location: e.target.value }))
+            }
+          />
+          <FormControl fullWidth margin="normal" size="small">
+            <InputLabel>Status</InputLabel>
+            <Select
+              label="Status"
+              value={newBranch.Status}
+              onChange={(e) =>
+                setNewBranch((prev) => ({ ...prev, Status: e.target.value }))
+              }
+            >
+              <MenuItem value="Active">Active</MenuItem>
+              <MenuItem value="Closed">Closed</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            label="Contact"
+            fullWidth
+            margin="normal"
+            size="small"
+            value={newBranch.Contact}
+            onChange={(e) =>
+              setNewBranch((prev) => ({ ...prev, Contact: e.target.value }))
+            }
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddBranchOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreateBranch}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Branch */}
+      <Dialog
+        open={isEditBranchOpen}
+        onClose={() => setEditBranchOpen(false)}
+      >
+        <DialogTitle>Edit Branch</DialogTitle>
+        <DialogContent dividers>
+          {editBranch && (
+            <>
+              <TextField
+                label="Branch Name"
+                fullWidth
+                margin="normal"
+                size="small"
+                value={editBranch.BranchName || ""}
+                onChange={(e) =>
+                  setEditBranch((prev) => ({
+                    ...prev,
+                    BranchName: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                label="Location"
+                fullWidth
+                margin="normal"
+                size="small"
+                value={editBranch.Location || ""}
+                onChange={(e) =>
+                  setEditBranch((prev) => ({
+                    ...prev,
+                    Location: e.target.value,
+                  }))
+                }
+              />
+              <FormControl fullWidth margin="normal" size="small">
+                <InputLabel>Status</InputLabel>
+                <Select
+                  label="Status"
+                  value={editBranch.Status || "Active"}
+                  onChange={(e) =>
+                    setEditBranch((prev) => ({
+                      ...prev,
+                      Status: e.target.value,
+                    }))
+                  }
+                >
+                  <MenuItem value="Active">Active</MenuItem>
+                  <MenuItem value="Closed">Closed</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField
+                label="Contact"
+                fullWidth
+                margin="normal"
+                size="small"
+                value={editBranch.Contact || ""}
+                onChange={(e) =>
+                  setEditBranch((prev) => ({
+                    ...prev,
+                    Contact: e.target.value,
+                  }))
+                }
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditBranchOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpdateBranch}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* View Branch */}
+      <Dialog
+        open={isViewBranchOpen}
+        onClose={() => setViewBranchOpen(false)}
+      >
+        <DialogTitle>View Branch</DialogTitle>
+        <DialogContent dividers>
+          {viewBranch && (
+            <Box sx={{ p: 1 }}>
+              <Typography variant="body2" color="textSecondary">
+                Branch ID:
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                {viewBranch.BranchID}
+              </Typography>
+
+              <Typography variant="body2" color="textSecondary">
+                Name:
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                {viewBranch.BranchName}
+              </Typography>
+
+              <Typography variant="body2" color="textSecondary">
+                Location:
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                {viewBranch.Location}
+              </Typography>
+
+              <Typography variant="body2" color="textSecondary">
+                Status:
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                {viewBranch.Status}
+              </Typography>
+
+              <Typography variant="body2" color="textSecondary">
+                Contact:
+              </Typography>
+              <Typography variant="body1">
+                {viewBranch.Contact}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setViewBranchOpen(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========== Facility Dialogs ========== */}
+      {/* Add Facility */}
+      <Dialog
+        open={isAddFacilityOpen}
+        onClose={() => setAddFacilityOpen(false)}
+      >
+        <DialogTitle>Add Facility</DialogTitle>
+        <DialogContent dividers>
+          <FormControl fullWidth margin="normal" size="small">
+            <InputLabel>Branch</InputLabel>
+            <Select
+              label="Branch"
+              value={newFacility.BranchID}
+              onChange={(e) =>
+                setNewFacility((prev) => ({ ...prev, BranchID: e.target.value }))
+              }
+            >
+              <MenuItem value="">
+                <em>-- None --</em>
+              </MenuItem>
+              {branches.map((b) => (
+                <MenuItem key={b.BranchID} value={b.BranchID}>
+                  {b.BranchName}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            label="Facility Name"
+            fullWidth
+            margin="normal"
+            size="small"
+            value={newFacility.FacilityName}
+            onChange={(e) =>
+              setNewFacility((prev) => ({
+                ...prev,
+                FacilityName: e.target.value,
+              }))
+            }
+          />
+          <TextField
+            label="Description"
+            fullWidth
+            margin="normal"
+            size="small"
+            multiline
+            rows={2}
+            value={newFacility.Description}
+            onChange={(e) =>
+              setNewFacility((prev) => ({
+                ...prev,
+                Description: e.target.value,
+              }))
+            }
+          />
+          <FormControl fullWidth margin="normal" size="small">
+            <InputLabel>Status</InputLabel>
+            <Select
+              label="Status"
+              value={newFacility.Status}
+              onChange={(e) =>
+                setNewFacility((prev) => ({
+                  ...prev,
+                  Status: e.target.value,
+                }))
+              }
+            >
+              <MenuItem value="Available">Available</MenuItem>
+              <MenuItem value="Under Maintenance">Under Maintenance</MenuItem>
+              <MenuItem value="Closed">Closed</MenuItem>
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddFacilityOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreateFacility}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Facility */}
+      <Dialog
+        open={isEditFacilityOpen}
+        onClose={() => setEditFacilityOpen(false)}
+      >
+        <DialogTitle>Edit Facility</DialogTitle>
+        <DialogContent dividers>
+          {editFacility && (
+            <>
+              <FormControl fullWidth margin="normal" size="small">
+                <InputLabel>Branch</InputLabel>
+                <Select
+                  label="Branch"
+                  value={editFacility.BranchID || ""}
+                  onChange={(e) =>
+                    setEditFacility((prev) => ({
+                      ...prev,
+                      BranchID: e.target.value,
+                    }))
+                  }
+                >
+                  <MenuItem value="">
+                    <em>-- None --</em>
+                  </MenuItem>
+                  {branches.map((b) => (
+                    <MenuItem key={b.BranchID} value={b.BranchID}>
+                      {b.BranchName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <TextField
+                label="Facility Name"
+                fullWidth
+                margin="normal"
+                size="small"
+                value={editFacility.FacilityName || ""}
+                onChange={(e) =>
+                  setEditFacility((prev) => ({
+                    ...prev,
+                    FacilityName: e.target.value,
+                  }))
+                }
+              />
+              <TextField
+                label="Description"
+                fullWidth
+                margin="normal"
+                size="small"
+                multiline
+                rows={2}
+                value={editFacility.Description || ""}
+                onChange={(e) =>
+                  setEditFacility((prev) => ({
+                    ...prev,
+                    Description: e.target.value,
+                  }))
+                }
+              />
+              <FormControl fullWidth margin="normal" size="small">
+                <InputLabel>Status</InputLabel>
+                <Select
+                  label="Status"
+                  value={editFacility.Status || "Available"}
+                  onChange={(e) =>
+                    setEditFacility((prev) => ({
+                      ...prev,
+                      Status: e.target.value,
+                    }))
+                  }
+                >
+                  <MenuItem value="Available">Available</MenuItem>
+                  <MenuItem value="Under Maintenance">Under Maintenance</MenuItem>
+                  <MenuItem value="Closed">Closed</MenuItem>
+                </Select>
+              </FormControl>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditFacilityOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpdateFacility}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* View Facility */}
+      <Dialog
+        open={isViewFacilityOpen}
+        onClose={() => setViewFacilityOpen(false)}
+      >
+        <DialogTitle>View Facility</DialogTitle>
+        <DialogContent dividers>
+          {viewFacility && (
+            <Box sx={{ p: 1 }}>
+              <Typography variant="body2" color="textSecondary">
+                Facility ID:
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                {viewFacility.FacilityID}
+              </Typography>
+
+              <Typography variant="body2" color="textSecondary">
+                Facility Name:
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                {viewFacility.FacilityName}
+              </Typography>
+
+              <Typography variant="body2" color="textSecondary">
+                Description:
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                {viewFacility.Description}
+              </Typography>
+
+              <Typography variant="body2" color="textSecondary">
+                Status:
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                {viewFacility.Status}
+              </Typography>
+
+              <Typography variant="body2" color="textSecondary">
+                Branch:
+              </Typography>
+              <Typography variant="body1">
+                {viewFacility.branch ? viewFacility.branch.BranchName : "—"}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setViewFacilityOpen(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
-  
-  
 }

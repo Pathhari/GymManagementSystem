@@ -187,12 +187,13 @@ class MembershipController extends Controller
             'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048'
         ]);
     
-        // If staff => assign branch
         $staff = auth('staff')->user();
         if ($staff) {
             $data['StartedBranchID'] = $staff->BranchID;
+        } else {
+            $data['StartedBranchID'] = $data['BranchID'] ?? null; 
         }
-    
+        
         // Handle photo upload if provided
         if ($request->hasFile('PhotoFile')) {
             $filename = 'member_' . time() . '.' . $request->file('PhotoFile')->extension();
@@ -247,8 +248,8 @@ class MembershipController extends Controller
                 'Subtotal'    => $monthlyFee,
             ]);
     
-            $invoice->load('invoice_line_items');
-            $invoice->InvoiceTotal = $invoice->invoice_line_items->sum('Subtotal');
+            $invoice->load('lineItems');
+            $invoice->InvoiceTotal = $invoice->lineItems->sum('Subtotal');
             $invoice->save();
     
             $currentDate->addMonthNoOverflow();
@@ -470,7 +471,7 @@ private function generateRemainingLockInInvoices(Member $member, $planID)
         ]);
 
         // Recalc invoice total
-        $invoice->InvoiceTotal = $invoice->invoice_line_items->sum('Subtotal');
+        $invoice->InvoiceTotal = $invoice->lineitems->sum('Subtotal');
         $invoice->save();
 
         $invoicesCreated[] = $invoice->InvoiceID;

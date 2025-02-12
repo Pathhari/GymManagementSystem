@@ -22,7 +22,7 @@ import {
 import Webcam from "react-webcam";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import CloseIcon from "@mui/icons-material/Close";
-import FileUploadIcon from '@mui/icons-material/FileUpload';
+import FileUploadIcon from "@mui/icons-material/FileUpload";
 
 export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   const [errors, setErrors] = useState({});
@@ -46,7 +46,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   const [openWebcam, setOpenWebcam] = useState(false);
   const webcamRef = useRef(null);
 
-  // Fetch membership plans + branches on mount
+  // Fetch membership plans + branches
   useEffect(() => {
     axios
       .get("/membership/plans")
@@ -56,7 +56,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     axios
       .get("/owner/branches")
       .then((res) => {
-        // Adjust based on your API
         setBranches(res.data.branches || []);
       })
       .catch((err) => console.error("Error fetching branches:", err));
@@ -91,7 +90,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Convert base64 from webcam to a File
+  // Convert base64 from webcam to File
   function dataURLToFile(dataURL, filename) {
     const arr = dataURL.split(",");
     const mime = arr[0].match(/:(.*?);/)[1];
@@ -143,7 +142,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     formData.append("Notes", notes);
     formData.append("BranchID", branch);
 
-    // File or webcam
+    // Append file or webcam capture
     if (photoFile) {
       formData.append("PhotoFile", photoFile);
     } else if (capturedImage) {
@@ -365,13 +364,12 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                 </Typography>
 
                 <Grid container spacing={2}>
-                  {/* Put BOTH buttons in one row */}
                   <Grid item xs={12}>
                     <Box sx={{ display: "flex", gap: 2 }}>
-                      <Button sx={{ bgcolor: "#ffffff", color: "black" }}
+                      <Button
+                        sx={{ bgcolor: "#ffffff", color: "black" }}
                         variant="contained"
                         component="label"
-                        
                         startIcon={<FileUploadIcon />}
                       >
                         Upload Biometrics
@@ -426,7 +424,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
               </Grid>
             </Grid>
 
-            {/* Action Buttons at the bottom */}
             <Box
               sx={{
                 mt: 4,

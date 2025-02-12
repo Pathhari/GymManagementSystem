@@ -172,15 +172,16 @@ export default function BookingsSessions() {
     }
   };
   
-  async function fetchFacilities() {
-    try {
-      const res = await axios.get("/booking/facilities");
-      setFacilities(res.data.facilities || []);
-    } catch (err) {
-      console.error("Failed to load facilities:", err);
-      setFacilities([]);
-    }
+async function fetchFacilities() {
+  try {
+    const res = await axios.get("/facilities");
+    setFacilities(res.data.facilities || []);
+  } catch (err) {
+    console.error("Failed to load facilities:", err);
+    setFacilities([]);
   }
+}
+
   
   async function fetchCoaches() {
     try {
@@ -857,12 +858,12 @@ export default function BookingsSessions() {
                         .filter((f) => String(f.BranchID) === selectedBranchForBooking)
                         .map((f) => (
                           <MenuItem key={f.FacilityID} value={f.FacilityID}>
-                            {f.Name}
+                            {f.FacilityName}
                           </MenuItem>
                         ))
                     : facilities.map((f) => (
                         <MenuItem key={f.FacilityID} value={f.FacilityID}>
-                          {f.Name}
+                          {f.FacilityName}
                         </MenuItem>
                       ))}
                 </Select>
