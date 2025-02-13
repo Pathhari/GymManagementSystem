@@ -530,53 +530,55 @@ public function indexTasks()
      */
     public function storePayroll(Request $request)
     {
+        // Validate basic fields
         $data = $request->validate([
-            'StaffID'    => 'required|exists:staff,StaffID',
-            'StartDate'  => 'required|date',
-            'EndDate'    => 'required|date|after_or_equal:StartDate',
-            'Deductions' => 'nullable|numeric|min:0',
+            'StaffID'       => 'required|exists:staff,StaffID',
+            'StartDate'     => 'required|date',
+            'EndDate'       => 'required|date|after_or_equal:StartDate',
+            'Deductions'    => 'nullable|numeric|min:0',
+            'GeneratedDate' => 'nullable|date',
+            'Status'        => 'nullable|string|max:50',
         ]);
-    
+
+        // Find the staff record to pull rates
         $staff = Staff::findOrFail($data['StaffID']);
-    
-        $dailyRate    = $staff->DailyRate ?? 0;
         $hourlyRate   = $staff->HourlyRate ?? 0;
         $overtimeRate = $staff->OvertimeRate ?? 0;
-    
-        // Get attendance records within the specified date range.
+
+        // Query attendance in the date range
         $attendances = Attendance::where('StaffID', $staff->StaffID)
-                                 ->whereBetween('Date', [$data['StartDate'], $data['EndDate']])
-                                 ->get();
-    
-        $totalRegularHours  = 0;
+            ->whereBetween('Date', [$data['StartDate'], $data['EndDate']])
+            ->get();
+
+        // If no attendance, you may want to block or just store zero pay
+        if ($attendances->isEmpty()) {
+            return response()->json([
+                'message' => 'No attendance found in the specified date range.',
+            ], 422);
+        }
+
+        // Summation of hours
+        $totalRegularHours = 0;
         $totalOvertimeHours = 0;
-    
-        // Example logic: treat hours above 8 per day as overtime
-        foreach ($attendances as $attendance) {
-            $hours = $attendance->HoursWorked ?? 0;
-            if ($hours > 8) {
-                $totalRegularHours  += 8;
-                $totalOvertimeHours += ($hours - 8);
+
+        foreach ($attendances as $att) {
+            $hrs = $att->HoursWorked ?: 0;
+            if ($hrs > 8) {
+                $totalRegularHours += 8;
+                $totalOvertimeHours += ($hrs - 8);
             } else {
-                $totalRegularHours  += $hours;
+                $totalRegularHours += $hrs;
             }
         }
-    
-        // Compute gross pay based on hourly or daily rates
-        $grossPay = 0;
-        if ($hourlyRate > 0) {
-            $grossPay = ($totalRegularHours * $hourlyRate)
-                      + ($totalOvertimeHours * $overtimeRate);
-        } elseif ($dailyRate > 0) {
-            // Count distinct attendance days
-            $numDays  = $attendances->unique('Date')->count();
-            $grossPay = $numDays * $dailyRate;
-        }
-    
-        $deductions = $data['Deductions'] ?? 0;
-        $netPay     = $grossPay - $deductions;
-    
-        // Create and save the payroll record
+
+        // Calculate gross
+        $grossPay = $totalRegularHours * $hourlyRate
+                  + $totalOvertimeHours * $overtimeRate;
+
+        $deductions = $request->input('Deductions', 0);
+        $netPay = $grossPay - $deductions;
+
+        // Create the payroll record
         $payroll = Payroll::create([
             'StaffID'       => $staff->StaffID,
             'StartDate'     => $data['StartDate'],
@@ -584,18 +586,15 @@ public function indexTasks()
             'GrossPay'      => $grossPay,
             'Deductions'    => $deductions,
             'NetPay'        => $netPay,
-            'GeneratedDate' => now(),
-            'Status'        => 'Pending',
+            'GeneratedDate' => $request->input('GeneratedDate') ?: now(),
+            'Status'        => $request->input('Status', 'Pending'),
         ]);
-    
-        // Return the newly created payroll with staff details
-        $payrollWithStaff = Payroll::with(['staff' => function($query) {
-            $query->select('StaffID', 'FullName');
-        }])->find($payroll->PayrollID);
-    
+
+        // Return with the related staff
+        $payroll->load('staff'); // so we have staff info
         return response()->json([
             'message' => 'Payroll created successfully.',
-            'payroll' => $payrollWithStaff
+            'payroll' => $payroll
         ], 201);
     }
     
@@ -675,6 +674,27 @@ public function indexTasks()
 
     return response()->json(['message' => 'Attendance record deleted.']);
 }
+
+public function attendanceRange($staffID, Request $request)
+{
+    $start = $request->query('start');
+    $end   = $request->query('end');
+
+    // Validate date inputs
+    $request->validate([
+        'start' => 'required|date',
+        'end'   => 'required|date|after_or_equal:start'
+    ]);
+
+    // Fetch attendances for the staff in the date range
+    $attendances = Attendance::where('StaffID', $staffID)
+        ->whereBetween('Date', [$start, $end])
+        ->orderBy('Date', 'asc')
+        ->get();
+
+    return response()->json($attendances);
+}
+
 
 public function destroyPayroll($id)
 {

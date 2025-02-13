@@ -78,6 +78,29 @@ export default function StaffManagement({ staff = [], attendance = [], payroll =
   const [isViewPayrollOpen, setViewPayrollOpen] = useState(false);
   const [isEditPayrollOpen, setEditPayrollOpen] = useState(false);
   const [isAddPayrollOpen, setAddPayrollOpen] = useState(false);
+  const handleAddPayroll = () => {
+    setAddPayrollOpen(true);
+  };
+
+  const handleClosePayrollDialog = () => {
+    setAddPayrollOpen(false);
+  };
+
+    // This is called by AddPayrollLayout's `onAdd(payload)`
+    const handleCreatePayroll = (newPayroll) => {
+      // newPayroll will have { StaffID, StartDate, EndDate, Deductions, etc. }
+      // We'll send it to the server via axios or fetch
+      axios.post(route('staff.payroll.store'), newPayroll)
+        .then((res) => {
+          const created = res.data.payroll;
+          // Optionally update local payroll state if you keep it
+          // e.g. setPayrollRecords(prev => [...prev, created]);
+          // close the dialog or do something else
+        })
+        .catch((err) => {
+          console.error("Error creating payroll:", err);
+        });
+    };
 
   // -------------- TASK STATES -------------------
   const [taskRecords, setTaskRecords] = useState(tasks);
@@ -1330,6 +1353,9 @@ const handleTabChange = (e, newValue) => {
           staffOptions={staffRecords.map((s) => ({
             value: s.StaffID,
             label: s.FullName,
+            dailyRate: s.DailyRate,
+            hourlyRate: s.HourlyRate,
+            overtimeRate: s.OvertimeRate,          
           }))}
         />
       )}
@@ -1405,7 +1431,7 @@ const handleTabChange = (e, newValue) => {
                   <Typography variant="body2" color="textSecondary">
                     Branch ID:
                   </Typography>
-                  <Typography variant="body1">{selectedStaff.BranchID}</Typography>
+                  <Typography variant="body1">{selectedStaff.branches[0].BranchID}</Typography>
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">

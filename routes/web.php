@@ -400,6 +400,21 @@ Route::prefix('booking')->group(function() {
     Route::get('trends', [BookingController::class, 'bookingTrends'])->name('booking.trends');
 });
 
+use App\Http\Controllers\CoachController;
+
+// Everything under /coaches
+Route::prefix('coaches')->group(function () {
+
+    // Only allow owners, admins, and staff to access these routes
+    Route::middleware('multiGuard:owner,admin,staff')->group(function () {
+        Route::get('/', [CoachController::class, 'indexCoachesJson'])->name('coaches.index');
+        Route::post('/', [CoachController::class, 'storeCoach'])->name('coaches.store');
+        Route::put('/{id}', [CoachController::class, 'updateCoach'])->name('coaches.update');
+        Route::delete('/{id}', [CoachController::class, 'destroyCoach'])->name('coaches.destroy');
+    });
+});
+
+
 use App\Http\Controllers\StaffController;
 
 // Everything under /staff
@@ -420,6 +435,7 @@ Route::prefix('staff')->group(function () {
         Route::delete('attendance/{id}', [StaffController::class, 'destroyAttendance'])->name('staff.attendance.destroy');
         Route::post('attendance/clock-in-out', [StaffController::class, 'clockInOut'])->name('staff.attendance.clockInOut');
         Route::get('attendance-analytics', [StaffController::class, 'attendanceAnalytics'])->name('staff.attendance.analytics');
+        Route::get('{staff}/attendance-range', [StaffController::class, 'attendanceRange'])->name('staff.attendance.range');
 
         // Tasks
         Route::prefix('tasks')->group(function() {
