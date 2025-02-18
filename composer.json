@@ -12,6 +12,7 @@
         "laravel/framework": "^11.31",
         "laravel/tinker": "^2.9",
         "maatwebsite/excel": "^1.1",
+        "mailjet/mailjet-apiv3-php": "^1.6",
         "spatie/laravel-activitylog": "^4.9",
         "tightenco/ziggy": "^2.4"
     },

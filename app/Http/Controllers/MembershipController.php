@@ -565,6 +565,42 @@ private function generateRemainingLockInInvoices(Member $member, $planID)
         }
     }
 
+    /**
+ * Return members whose membership ends within the next X days.
+ * GET /membership/expiring?days=7
+ */
+public function expiringMembers(Request $request)
+{
+    // 1) Determine how many days in the future
+    $days = (int) $request->query('days', 7);
+
+    // 2) Calculate the date cutoff (today + X days)
+    $today = Carbon::today();
+    $cutoff = $today->copy()->addDays($days);
+
+    // 3) Branch filtering if staff is logged in
+    $staff = auth('staff')->user();
+    if ($staff) {
+        // If staff => filter for members in staff's branch(es)
+        $branchIDs = $staff->branches->pluck('BranchID');
+        $members = Member::whereIn('StartedBranchID', $branchIDs)
+            ->whereNotNull('MembershipEndDate')
+            ->whereDate('MembershipEndDate', '>=', $today)   // ends in the future (or today)
+            ->whereDate('MembershipEndDate', '<=', $cutoff)  // ends on/before cutoff
+            ->orderBy('MembershipEndDate', 'asc')
+            ->get();
+    } else {
+        // Admin or Owner => no branch restriction
+        $members = Member::whereNotNull('MembershipEndDate')
+            ->whereDate('MembershipEndDate', '>=', $today)
+            ->whereDate('MembershipEndDate', '<=', $cutoff)
+            ->orderBy('MembershipEndDate', 'asc')
+            ->get();
+    }
+
+    return response()->json($members);
+}
+
 
     /* ------------------------------------------------------------------
      * 2) MEMBERSHIP PLANS

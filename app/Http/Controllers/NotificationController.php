@@ -9,6 +9,10 @@ use App\Models\SystemSetting;
 use App\Models\NotificationTemplate;
 use App\Models\Notification;
 use App\Models\Member;
+// Add Mailjet imports
+use Mailjet\Resources;
+use Mailjet\Client;
+
 
 class NotificationController extends Controller
 {
@@ -388,4 +392,135 @@ public function sendStaffNotification(Request $request)
 
         return redirect()->back()->with('success','Template approved.');
     }
+
+    public function sendExpiringMembershipReminder(Request $request)
+    {
+        // 1) Fetch members expiring in 7 days (adjust logic/date range as needed)
+        $expiringSoon = Member::whereDate('expiry_date', '=', now()->addDays(7))->get();
+
+        // 2) Initialize Mailjet Client for Send API v3.1
+        $mj = new Client(
+            config('services.mailjet.key'),    // MAILJET_API_KEY
+            config('services.mailjet.secret'), // MAILJET_SECRET_KEY
+            true,
+            ['version' => 'v3.1']
+        );
+
+        // 3) Build the array of messages
+        $messages = [];
+        foreach ($expiringSoon as $member) {
+            // If member has an email and we want to send
+            if (!empty($member->Email)) {
+                $messages[] = [
+                    'From' => [
+                        'Email' => config('services.mailjet.from.address'),
+                        'Name'  => config('services.mailjet.from.name'),
+                    ],
+                    'To' => [
+                        ['Email' => $member->Email, 'Name' => $member->name],
+                    ],
+                    'TemplateID'      => 6731692,      // Your Mailjet Template ID
+                    'TemplateLanguage' => true,         // Enable template placeholders
+                    'Subject'         => 'CONTNENTAL GYM PAYMENT DUE', 
+                    // Pass dynamic variables to match placeholders like {{var:member_name}} etc.
+                    'Variables' => [
+                        'member_name' => $member->name,
+                        'expiry_date' => $member->expiry_date->format('F j, Y'),
+                    ],
+                ];
+            }
+        }
+
+        // 4) If we have messages to send, call the Mailjet API
+        if (!empty($messages)) {
+            $body = ['Messages' => $messages];
+            $response = $mj->post(Resources::$Email, ['body' => $body]);
+
+            if ($response->success()) {
+                // Optionally log success or do more
+                // e.g. return a success message
+                return response()->json([
+                    'status'  => 'success',
+                    'message' => 'Expiry reminder emails sent!',
+                    'data'    => $response->getData()
+                ], 200);
+            } else {
+                // Handle or log errors
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Mailjet API call failed',
+                    'data'    => $response->getData()
+                ], 500);
+            }
+        }
+
+        // If no members are expiring soon, you can handle that here
+        return response()->json([
+            'status'  => 'no-action',
+            'message' => 'No members expiring in 7 days'
+        ], 200);
+    }
+
+
+    public function sendMailjetTemplate(Request $request)
+{
+    $data = $request->validate([
+        'templateId' => 'required|integer',
+        'memberIds'  => 'required|array',
+    ]);
+
+    // 1) Fetch the members
+    $members = Member::whereIn('MemberID', $data['memberIds'])->get();
+
+    // 2) Prepare Mailjet Client and messages
+    $mj = new \Mailjet\Client(
+        config('services.mailjet.key'),
+        config('services.mailjet.secret'),
+        true,
+        ['version' => 'v3.1']
+    );
+
+    $messages = [];
+    foreach ($members as $member) {
+        // Only if the member has a valid email
+        if ($member->Email) {
+            $messages[] = [
+                'From' => [
+                    'Email' => config('services.mailjet.from.address'),
+                    'Name'  => config('services.mailjet.from.name'),
+                ],
+                'To' => [
+                    ['Email' => $member->Email, 'Name' => $member->FullName],
+                ],
+                'TemplateID'      => $data['templateId'],
+                'TemplateLanguage' => true,
+                'Subject'         => 'Gym Notification',
+                'Variables' => [
+                    'member_name' => $member->FullName,
+                    // Add more placeholders if your template uses them
+                ],
+            ];
+        }
+    }
+
+    if (!empty($messages)) {
+        $body = ['Messages' => $messages];
+        $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
+
+        if ($response->success()) {
+            return response()->json(['status'=>'success', 'message'=>'Template emails sent.']);
+        }
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Mailjet error',
+            'data'    => $response->getData(),
+        ], 500);
+    }
+
+    return response()->json([
+        'status'=>'no-action',
+        'message'=>'No valid members or emails.'
+    ]);
+}
+
 }

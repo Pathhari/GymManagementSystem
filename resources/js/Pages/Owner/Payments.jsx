@@ -206,13 +206,19 @@ export default function PaymentsAndInvoices() {
   // For partial payments, we might need a list of unpaid or partially paid invoices
   const fetchUnpaidInvoices = () => {
     axios
-      .get("/invoices?status=unpaid_or_partial") // or however you filter
+      .get("/invoices?status=unpaid_or_partial")
       .then((res) => {
-        // shape it to your liking
-        setUnpaidInvoices(res.data || []);
+        const mapped = (res.data || []).map(inv => ({
+          invoiceId: inv.InvoiceID,
+          invoiceTotal: inv.InvoiceTotal,
+          paymentStatus: inv.PaymentStatus,
+          memberName: inv.member ? inv.member.FullName : "N/A",
+        }));
+        setUnpaidInvoices(mapped);
       })
-      .catch((err) => console.error(err));
+      .catch(err => console.error(err));
   };
+  
 
   // =============== Payment Tab Logic ===============
   const handleTabChange = (event, newValue) => {
@@ -795,46 +801,13 @@ export default function PaymentsAndInvoices() {
 
             {activeTab === 0 ? (
               <>
-                {/* 5 buttons now: Member, Walk-In, Booking, Session, Partial */}
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<AddIcon />}
-                  onClick={() => handleAddPaymentOpen("member")}
-                >
-                  Member Payment
-                </Button>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<AddIcon />}
-                  onClick={() => handleAddPaymentOpen("walkIn")}
-                >
-                  Walk-In Payment
-                </Button>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<AddIcon />}
-                  onClick={() => handleAddPaymentOpen("booking")}
-                >
-                  Booking Payment
-                </Button>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<AddIcon />}
-                  onClick={() => handleAddPaymentOpen("session")}
-                >
-                  Session Payment
-                </Button>
                 <Button
                   variant="contained"
                   color="secondary"
                   startIcon={<AddIcon />}
                   onClick={() => handleAddPaymentOpen("partial")}
                 >
-                  Partial Payment
+                  Make Partial Payment
                 </Button>
               </>
             ) : (
@@ -1060,13 +1033,18 @@ export default function PaymentsAndInvoices() {
                   Unpaid Invoices (select to add):
                 </Typography>
                 <Paper sx={{ maxHeight: 200, overflowY: "auto", p: 1 }}>
-                  {unpaidInvoices.map((inv) => (
+                {unpaidInvoices.map((inv) => (
                     <Box
-                      key={inv.InvoiceID}
+                      key={inv.invoiceId}
                       sx={{ mb: 1, border: "1px solid #ccc", p: 1, borderRadius: 1, cursor: "pointer" }}
-                      onClick={() => handleAddInvoiceAlloc({ invoiceId: inv.InvoiceID, InvoiceTotal: inv.InvoiceTotal })}
+                      onClick={() =>
+                        handleAddInvoiceAlloc({
+                          invoiceId: inv.invoiceId,
+                          InvoiceTotal: inv.invoiceTotal
+                        })
+                      }
                     >
-                      Invoice #{inv.InvoiceID} - ₱{inv.InvoiceTotal} - {inv.PaymentStatus}
+                      Invoice #{inv.invoiceId} for {inv.memberName} — ₱{inv.invoiceTotal} — {inv.paymentStatus}
                     </Box>
                   ))}
                 </Paper>

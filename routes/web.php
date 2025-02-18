@@ -297,6 +297,15 @@ Route::prefix('notifications')->group(function() {
         ->name('notifications.templates.approve');
 });
 
+    Route::get('/notifications/send-expiring-reminder', [NotificationController::class, 'sendExpiringMembershipReminder'])
+        ->middleware('auth:owner') // or any guard you prefer
+        ->name('notifications.sendExpiringReminder');
+
+        Route::post('/notifications/send-mailjet-template', [NotificationController::class, 'sendMailjetTemplate'])
+        ->middleware('auth:owner,admin,staff')
+        ->name('notifications.sendMailjetTemplate');
+    
+        
 /*
 |--------------------------------------------------------------------------
 | MembershipController
@@ -358,12 +367,16 @@ Route::prefix('membership')->group(function() {
     });
 });
 
+        Route::get('/membership/expiring', [MembershipController::class, 'expiringMembers'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('membership.expiring');
 /*
 |--------------------------------------------------------------------------
 | BookingController
 |--------------------------------------------------------------------------
 */
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\CoachController;
 
 Route::prefix('booking')->group(function() {
 
@@ -376,8 +389,6 @@ Route::prefix('booking')->group(function() {
         Route::put('{id}', [BookingController::class, 'updateBooking'])->name('booking.update');
         Route::post('{id}/cancel', [BookingController::class, 'cancelBooking'])->name('booking.cancel');
         Route::get('today', [BookingController::class, 'getTodayBookings'])->name('booking.today');
-
-        Route::get('/coaches', [BookingController::class, 'index'])->name('coaches.index');
 
         // Facilities
         Route::get('facilities', [BookingController::class, 'indexFacilities'])
@@ -393,6 +404,17 @@ Route::prefix('booking')->group(function() {
         Route::post('sessions/book', [BookingController::class, 'storeSessionBooking'])->name('booking.sessions.book');
         Route::post('sessions/waitlist', [BookingController::class, 'addToWaitlist'])->name('booking.sessions.waitlist');
         Route::post('sessions/attendance', [BookingController::class, 'markAttendance'])->name('booking.sessions.attendance');
+
+        Route::get('/coaches', [CoachController::class, 'index']);
+    
+        // Create coach
+        Route::post('/coaches', [CoachController::class, 'store']);
+        
+        // Update coach
+        Route::put('/coaches/{id}', [CoachController::class, 'update']);
+        
+        // Delete coach
+        Route::delete('/coaches/{id}', [CoachController::class, 'destroy']);
     });
 
     // Some routes might not require staff
@@ -400,19 +422,10 @@ Route::prefix('booking')->group(function() {
     Route::get('trends', [BookingController::class, 'bookingTrends'])->name('booking.trends');
 });
 
-use App\Http\Controllers\CoachController;
+    Route::get('/booking/sessions/bookings', [BookingController::class, 'listSessionBookings'])
+        ->middleware('multiGuard:owner,admin,staff');
 
-// Everything under /coaches
-Route::prefix('coaches')->group(function () {
 
-    // Only allow owners, admins, and staff to access these routes
-    Route::middleware('multiGuard:owner,admin,staff')->group(function () {
-        Route::get('/', [CoachController::class, 'indexCoachesJson'])->name('coaches.index');
-        Route::post('/', [CoachController::class, 'storeCoach'])->name('coaches.store');
-        Route::put('/{id}', [CoachController::class, 'updateCoach'])->name('coaches.update');
-        Route::delete('/{id}', [CoachController::class, 'destroyCoach'])->name('coaches.destroy');
-    });
-});
 
 
 use App\Http\Controllers\StaffController;
@@ -494,7 +507,9 @@ Route::prefix('staff')->group(function () {
         });
     });
 });
+
 /*
+
 |--------------------------------------------------------------------------
 | OperationsController
 |--------------------------------------------------------------------------
@@ -567,6 +582,8 @@ Route::prefix('operations')->group(function() {
         Route::get('visits', [OperationsController::class, 'indexVisits'])->name('operations.visits.index');
         Route::get('visits/{id}/edit', [OperationsController::class, 'editVisit'])->name('operations.visits.edit');
         Route::put('visits/{id}', [OperationsController::class, 'updateVisit'])->name('operations.visits.update');
+        Route::get('visits/history', [OperationsController::class, 'historyVisits'])
+        ->name('operations.visits.history');
     });
 });
 
@@ -668,16 +685,16 @@ use App\Http\Controllers\FacilityController;
      // Accessible by owner, admin
     Route::prefix('facilities')->group(function() {
         // GET /facilities
-        Route::get('/', [FacilityController::class, 'index'])->middleware('multiGuard:owner,admin')->name('facilities.index');
+        Route::get('/', [FacilityController::class, 'index'])->middleware('multiGuard:owner,admin,staff')->name('facilities.index');
     
         // POST /facilities
         Route::post('/', [FacilityController::class, 'store'])->middleware('multiGuard:owner,admin')->name('facilities.store');
     
         // GET /facilities/{id}
-        Route::get('{id}', [FacilityController::class, 'show'])->middleware('multiGuard:owner,admin')->name('facilities.show');
+        Route::get('{id}', [FacilityController::class, 'show'])->middleware('multiGuard:owner,admin,staff')->name('facilities.show');
     
         // PUT /facilities/{id}
-        Route::put('{id}', [FacilityController::class, 'update'])->middleware('multiGuard:owner,admin')->name('facilities.update');
+        Route::put('{id}', [FacilityController::class, 'update'])->middleware('multiGuard:owner,admin,staff')->name('facilities.update');
     
         // DELETE /facilities/{id}
         Route::delete('{id}', [FacilityController::class, 'destroy'])->middleware('multiGuard:owner,admin')->name('facilities.destroy');

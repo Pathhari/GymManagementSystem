@@ -751,6 +751,18 @@ class OperationsController extends Controller
             'message' => 'Visit deleted successfully.'
         ]);
     }
+    
+    public function historyVisits()
+    {
+        // Example: Fetch recent visits
+        $visits = Visit::orderBy('VisitTime', 'desc')
+            ->take(50) // or however many
+            ->get();
+
+        // Return JSON
+        return response()->json(['visits' => $visits]);
+    }
+
 
        /**
      * Display a listing of Walk-In records.

@@ -453,9 +453,10 @@ class FinanceController extends Controller
             $facility = DB::table('facilities')
                 ->where('FacilityID', $popularBooking->FacilityID)
                 ->first();
-            if ($facility) {
-                $mostPopularService = $facility->Name;
-            }
+                if ($facility) {
+                    $mostPopularService = $facility->FacilityName; 
+                }
+                
         }
 
         return response()->json([

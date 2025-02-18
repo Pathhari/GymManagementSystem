@@ -313,8 +313,7 @@ class PaymentController extends Controller
             'FailureReason'=> 'nullable|string|max:255',
         ]);
 
-        $data['PaymentFor'] = json_encode($data['PaymentFor']);
-        Payment::create($data);
+        $payment->update($data);
 
         return redirect()
             ->route('payments.index')

@@ -7,6 +7,7 @@ import { createTheme } from '@mui/material/styles';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PeopleIcon from '@mui/icons-material/People';
 import EventNoteIcon from '@mui/icons-material/CalendarMonth';
+import PaymentsIcon from '@mui/icons-material/Payments';
 import LockIcon from '@mui/icons-material/Lock';
 import NotificationsIcon from '@mui/icons-material/NotificationsActive';
 import BuildIcon from '@mui/icons-material/FitnessCenter';
@@ -22,6 +23,7 @@ import { Inertia } from '@inertiajs/inertia-react'; // Inertia.js import
 import DashboardContent from './DashboardContent';
 import MembershipManagement from './MembershipManagement';
 import BookingsSessions from './BookingsSessions';
+import Payments from './Payments';
 import TaskTimeManagement from './TaskTimeManagement';
 import LockerManagement from './LockerManagement';
 import Notifications from './Notifications';
@@ -34,6 +36,7 @@ const NAVIGATION = [
   { segment: 'tasktimemanagement', title: 'Task & Time Management', icon: <TaskIcon /> },
   { segment: 'membership-management', title: 'Membership Management', icon: <PeopleIcon /> },
   { segment: 'bookingsessions', title: 'Bookings & Sessions', icon: <EventNoteIcon /> },
+  { segment: 'payments', title: 'Payments & Invoices', icon: <PaymentsIcon /> },
   { segment: 'lockermanagement', title: 'Locker Management', icon: <LockIcon /> },
   { segment: 'maintequip', title: 'Maintenance & Equipment', icon: <BuildIcon /> },
   { segment: 'notifications', title: 'Notifications', icon: <NotificationsIcon /> },
@@ -65,6 +68,8 @@ function DemoPageContent({ pathname }) {
         return <MembershipManagement />;
       case '/bookingsessions':
         return <BookingsSessions />;
+      case '/payments':
+        return <Payments />;
       case '/lockermanagement':
         return <LockerManagement />;
       case '/notifications':

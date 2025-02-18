@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\CoachingSession;
+
 
 class SessionWaitlist extends Model
 {
@@ -17,7 +19,7 @@ class SessionWaitlist extends Model
 
     public function session()
     {
-        return $this->belongsTo(CoachingSessions::class, 'SessionID', 'SessionID');
+        return $this->belongsTo(CoachingSession::class, 'SessionID', 'SessionID');
     }
 
     public function member()

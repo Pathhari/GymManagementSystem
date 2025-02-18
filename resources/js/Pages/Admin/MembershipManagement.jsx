@@ -1054,7 +1054,7 @@ export default function MembershipManagement() {
 
             <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1 }}>
               <Button variant="outlined" onClick={() => setManagePlansOpen(true)}>
-                Manage Plans
+                Manage Plans and Promotions
               </Button>
             </Box>
 

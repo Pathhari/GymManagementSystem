@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
+import axios from "axios";
 import {
   Box,
+  Grid,
   Typography,
   TextField,
   Button,
@@ -16,52 +18,97 @@ import {
   ListItem,
   ListItemText,
   Checkbox,
-  ListItemSecondaryAction,
   MenuItem,
   FormControl,
   Select,
   InputLabel,
+  Stack
 } from "@mui/material";
+import { DataGrid } from "@mui/x-data-grid";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import AddIcon from "@mui/icons-material/Add";
-import axios from "axios";
+
+const allMembersColumns = [
+  { field: "MemberID", headerName: "ID", width: 70 },
+  { field: "FullName", headerName: "Name", width: 180 },
+  { field: "Email", headerName: "Email", width: 220 },
+];
+
+// Columns for expiring members
+const expiringColumns = [
+  { field: "MemberID", headerName: "ID", width: 80 },
+  { field: "name", headerName: "Name", width: 180 },
+  {
+    field: "expiry_date",
+    headerName: "Expiry Date",
+    width: 180,
+    valueGetter: (params) => {
+      return params.row.expiry_date
+        ? new Date(params.row.expiry_date).toLocaleDateString()
+        : "";
+    },
+  },
+  { field: "Email", headerName: "Email", width: 220 },
+];
 
 export default function Notifications() {
-  // ----------------- 1) ANNOUNCEMENTS -----------------
+  // ---------------------------------------------------
+  // 1. Announcements
+  // ---------------------------------------------------
   const [announcements, setAnnouncements] = useState([]);
   const [isEditOpen, setEditOpen] = useState(false);
   const [editData, setEditData] = useState(null);
 
-  // For "Add Announcement" form
   const [newTopic, setNewTopic] = useState("");
   const [newMessage, setNewMessage] = useState("");
 
-  // ----------------- 2) STAFF (LOADED FROM BACKEND) -----------------
+  // ---------------------------------------------------
+  // 2. Bulk SMS & Bulk Email
+  // ---------------------------------------------------
+  const [bulkSMSMessage, setBulkSMSMessage] = useState("");
+  const [bulkEmailSubject, setBulkEmailSubject] = useState("");
+  const [bulkEmailBody, setBulkEmailBody] = useState("");
+
+  // ---------------------------------------------------
+  // 3. Ad-hoc Notification
+  // ---------------------------------------------------
+  const [adHocMemberID, setAdHocMemberID] = useState("");
+  const [adHocMethod, setAdHocMethod] = useState("SMS");
+  const [adHocMessage, setAdHocMessage] = useState("");
+
+  // ---------------------------------------------------
+  // 4. Staff Notification
+  // ---------------------------------------------------
   const [staffList, setStaffList] = useState([]);
   const [selectedStaff, setSelectedStaff] = useState([]);
   const [notifSubject, setNotifSubject] = useState("");
   const [notifMessage, setNotifMessage] = useState("");
 
-  // ----------------- 3) BULK SMS -----------------
-  const [bulkSMSMessage, setBulkSMSMessage] = useState("");
+  // ---------------------------------------------------
+  // 5. Expiring Membership
+  // ---------------------------------------------------
+  const [expiringMembers, setExpiringMembers] = useState([]);
 
-  // ----------------- 4) BULK EMAIL -----------------
-  const [bulkEmailSubject, setBulkEmailSubject] = useState("");
-  const [bulkEmailBody, setBulkEmailBody] = useState("");
+  // ---------------------------------------------------
+  // 6. Mailjet Templated Email
+  // ---------------------------------------------------
+  const [allMembers, setAllMembers] = useState([]);
+  const [selectedMemberIDs, setSelectedMemberIDs] = useState([]);
+  const [templateId, setTemplateId] = useState("");
 
-  // ----------------- 5) AD-HOC NOTIFICATION -----------------
-  const [adHocMemberID, setAdHocMemberID] = useState("");
-  const [adHocMethod, setAdHocMethod] = useState("SMS");
-  const [adHocMessage, setAdHocMessage] = useState("");
-
-  // ----------------- 6) LOAD DATA ON MOUNT -----------------
+  // ---------------------------------------------------
+  // useEffect: load everything on mount
+  // ---------------------------------------------------
   useEffect(() => {
     loadAnnouncements();
     loadStaff();
+    loadExpiringMembers();
+    loadAllMembers();
   }, []);
 
-  // --- A) Load announcements from /notifications/announcements
+  // ---------------------------------------------------
+  // Loaders
+  // ---------------------------------------------------
   const loadAnnouncements = async () => {
     try {
       const res = await axios.get("/notifications/announcements");
@@ -72,34 +119,48 @@ export default function Notifications() {
     }
   };
 
-  // --- B) Load staff from /staff (or wherever your route is)
   const loadStaff = async () => {
     try {
-      // Adjust to your actual route for staff data
       const res = await axios.get("/staff");
-      setStaffList(res.data);
+      setStaffList(res.data || []);
     } catch (error) {
       console.error("Error loading staff:", error);
-      alert("Failed to load staff from server.");
     }
   };
 
-  // =========================================================
-  // ANNOUNCEMENT METHODS
-  // =========================================================
+  const loadExpiringMembers = async () => {
+    try {
+      const res = await axios.get("/membership/expiring?days=7");
+      setExpiringMembers(res.data || []);
+    } catch (error) {
+      console.error("Failed to load expiring members:", error);
+    }
+  };
+
+  const loadAllMembers = async () => {
+    try {
+      const res = await axios.get("/membership/members");
+      // Suppose res.data has { members: [...] }
+      setAllMembers(res.data.members || []);
+    } catch (error) {
+      console.error("Failed to load all members:", error);
+    }
+  };
+
+  // ---------------------------------------------------
+  // Announcements logic
+  // ---------------------------------------------------
   const handleAddAnnouncement = async () => {
     if (!newTopic.trim() || !newMessage.trim()) {
       alert("Please fill out both Topic and Message.");
       return;
     }
     try {
-      // POST /notifications/announcements
       const res = await axios.post("/notifications/announcements", {
         topic: newTopic,
         message: newMessage,
       });
-      const newAnnouncement = res.data;
-      setAnnouncements((prev) => [newAnnouncement, ...prev]);
+      setAnnouncements((prev) => [res.data, ...prev]);
       setNewTopic("");
       setNewMessage("");
     } catch (error) {
@@ -109,7 +170,6 @@ export default function Notifications() {
   };
 
   const handleEditOpen = (announcement) => {
-    // The announcement.Message is typically "Topic: XYZ\nThe rest..."
     const lines = announcement.Message.split("\n");
     const rawTopic = lines[0].replace("Topic: ", "").trim();
     const rawMsg = lines.slice(1).join("\n").trim();
@@ -133,16 +193,13 @@ export default function Notifications() {
       return;
     }
     try {
-      // PUT /notifications/announcements/:id
       const res = await axios.put(`/notifications/announcements/${editData.id}`, {
         topic: editData.topic,
         message: editData.message,
       });
-      const updated = res.data;
-      // Update local announcements
       setAnnouncements((prev) =>
         prev.map((ann) =>
-          ann.NotificationID === editData.id ? updated : ann
+          ann.NotificationID === editData.id ? res.data : ann
         )
       );
       setEditOpen(false);
@@ -167,9 +224,9 @@ export default function Notifications() {
     }
   };
 
-  // =========================================================
-  // STAFF NOTIFICATION
-  // =========================================================
+  // ---------------------------------------------------
+  // Staff logic
+  // ---------------------------------------------------
   const handleStaffToggle = (staffId) => {
     setSelectedStaff((prev) =>
       prev.includes(staffId)
@@ -184,17 +241,16 @@ export default function Notifications() {
       return;
     }
     if (!notifSubject.trim() || !notifMessage.trim()) {
-      alert("Please provide a notification subject and message.");
+      alert("Provide subject and message.");
       return;
     }
     try {
-      // POST /notifications/send-staff
       await axios.post("/notifications/send-staff", {
         staffIds: selectedStaff,
         subject: notifSubject,
         message: notifMessage,
       });
-      alert("Notification sent successfully!");
+      alert("Staff notification sent!");
       setSelectedStaff([]);
       setNotifSubject("");
       setNotifMessage("");
@@ -204,78 +260,137 @@ export default function Notifications() {
     }
   };
 
-  // =========================================================
-  // BULK SMS
-  // =========================================================
+  // ---------------------------------------------------
+  // Bulk SMS & Email
+  // ---------------------------------------------------
   const handleSendBulkSMS = async () => {
     if (!bulkSMSMessage.trim()) {
-      alert("Please enter the SMS message.");
+      alert("Enter the SMS message.");
       return;
     }
     try {
-      // POST /notifications/send/bulk-sms
       await axios.post("/notifications/send/bulk-sms", {
         message: bulkSMSMessage,
-        recipientGroup: "", // optional if your back end uses it
       });
-      alert("Bulk SMS sent successfully!");
+      alert("Bulk SMS sent!");
       setBulkSMSMessage("");
     } catch (error) {
-      console.error("Sending bulk SMS failed:", error);
+      console.error("Bulk SMS failed:", error);
       alert("Failed to send bulk SMS.");
     }
   };
 
-  // =========================================================
-  // BULK EMAIL
-  // =========================================================
   const handleSendBulkEmail = async () => {
     if (!bulkEmailSubject.trim() || !bulkEmailBody.trim()) {
-      alert("Please fill out the subject and body.");
+      alert("Fill out subject and body.");
       return;
     }
     try {
-      // POST /notifications/send/bulk-email
       await axios.post("/notifications/send/bulk-email", {
         subject: bulkEmailSubject,
         body: bulkEmailBody,
       });
-      alert("Bulk Email sent successfully!");
+      alert("Bulk Email sent!");
       setBulkEmailSubject("");
       setBulkEmailBody("");
     } catch (error) {
-      console.error("Sending bulk email failed:", error);
+      console.error("Bulk email failed:", error);
       alert("Failed to send bulk email.");
     }
   };
 
-  // =========================================================
-  // AD-HOC NOTIFICATION
-  // =========================================================
+  // ---------------------------------------------------
+  // Ad-hoc Notification
+  // ---------------------------------------------------
   const handleSendAdHoc = async () => {
     if (!adHocMemberID.trim() || !adHocMessage.trim()) {
-      alert("Please fill out the MemberID and Message fields.");
+      alert("Provide MemberID and Message.");
       return;
     }
     try {
-      // POST /notifications/send/ad-hoc
       await axios.post("/notifications/send/ad-hoc", {
         MemberID: adHocMemberID,
-        method: adHocMethod, // "SMS" or "Email"
+        method: adHocMethod,
         message: adHocMessage,
       });
       alert("Ad-hoc notification sent!");
       setAdHocMemberID("");
       setAdHocMessage("");
     } catch (error) {
-      console.error("Sending ad-hoc notification failed:", error);
+      console.error("Ad-hoc notify failed:", error);
       alert("Failed to send ad-hoc notification.");
     }
   };
 
-  // =========================================================
-  // RENDER
-  // =========================================================
+  // ---------------------------------------------------
+  // Expiring membership (Mailjet)
+  // ---------------------------------------------------
+  const handleSendExpiringMembershipEmails = async () => {
+    if (!window.confirm("Send expiring membership reminder emails via Mailjet?")) {
+      return;
+    }
+    try {
+      const response = await axios.get("/notifications/send-expiring-reminder");
+      if (response.data.status === "success") {
+        alert("Expiring membership emails sent!");
+      } else if (response.data.status === "no-action") {
+        alert("No members expiring soon.");
+      } else {
+        console.warn(response.data);
+        alert("Mailjet: Some issue occurred. Check logs.");
+      }
+    } catch (error) {
+      console.error("Mailjet send failed:", error);
+      alert("Failed to send expiring membership emails.");
+    }
+  };
+
+  // ---------------------------------------------------
+  // Mailjet Templated Email
+  // ---------------------------------------------------
+  const handleMemberSelection = (ids) => {
+    setSelectedMemberIDs(ids);
+  };
+
+  const handleSendMailjetTemplate = async () => {
+    if (!templateId.trim()) {
+      alert("Please enter the Mailjet Template ID.");
+      return;
+    }
+    if (selectedMemberIDs.length === 0) {
+      alert("Please select at least one member.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Send Mailjet template #${templateId} to ${selectedMemberIDs.length} member(s)?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const response = await axios.post("/notifications/send-mailjet-template", {
+        templateId: parseInt(templateId, 10),
+        memberIds: selectedMemberIDs,
+      });
+      if (response.data.status === "success") {
+        alert("Template emails sent!");
+      } else if (response.data.status === "no-action") {
+        alert("No valid members or emails found.");
+      } else {
+        console.error("Mailjet error response:", response.data);
+        alert("Some issue occurred. Check logs.");
+      }
+    } catch (error) {
+      console.error("Mailjet template send failed:", error);
+      alert("Failed to send Mailjet template.");
+    }
+  };
+
+  // ---------------------------------------------------
+  // Rendering
+  // ---------------------------------------------------
   return (
     <Box sx={{ p: 4 }}>
       <Typography variant="h4" gutterBottom>
@@ -283,40 +398,64 @@ export default function Notifications() {
       </Typography>
       <Divider sx={{ mb: 3 }} />
 
-      {/* ================== ANNOUNCEMENTS SECTION ================== */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" gutterBottom>
-          Recent Announcements
-        </Typography>
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          {announcements.length === 0 ? (
-            <Typography variant="body2" sx={{ mt: 2 }}>
-              No announcements yet...
+      <Grid container spacing={3}>
+        
+        {/* ================== ANNOUNCEMENTS ================== */}
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6">Add Announcement</Typography>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="Topic"
+                fullWidth
+                value={newTopic}
+                onChange={(e) => setNewTopic(e.target.value)}
+              />
+              <TextField
+                label="Message"
+                fullWidth
+                multiline
+                rows={2}
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+              />
+              <Button variant="contained" onClick={handleAddAnnouncement}>
+                Add Announcement
+              </Button>
+            </Stack>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2, height: "100%" }}>
+            <Typography variant="h6" gutterBottom>
+              Recent Announcements
             </Typography>
-          ) : (
-            <List>
-              {announcements.map((ann) => {
-                // Parse "Topic: X\nMessage..."
+            {announcements.length === 0 ? (
+              <Typography>No announcements yet...</Typography>
+            ) : (
+              announcements.map((ann) => {
                 const lines = ann.Message.split("\n");
                 const parsedTopic = lines[0].replace("Topic: ", "").trim();
                 const parsedMsg = lines.slice(1).join("\n").trim();
 
                 return (
-                  <ListItem
+                  <Box
                     key={ann.NotificationID}
-                    disableGutters
-                    divider
-                    sx={{ py: 1 }}
+                    sx={{
+                      border: "1px solid #ccc",
+                      borderRadius: 1,
+                      p: 1,
+                      mb: 1,
+                    }}
                   >
-                    <ListItemText
-                      primary={
-                        <Typography variant="subtitle1" fontWeight="bold">
-                          {parsedTopic}
-                        </Typography>
-                      }
-                      secondary={parsedMsg}
-                    />
-                    <ListItemSecondaryAction>
+                    <Typography variant="subtitle1" fontWeight="bold">
+                      {parsedTopic}
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
+                      {parsedMsg}
+                    </Typography>
+                    <Box sx={{ mt: 1 }}>
                       <Tooltip title="Edit">
                         <IconButton
                           size="small"
@@ -336,104 +475,93 @@ export default function Notifications() {
                           <DeleteIcon fontSize="inherit" />
                         </IconButton>
                       </Tooltip>
-                    </ListItemSecondaryAction>
-                  </ListItem>
+                    </Box>
+                  </Box>
                 );
-              })}
-            </List>
-          )}
-        </Paper>
-      </Box>
+              })
+            )}
+          </Paper>
+        </Grid>
 
-      {/* ================== BULK SMS SECTION ================== */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" gutterBottom>
-          Bulk SMS
-        </Typography>
-        <Paper sx={{ p: 2, mb: 2 }} variant="outlined">
-          <TextField
-            label="SMS Message"
-            fullWidth
-            multiline
-            rows={2}
-            margin="normal"
-            value={bulkSMSMessage}
-            onChange={(e) => setBulkSMSMessage(e.target.value)}
-          />
-          <Button variant="contained" onClick={handleSendBulkSMS}>
-            Send Bulk SMS
-          </Button>
-        </Paper>
-      </Box>
+        {/* ================== EXPIRING MEMBERSHIP ================== */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 2 }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+              <Typography variant="h6">
+                Expiring Memberships (Next 7 Days)
+              </Typography>
+              <Button
+                variant="contained"
+                onClick={handleSendExpiringMembershipEmails}
+              >
+                Send Expiring Emails
+              </Button>
+            </Box>
+            <div style={{ width: "100%", height: 400 }}>
+              <DataGrid
+                rows={expiringMembers}
+                columns={expiringColumns}
+                getRowId={(row) => row.MemberID}
+                pageSize={5}
+                rowsPerPageOptions={[5, 10]}
+              />
+            </div>
+          </Paper>
+        </Grid>
 
-      {/* ================== BULK EMAIL SECTION ================== */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" gutterBottom>
-          Bulk Email
-        </Typography>
-        <Paper sx={{ p: 2, mb: 2 }} variant="outlined">
-          <TextField
-            label="Subject"
-            fullWidth
-            margin="normal"
-            value={bulkEmailSubject}
-            onChange={(e) => setBulkEmailSubject(e.target.value)}
-          />
-          <TextField
-            label="Email Body"
-            fullWidth
-            multiline
-            rows={3}
-            margin="normal"
-            value={bulkEmailBody}
-            onChange={(e) => setBulkEmailBody(e.target.value)}
-          />
-          <Button variant="contained" onClick={handleSendBulkEmail}>
-            Send Bulk Email
-          </Button>
-        </Paper>
-      </Box>
 
-      {/* ================== AD-HOC NOTIFICATION SECTION ================== */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" gutterBottom>
-          Ad-hoc Notification
-        </Typography>
-        <Paper sx={{ p: 2, mb: 2 }} variant="outlined">
-          <TextField
-            label="Member ID"
-            fullWidth
-            margin="normal"
-            value={adHocMemberID}
-            onChange={(e) => setAdHocMemberID(e.target.value)}
-          />
+        {/* ================== MAILJET TEMPLATED EMAIL ================== */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Mailjet Templated Email
+            </Typography>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              Need to create or edit a new template?{" "}
+              <a
+                href="https://app.mailjet.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "blue", textDecoration: "underline" }}
+              >
+                Go to Mailjet Dashboard
+              </a>
+            </Typography>
 
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Method</InputLabel>
-            <Select
-              value={adHocMethod}
-              label="Method"
-              onChange={(e) => setAdHocMethod(e.target.value)}
-            >
-              <MenuItem value="SMS">SMS</MenuItem>
-              <MenuItem value="Email">Email</MenuItem>
-            </Select>
-          </FormControl>
+            <Stack spacing={2} sx={{ mb: 2 }}>
+              <TextField
+                label="Mailjet Template ID"
+                fullWidth
+                value={templateId}
+                onChange={(e) => setTemplateId(e.target.value)}
+              />
+            </Stack>
 
-          <TextField
-            label="Message"
-            fullWidth
-            multiline
-            rows={3}
-            margin="normal"
-            value={adHocMessage}
-            onChange={(e) => setAdHocMessage(e.target.value)}
-          />
-          <Button variant="contained" onClick={handleSendAdHoc}>
-            Send Ad-hoc
-          </Button>
-        </Paper>
-      </Box>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              Select Members to Receive the Template
+            </Typography>
+            <div style={{ width: "100%", height: 400 }}>
+              <DataGrid
+                rows={allMembers}
+                columns={allMembersColumns}
+                getRowId={(row) => row.MemberID}
+                checkboxSelection
+                onSelectionModelChange={(newSelection) => {
+                  handleMemberSelection(newSelection);
+                }}
+                pageSize={5}
+                rowsPerPageOptions={[5, 10]}
+              />
+            </div>
+
+            <Box sx={{ mt: 2 }}>
+              <Button variant="contained" onClick={handleSendMailjetTemplate}>
+                Send Templated Email
+              </Button>
+            </Box>
+          </Paper>
+        </Grid>
+      </Grid>
 
       {/* ================== EDIT ANNOUNCEMENT DIALOG ================== */}
       <Dialog

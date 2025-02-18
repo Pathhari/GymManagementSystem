@@ -64,55 +64,38 @@ function getListStyle(droppableId, isDraggingOver) {
 }
 
 export default function TaskTimeManagement() {
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [staffId, setStaffId] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [schedule, setSchedule] = useState([]);
   const [isClockedIn, setIsClockedIn] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Keep clock updated every second
+  // 1) Load initial data
+  useEffect(() => {
+    fetch("/staff/dashboard-info")
+      .then(res => res.json())
+      .then(data => {
+        if (data.staffId) setStaffId(data.staffId);
+        if (data.tasks) {
+          const normalized = data.tasks.map(item => ({
+            ...item,
+            status: item.Status,            // <-- copy over Status to status
+            description: item.TaskDescription,
+          }));
+          setTasks(normalized);
+        }        if (data.attendance) setAttendance(data.attendance);
+        if (data.schedule) setSchedule(data.schedule);
+      })
+      .catch(err => console.error("Failed to load dashboard info:", err));
+  }, []);
+
+  // 2) Keep clock updated
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
-
-  // Fetch tasks, attendance, schedule on mount
-  useEffect(() => {
-    // 1) Fetch /staff/tasks
-    fetch("/staff/tasks")
-      .then((res) => res.json())
-      .then((data) => {
-        // Option B: Normalize data
-        // If the API returns an array: [ {...}, {...} ]
-        // or if it returns { tasks: [ {...}, {...} ] }
-        const arr = Array.isArray(data) ? data : (data.tasks || []);
-        // Convert property "Status" -> "status", "TaskDescription" -> "description"
-        const normalized = arr.map(item => ({
-          ...item,
-          status: item.Status,
-          description: item.TaskDescription,
-        }));
-        setTasks(normalized);
-      })
-      .catch((err) => console.error("Failed to load tasks:", err));
-
-    // 2) Fetch /staff/attendance
-    fetch("/staff/attendance")
-      .then((res) => res.json())
-      .then((data) => {
-        setAttendance(Array.isArray(data) ? data : data.attendance || []);
-      })
-      .catch((err) => console.error("Failed to load attendance:", err));
-
-    // 3) Fetch /staff/schedules
-    fetch("/staff/schedules")
-      .then((res) => res.json())
-      .then((data) => {
-        setSchedule(Array.isArray(data) ? data : data.schedule || []);
-      })
-      .catch((err) => console.error("Failed to load schedule:", err));
   }, []);
 
   // Separate tasks by status
@@ -152,17 +135,14 @@ export default function TaskTimeManagement() {
     }
   };
 
-  // Clock In/Out with StaffID=1
+  // 3) Clock in/out
   const handleClockInOut = async () => {
-    // This staff ID must exist in your staff table
-    const staffId = 1;
-
-    // Format date => "YYYY-MM-DD"
+    if (!staffId) {
+      console.warn("No staffId available.");
+      return;
+    }
     const dateStr = new Date().toISOString().split("T")[0];
-
-    // Format time => "HH:mm" (no seconds)
-    const fullTimeStr = currentTime.toLocaleTimeString("it-IT"); // e.g. "01:10:55"
-    const timeStr = fullTimeStr.slice(0,5); // => "01:10"
+    const timeStr = currentTime.toLocaleTimeString("it-IT").slice(0,5);
 
     const clockData = {
       StaffID: staffId,
@@ -191,12 +171,8 @@ export default function TaskTimeManagement() {
 
       // Refresh attendance
       const attendRes = await fetch("/staff/attendance");
-      if (!attendRes.ok) {
-        throw new Error(`Failed to fetch updated attendance: ${attendRes.status}`);
-      }
       const finalData = await attendRes.json();
       setAttendance(Array.isArray(finalData) ? finalData : finalData.attendance || []);
-
       setIsClockedIn(!isClockedIn);
 
     } catch (err) {

@@ -18,21 +18,33 @@ use Illuminate\Support\Arr;
 class StaffController extends Controller
 {   
 
-    public function staffDashboardInfo()
+// In StaffController:
+public function staffDashboardInfo()
 {
-    // If your staff tasks have relationships (like 'staff', etc.), you can eager load:
-    // tasks = StaffTask::with('staff')->where(...)...
-    // Or just do a simple all() if you want every row.
-    $tasks = \App\Models\StaffTask::with(['staff'])->orderBy('TaskID', 'desc')->get();
+    $staff = auth('staff')->user();
+    if (!$staff) {
+        return response()->json(['error' => 'Not logged in'], 401);
+    }
 
-    // Eager load 'staff' on your Attendance model if you want staff info
-    $attendance = \App\Models\Attendance::with(['staff'])->orderBy('Date', 'desc')->get();
+    // Return only tasks for this staff
+    $tasks = StaffTask::with('staff')
+        ->where('StaffID', $staff->StaffID)
+        ->orderBy('TaskID','desc')
+        ->get();
 
-    // Schedules with staff or anything else:
-    $schedules = \App\Models\StaffSchedule::with(['staff'])->orderBy('ShiftDate', 'desc')->get();
+    // Similarly filter attendance/schedules
+    $attendance = Attendance::with('staff')
+        ->where('StaffID', $staff->StaffID)
+        ->orderBy('Date','desc')
+        ->get();
 
-    // Return all in one JSON
+    $schedules = StaffSchedule::with('staff')
+        ->where('StaffID', $staff->StaffID)
+        ->orderBy('ShiftDate','desc')
+        ->get();
+
     return response()->json([
+        'staffId'    => $staff->StaffID,
         'tasks'      => $tasks,
         'attendance' => $attendance,
         'schedule'   => $schedules,

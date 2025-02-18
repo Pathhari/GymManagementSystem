@@ -519,9 +519,6 @@ export default function MaintenanceEquip() {
           }}
         >
           <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-            <Typography variant="subtitle2">
-              <strong>ID: {item.EquipmentID}</strong>
-            </Typography>
             <IconButton
               size="small"
               onClick={() => removeEquipment(item.EquipmentID)}

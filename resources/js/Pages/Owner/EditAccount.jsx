@@ -23,7 +23,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import axios from "axios";
 
-// Role options for new staff.
+// Role options for new staff
 const roleOptions = ["Staff", "Admin", "Owner"];
 
 export default function EditProfile() {
@@ -34,7 +34,6 @@ export default function EditProfile() {
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
-  // Fetch current profile details on mount.
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -51,6 +50,7 @@ export default function EditProfile() {
   const handleToggleShowConfirmPass = () => setShowConfirmPass((prev) => !prev);
 
   const handleSaveMyAccount = async () => {
+    // If we’re sending a new password, make sure it matches the confirm field
     if (newPassword && newPassword !== confirmPass) {
       alert("New Password and Confirm Password do not match!");
       return;
@@ -58,7 +58,10 @@ export default function EditProfile() {
     try {
       await axios.put("/profile", {
         email: userEmail.trim(),
-        password: newPassword.trim() ? newPassword.trim() : null
+        // Only send password if user entered a new one
+        password: newPassword.trim() ? newPassword.trim() : null,
+        // Include password_confirmation if user entered a new one
+        password_confirmation: newPassword.trim() ? confirmPass.trim() : null
       });
       alert("Your account changes have been saved!");
       setNewPassword("");
@@ -73,18 +76,19 @@ export default function EditProfile() {
   const [isAddStaffOpen, setAddStaffOpen] = useState(false);
   const [staffEmail, setStaffEmail] = useState("");
   const [staffPassword, setStaffPassword] = useState("");
+  // NEW: confirm password for staff
+  const [staffConfirmPassword, setStaffConfirmPassword] = useState("");
   const [staffRole, setStaffRole] = useState("Staff");
   const [staffName, setStaffName] = useState("");
 
   // We'll fetch real branches via GET /owner/branches.
   const [branchOptions, setBranchOptions] = useState([]);
-  const [staffBranch, setStaffBranch] = useState(""); // Will store the numeric BranchID
+  const [staffBranch, setStaffBranch] = useState(""); // numeric BranchID
 
   useEffect(() => {
     const loadBranches = async () => {
       try {
         const res = await axios.get("/owner/branches");
-        // Depending on your BranchController, the response may be wrapped in a "branches" key.
         setBranchOptions(res.data.branches || res.data);
       } catch (err) {
         console.error("Error loading branches:", err);
@@ -97,6 +101,7 @@ export default function EditProfile() {
   const handleOpenAddStaff = () => {
     setStaffEmail("");
     setStaffPassword("");
+    setStaffConfirmPassword("");
     setStaffRole("Staff");
     setStaffName("");
     setStaffBranch("");
@@ -104,8 +109,14 @@ export default function EditProfile() {
   };
 
   const handleAddStaff = async () => {
+    // Basic validation
     if (!staffName.trim() || !staffEmail.trim() || !staffPassword.trim() || !staffBranch) {
       alert("Please fill out all fields for the staff.");
+      return;
+    }
+    // Check password match
+    if (staffPassword.trim() !== staffConfirmPassword.trim()) {
+      alert("Password and Confirm Password do not match!");
       return;
     }
     try {
@@ -114,6 +125,8 @@ export default function EditProfile() {
         Email: staffEmail.trim(),
         Role: staffRole,
         password: staffPassword.trim(),
+        // Send password_confirmation to match backend "confirmed" rule
+        password_confirmation: staffConfirmPassword.trim(),
         BranchID: staffBranch
       });
       alert(
@@ -241,6 +254,18 @@ BranchID: ${res.data.BranchID}`
             value={staffPassword}
             onChange={(e) => setStaffPassword(e.target.value)}
           />
+
+          {/* NEW: Confirm Password Field */}
+          <TextField
+            label="Confirm Password"
+            variant="outlined"
+            fullWidth
+            type="password"
+            sx={{ mt: 2 }}
+            value={staffConfirmPassword}
+            onChange={(e) => setStaffConfirmPassword(e.target.value)}
+          />
+
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>Role</InputLabel>
             <Select label="Role" value={staffRole} onChange={(e) => setStaffRole(e.target.value)}>
@@ -251,10 +276,14 @@ BranchID: ${res.data.BranchID}`
               ))}
             </Select>
           </FormControl>
-          {/* Real branch list loaded from backend */}
+
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>Branch</InputLabel>
-            <Select label="Branch" value={staffBranch} onChange={(e) => setStaffBranch(e.target.value)}>
+            <Select
+              label="Branch"
+              value={staffBranch}
+              onChange={(e) => setStaffBranch(e.target.value)}
+            >
               {branchOptions.map((b) => (
                 <MenuItem key={b.BranchID} value={b.BranchID}>
                   {b.BranchName}

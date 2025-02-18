@@ -22,25 +22,20 @@ class BookingController extends Controller
      * ------------------------------------------------------------------ */
 
     /**
-     * Returns all Bookings in JSON form, including Branch info.
-     * Supports staff branch-check and an optional server-side ?branch= filter.
+     * Return Bookings in JSON, including branch info
      */
     public function indexBooking(Request $request)
     {
         $staff = auth('staff')->user();
-        // Start a query that eager-loads facility->branch
         $query = Booking::with(['member', 'facility.branch']);
 
-        // If a staff user is logged in, filter bookings by the staff’s branch(es)
         if ($staff) {
-            // Get the branch IDs associated with the staff from the pivot table
             $branchIDs = $staff->branches->pluck('BranchID')->toArray();
             $query->whereHas('facility', function($q) use ($branchIDs) {
                 $q->whereIn('BranchID', $branchIDs);
             });
         }
 
-        // Optional server-side filter: e.g. GET /booking?branch=Branch2
         if ($request->filled('branch')) {
             $branchName = $request->get('branch');
             $query->whereHas('facility.branch', function($q) use ($branchName) {
@@ -50,13 +45,12 @@ class BookingController extends Controller
 
         $bookings = $query->orderBy('BookingDate', 'desc')->get();
 
-        // Transform each booking into an array that includes Branch info
         $data = $bookings->map(function($b) {
             return [
                 'BookingID'    => $b->BookingID,
                 'MemberName'   => optional($b->member)->FullName ?? '',
                 'FacilityID'   => optional($b->facility)->FacilityID ?? null,
-                'FacilityName' => optional($b->facility)->Name ?? '',
+                'FacilityName' => optional($b->facility)->FacilityName ?? '', 
                 'BookingDate'  => $b->BookingDate,
                 'BookingTime'  => $b->BookingTime,
                 'Duration'     => $b->Duration,
@@ -70,119 +64,94 @@ class BookingController extends Controller
     }
 
     /**
-     * Store a new Booking.
+     * Store a new Booking (Facility + Payment).
      */
     public function storeBooking(Request $request)
     {
         $staff = auth('staff')->user();
-        // Validate incoming data
+
         $data = $request->validate([
-            'MemberID'    => 'required|exists:members,MemberID',
-            'FacilityID'  => 'required|exists:facilities,FacilityID',
-            'PaymentID'   => 'nullable|exists:payments,PaymentID',
-            'BookingDate' => 'required|date',
-            'BookingTime' => 'required|string|max:20',
-            'Duration'    => 'nullable|integer|min:1',
-            'Status'      => 'nullable|string|max:50'
+            'MemberID'      => 'required|exists:members,MemberID',
+            'FacilityID'    => 'required|exists:facilities,FacilityID',
+            'BookingDate'   => 'required|date',
+            'BookingTime'   => 'required|string|max:20',
+            'Duration'      => 'nullable|integer|min:1',
+            'Status'        => 'nullable|string|max:50',
+
+            'PaymentMethod' => 'required|string|max:50', 
+            'Amount'        => 'required|numeric|min:0',
         ]);
 
-        // If a staff user is logged in, ensure that the facility belongs to one of their branches
+        // Check facility belongs to staff's branch if staff is logged in
         if ($staff) {
             $facility = Facility::findOrFail($data['FacilityID']);
             $branchIDs = $staff->branches->pluck('BranchID')->toArray();
             if (!in_array($facility->BranchID, $branchIDs)) {
                 abort(403, 'You cannot create a booking for a facility outside your branch.');
             }
-        }
-
-        Booking::create($data);
-
-        return response()->json(['message' => 'Booking created successfully.'], 201);
-    }
-
-    /**
-     * Update an existing Booking record.
-     */
-    public function updateBooking(Request $request, $id)
-    {
-        $staff = auth('staff')->user();
-        $booking = Booking::findOrFail($id);
-
-        $data = $request->validate([
-            'MemberID'    => 'required|exists:members,MemberID',
-            'FacilityID'  => 'required|exists:facilities,FacilityID',
-            'PaymentID'   => 'nullable|exists:payments,PaymentID',
-            'BookingDate' => 'required|date',
-            'BookingTime' => 'required|string|max:20',
-            'Duration'    => 'nullable|integer|min:1',
-            'Status'      => 'nullable|string|max:50'
-        ]);
-
-        if ($staff) {
+        } else {
+            // For non-staff, just load facility for branch ID
             $facility = Facility::findOrFail($data['FacilityID']);
-            $branchIDs = $staff->branches->pluck('BranchID')->toArray();
-            if (!in_array($facility->BranchID, $branchIDs)) {
-                abort(403, 'You cannot update a booking for a facility outside your branch.');
-            }
         }
 
-        $booking->update($data);
+        return DB::transaction(function () use ($data, $facility) {
 
-        return response()->json(['message' => 'Booking updated successfully.']);
+            // 1) Create Payment
+            $payment = \App\Models\Payment::create([
+                'BranchID'      => $facility->BranchID,
+                'MemberID'      => $data['MemberID'],
+                'PaymentMethod' => $data['PaymentMethod'],
+                'Amount'        => $data['Amount'],
+                'PaymentDate'   => now(),
+                'Status'        => 'Paid',
+                'PaymentFor'    => ['Booking'], 
+            ]);
+
+            // 2) Create Booking referencing Payment
+            $booking = Booking::create([
+                'MemberID'   => $data['MemberID'],
+                'FacilityID' => $data['FacilityID'],
+                'PaymentID'  => $payment->PaymentID,
+                'BookingDate'=> $data['BookingDate'],
+                'BookingTime'=> $data['BookingTime'],
+                'Duration'   => $data['Duration'] ?? 1,
+                'Status'     => $data['Status']   ?? 'Confirmed',
+            ]);
+
+            return response()->json([
+                'message' => 'Booking & Payment created successfully.',
+                'booking' => $booking,
+                'payment' => $payment
+            ], 201);
+        });
     }
 
-    /**
-     * Cancel a booking.
-     */
-    public function cancelBooking($id)
-    {
-        $staff = auth('staff')->user();
-        $booking = Booking::with('facility')->findOrFail($id);
-
-        if ($staff) {
-            $branchIDs = $staff->branches->pluck('BranchID')->toArray();
-            if (!in_array(optional($booking->facility)->BranchID, $branchIDs)) {
-                abort(403, 'You cannot cancel a booking from another branch.');
-            }
-        }
-
-        if (empty($booking->Status) || $booking->Status !== 'Cancelled') {
-            $booking->Status = 'Cancelled';
-            $booking->save();
-        }
-
-        return response()->json(['message' => 'Booking cancelled.']);
-    }
-
-    /**
-     * Returns a list of coaches.
-     */
+    /* --------------------------------------------------------------
+     *  Coaches & Facilities Index
+     * -------------------------------------------------------------- */
     public function index()
     {
         $coaches = Coach::orderBy('FullName')->get();
         return response()->json(['coaches' => $coaches]);
     }
 
-    /**
-     * Returns a list of facilities.
-     */
     public function indexFacilities()
     {
-        $facilities = Facility::orderBy('Name', 'asc')->get();
+        $facilities = Facility::orderBy('FacilityName', 'asc')->get();
         return response()->json(['facilities' => $facilities]);
     }
 
     /* ------------------------------------------------------------------
-     * O. COACHING SESSIONS (Table #15)
+     * O. COACHING SESSIONS
      * ------------------------------------------------------------------ */
 
     /**
-     * Returns coaching sessions in JSON form, with branch filtering for staff.
+     * Return coaching sessions in JSON, with branch filtering
      */
     public function indexSessions(Request $request)
     {
         $staff = auth('staff')->user();
-        $query = CoachingSession::with(['coach', 'branch']);
+        $query = CoachingSession::with(['coach','branch']);
 
         if ($staff) {
             $branchIDs = $staff->branches->pluck('BranchID');
@@ -198,7 +167,7 @@ class BookingController extends Controller
             });
         }
 
-        $sessions = $query->orderBy('StartTime', 'desc')->get();
+        $sessions = $query->orderBy('StartTime','desc')->get();
 
         $data = $sessions->map(function($s) {
             return [
@@ -218,7 +187,7 @@ class BookingController extends Controller
     }
 
     /**
-     * Store a new Coaching Session.
+     * Create a Coaching Session (no Payment creation here).
      */
     public function storeSession(Request $request)
     {
@@ -234,16 +203,26 @@ class BookingController extends Controller
             'Fee'          => 'nullable|numeric|min:0',
         ]);
 
-        $session = CoachingSession::create($data);
+        $session = CoachingSession::create([
+            'BranchID'   => $data['BranchID'],
+            'SessionName'=> $data['SessionName'],
+            'SessionType'=> $data['SessionType'],
+            'CoachID'    => $data['CoachID'],
+            'StartTime'  => $data['StartTime'],
+            'EndTime'    => $data['EndTime'],
+            'Capacity'   => $data['Capacity'] ?? 10,
+            'Location'   => $data['Location'] ?? null,
+            'Fee'        => $data['Fee']       ?? 0,
+        ]);
 
         return response()->json([
             'message' => 'Session created successfully.',
-            'session' => $session
+            'session' => $session,
         ], 201);
     }
 
     /**
-     * Update an existing Coaching Session.
+     * Update an existing Coaching Session
      */
     public function updateSession(Request $request, $id)
     {
@@ -267,40 +246,94 @@ class BookingController extends Controller
     }
 
     /**
-     * Cancel a Coaching Session.
+     * Cancel a Coaching Session
      */
     public function cancelSession($id)
     {
         $session = CoachingSession::findOrFail($id);
-
         if (empty($session->Status) || $session->Status !== 'Cancelled') {
             $session->Status = 'Cancelled';
             $session->save();
         }
-
         return response()->json(['message' => 'Session cancelled.']);
     }
 
     /**
-     * Store a Session Booking.
+     * Store a Session Booking, now with Payment creation here.
      */
     public function storeSessionBooking(Request $request)
     {
         $data = $request->validate([
-            'SessionID'   => 'required|exists:coaching_sessions,SessionID',
-            'MemberID'    => 'required|exists:members,MemberID',
-            'BookingDate' => 'required|date',
-            'PaymentID'   => 'nullable|exists:payments,PaymentID',
-            'Status'      => 'nullable|string|max:50',
+            'SessionID'     => 'required|exists:coaching_sessions,SessionID',
+            'MemberID'      => 'required|exists:members,MemberID',
+            'BookingDate'   => 'required|date',
+            'Status'        => 'nullable|string|max:50',
+
+            // Payment fields
+            'PaymentMethod' => 'required|string|max:50',
+            'Amount'        => 'required|numeric|min:0',
         ]);
 
-        SessionBooking::create($data);
+        return DB::transaction(function () use ($data) {
+            // 1) We might want to increment Participants for the session
+            $session = CoachingSession::find($data['SessionID']);
+            if ($session) {
+                $session->Participants = ($session->Participants ?? 0) + 1;
+                $session->save();
+            }
 
-        return response()->json(['message' => 'Session booked successfully.']);
+            // 2) Create Payment record (DailyCashFlow observer)
+            $payment = \App\Models\Payment::create([
+                'BranchID'      => $session ? $session->BranchID : null,
+                'MemberID'      => $data['MemberID'],
+                'PaymentMethod' => $data['PaymentMethod'],
+                'Amount'        => $data['Amount'],
+                'PaymentDate'   => now(),
+                'Status'        => 'Paid',
+                'PaymentFor'    => ['CoachingSessionBooking'],
+            ]);
+
+            // 3) Create SessionBooking referencing Payment (if you want PaymentID stored too)
+            $sb = SessionBooking::create([
+                'SessionID'   => $data['SessionID'],
+                'MemberID'    => $data['MemberID'],
+                'BookingDate' => $data['BookingDate'],
+                'PaymentID'   => $payment->PaymentID, // store it if you have a PaymentID column
+                'Status'      => $data['Status'] ?? 'Confirmed',
+            ]);
+
+            return response()->json([
+                'message' => 'Session booked successfully, payment recorded.',
+                'session_booking' => $sb,
+                'payment' => $payment
+            ]);
+        });
     }
 
     /**
-     * Add a Member to the Session Waitlist.
+     * NEW: listSessionBookings
+     */
+    public function listSessionBookings()
+    {
+        $entries = SessionBooking::with(['session','member'])->get();
+
+        $data = $entries->map(function($sb) {
+            return [
+                'SessionBookingID' => $sb->SessionBookingID,
+                'SessionID'        => $sb->SessionID,
+                'SessionName'      => optional($sb->session)->SessionName ?? '',
+                'MemberID'         => $sb->MemberID,
+                'MemberName'       => optional($sb->member)->FullName ?? '',
+                'BookingDate'      => $sb->BookingDate,
+                'Status'           => $sb->Status,
+            ];
+        });
+
+        return response()->json(['session_bookings' => $data]);
+    }
+
+    /**
+     * Waitlist
      */
     public function addToWaitlist(Request $request)
     {
@@ -310,14 +343,12 @@ class BookingController extends Controller
             'WaitlistDate' => 'nullable|date',
             'Status'       => 'nullable|string|max:50',
         ]);
-
         SessionWaitlist::create($data);
-
         return response()->json(['message' => 'Added to waitlist.']);
     }
 
     /**
-     * Mark Session Attendance.
+     * Attendance
      */
     public function markAttendance(Request $request)
     {
@@ -326,14 +357,12 @@ class BookingController extends Controller
             'MemberID'       => 'required|exists:members,MemberID',
             'AttendanceDate' => 'required|date',
         ]);
-
         SessionAttendance::create($data);
-
         return response()->json(['message' => 'Attendance marked successfully.']);
     }
 
     /**
-     * Returns the most popular booking (facility) this month.
+     * Popular Booking
      */
     public function mostPopular()
     {
@@ -349,7 +378,7 @@ class BookingController extends Controller
         if ($popularBooking) {
             $facility = DB::table('facilities')->where('FacilityID', $popularBooking->FacilityID)->first();
             if ($facility) {
-                $mostPopular = $facility->Name;
+                $mostPopular = $facility->FacilityName ?? $facility->Name;
             }
         }
 
@@ -360,7 +389,7 @@ class BookingController extends Controller
     }
 
     /**
-     * Returns booking trends grouped by month.
+     * Booking Trends
      */
     public function bookingTrends()
     {
@@ -373,30 +402,39 @@ class BookingController extends Controller
         return response()->json($trends, 200);
     }
 
+    /**
+     * Today Bookings
+     */
     public function getTodayBookings()
     {
-        // Use Carbon or now() to get today's date in Y-m-d format
+        $staff = auth('staff')->user();
         $today = Carbon::now()->format('Y-m-d');
     
-        // If staff can only see their branch, you might also filter by branch.
-        // For a simple example, just get all for today's date:
-        $bookings = Booking::with(['member', 'facility'])
+        $query = Booking::with(['member','facility'])
             ->whereDate('BookingDate', $today)
-            ->orderBy('BookingTime', 'asc')
-            ->get();
+            ->orderBy('BookingTime', 'asc');
     
-        // Transform each booking into the structure your front end expects
-        $results = $bookings->map(function ($b) {
+        // Restrict to staff’s branches
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID')->toArray();
+            $query->whereHas('facility', function($q) use ($branchIDs) {
+                $q->whereIn('BranchID', $branchIDs);
+            });
+        }
+    
+        $bookings = $query->get();
+    
+        $results = $bookings->map(function($b) {
             return [
                 'BookingID'   => $b->BookingID,
-                'MemberName'  => optional($b->member)->FullName,  // fallback to null if no member
+                'MemberName'  => optional($b->member)->FullName,
                 'BookingDate' => $b->BookingDate,
                 'BookingTime' => $b->BookingTime,
-                'FacilityName'=> optional($b->facility)->Name,     // fallback to null if no facility
+                'FacilityName'=> optional($b->facility)->FacilityName,
             ];
         });
     
         return response()->json($results, 200);
     }
-
+    
 }

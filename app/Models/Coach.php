@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\CoachingSession;
 
 class Coach extends Model
 {
@@ -18,7 +19,7 @@ class Coach extends Model
     // A coach can have many sessions
     public function coachingSessions()
     {
-        return $this->hasMany(CoachingSessions::class, 'CoachID', 'CoachID');
+        return $this->hasMany(CoachingSession::class, 'CoachID', 'CoachID');
     }
     
 }
