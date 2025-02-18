@@ -82,15 +82,15 @@ class TestDataSeeder extends Seeder
 
         // 3) Membership Plans
         $planLockIn = MembershipPlan::create([
-            'PlanName'     => 'Lock-In (3 months)',
-            'Price'        => 2000,
+            'PlanName'     => 'New Member Lock-In (3 months)',
+            'Price'        => 1999,
             'Duration'     => 90,
             'LockInMonths' => 3,
             'BillingMode'  => 'half-month',
         ]);
         $planMonthly = MembershipPlan::create([
             'PlanName'     => 'Regular Monthly',
-            'Price'        => 1500,
+            'Price'        => 1999,
             'Duration'     => 30,
             'LockInMonths' => null,
             'BillingMode'  => null,

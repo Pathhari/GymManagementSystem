@@ -14,27 +14,25 @@ import {
   IconButton,
   Tooltip,
   Divider,
-  List,
-  ListItem,
-  ListItemText,
   Checkbox,
   MenuItem,
   FormControl,
   Select,
   InputLabel,
-  Stack
+  Stack,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 
+// DataGrid columns for generic "All Members"
 const allMembersColumns = [
   { field: "MemberID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Email", headerName: "Email", width: 220 },
 ];
 
-// Columns for expiring members
+// Columns for "Expiring Members"
 const expiringColumns = [
   { field: "MemberID", headerName: "ID", width: 80 },
   { field: "name", headerName: "Name", width: 180 },
@@ -49,6 +47,13 @@ const expiringColumns = [
     },
   },
   { field: "Email", headerName: "Email", width: 220 },
+];
+
+// NEW: Columns for the "SMS Member Selection" DataGrid
+const smsColumns = [
+  { field: "MemberID", headerName: "ID", width: 70 },
+  { field: "FullName", headerName: "Name", width: 180 },
+  { field: "Phone", headerName: "Phone", width: 180 },
 ];
 
 export default function Notifications() {
@@ -97,6 +102,17 @@ export default function Notifications() {
   const [templateId, setTemplateId] = useState("");
 
   // ---------------------------------------------------
+  // 7. Semaphore SMS
+  // ---------------------------------------------------
+  const [semaphoreNumbers, setSemaphoreNumbers] = useState("");  // e.g. "09998887777, 09171234567"
+  const [semaphoreMessage, setSemaphoreMessage] = useState("");
+  const [semaphoreSenderName, setSemaphoreSenderName] = useState("");
+
+  // NEW: We’ll load the same "SMS members" data from your membership endpoint
+  const [smsMembers, setSmsMembers] = useState([]);
+  const [selectedSMSMemberIDs, setSelectedSMSMemberIDs] = useState([]);
+
+  // ---------------------------------------------------
   // useEffect: load everything on mount
   // ---------------------------------------------------
   useEffect(() => {
@@ -104,6 +120,7 @@ export default function Notifications() {
     loadStaff();
     loadExpiringMembers();
     loadAllMembers();
+    loadMembersForSMS(); // new
   }, []);
 
   // ---------------------------------------------------
@@ -140,10 +157,20 @@ export default function Notifications() {
   const loadAllMembers = async () => {
     try {
       const res = await axios.get("/membership/members");
-      // Suppose res.data has { members: [...] }
       setAllMembers(res.data.members || []);
     } catch (error) {
       console.error("Failed to load all members:", error);
+    }
+  };
+
+  // Load members again, but specifically for phone usage
+  const loadMembersForSMS = async () => {
+    try {
+      const res = await axios.get("/membership/members");
+      // We'll store the same data but in a separate state if we want to filter columns, etc.
+      setSmsMembers(res.data.members || []);
+    } catch (error) {
+      console.error("Failed to load members for SMS:", error);
     }
   };
 
@@ -386,6 +413,64 @@ export default function Notifications() {
       console.error("Mailjet template send failed:", error);
       alert("Failed to send Mailjet template.");
     }
+  };
+
+  // ---------------------------------------------------
+  // Semaphore SMS
+  // ---------------------------------------------------
+  const handleSendSemaphoreSMS = async () => {
+    if (!semaphoreNumbers.trim()) {
+      alert("Please provide at least one mobile number.");
+      return;
+    }
+    if (!semaphoreMessage.trim()) {
+      alert("Please enter your SMS message.");
+      return;
+    }
+    const payload = {
+      numbers: semaphoreNumbers, // e.g. "09998887777,09171234567"
+      message: semaphoreMessage,
+      senderName: semaphoreSenderName,
+    };
+
+    if (!window.confirm("Send the above message via Semaphore?")) {
+      return;
+    }
+
+    try {
+      const resp = await axios.post("/notifications/send-semaphore-sms", payload);
+      if (resp.data && resp.data.status === "success") {
+        alert("SMS successfully sent via Semaphore!");
+      } else {
+        alert("Something went wrong. Check logs or details.");
+      }
+      // Clear fields
+      setSemaphoreNumbers("");
+      setSemaphoreMessage("");
+      setSemaphoreSenderName("");
+    } catch (error) {
+      console.error("Sending Semaphore SMS failed:", error);
+      alert("Semaphore SMS error. Check console or logs.");
+    }
+  };
+
+  // NEW: auto-fill phone numbers from the selected rows
+  const handleAutoFillNumbers = () => {
+    // Filter the members that are selected
+    const selectedRows = smsMembers.filter((m) =>
+      selectedSMSMemberIDs.includes(m.MemberID)
+    );
+    // Extract phone from each
+    const phones = selectedRows
+      .map((m) => m.Phone)
+      .filter((p) => !!p && p.trim().length > 0); // remove empty
+
+    if (phones.length === 0) {
+      alert("No valid phone numbers among selected members.");
+      return;
+    }
+    // Join them with commas
+    setSemaphoreNumbers(phones.join(","));
   };
 
   // ---------------------------------------------------
@@ -686,6 +771,68 @@ export default function Notifications() {
                 Send Templated Email
               </Button>
             </Box>
+          </Paper>
+        </Grid>
+
+        {/* ================== SEMAPHORE SMS ================== */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Send SMS via Semaphore
+            </Typography>
+
+            {/* 1) DataGrid to pick which members to text */}
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              (Optional) Select members to pull their phone numbers
+            </Typography>
+            <div style={{ width: "100%", height: 300, marginBottom: 16 }}>
+              <DataGrid
+                rows={smsMembers}
+                columns={smsColumns}
+                getRowId={(row) => row.MemberID}
+                checkboxSelection
+                onSelectionModelChange={(ids) => setSelectedSMSMemberIDs(ids)}
+                pageSize={5}
+                rowsPerPageOptions={[5, 10]}
+              />
+            </div>
+            <Button
+              variant="outlined"
+              sx={{ mb: 2 }}
+              onClick={handleAutoFillNumbers}
+            >
+              Auto-Fill from Selected
+            </Button>
+
+            {/* 2) Manual fields for custom phone input */}
+            <Stack spacing={2}>
+              <TextField
+                label="Recipient Number(s)"
+                placeholder='Format: "09998887777" or "09998887777,09171234567"'
+                fullWidth
+                value={semaphoreNumbers}
+                onChange={(e) => setSemaphoreNumbers(e.target.value)}
+              />
+              <TextField
+                label="SMS Message"
+                multiline
+                rows={2}
+                fullWidth
+                value={semaphoreMessage}
+                onChange={(e) => setSemaphoreMessage(e.target.value)}
+              />
+              <TextField
+                label="Sender Name (optional)"
+                placeholder="Defaults to SEMAPHORE"
+                fullWidth
+                value={semaphoreSenderName}
+                onChange={(e) => setSemaphoreSenderName(e.target.value)}
+              />
+
+              <Button variant="contained" onClick={handleSendSemaphoreSMS}>
+                Send via Semaphore
+              </Button>
+            </Stack>
           </Paper>
         </Grid>
       </Grid>

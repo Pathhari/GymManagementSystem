@@ -523,4 +523,61 @@ public function sendStaffNotification(Request $request)
     ]);
 }
 
+public function sendSemaphoreSMS(Request $request)
+{
+    $data = $request->validate([
+        'numbers'    => 'required|string', // e.g. "09998887777,09171234567"
+        'message'    => 'required|string',
+        'senderName' => 'nullable|string',
+    ]);
+
+    // Grab from .env or config (e.g. config('services.semaphore.key'))
+    $apiKey = config('services.semaphore.key'); 
+    if (!$apiKey) {
+        return response()->json(['status'=>'error','message'=>'Missing Semaphore API Key'], 500);
+    }
+
+    // Build POST fields
+    // If user entered multiple numbers, we pass them as "number=0999...,0917..."
+    // or we can just do string replacement if needed.
+    $postData = [
+        'apikey'     => $apiKey,
+        'number'     => $data['numbers'],   // comma-separated
+        'message'    => $data['message'],
+        'sendername' => $data['senderName'] ?? 'SEMAPHORE'
+    ];
+
+    // Now we send cURL or Guzzle POST to https://api.semaphore.co/api/v4/messages
+    try {
+        $client = new \GuzzleHttp\Client();
+        $response = $client->post('https://api.semaphore.co/api/v4/messages', [
+            'form_params' => $postData,
+        ]);
+
+        $json = json_decode($response->getBody()->getContents(), true);
+
+        // The Semaphore API typically returns an array of message objects.
+        // If $json is not empty, we can check or log it
+        if (is_array($json)) {
+            // You can do extra checks here for status, e.g. "Queued", "Pending", etc.
+            return response()->json([
+                'status'   => 'success',
+                'response' => $json,
+            ]);
+        } else {
+            return response()->json([
+                'status'=>'error',
+                'message'=>'Unexpected Semaphore response format.',
+                'raw' => $json
+            ], 500);
+        }
+    } catch (\Exception $ex) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => $ex->getMessage(),
+        ], 500);
+    }
+}
+
+
 }

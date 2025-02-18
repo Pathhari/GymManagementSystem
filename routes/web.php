@@ -301,9 +301,13 @@ Route::prefix('notifications')->group(function() {
         ->middleware('auth:owner') // or any guard you prefer
         ->name('notifications.sendExpiringReminder');
 
-        Route::post('/notifications/send-mailjet-template', [NotificationController::class, 'sendMailjetTemplate'])
-        ->middleware('auth:owner,admin,staff')
-        ->name('notifications.sendMailjetTemplate');
+    Route::post('/notifications/send-mailjet-template', [NotificationController::class, 'sendMailjetTemplate'])
+    ->middleware('auth:owner,admin,staff')
+    ->name('notifications.sendMailjetTemplate');
+
+    Route::post('/notifications/send-semaphore-sms', [NotificationController::class, 'sendSemaphoreSMS'])
+    ->middleware('auth:owner,admin,staff');
+
     
         
 /*

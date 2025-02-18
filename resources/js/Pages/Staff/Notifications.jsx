@@ -14,20 +14,18 @@ import {
   IconButton,
   Tooltip,
   Divider,
-  List,
-  ListItem,
-  ListItemText,
   Checkbox,
   MenuItem,
   FormControl,
   Select,
   InputLabel,
-  Stack
+  Stack,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 
+// DataGrid columns for "All Members"
 const allMembersColumns = [
   { field: "MemberID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
@@ -97,6 +95,13 @@ export default function Notifications() {
   const [templateId, setTemplateId] = useState("");
 
   // ---------------------------------------------------
+  // 7. Semaphore SMS (New Section)
+  // ---------------------------------------------------
+  const [semaphoreNumbers, setSemaphoreNumbers] = useState("");  // e.g. "09998887777, 09171234567"
+  const [semaphoreMessage, setSemaphoreMessage] = useState("");
+  const [semaphoreSenderName, setSemaphoreSenderName] = useState("");
+
+  // ---------------------------------------------------
   // useEffect: load everything on mount
   // ---------------------------------------------------
   useEffect(() => {
@@ -140,7 +145,6 @@ export default function Notifications() {
   const loadAllMembers = async () => {
     try {
       const res = await axios.get("/membership/members");
-      // Suppose res.data has { members: [...] }
       setAllMembers(res.data.members || []);
     } catch (error) {
       console.error("Failed to load all members:", error);
@@ -269,6 +273,7 @@ export default function Notifications() {
       return;
     }
     try {
+      // Suppose you have a route that sends bulk SMS via your existing or alternative approach
       await axios.post("/notifications/send/bulk-sms", {
         message: bulkSMSMessage,
       });
@@ -389,6 +394,46 @@ export default function Notifications() {
   };
 
   // ---------------------------------------------------
+  // Semaphore SMS (New)
+  // ---------------------------------------------------
+  const handleSendSemaphoreSMS = async () => {
+    if (!semaphoreNumbers.trim()) {
+      alert("Please provide at least one mobile number.");
+      return;
+    }
+    if (!semaphoreMessage.trim()) {
+      alert("Please enter your SMS message.");
+      return;
+    }
+    // Optional sender name
+    const payload = {
+      numbers: semaphoreNumbers, // e.g. "09998887777,09171234567"
+      message: semaphoreMessage,
+      senderName: semaphoreSenderName, // can be empty
+    };
+
+    if (!window.confirm("Send the above message via Semaphore?")) {
+      return;
+    }
+
+    try {
+      const resp = await axios.post("/notifications/send-semaphore-sms", payload);
+      if (resp.data && resp.data.status === "success") {
+        alert("SMS successfully sent via Semaphore!");
+      } else {
+        alert("Something went wrong. Check logs or details.");
+      }
+      // Clear fields
+      setSemaphoreNumbers("");
+      setSemaphoreMessage("");
+      setSemaphoreSenderName("");
+    } catch (error) {
+      console.error("Sending Semaphore SMS failed:", error);
+      alert("Semaphore SMS error. Check console or logs.");
+    }
+  };
+
+  // ---------------------------------------------------
   // Rendering
   // ---------------------------------------------------
   return (
@@ -399,7 +444,6 @@ export default function Notifications() {
       <Divider sx={{ mb: 3 }} />
 
       <Grid container spacing={3}>
-        
         {/* ================== ANNOUNCEMENTS ================== */}
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2 }}>
@@ -509,6 +553,134 @@ export default function Notifications() {
           </Paper>
         </Grid>
 
+        {/* ================== BULK SMS & BULK EMAIL ================== */}
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6">Bulk SMS</Typography>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="SMS Message"
+                fullWidth
+                multiline
+                rows={2}
+                value={bulkSMSMessage}
+                onChange={(e) => setBulkSMSMessage(e.target.value)}
+              />
+              <Button variant="contained" onClick={handleSendBulkSMS}>
+                Send Bulk SMS
+              </Button>
+            </Stack>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6">Bulk Email</Typography>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="Subject"
+                fullWidth
+                value={bulkEmailSubject}
+                onChange={(e) => setBulkEmailSubject(e.target.value)}
+              />
+              <TextField
+                label="Email Body"
+                fullWidth
+                multiline
+                rows={3}
+                value={bulkEmailBody}
+                onChange={(e) => setBulkEmailBody(e.target.value)}
+              />
+              <Button variant="contained" onClick={handleSendBulkEmail}>
+                Send Bulk Email
+              </Button>
+            </Stack>
+          </Paper>
+        </Grid>
+
+        {/* ================== AD-HOC NOTIFICATION ================== */}
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6">Ad-hoc Notification</Typography>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="Member ID"
+                fullWidth
+                value={adHocMemberID}
+                onChange={(e) => setAdHocMemberID(e.target.value)}
+              />
+              <FormControl fullWidth>
+                <InputLabel>Method</InputLabel>
+                <Select
+                  value={adHocMethod}
+                  label="Method"
+                  onChange={(e) => setAdHocMethod(e.target.value)}
+                >
+                  <MenuItem value="SMS">SMS</MenuItem>
+                  <MenuItem value="Email">Email</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField
+                label="Message"
+                fullWidth
+                multiline
+                rows={3}
+                value={adHocMessage}
+                onChange={(e) => setAdHocMessage(e.target.value)}
+              />
+              <Button variant="contained" onClick={handleSendAdHoc}>
+                Send Ad-hoc
+              </Button>
+            </Stack>
+          </Paper>
+        </Grid>
+
+        {/* ================== STAFF NOTIFICATION ================== */}
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6">Notify Staff</Typography>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="Subject"
+                fullWidth
+                value={notifSubject}
+                onChange={(e) => setNotifSubject(e.target.value)}
+              />
+              <TextField
+                label="Message"
+                fullWidth
+                multiline
+                rows={2}
+                value={notifMessage}
+                onChange={(e) => setNotifMessage(e.target.value)}
+              />
+              <Box
+                sx={{
+                  maxHeight: 120,
+                  overflowY: "auto",
+                  border: "1px solid #ccc",
+                  p: 1,
+                }}
+              >
+                {staffList.map((staff) => (
+                  <Box
+                    key={staff.id}
+                    sx={{ display: "flex", alignItems: "center" }}
+                  >
+                    <Checkbox
+                      checked={selectedStaff.includes(staff.id)}
+                      onChange={() => handleStaffToggle(staff.id)}
+                    />
+                    <Typography>{staff.name}</Typography>
+                  </Box>
+                ))}
+              </Box>
+              <Button variant="contained" onClick={handleSendToStaff}>
+                Send to Staff
+              </Button>
+            </Stack>
+          </Paper>
+        </Grid>
 
         {/* ================== MAILJET TEMPLATED EMAIL ================== */}
         <Grid item xs={12}>
@@ -559,6 +731,42 @@ export default function Notifications() {
                 Send Templated Email
               </Button>
             </Box>
+          </Paper>
+        </Grid>
+
+        {/* ================== SEMAPHORE SMS ================== */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Send SMS via Semaphore
+            </Typography>
+            <Stack spacing={2}>
+              <TextField
+                label="Recipient Number(s)"
+                placeholder='Format: "09998887777" or "09998887777,09171234567"'
+                fullWidth
+                value={semaphoreNumbers}
+                onChange={(e) => setSemaphoreNumbers(e.target.value)}
+              />
+              <TextField
+                label="SMS Message"
+                multiline
+                rows={2}
+                fullWidth
+                value={semaphoreMessage}
+                onChange={(e) => setSemaphoreMessage(e.target.value)}
+              />
+              <TextField
+                label="Sender Name (optional)"
+                placeholder="Defaults to SEMAPHORE"
+                fullWidth
+                value={semaphoreSenderName}
+                onChange={(e) => setSemaphoreSenderName(e.target.value)}
+              />
+              <Button variant="contained" onClick={handleSendSemaphoreSMS}>
+                Send via Semaphore
+              </Button>
+            </Stack>
           </Paper>
         </Grid>
       </Grid>
