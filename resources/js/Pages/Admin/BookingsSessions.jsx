@@ -86,7 +86,7 @@ export default function BookingsSessions() {
   // ------------------ States ------------------
   const [bookings, setBookings] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [sessionBookings, setSessionBookings] = useState([]); // NEW
+  const [sessionBookings, setSessionBookings] = useState([]);
   const [calendarEvents, setCalendarEvents] = useState([]);
 
   const [coaches, setCoaches] = useState([]);
@@ -128,7 +128,7 @@ export default function BookingsSessions() {
   const [editSessionModal, setEditSessionModal] = useState(false);
   const [selectedSession, setSelectedSession] = useState(null);
 
-  // NEW BOOKING FIELDS
+  // New Booking fields
   const [newBooking, setNewBooking] = useState({
     MemberID: "",
     FacilityID: "",
@@ -141,7 +141,7 @@ export default function BookingsSessions() {
   });
   const [selectedBranchForBooking, setSelectedBranchForBooking] = useState("");
 
-  // NEW SESSION FIELDS
+  // New Session fields (no payment creation here)
   const [newSession, setNewSession] = useState({
     BranchID: "",
     SessionName: "",
@@ -154,16 +154,17 @@ export default function BookingsSessions() {
     Capacity: "",
     Location: "",
     Fee: "",
-    PaymentMethod: "",
-    PaymentAmount: "",
   });
 
-  // Book Session (for a member)
+  // Book Session (Coaching) Dialog
   const [isBookSessionOpen, setBookSessionOpen] = useState(false);
   const [sessionToBook, setSessionToBook] = useState(null);
   const [sessionBookingMemberID, setSessionBookingMemberID] = useState("");
   const [sessionBookingDate, setSessionBookingDate] = useState("");
   const [sessionBookingStatus, setSessionBookingStatus] = useState("Confirmed");
+  // Payment fields (for session booking)
+  const [sessionBookingPaymentMethod, setSessionBookingPaymentMethod] = useState("Cash");
+  const [sessionBookingPaymentAmount, setSessionBookingPaymentAmount] = useState("");
 
   // Waitlist
   const [isWaitlistOpen, setWaitlistOpen] = useState(false);
@@ -211,7 +212,7 @@ export default function BookingsSessions() {
       const loadedSessions = sessionRes.data.sessions || [];
 
       // 3) SessionBookings
-      const sbRes = await axios.get("/booking/sessions/bookings"); // Ensure your route returns them
+      const sbRes = await axios.get("/booking/sessions/bookings");
       const loadedSessionBookings = sbRes.data.session_bookings || [];
 
       // 4) Members
@@ -228,12 +229,11 @@ export default function BookingsSessions() {
 
       setBookings(loadedBookings);
       setSessions(loadedSessions);
-      setSessionBookings(loadedSessionBookings); // store them
+      setSessionBookings(loadedSessionBookings);
       setMembers(loadedMembers);
       setFacilities(loadedFacilities);
       setCoaches(loadedCoaches);
 
-      // Merge them for the calendar
       const mergedEvents = createCalendarEvents(
         loadedBookings,
         loadedSessions,
@@ -245,7 +245,7 @@ export default function BookingsSessions() {
     }
   };
 
-  // ------------------ Filtering Bookings & Sessions ------------------
+  // ------------------ Filtering ------------------
   const filteredBookings = bookings.filter((b) => {
     const branchMatches =
       branchFilter === "all" || Number(b.BranchID) === Number(branchFilter);
@@ -321,6 +321,7 @@ export default function BookingsSessions() {
   };
 
   const handleCancelBooking = async (bookingId) => {
+    // Example: if your API supports it
     try {
       await axios.post(`/booking/${bookingId}/cancel`);
       setBookings((prev) => prev.filter((b) => b.BookingID !== bookingId));
@@ -347,7 +348,6 @@ export default function BookingsSessions() {
         BookingTime: newBooking.BookingTime,
         Duration: newBooking.Duration || 1,
         Status: newBooking.Status || "Confirmed",
-
         PaymentMethod: newBooking.PaymentMethod || "Cash",
         Amount: Number(newBooking.PaymentAmount) || 0,
       });
@@ -361,6 +361,7 @@ export default function BookingsSessions() {
   const handleUpdateBooking = async () => {
     if (!selectedBooking) return;
     try {
+      // Adjust if your backend supports PUT /booking/:id
       await axios.put(`/booking/${selectedBooking.BookingID}`, {
         MemberID: selectedBooking.MemberID,
         FacilityID: selectedBooking.FacilityID,
@@ -406,11 +407,16 @@ export default function BookingsSessions() {
 
   const handleCreateSession = async () => {
     try {
-      const startFull = dayjs(`${newSession.StartDate} ${newSession.StartTime}`, "YYYY-MM-DD HH:mm:ss")
-        .format("YYYY-MM-DDTHH:mm");
-      const endFull = dayjs(`${newSession.EndDate} ${newSession.EndTime}`, "YYYY-MM-DD HH:mm:ss")
-        .format("YYYY-MM-DDTHH:mm");
+      const startFull = dayjs(
+        `${newSession.StartDate} ${newSession.StartTime}`,
+        "YYYY-MM-DD HH:mm:ss"
+      ).format("YYYY-MM-DDTHH:mm");
+      const endFull = dayjs(
+        `${newSession.EndDate} ${newSession.EndTime}`,
+        "YYYY-MM-DD HH:mm:ss"
+      ).format("YYYY-MM-DDTHH:mm");
 
+      // No payment creation here
       await axios.post("/booking/sessions", {
         BranchID: newSession.BranchID,
         SessionName: newSession.SessionName,
@@ -421,10 +427,6 @@ export default function BookingsSessions() {
         Capacity: Number(newSession.Capacity) || 10,
         Location: newSession.Location || "",
         Fee: Number(newSession.Fee) || 0,
-
-        // Payment fields (optional)
-        PaymentMethod: newSession.PaymentMethod || "",
-        PaymentAmount: Number(newSession.PaymentAmount) || 0,
       });
       setAddSessionOpen(false);
       fetchAllData();
@@ -464,10 +466,7 @@ export default function BookingsSessions() {
     }
   };
 
-  // ------------------ Book a Session for Member (SessionBooking) ------------------
-  const [isBookMemberDialogOpen, setBookMemberDialogOpen] = useState(false);
-
-
+  // ------------------ Book a Session (with Payment) ------------------
   const handleOpenBookSession = (sessionId) => {
     const found = sessions.find((s) => s.SessionID === sessionId);
     if (found) {
@@ -475,18 +474,22 @@ export default function BookingsSessions() {
       setSessionBookingMemberID("");
       setSessionBookingDate(dayjs().format("YYYY-MM-DD"));
       setSessionBookingStatus("Confirmed");
+      setSessionBookingPaymentMethod("Cash");
+      setSessionBookingPaymentAmount("");
       setBookSessionOpen(true);
     }
   };
 
   const handleBookSessionConfirm = async () => {
+    if (!sessionToBook) return;
     try {
       await axios.post("/booking/sessions/book", {
         SessionID: sessionToBook.SessionID,
         MemberID: sessionBookingMemberID,
         BookingDate: sessionBookingDate,
-        PaymentID: null,
         Status: sessionBookingStatus,
+        PaymentMethod: sessionBookingPaymentMethod,
+        Amount: Number(sessionBookingPaymentAmount) || 0,
       });
       setBookSessionOpen(false);
       fetchAllData();
@@ -495,7 +498,7 @@ export default function BookingsSessions() {
     }
   };
 
-  // ------------------ Waitlist a Member ------------------
+  // ------------------ Waitlist ------------------
   const handleOpenWaitlist = (sessionId) => {
     const found = sessions.find((s) => s.SessionID === sessionId);
     if (found) {
@@ -522,7 +525,7 @@ export default function BookingsSessions() {
     }
   };
 
-  // ------------------ Mark Session Attendance ------------------
+  // ------------------ Attendance ------------------
   const handleOpenAttendance = (sessionId) => {
     const found = sessions.find((s) => s.SessionID === sessionId);
     if (found) {
@@ -548,6 +551,7 @@ export default function BookingsSessions() {
     }
   };
 
+  // ------------------ Coaches CRUD ------------------
   const handleViewCoach = (coachId) => {
     const found = coaches.find((c) => c.CoachID === coachId);
     if (found) {
@@ -565,6 +569,7 @@ export default function BookingsSessions() {
   };
 
   const handleDeleteCoach = async (coachId) => {
+    // Example if your API supports it
     try {
       await axios.delete(`/booking/coaches/${coachId}`);
       setCoaches((prev) => prev.filter((c) => c.CoachID !== coachId));
@@ -646,22 +651,19 @@ export default function BookingsSessions() {
 
   const sessionColumns = [
     { field: "SessionID", headerName: "ID", width: 80 },
-    { field: "Branch", headerName: "Branch", width: 120 },
-    { field: "SessionName", headerName: "Session Name", width: 140 },
+    { field: "Branch", headerName: "Branch", width: 150 },
+    { field: "SessionName", headerName: "Session Name", width: 180 },
     { field: "CoachName", headerName: "Coach", width: 130 },
     { field: "StartTime", headerName: "Start", width: 120 },
     { field: "EndTime", headerName: "End", width: 120 },
     { field: "Capacity", headerName: "Cap", width: 70 },
-    { field: "Participants", headerName: "Joined", width: 90 },
-    { field: "Status", headerName: "Status", width: 90 },
     {
       field: "Actions",
       headerName: "Actions",
-      width: 350,
+      width: 450,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
-          {/* View */}
           <Tooltip title="View">
             <Button
               variant="contained"
@@ -672,7 +674,6 @@ export default function BookingsSessions() {
             </Button>
           </Tooltip>
 
-          {/* Edit */}
           <Tooltip title="Edit">
             <Button
               variant="contained"
@@ -683,7 +684,6 @@ export default function BookingsSessions() {
             </Button>
           </Tooltip>
 
-          {/* Cancel */}
           <Tooltip title="Cancel">
             <Button
               variant="contained"
@@ -694,7 +694,6 @@ export default function BookingsSessions() {
             </Button>
           </Tooltip>
 
-          {/* Book Session for a Member */}
           <Tooltip title="Book Member">
             <Button
               variant="contained"
@@ -705,7 +704,6 @@ export default function BookingsSessions() {
             </Button>
           </Tooltip>
 
-          {/* Waitlist */}
           <Tooltip title="Waitlist">
             <Button
               variant="contained"
@@ -716,7 +714,6 @@ export default function BookingsSessions() {
             </Button>
           </Tooltip>
 
-          {/* Attendance */}
           <Tooltip title="Mark Attendance">
             <Button
               variant="outlined"
@@ -776,7 +773,11 @@ export default function BookingsSessions() {
   ];
 
   const columns =
-    activeTab === 0 ? bookingColumns : activeTab === 1 ? sessionColumns : coachesColumns;
+    activeTab === 0
+      ? bookingColumns
+      : activeTab === 1
+      ? sessionColumns
+      : coachesColumns;
   const rows =
     activeTab === 0 ? filteredBookings : activeTab === 1 ? filteredSessions : coaches;
   const getRowId = (row) =>
@@ -1086,13 +1087,11 @@ export default function BookingsSessions() {
           {/* DATAGRID */}
           <Box sx={{ height: 420, width: "100%" }}>
             <DataGrid
-              rows={activeTab === 0 ? filteredBookings : activeTab === 1 ? filteredSessions : coaches}
-              columns={activeTab === 0 ? bookingColumns : activeTab === 1 ? sessionColumns : coachesColumns}
+              rows={rows}
+              columns={columns}
               pageSize={5}
               rowsPerPageOptions={[5, 10]}
-              getRowId={(row) =>
-                activeTab === 0 ? row.BookingID : activeTab === 1 ? row.SessionID : row.CoachID
-              }
+              getRowId={getRowId}
             />
           </Box>
         </Paper>
@@ -1100,7 +1099,12 @@ export default function BookingsSessions() {
         {/* =================== DIALOGS =================== */}
 
         {/* 1) Add Booking */}
-        <Dialog open={isAddBookingOpen} onClose={() => setAddBookingOpen(false)} fullWidth maxWidth="sm">
+        <Dialog
+          open={isAddBookingOpen}
+          onClose={() => setAddBookingOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Add New Booking</DialogTitle>
           <DialogContent dividers>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -1125,7 +1129,9 @@ export default function BookingsSessions() {
                 <Select
                   label="Member"
                   value={newBooking.MemberID}
-                  onChange={(e) => setNewBooking({ ...newBooking, MemberID: e.target.value })}
+                  onChange={(e) =>
+                    setNewBooking({ ...newBooking, MemberID: e.target.value })
+                  }
                 >
                   {members.map((m) => (
                     <MenuItem key={m.MemberID} value={m.MemberID}>
@@ -1140,10 +1146,14 @@ export default function BookingsSessions() {
                 <Select
                   label="Facility"
                   value={newBooking.FacilityID}
-                  onChange={(e) => setNewBooking({ ...newBooking, FacilityID: e.target.value })}
+                  onChange={(e) =>
+                    setNewBooking({ ...newBooking, FacilityID: e.target.value })
+                  }
                 >
                   {(selectedBranchForBooking
-                    ? facilities.filter((f) => String(f.BranchID) === selectedBranchForBooking)
+                    ? facilities.filter(
+                        (f) => String(f.BranchID) === selectedBranchForBooking
+                      )
                     : facilities
                   ).map((f) => (
                     <MenuItem key={f.FacilityID} value={f.FacilityID}>
@@ -1165,7 +1175,9 @@ export default function BookingsSessions() {
 
               <TimePicker
                 label="Booking Time"
-                value={newBooking.BookingTime ? dayjs(newBooking.BookingTime, "HH:mm:ss") : null}
+                value={
+                  newBooking.BookingTime ? dayjs(newBooking.BookingTime, "HH:mm:ss") : null
+                }
                 onChange={(timeVal) => {
                   const formatted = timeVal ? timeVal.format("HH:mm:ss") : "";
                   setNewBooking((prev) => ({ ...prev, BookingTime: formatted }));
@@ -1190,14 +1202,18 @@ export default function BookingsSessions() {
                 label="Payment Method"
                 size="small"
                 value={newBooking.PaymentMethod || ""}
-                onChange={(e) => setNewBooking({ ...newBooking, PaymentMethod: e.target.value })}
+                onChange={(e) =>
+                  setNewBooking({ ...newBooking, PaymentMethod: e.target.value })
+                }
               />
               <TextField
                 label="Payment Amount"
                 size="small"
                 type="number"
                 value={newBooking.PaymentAmount || ""}
-                onChange={(e) => setNewBooking({ ...newBooking, PaymentAmount: e.target.value })}
+                onChange={(e) =>
+                  setNewBooking({ ...newBooking, PaymentAmount: e.target.value })
+                }
               />
             </Box>
           </DialogContent>
@@ -1210,7 +1226,12 @@ export default function BookingsSessions() {
         </Dialog>
 
         {/* 2) View Booking */}
-        <Dialog open={viewBookingModal} onClose={() => setViewBookingModal(false)} fullWidth maxWidth="sm">
+        <Dialog
+          open={viewBookingModal}
+          onClose={() => setViewBookingModal(false)}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Booking Details</DialogTitle>
           <DialogContent dividers>
             {selectedBooking && (
@@ -1260,7 +1281,12 @@ export default function BookingsSessions() {
         </Dialog>
 
         {/* 3) Edit Booking */}
-        <Dialog open={editBookingModal} onClose={() => setEditBookingModal(false)} fullWidth maxWidth="sm">
+        <Dialog
+          open={editBookingModal}
+          onClose={() => setEditBookingModal(false)}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Edit Booking</DialogTitle>
           <DialogContent dividers>
             {selectedBooking && (
@@ -1327,8 +1353,13 @@ export default function BookingsSessions() {
           </DialogActions>
         </Dialog>
 
-        {/* 4) Add Session */}
-        <Dialog open={isAddSessionOpen} onClose={() => setAddSessionOpen(false)} fullWidth maxWidth="sm">
+        {/* 4) Add Session (NO Payment fields) */}
+        <Dialog
+          open={isAddSessionOpen}
+          onClose={() => setAddSessionOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Add New Session</DialogTitle>
           <DialogContent dividers>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -1386,7 +1417,9 @@ export default function BookingsSessions() {
               />
               <TimePicker
                 label="Start Time"
-                value={newSession.StartTime ? dayjs(newSession.StartTime, "HH:mm:ss") : null}
+                value={
+                  newSession.StartTime ? dayjs(newSession.StartTime, "HH:mm:ss") : null
+                }
                 onChange={(timeVal) => {
                   const timeStr = timeVal ? timeVal.format("HH:mm:ss") : "";
                   setNewSession({ ...newSession, StartTime: timeStr });
@@ -1433,21 +1466,6 @@ export default function BookingsSessions() {
                 value={newSession.Fee}
                 onChange={(e) => setNewSession({ ...newSession, Fee: e.target.value })}
               />
-
-              {/* Payment (optional) */}
-              <TextField
-                label="Payment Method (optional)"
-                size="small"
-                value={newSession.PaymentMethod || ""}
-                onChange={(e) => setNewSession({ ...newSession, PaymentMethod: e.target.value })}
-              />
-              <TextField
-                label="Payment Amount"
-                type="number"
-                size="small"
-                value={newSession.PaymentAmount || ""}
-                onChange={(e) => setNewSession({ ...newSession, PaymentAmount: e.target.value })}
-              />
             </Box>
           </DialogContent>
           <DialogActions>
@@ -1459,7 +1477,12 @@ export default function BookingsSessions() {
         </Dialog>
 
         {/* 5) View Session */}
-        <Dialog open={viewSessionModal} onClose={() => setViewSessionModal(false)} fullWidth maxWidth="sm">
+        <Dialog
+          open={viewSessionModal}
+          onClose={() => setViewSessionModal(false)}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Session Details</DialogTitle>
           <DialogContent dividers>
             {selectedSession && (
@@ -1509,7 +1532,12 @@ export default function BookingsSessions() {
         </Dialog>
 
         {/* 6) Edit Session */}
-        <Dialog open={editSessionModal} onClose={() => setEditSessionModal(false)} fullWidth maxWidth="sm">
+        <Dialog
+          open={editSessionModal}
+          onClose={() => setEditSessionModal(false)}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Edit Session</DialogTitle>
           <DialogContent dividers>
             {selectedSession && (
@@ -1630,8 +1658,13 @@ export default function BookingsSessions() {
           </DialogActions>
         </Dialog>
 
-        {/* 7) Book a Member into Session */}
-        <Dialog open={isBookSessionOpen} onClose={() => setBookSessionOpen(false)} fullWidth maxWidth="sm">
+        {/* 7) Book a Member into Session (with Payment) */}
+        <Dialog
+          open={isBookSessionOpen}
+          onClose={() => setBookSessionOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Book Session for Member</DialogTitle>
           <DialogContent dividers>
             {sessionToBook && (
@@ -1670,6 +1703,21 @@ export default function BookingsSessions() {
                   value={sessionBookingStatus}
                   onChange={(e) => setSessionBookingStatus(e.target.value)}
                 />
+
+                {/* Payment Fields */}
+                <TextField
+                  label="Payment Method"
+                  size="small"
+                  value={sessionBookingPaymentMethod}
+                  onChange={(e) => setSessionBookingPaymentMethod(e.target.value)}
+                />
+                <TextField
+                  label="Payment Amount"
+                  size="small"
+                  type="number"
+                  value={sessionBookingPaymentAmount}
+                  onChange={(e) => setSessionBookingPaymentAmount(e.target.value)}
+                />
               </Box>
             )}
           </DialogContent>
@@ -1682,7 +1730,12 @@ export default function BookingsSessions() {
         </Dialog>
 
         {/* 8) Waitlist Dialog */}
-        <Dialog open={isWaitlistOpen} onClose={() => setWaitlistOpen(false)} fullWidth maxWidth="sm">
+        <Dialog
+          open={isWaitlistOpen}
+          onClose={() => setWaitlistOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Waitlist Member</DialogTitle>
           <DialogContent dividers>
             {sessionToWaitlist && (
@@ -1733,7 +1786,12 @@ export default function BookingsSessions() {
         </Dialog>
 
         {/* 9) Mark Attendance */}
-        <Dialog open={isAttendanceOpen} onClose={() => setAttendanceOpen(false)} fullWidth maxWidth="sm">
+        <Dialog
+          open={isAttendanceOpen}
+          onClose={() => setAttendanceOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Mark Attendance</DialogTitle>
           <DialogContent dividers>
             {sessionToMark && (
@@ -1777,7 +1835,12 @@ export default function BookingsSessions() {
         </Dialog>
 
         {/* 10) Add Coach */}
-        <Dialog open={isAddCoachOpen} onClose={() => setAddCoachOpen(false)} fullWidth maxWidth="sm">
+        <Dialog
+          open={isAddCoachOpen}
+          onClose={() => setAddCoachOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Add New Coach</DialogTitle>
           <DialogContent dividers>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -1816,7 +1879,12 @@ export default function BookingsSessions() {
         </Dialog>
 
         {/* 11) View Coach */}
-        <Dialog open={viewCoachModal} onClose={() => setViewCoachModal(false)} fullWidth maxWidth="sm">
+        <Dialog
+          open={viewCoachModal}
+          onClose={() => setViewCoachModal(false)}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Coach Details</DialogTitle>
           <DialogContent dividers>
             {selectedCoach && (
@@ -1846,7 +1914,12 @@ export default function BookingsSessions() {
         </Dialog>
 
         {/* 12) Edit Coach */}
-        <Dialog open={editCoachModal} onClose={() => setEditCoachModal(false)} fullWidth maxWidth="sm">
+        <Dialog
+          open={editCoachModal}
+          onClose={() => setEditCoachModal(false)}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>Edit Coach</DialogTitle>
           <DialogContent dividers>
             {selectedCoach && (
