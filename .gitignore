@@ -5,6 +5,10 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/storage/*
+!/storage/app
+!/storage/app/private
+!/storage/app/private/members.csv
 /vendor
 .env
 .env.backup

@@ -16,7 +16,7 @@ return new class extends Migration
             $table->unsignedBigInteger('StartedBranchID')->nullable();
             $table->foreign('StartedBranchID')->references('BranchID')->on('branches');       
             $table->string('FullName');
-            $table->string('Email')->unique();
+            $table->string('Email')->nullable(); // remove ->unique()
             $table->string('Phone')->nullable();
             $table->unsignedBigInteger('PlanID')->nullable(); 
             $table->foreign('PlanID')->references('PlanID')
