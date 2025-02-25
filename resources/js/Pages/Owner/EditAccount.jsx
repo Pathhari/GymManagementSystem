@@ -21,12 +21,16 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import PersonAddIcon from "@mui/icons-material/PersonAdd";
+import CloseIcon from "@mui/icons-material/Close";
+import { useTheme } from "@mui/material/styles";
 import axios from "axios";
 
 // Role options for new staff
 const roleOptions = ["Staff", "Admin", "Owner"];
 
 export default function EditProfile() {
+  const theme = useTheme();
   // -------------------------- 1) MY ACCOUNT (CURRENT USER) --------------------------
   const [userEmail, setUserEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -81,6 +85,15 @@ export default function EditProfile() {
   const [staffRole, setStaffRole] = useState("Staff");
   const [staffName, setStaffName] = useState("");
 
+  // NEW: visibility toggles for staff password fields
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
+  const [showStaffConfirmPassword, setShowStaffConfirmPassword] = useState(false);
+
+  const handleToggleShowStaffPassword = () =>
+    setShowStaffPassword((prev) => !prev);
+  const handleToggleShowStaffConfirmPassword = () =>
+    setShowStaffConfirmPassword((prev) => !prev);
+
   // We'll fetch real branches via GET /owner/branches.
   const [branchOptions, setBranchOptions] = useState([]);
   const [staffBranch, setStaffBranch] = useState(""); // numeric BranchID
@@ -110,7 +123,12 @@ export default function EditProfile() {
 
   const handleAddStaff = async () => {
     // Basic validation
-    if (!staffName.trim() || !staffEmail.trim() || !staffPassword.trim() || !staffBranch) {
+    if (
+      !staffName.trim() ||
+      !staffEmail.trim() ||
+      !staffPassword.trim() ||
+      !staffBranch
+    ) {
       alert("Please fill out all fields for the staff.");
       return;
     }
@@ -197,7 +215,11 @@ BranchID: ${res.data.BranchID}`
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton onClick={handleToggleShowConfirmPass}>
-                      {showConfirmPass ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                      {showConfirmPass ? (
+                        <VisibilityOffIcon />
+                      ) : (
+                        <VisibilityIcon />
+                      )}
                     </IconButton>
                   </InputAdornment>
                 )
@@ -225,77 +247,146 @@ BranchID: ${res.data.BranchID}`
         </Button>
       </Paper>
 
-      {/* ---------------- ADD STAFF DIALOG ---------------- */}
-      <Dialog open={isAddStaffOpen} onClose={() => setAddStaffOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Create Staff User</DialogTitle>
-        <DialogContent dividers>
-          <TextField
-            label="Full Name"
-            variant="outlined"
-            fullWidth
-            sx={{ mt: 1 }}
-            value={staffName}
-            onChange={(e) => setStaffName(e.target.value)}
-          />
-          <TextField
-            label="Staff Email"
-            variant="outlined"
-            fullWidth
-            sx={{ mt: 2 }}
-            value={staffEmail}
-            onChange={(e) => setStaffEmail(e.target.value)}
-          />
-          <TextField
-            label="Password"
-            variant="outlined"
-            fullWidth
-            type="password"
-            sx={{ mt: 2 }}
-            value={staffPassword}
-            onChange={(e) => setStaffPassword(e.target.value)}
-          />
-
-          {/* NEW: Confirm Password Field */}
-          <TextField
-            label="Confirm Password"
-            variant="outlined"
-            fullWidth
-            type="password"
-            sx={{ mt: 2 }}
-            value={staffConfirmPassword}
-            onChange={(e) => setStaffConfirmPassword(e.target.value)}
-          />
-
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Role</InputLabel>
-            <Select label="Role" value={staffRole} onChange={(e) => setStaffRole(e.target.value)}>
-              {roleOptions.map((r) => (
-                <MenuItem key={r} value={r}>
-                  {r}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Branch</InputLabel>
-            <Select
-              label="Branch"
-              value={staffBranch}
-              onChange={(e) => setStaffBranch(e.target.value)}
+      {/* ADD STAFF DIALOG */}
+      <Dialog
+        open={isAddStaffOpen}
+        onClose={() => setAddStaffOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            overflow: "hidden"
+          }
+        }}
+      >
+        <DialogTitle sx={{ p: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <PersonAddIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Create Staff User
+              </Typography>
+            </Box>
+            <IconButton
+              onClick={() => setAddStaffOpen(false)}
+              sx={{
+                "&:hover": { color: theme.palette.error.main }
+              }}
             >
-              {branchOptions.map((b) => (
-                <MenuItem key={b.BranchID} value={b.BranchID}>
-                  {b.BranchName}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent dividers sx={{ p: 4 }}>
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Full Name"
+                variant="filled"
+                value={staffName}
+                onChange={(e) => setStaffName(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Staff Email"
+                variant="filled"
+                value={staffEmail}
+                onChange={(e) => setStaffEmail(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Password"
+                variant="filled"
+                type={showStaffPassword ? "text" : "password"}
+                value={staffPassword}
+                onChange={(e) => setStaffPassword(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={handleToggleShowStaffPassword}>
+                        {showStaffPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Confirm Password"
+                variant="filled"
+                type={showStaffConfirmPassword ? "text" : "password"}
+                value={staffConfirmPassword}
+                onChange={(e) => setStaffConfirmPassword(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={handleToggleShowStaffConfirmPassword}>
+                        {showStaffConfirmPassword ? (
+                          <VisibilityOffIcon />
+                        ) : (
+                          <VisibilityIcon />
+                        )}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth variant="filled">
+                <InputLabel>Role</InputLabel>
+                <Select value={staffRole} onChange={(e) => setStaffRole(e.target.value)}>
+                  {roleOptions.map((r) => (
+                    <MenuItem key={r} value={r}>
+                      {r}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth variant="filled">
+                <InputLabel>Branch</InputLabel>
+                <Select value={staffBranch} onChange={(e) => setStaffBranch(e.target.value)}>
+                  {branchOptions.map((b) => (
+                    <MenuItem key={b.BranchID} value={b.BranchID}>
+                      {b.BranchName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddStaffOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleAddStaff}>
-            Create
+
+        {/* Dialog Actions - Create aligned to the right */}
+        <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleAddStaff}
+            sx={{
+              textTransform: "none"
+            }}
+          >
+            <PersonAddIcon sx={{ mr: 1 }} /> Create Staff
           </Button>
         </DialogActions>
       </Dialog>

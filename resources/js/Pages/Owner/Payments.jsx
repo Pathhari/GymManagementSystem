@@ -25,6 +25,11 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  IconButton,
+  Divider,
+  InputAdornment,
+  OutlinedInput,
+  useTheme,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import AddIcon from "@mui/icons-material/Add";
@@ -32,38 +37,78 @@ import ReceiptIcon from "@mui/icons-material/Receipt";
 import DescriptionIcon from "@mui/icons-material/Description";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import EditIcon from "@mui/icons-material/Edit";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLongRounded";
 import DeleteIcon from "@mui/icons-material/Delete";
+import MonetizationOnIcon from "@mui/icons-material/MonetizationOn";
 import ReplayCircleFilledIcon from "@mui/icons-material/ReplayCircleFilled";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
+import CloseIcon from '@mui/icons-material/Close';
+import SaveIcon from '@mui/icons-material/Save';
+import EventIcon from '@mui/icons-material/Event';
+import PaymentIcon from '@mui/icons-material/Payment';
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
+import InfoIcon from '@mui/icons-material/Info';
+import PersonIcon from '@mui/icons-material/Person';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import dayjs from "dayjs";
 import { CSVLink } from "react-csv";
+import { AttachMoney } from "@mui/icons-material";
 
-/**
- * This component has two tabs:
- *   1) Payments (Member / Walk-In / Booking / Session / Partial Payment)
- *   2) Invoices
- *
- * PaymentFor is stored as an array, so each flow sets PaymentFor like
- * ["Membership"], ["Walk-In"], ["Booking"], ["Session"], or ["Partial"].
- *
- * For partial payments, we let the user pick multiple invoices and allocate amounts.
- * The backend would handle the logic of linking Payment to those Invoices.
- */
 export default function PaymentsAndInvoices() {
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
-
+  const theme = useTheme();
   // Arrays
   const [payments, setPayments] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [members, setMembers] = useState([]);
   const [branchOptions, setBranchOptions] = useState([]);
 
+  // filters
+  const handleFilterExpenses = () => {
+    // Ensure both dates are selected
+    if (!dateFrom || !dateTo) {
+      alert("Please select both 'From' and 'To' dates.");
+      return;
+    }
+
+  
+    // Filter payments and invoices based on date range
+    const filteredPaymentsByDate = payments.filter((p) => {
+      const paymentDate = new Date(p.paymentDate);
+      return paymentDate >= new Date(dateFrom) && paymentDate <= new Date(dateTo);
+    });
+  
+    const filteredInvoicesByDate = invoices.filter((i) => {
+      const invoiceDate = new Date(i.invoiceDate);
+      return invoiceDate >= new Date(dateFrom) && invoiceDate <= new Date(dateTo);
+    });
+  
+    setPayments(filteredPaymentsByDate);
+    setInvoices(filteredInvoicesByDate);
+  };
+
+
+  //delete logic
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteType, setDeleteType] = useState("");
+  const [deleteItemId, setDeleteItemId] = useState(null);
+
+  const handleOpenDeleteDialog = (type, id) => {
+    setDeleteType(type);
+    setDeleteItemId(id);
+    setDeleteDialogOpen(true);
+  };
+
+
+
+
   // Selected branch, date filters
   const [branch, setBranch] = useState("all");
-  const [timePeriod, setTimePeriod] = useState("daily");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -76,6 +121,9 @@ export default function PaymentsAndInvoices() {
   // paymentMode => "member", "walkIn", "booking", "session", "partial"
   const [paymentMode, setPaymentMode] = useState("");
 
+   // Confirmation dialog
+   const [openConfirmation, setOpenConfirmation] = useState(false);
+  
   // Common newPayment fields
   const [newPayment, setNewPayment] = useState({
     memberId: "",
@@ -87,6 +135,36 @@ export default function PaymentsAndInvoices() {
     method: "",
     status: "",
   });
+
+   //date time formatter
+   const formatDateTime = (dateString) => {
+    if (!dateString) return "—";
+    const dateObj = new Date(dateString);
+  
+    return dateObj.toLocaleString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+    
+  };
+  const formatDate = (dateString) => {
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
+
+  const formatTime = (timeString) => {
+    if (!timeString) return "—";
+    const timeObj = dayjs(timeString, "HH:mm:ss");
+    return timeObj.isValid() ? timeObj.format("h:mm A") : "Invalid Time"; // 12-hour format with AM/PM
+};
 
   const [editPayment, setEditPayment] = useState({});
   const [viewPayment, setViewPayment] = useState(null);
@@ -140,35 +218,25 @@ export default function PaymentsAndInvoices() {
       .catch((err) => console.error(err));
   };
 
-  const fetchPayments = () => {
+const fetchPayments = () => {
     axios
       .get("/payments")
       .then((res) => {
-        const mapped = res.data.map((p) => {
-          // If the Payment is for a member, p.member exists
-          // If the Payment is for a walk-in, p.WalkInName might exist
-          let payer = "N/A";
-          if (p.member) {
-            payer = p.member.FullName;
-          } else if (p.WalkInName) {
-            payer = p.WalkInName;
-          }
-        
-          return {
-            paymentId: p.PaymentID,
-            payerName: payer,  // <-- single field that can hold either member FullName or WalkInName
-            paymentDate: p.PaymentDate,
-            amountPaid: Number(p.Amount),
-            method: p.PaymentMethod,
-            status: p.Status,
-            branchId: p.BranchID ? p.BranchID.toString() : "",
-            paymentFor: Array.isArray(p.PaymentFor) ? p.PaymentFor : [],          
-          };
-        });
+        const mapped = res.data.map((p) => ({
+          paymentId: p.PaymentID,
+          payerName: p.member ? p.member.FullName : p.WalkInName || "N/A",
+          paymentDate: new Date(p.PaymentDate).toISOString(), // Ensure consistency in UTC
+          amountPaid: Number(p.Amount),
+          method: p.PaymentMethod,
+          status: p.Status,
+          branchId: p.BranchID ? p.BranchID.toString() : "",
+          paymentFor: Array.isArray(p.PaymentFor) ? p.PaymentFor : [],          
+        }));
         setPayments(mapped);
       })
       .catch((err) => console.error(err));
   };
+
 
   const fetchInvoices = () => {
     axios
@@ -218,7 +286,22 @@ export default function PaymentsAndInvoices() {
       })
       .catch(err => console.error(err));
   };
-  
+
+  //delete
+  const handleConfirmDelete = async () => {
+    try {
+      if (deleteType === "payment") {
+        await axios.delete(`/payments/${deleteItemId}`);
+        setPayments((prev) => prev.filter((p) => p.paymentId !== deleteItemId));
+      } else if (deleteType === "invoice") {
+        await axios.delete(`/invoices/${deleteItemId}`);
+        setInvoices((prev) => prev.filter((i) => i.invoiceId !== deleteItemId));
+      }
+      setDeleteDialogOpen(false);
+    } catch (err) {
+      console.error("Failed to delete:", err);
+    }
+  };
 
   // =============== Payment Tab Logic ===============
   const handleTabChange = (event, newValue) => {
@@ -229,39 +312,66 @@ export default function PaymentsAndInvoices() {
   // Searching / Filtering
   const paymentsByBranch = branch === "all" ? payments : payments.filter((p) => p.branchId === branch);
 
-  const filteredPayments = paymentsByBranch.filter((p) =>
-    Object.values(p).some((val) => String(val).toLowerCase().includes(searchTerm))
-  );
-  const filteredInvoices = invoices.filter((i) =>
-    Object.values(i).some((val) => String(val).toLowerCase().includes(searchTerm))
-  );
+  const filteredPayments = payments
+  .filter((p) => (branch === "all" ? true : p.branchId === branch))
+  .filter((p) => Object.values(p).some((val) => String(val).toLowerCase().includes(searchTerm)));
+
+const filteredInvoices = invoices
+  .filter((i) => Object.values(i).some((val) => String(val).toLowerCase().includes(searchTerm)));
+
 
   // Payment or Invoice columns
   const paymentColumns = [
-    { field: "paymentId", headerName: "Payment ID", width: 120 },
+    { 
+      field: "paymentId", 
+      headerName: "Payment ID", 
+      width: 120,
+      renderCell: (params) => params.value ?? "—",
+    },
     {
       field: "payerName",
       headerName: "Payer",
       width: 180,
-      // If you just want a direct field binding, you can omit renderCell:
-      // But here's how you'd do it:
-      renderCell: (params) => {
-        return params.row.payerName;  // the property we mapped above
-      },
+      renderCell: (params) => params.value ?? "—",
     },
     {
       field: "paymentFor",
       headerName: "Payment For",
       width: 200,
+      renderCell: (params) => (Array.isArray(params.value) && params.value.length > 0 ? params.value.join(", ") : "—"),
+    },
+    {
+      field: "paymentDate",
+      headerName: "Payment Date",
+      width: 250,
+      renderCell: (params) => params.value ? formatDateTime(params.value) : "—",
+    },
+    {
+      field: "amountPaid",
+      headerName: "Amount Paid",
+      width: 120,
+      renderCell: (params) => params.value ? formatCurrency(params.value) : "—",
+    },    
+    { 
+      field: "method", 
+      headerName: "Method", 
+      width: 110,
+      renderCell: (params) => params.value ?? "—",
+    },
+    {
+      field: "status",
+      headerName: "Status",
+      width: 150,
       renderCell: (params) => {
-        // params.row.paymentFor is an array
-        return params.row.paymentFor.join(", ");
+        const status = params.value ?? "—";
+        let color = "#ff9800"; // Default Orange for Pending
+
+        if (status.toLowerCase() === "completed") color = "#4caf50"; // Green
+        else if (status.toLowerCase() === "failed" || status.toLowerCase() === "refunded") color = "#f44336"; // Red
+
+        return <span style={{ color, fontWeight: "bold" }}>{status}</span>;
       },
     },
-    { field: "paymentDate", headerName: "Payment Date", width: 140 },
-    { field: "amountPaid", headerName: "Amount Paid", width: 120 },
-    { field: "method", headerName: "Method", width: 110 },
-    { field: "status", headerName: "Status", width: 100 },
     {
       field: "Actions",
       headerName: "Actions",
@@ -272,79 +382,105 @@ export default function PaymentsAndInvoices() {
           <Tooltip title="View">
             <Button
               variant="contained"
-              sx={{ backgroundColor: "#4caf50", color: "#fff" }}
+              sx={{ backgroundColor: "#4caf50", color: "#fff", minWidth: 40 }}
               onClick={() => handleViewPaymentOpen(params.row)}
             >
-              <VisibilityIcon />
+              <VisibilityIcon fontSize="small" />
             </Button>
           </Tooltip>
           <Tooltip title="Edit">
             <Button
               variant="contained"
-              sx={{ backgroundColor: "#2196f3", color: "#fff" }}
+              sx={{ backgroundColor: "#2196f3", color: "#fff", minWidth: 40 }}
               onClick={() => handleEditPaymentOpen(params.row)}
             >
-              <EditIcon />
+              <EditIcon fontSize="small" />
             </Button>
           </Tooltip>
           <Tooltip title="Refund">
             <Button
               variant="contained"
-              sx={{ backgroundColor: "#f44336", color: "#fff" }}
+              sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
               onClick={() => handleRefundPayment(params.row)}
             >
-              <ReplayCircleFilledIcon />
+              <ReplayCircleFilledIcon fontSize="small" />
             </Button>
           </Tooltip>
         </Box>
       ),
     },
-  ];
+];
 
-  const invoiceColumns = [
-    { field: "invoiceId", headerName: "Invoice ID", width: 120 },
-    { field: "memberName", headerName: "Member Name", width: 150 },
-    { field: "invoiceDate", headerName: "Invoice Date", width: 140 },
-    { field: "dueDate", headerName: "Due Date", width: 130 },
-    { field: "invoiceTotal", headerName: "Total", width: 120 },
-    {
-      field: "Actions",
-      headerName: "Actions",
-      width: 220,
-      sortable: false,
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", gap: 1 }}>
-          <Tooltip title="View Invoice + Line Items">
-            <Button
-              variant="contained"
-              sx={{ backgroundColor: "#4caf50", color: "#fff" }}
-              onClick={() => handleViewInvoiceOpen(params.row)}
-            >
-              <VisibilityIcon />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Edit Invoice">
-            <Button
-              variant="contained"
-              sx={{ backgroundColor: "#2196f3", color: "#fff" }}
-              onClick={() => handleEditInvoiceOpen(params.row)}
-            >
-              <EditIcon />
-            </Button>
-          </Tooltip>
-          <Tooltip title="Delete Invoice">
-            <Button
-              variant="contained"
-              sx={{ backgroundColor: "#e53935", color: "#fff" }}
-              onClick={() => handleDeleteInvoice(params.row)}
-            >
-              <DeleteIcon />
-            </Button>
-          </Tooltip>
-        </Box>
-      ),
-    },
-  ];
+const invoiceColumns = [
+  { 
+    field: "invoiceId", 
+    headerName: "Invoice ID", 
+    width: 120,
+    renderCell: (params) => params.value ?? "—",
+  },
+  { 
+    field: "memberName", 
+    headerName: "Member Name", 
+    width: 150,
+    renderCell: (params) => params.value ?? "—",
+  },
+  {
+    field: "invoiceDate",
+    headerName: "Invoice Date",
+    width: 250,
+    renderCell: (params) => params.value ? formatDateTime(params.value) : "—",
+  },
+  {
+    field: "dueDate",
+    headerName: "Due Date",
+    width: 200,
+    renderCell: (params) => params.value ? formatDate(params.value) : "—",
+  },
+  {
+    field: "invoiceTotal",
+    headerName: "Total",
+    width: 120,
+    renderCell: (params) => params.value ? formatCurrency(params.value) : "—",
+  },
+  {
+    field: "Actions",
+    headerName: "Actions",
+    width: 220,
+    sortable: false,
+    renderCell: (params) => (
+      <Box sx={{ display: "flex", gap: 1 }}>
+        <Tooltip title="View Invoice + Line Items">
+          <Button
+            variant="contained"
+            sx={{ backgroundColor: "#4caf50", color: "#fff" }}
+            onClick={() => handleViewInvoiceOpen(params.row)}
+          >
+            <VisibilityIcon />
+          </Button>
+        </Tooltip>
+        <Tooltip title="Edit Invoice">
+          <Button
+            variant="contained"
+            sx={{ backgroundColor: "#2196f3", color: "#fff" }}
+            onClick={() => handleEditInvoiceOpen(params.row)}
+          >
+            <EditIcon />
+          </Button>
+        </Tooltip>
+        <Tooltip title="Delete">
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => handleOpenDeleteDialog(params.row.type, params.row.id)}
+          >
+            <DeleteIcon fontSize="small" />
+          </Button>
+        </Tooltip>
+      </Box>
+    ),
+  },
+];
+
 
   const displayedRows = activeTab === 0 ? filteredPayments : filteredInvoices;
   const displayedColumns = activeTab === 0 ? paymentColumns : invoiceColumns;
@@ -616,6 +752,12 @@ export default function PaymentsAndInvoices() {
       .then(() => fetchInvoices())
       .catch((err) => console.error(err));
   };
+    
+  // Currency Format
+  const formatCurrency = (value) => {
+    if (value == null || value === "") return "—";
+    return `₱${parseInt(value).toLocaleString("en-PH")}`;
+  };
 
   // =============== Export Menu ===============
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
@@ -648,191 +790,247 @@ export default function PaymentsAndInvoices() {
   const handleExportCSV = () => {
     handleExportMenuClose();
   };
-
   const handleExportPDF = () => {
     handleExportMenuClose();
-    const doc = new jsPDF();
-    if (activeTab === 0) {
-      doc.text("Payments Export", 14, 10);
-      const bodyData = filteredPayments.map((p) => [
-        p.paymentId,
-        p.memberName,
-        p.paymentDate,
-        p.amountPaid,
-        p.method,
-        p.status,
-      ]);
-      doc.autoTable({
-        head: [["ID", "Member", "Date", "Amount", "Method", "Status"]],
-        body: bodyData,
-        startY: 20,
-      });
-      doc.save("Payments.pdf");
-    } else {
-      doc.text("Invoices Export", 14, 10);
-      const bodyData = filteredInvoices.map((i) => [
-        i.invoiceId,
-        i.memberName,
-        i.invoiceDate,
-        i.dueDate,
-        i.invoiceTotal,
-      ]);
-      doc.autoTable({
-        head: [["ID", "Member", "Invoice Date", "Due Date", "Amount"]],
-        body: bodyData,
-        startY: 20,
-      });
-      doc.save("Invoices.pdf");
+  
+    console.log("Filtered Payments:", filteredPayments);
+    console.log("Filtered Invoices:", filteredInvoices);
+  
+    if (filteredPayments.length === 0 && filteredInvoices.length === 0) {
+      alert("No data available to export.");
+      return;
     }
-  };
+  
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "pt",
+      format: "A4"
+    });
+  
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+  
+    const coverPage = "/imgs/coverpage2.png";  
+    const addPage = "/imgs/addpage2.png";     
+  
+    let tableHeaders = [];
+    let tableBody = [];
+    let title = "";
+  
+    if (activeTab === 0) {
+      title = "";
+      tableHeaders = ["ID", "Member", "Date", "Amount", "Method", "Status"];
+      tableBody = filteredPayments.map((p) => [
+        p.paymentId || "N/A",
+        p.payerName || "N/A",
+        formatDate(p.paymentDate),
+        `${parseFloat(p.amountPaid || 0).toFixed(2)}`,  
+        p.method || "N/A",
+        p.status || "N/A"
+      ]);
+    } else {
+      title = "";
+      tableHeaders = ["ID", "Member", "Invoice Date", "Due Date", "Amount"];
+      tableBody = filteredInvoices.map((i) => [
+        i.invoiceId || "N/A",
+        i.memberName || "N/A",
+        formatDate(i.invoiceDate),
+        formatDate(i.dueDate),
+        `${parseFloat(i.invoiceTotal || 0).toFixed(2)}`  
+      ]);
+    }
+  
+    console.log("Table Body Data:", tableBody);
+  
+    if (tableBody.length === 0) {
+      alert("No records to export.");
+      return;
+    }
+  
 
+    doc.addImage(coverPage, "PNG", 0, 0, pageWidth, pageHeight);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(24);
+    doc.setTextColor("#ffffff");
+    doc.text(title, pageWidth / 2, 100, { align: "center" });
+  
+    doc.setFontSize(14);
+    doc.text("Generated on: " + new Date().toLocaleDateString(), pageWidth / 2, 130, { align: "center" });
+  
+    let startY = 100; 
+    let tableHeightEstimate = tableBody.length * 20; 
+  
+    if (tableHeightEstimate > (pageHeight - startY - 40)) {
+      doc.addPage();
+      doc.addImage(addPage, "PNG", 0, 0, pageWidth, pageHeight);
+      startY = 50;
+    }
+  
+    const getStatusColor = (status) => {
+      if (status?.toLowerCase() === "completed" || status?.toLowerCase() === "paid") {
+        return "#4CAF50";  
+      }
+      return "#333333"; 
+    };
+  
+
+    doc.autoTable({
+      head: [tableHeaders],
+      body: tableBody,
+      startY: startY,
+      theme: "striped",
+      headStyles: { fillColor: "#050505", textColor: "#ffffff", fontStyle: "bold", fontSize: 10 },
+      bodyStyles: { textColor: "#333333", fontSize: 10 },
+      alternateRowStyles: { fillColor: "#f5f5f5" },
+      styles: { overflow: "linebreak", cellPadding: 5, halign: "center", valign: "middle" },
+      margin: { top: 50, left: 20, right: 20, bottom: 20 },
+      didParseCell: (data) => {
+        if (data.column.index === 5) { // ✅ Status column (6th column)
+          const statusText = data.cell.raw;
+          const statusColor = getStatusColor(statusText);
+          data.cell.styles.textColor = statusColor;
+        }
+      },
+      didDrawPage: (data) => {
+        if (doc.internal.getNumberOfPages() > 1) {
+          doc.addImage(addPage, "PNG", 0, 0, pageWidth, pageHeight);
+        }
+      }
+    });
+  
+    // ✅ Save PDF with a Dynamic Name
+    const pdfFilename = activeTab === 0 ? "PaymentsReport.pdf" : "InvoicesReport.pdf";
+    doc.save(pdfFilename);
+  };
+  
+  
   return (
     <Box sx={{ p: 4 }}>
-      {/* Time Period, Branch, etc. at top */}
-      <Box sx={{ mb: 3 }}>
-        <Box
-          sx={{
-            mb: 2,
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 2,
-            justifyContent: "flex-start",
-            alignItems: "center",
-          }}
-        >
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel>Time Period</InputLabel>
-            <Select value={timePeriod} label="Time Period" onChange={(e) => setTimePeriod(e.target.value)}>
-              <MenuItem value="daily">Daily</MenuItem>
-              <MenuItem value="weekly">Weekly</MenuItem>
-              <MenuItem value="monthly">Monthly</MenuItem>
-              <MenuItem value="yearly">Yearly</MenuItem>
-            </Select>
-          </FormControl>
-          <TextField
-            type="date"
-            size="small"
-            label="From"
-            InputLabelProps={{ shrink: true }}
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-          />
-          <TextField
-            type="date"
-            size="small"
-            label="To"
-            InputLabelProps={{ shrink: true }}
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-          />
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel>Branch</InputLabel>
-            <Select value={branch} label="Branch" onChange={(e) => setBranch(e.target.value)}>
-              {branchOptions.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Box>
-      </Box>
+  {/* Date Filter Section (Uniform Design) */}
+  <Paper sx={{ p: 3, mb: 2, boxShadow: 3, borderRadius: 2 }}>
+    <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
+      Filter Records By Date
+    </Typography>
+    <Grid container spacing={2}>
+      <Grid item xs={12} sm={6} md={3}>
+        <TextField
+          label="From Date"
+          type="date"
+          fullWidth
+          size="small"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+      </Grid>
+      <Grid item xs={12} sm={6} md={3}>
+        <TextField
+          label="To Date"
+          type="date"
+          fullWidth
+          size="small"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+      </Grid>
+      <Grid item xs={12} sm={6} md={3} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Button variant="contained" onClick={handleFilterExpenses}>
+          Filter
+        </Button>
+      </Grid>
+    </Grid>
+  </Paper>
 
-      {/* Tabs */}
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Typography variant="h4" gutterBottom>
-          Payments & Invoices
-        </Typography>
-        <Tabs value={activeTab} onChange={handleTabChange}>
-          <Tab icon={<ReceiptIcon />} label="Payments" />
-          <Tab icon={<DescriptionIcon />} label="Invoices" />
-        </Tabs>
-      </Box>
+  {/* Tabs */}
+  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <Typography variant="h4" gutterBottom>
+      Payments & Invoices
+    </Typography>
+    <Tabs value={activeTab} onChange={handleTabChange}>
+      <Tab icon={<ReceiptIcon />} label="Payments" />
+      <Tab icon={<DescriptionIcon />} label="Invoices" />
+    </Tabs>
+  </Box>
 
-      {/* Search & Export */}
-      <Paper elevation={2} sx={{ mt: 3, p: 2 }}>
-        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-          <TextField
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value.toLowerCase())}
-            variant="outlined"
-            size="small"
-            sx={{ width: "100%", maxWidth: 300 }}
-          />
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Button
-              variant="outlined"
-              startIcon={<FileDownloadIcon />}
-              onClick={handleExportMenuOpen}
-              sx={{ textTransform: "none" }}
-            >
-              Export
-            </Button>
-            <Menu
-              anchorEl={exportAnchorEl}
-              open={openExportMenu}
-              onClose={handleExportMenuClose}
-              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-            >
-              <MenuItem onClick={handleExportCSV}>
-                {activeTab === 0 ? (
-                  <CSVLink
-                    data={filteredPayments}
-                    headers={csvHeadersPayments}
-                    filename="Payments.csv"
-                    style={{ textDecoration: "none", color: "inherit" }}
-                  >
-                    Export CSV
-                  </CSVLink>
-                ) : (
-                  <CSVLink
-                    data={filteredInvoices}
-                    headers={csvHeadersInvoices}
-                    filename="Invoices.csv"
-                    style={{ textDecoration: "none", color: "inherit" }}
-                  >
-                    Export CSV
-                  </CSVLink>
-                )}
+  {/* Data Grid & Search */}
+  <Paper elevation={2} sx={{ mt: 3, p: 2 }}>
+    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+      {/* Branch Filter Dropdown */}
+      <Grid item sx={{ mr: 2 }}>
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel>Branch</InputLabel>
+          <Select value={branch} onChange={(e) => setBranch(e.target.value)} label="Branch">
+            {branchOptions.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
               </MenuItem>
-              <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
-            </Menu>
+            ))}
+          </Select>
+        </FormControl>
+      </Grid>
 
-            {activeTab === 0 ? (
-              <>
-                <Button
-                  variant="contained"
-                  color="secondary"
-                  startIcon={<AddIcon />}
-                  onClick={() => handleAddPaymentOpen("partial")}
-                >
-                  Make Partial Payment
-                </Button>
-              </>
-            ) : (
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => setAddInvoiceOpen(true)}
-              >
-                Add Invoice
-              </Button>
-            )}
-          </Box>
-        </Box>
+      {/* Search Field */}
+      <Grid item xs>
+        <TextField
+          variant="outlined"
+          size="small"
+          placeholder="Search..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value.toLowerCase())}
+          fullWidth
+          sx={{ maxWidth: 350 }}
+        />
+      </Grid>
+      
+      <Box sx={{ display: "flex", gap: 1 }}>
+        <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExportMenuOpen}>
+          Export
+        </Button>
+        <Menu
+          anchorEl={exportAnchorEl}
+          open={openExportMenu}
+          onClose={handleExportMenuClose}
+          anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        >
+          <MenuItem onClick={handleExportCSV}>
+            <CSVLink
+              data={activeTab === 0 ? filteredPayments : filteredInvoices}
+              headers={activeTab === 0 ? csvHeadersPayments : csvHeadersInvoices}
+              filename={activeTab === 0 ? "Payments.csv" : "Invoices.csv"}
+              style={{ textDecoration: "none", color: "inherit" }}
+            >
+              Export CSV
+            </CSVLink>
+          </MenuItem>
+          <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
+        </Menu>
 
-        <div style={{ height: 420, width: "100%" }}>
-          <DataGrid
-            rows={displayedRows}
-            columns={displayedColumns}
-            getRowId={rowIdGetter}
-            pageSize={5}
-            rowsPerPageOptions={[5, 10]}
-          />
-        </div>
-      </Paper>
+        {activeTab === 0 && (
+          <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => handleAddPaymentOpen("partial")}>
+            Make Partial Payment
+          </Button>
+        )}
+        {activeTab === 1 && (
+          <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddInvoiceOpen(true)}>
+            Add Invoice
+          </Button>
+        )}
+      </Box>
+    </Box>
+    
+    <div style={{ height: 455, width: "100%" }}>
+      <DataGrid
+        rows={displayedRows}
+        columns={displayedColumns}
+        getRowId={rowIdGetter}
+        pageSize={5}
+        rowsPerPageOptions={[5, 10]}
+      />
+    </div>
+  </Paper>
+
+ 
 
       {/* ================= ADD Payment Dialog (non-partial) ================= */}
       <Dialog open={isAddPaymentOpen} onClose={closePaymentDialog}>
@@ -946,356 +1144,699 @@ export default function PaymentsAndInvoices() {
       </Dialog>
 
       {/* ================= PARTIAL PAYMENT DIALOG ================= */}
-      <Dialog open={partialDialogOpen} onClose={closePartialDialog} fullWidth maxWidth="md">
-        <DialogTitle>Create Partial Payment</DialogTitle>
-        <DialogContent dividers>
-          {/* For partial, we let user pick a member, date, method, total amount, plus allocate to multiple invoices */}
+   {/* ADD Partial Payment Dialog */}
+<Dialog open={partialDialogOpen} onClose={closePartialDialog} fullWidth maxWidth="lg">
+  {/* DIALOG TITLE */}
+  <DialogTitle>
+    <Box display="flex" justifyContent="space-between" alignItems="center">
+      <Typography variant="h5">
+        <AttachMoney sx={{verticalAlign: "middle", mr: 1}} />
+        Create Partial Payment</Typography>
+      <IconButton onClick={closePartialDialog} sx={{
+          color: "inherit",
+          "&:hover": { color: "red" },
+        }}>
+        <CloseIcon />
+      </IconButton>
+    </Box>
+  </DialogTitle>
+
+  {/* DIALOG CONTENT */}
+  <DialogContent dividers>
+    <Box sx={{ p: 2 }}>
+      <Divider sx={{ mb: 3 }} />
+
+      <form onSubmit={(e) => e.preventDefault()}>
+        <Grid container spacing={2}>
+          {/* Member Selection */}
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth required>
+              <InputLabel>Member</InputLabel>
+              <Select
+                name="memberId"
+                value={partialPayment.memberId}
+                onChange={(e) =>
+                  setPartialPayment((prev) => ({ ...prev, memberId: e.target.value }))
+                }
+                input={
+                  <OutlinedInput
+                    label="Member"
+                    startAdornment={
+                      <InputAdornment position="start">
+                        <PersonIcon />
+                      </InputAdornment>
+                    }
+                  />
+                }
+              >
+                <MenuItem value="">
+                  <em>-- None --</em>
+                </MenuItem>
+                {members.map((m) => (
+                  <MenuItem key={m.MemberID} value={m.MemberID}>
+                    {m.FullName}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          {/* Payment Date */}
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="Payment Date"
+              name="paymentDate"
+              type="date"
+              fullWidth
+              required
+              value={partialPayment.paymentDate}
+              onChange={(e) =>
+                setPartialPayment((prev) => ({ ...prev, paymentDate: e.target.value }))
+              }
+              InputLabelProps={{ shrink: true }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <EventIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Grid>
+
+          {/* Payment Method */}
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth required>
+              <InputLabel>Payment Method</InputLabel>
+              <Select
+                name="method"
+                value={partialPayment.method}
+                onChange={(e) =>
+                  setPartialPayment((prev) => ({ ...prev, method: e.target.value }))
+                }
+                input={
+                  <OutlinedInput
+                    label="Payment Method"
+                    startAdornment={
+                      <InputAdornment position="start">
+                        <PaymentIcon />
+                      </InputAdornment>
+                    }
+                  />
+                }
+              >
+                <MenuItem value="Cash">Cash</MenuItem>
+                <MenuItem value="BDO">BDO</MenuItem>
+                <MenuItem value="BPI">BPI</MenuItem>
+                <MenuItem value="GCash">GCash</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+
+          {/* Payment Status */}
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth required>
+              <InputLabel>Payment Status</InputLabel>
+              <Select
+                name="status"
+                value={partialPayment.status}
+                onChange={(e) =>
+                  setPartialPayment((prev) => ({ ...prev, status: e.target.value }))
+                }
+                input={
+                  <OutlinedInput
+                    label="Payment Status"
+                    startAdornment={
+                      <InputAdornment position="start">
+                        <InfoIcon />
+                      </InputAdornment>
+                    }
+                  />
+                }
+              >
+                <MenuItem value="Pending">Pending</MenuItem>
+                <MenuItem value="Completed">Completed</MenuItem>
+                <MenuItem value="Failed">Failed</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+
+          {/* Total Amount */}
+          <Grid item xs={12}>
+            <TextField
+              label="Total Amount"
+              name="amount"
+              type="number"
+              fullWidth
+              required
+              value={partialPayment.amount}
+              onChange={(e) =>
+                setPartialPayment((prev) => ({ ...prev, amount: e.target.value }))
+              }
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Typography variant="body1">₱</Typography>
+                  </InputAdornment>
+                ),
+              }}
+              helperText="The sum allocated to each invoice doesn't need to match exactly, depending on your logic."
+            />
+          </Grid>
+        </Grid>
+
+        {/* Invoice Allocation Section */}
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="subtitle1">Allocate to these Invoices</Typography>
           <Grid container spacing={2}>
+            {/* Unpaid Invoices */}
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Member</InputLabel>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                Unpaid Invoices (select to add):
+              </Typography>
+              <Paper sx={{ maxHeight: 250, overflowY: "auto", p: 1 }}>
+                {unpaidInvoices.map((inv) => (
+                  <Box
+                    key={inv.invoiceId}
+                    sx={{
+                      mb: 1,
+                      border: "1px solid #ccc",
+                      p: 1,
+                      borderRadius: 1,
+                      cursor: "pointer",
+                      "&:hover": { backgroundColor: "#f5f5f5" }
+                    }}
+                    onClick={() =>
+                      handleAddInvoiceAlloc({
+                        invoiceId: inv.invoiceId,
+                        InvoiceTotal: inv.invoiceTotal
+                      })
+                    }
+                  >
+                    Invoice #{inv.invoiceId} for {inv.memberName} — ₱{inv.invoiceTotal} — {inv.paymentStatus}
+                  </Box>
+                ))}
+              </Paper>
+            </Grid>
+
+            {/* Allocated Invoices */}
+            <Grid item xs={12} sm={6}>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                Allocated Invoices:
+              </Typography>
+              <Paper sx={{ maxHeight: 250, overflowY: "auto", p: 1 }}>
+                {partialPayment.allocatedInvoices.map((alloc, idx) => (
+                  <Box key={`${alloc.invoiceId}-${idx}`} sx={{ mb: 1, p: 1, border: "1px solid #ccc", borderRadius: 1 }}>
+                    Invoice #{alloc.invoiceId}
+                    <TextField
+                      label="Amount Allocated"
+                      type="number"
+                      size="small"
+                      value={alloc.amountAllocated}
+                      onChange={(e) => {
+                        const newAlloc = [...partialPayment.allocatedInvoices];
+                        newAlloc[idx].amountAllocated = e.target.value;
+                        setPartialPayment((prev) => ({ ...prev, allocatedInvoices: newAlloc }));
+                      }}
+                      sx={{ ml: 2, width: 100 }}
+                    />
+                  </Box>
+                ))}
+              </Paper>
+            </Grid>
+          </Grid>
+        </Box>
+
+        {/* BUTTONS */}
+        <Box sx={{ mt: 4, display: "flex", flexDirection: "row", gap: 3, justifyContent: "flex-end" }}>
+          <Button variant="contained" color="primary" onClick={() => setOpenConfirmation(true)}>
+            <SaveIcon /> Submit Partial Payment
+          </Button>
+        </Box>
+      </form>
+    </Box>
+  </DialogContent>
+</Dialog>
+
+
+      {/* ================= EDIT Payment Dialog ================= */}
+    <Dialog
+      open={isEditPaymentOpen}
+      onClose={() => setEditPaymentOpen(false)}
+      fullWidth
+      maxWidth="sm"
+      sx={{
+        "& .MuiDialog-paper": {
+          borderRadius: 3,
+          boxShadow: 6,
+          p: 3,
+          overflow: "hidden",
+        },
+      }}
+    >
+      <DialogTitle sx={{ p: 2 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <MonetizationOnIcon sx={{ fontSize: 32, color: "primary.main" }} />
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              Edit Payment
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={() => setEditPaymentOpen(false)}
+            sx={{
+              "&:hover": { color: theme.palette.error.main },
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+
+      <DialogContent dividers sx={{ p: 4 }}>
+        <TextField
+          fullWidth
+          margin="normal"
+          label="Payment ID"
+          name="paymentId"
+          value={editPayment.paymentId || ""}
+          disabled
+          variant="filled"
+        />
+
+        <FormControl fullWidth margin="normal">
+          <InputLabel>Member Name</InputLabel>
+          <Select
+            name="memberId"
+            value={editPayment.memberId || ""}
+            onChange={handleEditPaymentChange}
+          >
+            {(members || []).map((m) => (
+              <MenuItem key={m.MemberID} value={m.MemberID}>
+                {m.FullName}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        <TextField
+          fullWidth
+          margin="normal"
+          type="date"
+          label="Payment Date"
+          name="paymentDate"
+          InputLabelProps={{ shrink: true }}
+          value={editPayment.paymentDate || ""}
+          onChange={handleEditPaymentChange}
+        />
+
+        <TextField
+          fullWidth
+          margin="normal"
+          label="Amount Paid"
+          name="amountPaid"
+          type="number"
+          value={editPayment.amountPaid || ""}
+          onChange={handleEditPaymentChange}
+        />
+
+        <TextField
+          fullWidth
+          margin="normal"
+          label="Payment Method"
+          name="method"
+          value={editPayment.method || ""}
+          onChange={handleEditPaymentChange}
+        />
+
+        <TextField
+          fullWidth
+          margin="normal"
+          label="Status"
+          name="status"
+          value={editPayment.status || ""}
+          onChange={handleEditPaymentChange}
+        />
+      </DialogContent>
+
+      {/* Dialog Actions - Save aligned to the right */}
+      <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleEditPaymentSubmit}
+          sx={{
+            textTransform: "none",
+          }}
+        >
+          <SaveIcon sx={{ mr: 1 }} /> Save Changes
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+
+      {/* ================= VIEW Payment Dialog ================= */}
+
+      <Dialog
+        open={isViewPaymentOpen}
+        onClose={() => setViewPaymentOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle sx={{ p: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <MonetizationOnIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Payment Details
+              </Typography>
+            </Box>
+            <IconButton
+              onClick={() => setViewPaymentOpen(false)}
+              sx={{
+                "&:hover": { color: theme.palette.error.main },
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent dividers sx={{ p: 4 }}>
+          {viewPayment && (
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Payment ID"
+                  variant="filled"
+                  InputProps={{ readOnly: true }}
+                  value={viewPayment.paymentId || "—"}
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Member Name"
+                  variant="filled"
+                  InputProps={{ readOnly: true }}
+                  value={viewPayment.memberName || "—"}
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Payment Date"
+                  variant="filled"
+                  InputProps={{ readOnly: true }}
+                  value={formatDateTime(viewPayment.paymentDate || "—")}
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Amount Paid"
+                  variant="filled"
+                  InputProps={{ readOnly: true }}
+                  value={viewPayment.amountPaid ? `₱${viewPayment.amountPaid}` : "—"}
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Payment Method"
+                  variant="filled"
+                  InputProps={{ readOnly: true }}
+                  value={viewPayment.method || "—"}
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Status"
+                  variant="filled"
+                  InputProps={{ readOnly: true }}
+                  value={viewPayment.status || "—"}
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+
+              {/* Payment For Section */}
+              {viewPayment.paymentFor && viewPayment.paymentFor.length > 0 && (
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Payment For"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={viewPayment.paymentFor.join(", ") || "—"}
+                    sx={{ mb: 2 }}
+                  />
+                </Grid>
+              )}
+            </Grid>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ================= ADD Invoice Dialog ================= */}
+      {/* ADD Invoice Dialog */}
+    <Dialog open={isAddInvoiceOpen} onClose={() => setAddInvoiceOpen(false)} fullWidth maxWidth="md">
+      {/* DIALOG TITLE */}
+      <DialogTitle>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="h5">
+            <ReceiptIcon sx={{verticalAlign: "middle", mr: 1}} />
+            Add Invoice</Typography>
+          <IconButton onClick={() => setAddInvoiceOpen(false)} sx={{
+              color: "inherit",
+              "&:hover": { color: "red" },
+            }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+
+      {/* DIALOG CONTENT */}
+      <DialogContent dividers>
+        <Box sx={{ p: 2 }}>
+          <Divider sx={{ mb: 3 }} />
+
+          <form onSubmit={(e) => e.preventDefault()}>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {/* Member Name */}
+              <FormControl fullWidth required>
+                <InputLabel>Member Name</InputLabel>
                 <Select
                   name="memberId"
-                  label="Member"
-                  value={partialPayment.memberId}
-                  onChange={(e) =>
-                    setPartialPayment((prev) => ({ ...prev, memberId: e.target.value }))
+                  value={newInvoice.memberId || ""}
+                  onChange={handleAddInvoiceChange}
+                  input={
+                    <OutlinedInput
+                      label="Member Name"
+                      startAdornment={
+                        <InputAdornment position="start">
+                          <PersonIcon />
+                        </InputAdornment>
+                      }
+                    />
                   }
                 >
-                  <MenuItem value="">
-                    <em>-- None --</em>
-                  </MenuItem>
-                  {members.map((m) => (
+                  {(members || []).map((m) => (
                     <MenuItem key={m.MemberID} value={m.MemberID}>
                       {m.FullName}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
-            </Grid>
 
-            <Grid item xs={12} sm={6}>
+              {/* Invoice Date */}
               <TextField
-                label="Payment Date"
+                label="Invoice Date"
+                name="invoiceDate"
                 type="date"
                 fullWidth
-                size="small"
-                value={partialPayment.paymentDate}
-                onChange={(e) =>
-                  setPartialPayment((prev) => ({ ...prev, paymentDate: e.target.value }))
-                }
+                required
+                value={newInvoice.invoiceDate}
+                onChange={handleAddInvoiceChange}
                 InputLabelProps={{ shrink: true }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <EventIcon />
+                    </InputAdornment>
+                  ),
+                }}
               />
-            </Grid>
 
-            <Grid item xs={12} sm={6}>
+              {/* Due Date */}
               <TextField
-                label="Payment Method"
+                label="Due Date"
+                name="dueDate"
+                type="date"
                 fullWidth
-                size="small"
-                value={partialPayment.method}
-                onChange={(e) =>
-                  setPartialPayment((prev) => ({ ...prev, method: e.target.value }))
-                }
+                required
+                value={newInvoice.dueDate}
+                onChange={handleAddInvoiceChange}
+                InputLabelProps={{ shrink: true }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <CalendarTodayIcon />
+                    </InputAdornment>
+                  ),
+                }}
               />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Payment Status"
-                fullWidth
-                size="small"
-                value={partialPayment.status}
-                onChange={(e) =>
-                  setPartialPayment((prev) => ({ ...prev, status: e.target.value }))
-                }
-              />
-            </Grid>
-            <Grid item xs={12}>
+
+              {/* Total Amount */}
               <TextField
                 label="Total Amount"
+                name="invoiceTotal"
                 type="number"
                 fullWidth
-                size="small"
-                value={partialPayment.amount}
-                onChange={(e) =>
-                  setPartialPayment((prev) => ({ ...prev, amount: e.target.value }))
-                }
-                helperText="The sum of allocated to each invoice doesn't need to match exactly, depending on your logic."
+                required
+                value={newInvoice.invoiceTotal}
+                onChange={handleAddInvoiceChange}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Typography variant="body1">₱</Typography>
+                    </InputAdornment>
+                  ),
+                }}
               />
-            </Grid>
-          </Grid>
-
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle1">Allocate to these Invoices</Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  Unpaid Invoices (select to add):
-                </Typography>
-                <Paper sx={{ maxHeight: 200, overflowY: "auto", p: 1 }}>
-                {unpaidInvoices.map((inv) => (
-                    <Box
-                      key={inv.invoiceId}
-                      sx={{ mb: 1, border: "1px solid #ccc", p: 1, borderRadius: 1, cursor: "pointer" }}
-                      onClick={() =>
-                        handleAddInvoiceAlloc({
-                          invoiceId: inv.invoiceId,
-                          InvoiceTotal: inv.invoiceTotal
-                        })
-                      }
-                    >
-                      Invoice #{inv.invoiceId} for {inv.memberName} — ₱{inv.invoiceTotal} — {inv.paymentStatus}
-                    </Box>
-                  ))}
-                </Paper>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  Allocated Invoices:
-                </Typography>
-                <Paper sx={{ maxHeight: 200, overflowY: "auto", p: 1 }}>
-                  {partialPayment.allocatedInvoices.map((alloc, idx) => (
-                    <Box key={`${alloc.invoiceId}-${idx}`} sx={{ mb: 1, p: 1, border: "1px solid #ccc", borderRadius: 1 }}>
-                      InvoiceID: {alloc.invoiceId}
-                      <TextField
-                        label="Amount Allocated"
-                        type="number"
-                        size="small"
-                        value={alloc.amountAllocated}
-                        onChange={(e) => {
-                          const newAlloc = [...partialPayment.allocatedInvoices];
-                          newAlloc[idx].amountAllocated = e.target.value;
-                          setPartialPayment((prev) => ({ ...prev, allocatedInvoices: newAlloc }));
-                        }}
-                        sx={{ ml: 2, width: 100 }}
-                      />
-                    </Box>
-                  ))}
-                </Paper>
-              </Grid>
-            </Grid>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closePartialDialog}>Cancel</Button>
-          <Button variant="contained" onClick={handleSubmitPartialPayment}>
-            Submit Partial Payment
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ================= EDIT Payment Dialog ================= */}
-      <Dialog open={isEditPaymentOpen} onClose={() => setEditPaymentOpen(false)}>
-        <DialogTitle>Edit Payment</DialogTitle>
-        <DialogContent dividers>
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Payment ID"
-            name="paymentId"
-            value={editPayment.paymentId || ""}
-            onChange={handleEditPaymentChange}
-            disabled
-          />
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Member Name</InputLabel>
-            <Select
-              label="Member Name"
-              name="memberId"
-              value={editPayment.memberId || ""}
-              onChange={handleEditPaymentChange}
-            >
-              {(members || []).map((m) => (
-                <MenuItem key={m.MemberID} value={m.MemberID}>
-                  {m.FullName}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <TextField
-            fullWidth
-            margin="normal"
-            type="date"
-            label="Payment Date"
-            name="paymentDate"
-            InputLabelProps={{ shrink: true }}
-            value={editPayment.paymentDate || ""}
-            onChange={handleEditPaymentChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Amount Paid"
-            name="amountPaid"
-            type="number"
-            value={editPayment.amountPaid || ""}
-            onChange={handleEditPaymentChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Method"
-            name="method"
-            value={editPayment.method || ""}
-            onChange={handleEditPaymentChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Status"
-            name="status"
-            value={editPayment.status || ""}
-            onChange={handleEditPaymentChange}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditPaymentOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleEditPaymentSubmit}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ================= VIEW Payment Dialog ================= */}
-      <Dialog open={isViewPaymentOpen} onClose={() => setViewPaymentOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Payment Details</DialogTitle>
-        <DialogContent dividers>
-          {viewPayment && (
-            <Box sx={{ p: 2 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Payment ID:
-                  </Typography>
-                  <Typography variant="body1">{viewPayment.paymentId}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Member Name:
-                  </Typography>
-                  <Typography variant="body1">{viewPayment.memberName}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Payment Date:
-                  </Typography>
-                  <Typography variant="body1">{viewPayment.paymentDate}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Amount Paid:
-                  </Typography>
-                  <Typography variant="body1">₱{viewPayment.amountPaid}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Method:
-                  </Typography>
-                  <Typography variant="body1">{viewPayment.method}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Status:
-                  </Typography>
-                  <Typography variant="body1">{viewPayment.status}</Typography>
-                </Grid>
-
-                {/* PaymentFor array */}
-                {viewPayment.paymentFor && viewPayment.paymentFor.length > 0 && (
-                  <Grid item xs={12}>
-                    <Typography variant="body2" color="textSecondary">
-                      Payment For:
-                    </Typography>
-                    <Typography variant="body1">
-                      {viewPayment.paymentFor.join(", ")}
-                    </Typography>
-                  </Grid>
-                )}
-              </Grid>
             </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewPaymentOpen(false)} variant="contained" color="primary">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
 
-      {/* ================= ADD Invoice Dialog ================= */}
-      <Dialog open={isAddInvoiceOpen} onClose={() => setAddInvoiceOpen(false)}>
-        <DialogTitle>Add Invoice</DialogTitle>
-        <DialogContent dividers>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Member Name</InputLabel>
-            <Select
-              label="Member Name"
-              name="memberId"
-              value={newInvoice.memberId || ""}
-              onChange={handleAddInvoiceChange}
-            >
-              {(members || []).map((m) => (
-                <MenuItem key={m.MemberID} value={m.MemberID}>
-                  {m.FullName}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+            {/* BUTTONS */}
+            <Box sx={{ mt: 4, display: "flex", flexDirection: "row", gap: 3, justifyContent: "flex-end" }}>
+              <Button variant="contained" color="primary" onClick={() => setOpenConfirmation(true)}>
+                <SaveIcon /> Save Invoice
+              </Button>
+            </Box>
+          </form>
+        </Box>
+      </DialogContent>
+    </Dialog>
 
-          <TextField
-            fullWidth
-            margin="normal"
-            type="date"
-            label="Invoice Date"
-            name="invoiceDate"
-            InputLabelProps={{ shrink: true }}
-            value={newInvoice.invoiceDate}
-            onChange={handleAddInvoiceChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            type="date"
-            label="Due Date"
-            name="dueDate"
-            InputLabelProps={{ shrink: true }}
-            value={newInvoice.dueDate}
-            onChange={handleAddInvoiceChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Total Amount"
-            name="invoiceTotal"
-            type="number"
-            value={newInvoice.invoiceTotal}
-            onChange={handleAddInvoiceChange}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddInvoiceOpen(false)}>Cancel</Button>
-          <Button onClick={handleAddInvoiceSubmit} variant="contained">
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
+    {/* CONFIRMATION DIALOG */}
+    <Dialog
+      open={openConfirmation}
+      onClose={() => setOpenConfirmation(false)}
+      PaperProps={{
+        sx: { borderRadius: 3, minWidth: 350 },
+      }}
+    >
+  <DialogTitle sx={{ textAlign: "center", p: 3 }}>
+    <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
+      <CheckCircleOutlineIcon sx={{ fontSize: 50, color: "primary.main" }} />
+      <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+        Confirm Submission
+      </Typography>
+    </Box>
+  </DialogTitle>
+
+  <DialogContent dividers sx={{ textAlign: "center", py: 2 }}>
+    <Typography variant="body1">Are you sure you want to add this invoice?</Typography>
+  </DialogContent>
+
+  <DialogActions sx={{ justifyContent: "center", gap: 2, py: 2 }}>
+    <Button onClick={() => setOpenConfirmation(false)} sx={{ textTransform: "none" }} style={{ color: "red" }}>
+      Cancel
+    </Button>
+    <Button
+      variant="contained"
+      color="primary"
+      sx={{ textTransform: "none" }}
+      onClick={async () => {
+        await handleAddInvoiceSubmit();
+        setOpenConfirmation(false);
+      }}
+    >
+      Confirm
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
       {/* ================= EDIT Invoice Dialog ================= */}
-      <Dialog open={isEditInvoiceOpen} onClose={() => setEditInvoiceOpen(false)}>
-        <DialogTitle>Edit Invoice</DialogTitle>
-        <DialogContent dividers>
+      <Dialog
+        open={isEditInvoiceOpen}
+        onClose={() => setEditInvoiceOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle sx={{ p: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <ReceiptLongIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Edit Invoice
+              </Typography>
+            </Box>
+            <IconButton
+              onClick={() => setEditInvoiceOpen(false)}
+              sx={{
+                "&:hover": { color: theme.palette.error.main },
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent dividers sx={{ p: 4 }}>
           <TextField
             fullWidth
             margin="normal"
             label="Invoice ID"
             name="invoiceId"
+            variant="filled"
+            InputProps={{ readOnly: true }}
             value={editInvoice.invoiceId || ""}
-            disabled
+            sx={{ mb: 2 }}
           />
-          <FormControl fullWidth margin="normal">
+          <FormControl fullWidth margin="normal" sx={{ mb: 2 }}>
             <InputLabel>Member Name</InputLabel>
             <Select
-              label="Member Name"
               name="memberId"
               value={editInvoice.memberId || ""}
               onChange={handleEditInvoiceChange}
@@ -1316,6 +1857,7 @@ export default function PaymentsAndInvoices() {
             InputLabelProps={{ shrink: true }}
             value={editInvoice.invoiceDate || ""}
             onChange={handleEditInvoiceChange}
+            sx={{ mb: 2 }}
           />
           <TextField
             fullWidth
@@ -1326,6 +1868,7 @@ export default function PaymentsAndInvoices() {
             InputLabelProps={{ shrink: true }}
             value={editInvoice.dueDate || ""}
             onChange={handleEditInvoiceChange}
+            sx={{ mb: 2 }}
           />
           <TextField
             fullWidth
@@ -1335,96 +1878,192 @@ export default function PaymentsAndInvoices() {
             type="number"
             value={editInvoice.invoiceTotal || ""}
             onChange={handleEditInvoiceChange}
+            sx={{ mb: 2 }}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditInvoiceOpen(false)}>Cancel</Button>
-          <Button onClick={handleEditInvoiceSubmit} variant="contained">
-            Save
+
+        {/* Dialog Actions - Save aligned to the right */}
+        <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleEditInvoiceSubmit}
+            sx={{
+              textTransform: "none",
+            }}
+          >
+            <SaveIcon sx={{ mr: 1 }} /> Save Changes
           </Button>
         </DialogActions>
       </Dialog>
 
+
       {/* ================= VIEW Invoice Dialog ================= */}
-      <Dialog open={isViewInvoiceOpen} onClose={() => setViewInvoiceOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Invoice Details</DialogTitle>
-        <DialogContent dividers>
-          {viewInvoice && (
-            <Box sx={{ p: 2 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Invoice ID:
-                  </Typography>
-                  <Typography variant="body1">{viewInvoice.invoiceId}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Member Name:
-                  </Typography>
-                  <Typography variant="body1">{viewInvoice.memberName}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Invoice Date:
-                  </Typography>
-                  <Typography variant="body1">{viewInvoice.invoiceDate}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Due Date:
-                  </Typography>
-                  <Typography variant="body1">{viewInvoice.dueDate || "—"}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Total Amount:
-                  </Typography>
-                  <Typography variant="body1">${viewInvoice.invoiceTotal}</Typography>
-                </Grid>
-              </Grid>
-              <Box mt={3}>
-                <Typography variant="subtitle1" gutterBottom>
-                  Line Items
-                </Typography>
-                {viewInvoice.lineItems && viewInvoice.lineItems.length > 0 ? (
-                  <TableContainer component={Paper}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>ItemType</TableCell>
-                          <TableCell>Description</TableCell>
-                          <TableCell>Qty</TableCell>
-                          <TableCell>UnitPrice</TableCell>
-                          <TableCell>Subtotal</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {viewInvoice.lineItems.map((li) => (
-                          <TableRow key={li.LineItemID}>
-                            <TableCell>{li.ItemType}</TableCell>
-                            <TableCell>{li.Description}</TableCell>
-                            <TableCell>{li.Quantity}</TableCell>
-                            <TableCell>${li.UnitPrice}</TableCell>
-                            <TableCell>${li.Subtotal}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                ) : (
-                  <Typography>No line items found.</Typography>
-                )}
-              </Box>
+      <Dialog
+        open={isViewInvoiceOpen}
+        onClose={() => setViewInvoiceOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle sx={{ p: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <ReceiptLongIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Invoice Details
+              </Typography>
             </Box>
+            <IconButton
+              onClick={() => setViewInvoiceOpen(false)}
+              sx={{
+                "&:hover": { color: theme.palette.error.main },
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent dividers sx={{ p: 4 }}>
+          {viewInvoice && (
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Invoice ID"
+                  variant="filled"
+                  InputProps={{ readOnly: true }}
+                  value={viewInvoice.invoiceId || "—"}
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Member Name"
+                  variant="filled"
+                  InputProps={{ readOnly: true }}
+                  value={viewInvoice.memberName || "—"}
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Invoice Date"
+                  variant="filled"
+                  InputProps={{ readOnly: true }}
+                  value={formatDate(viewInvoice.invoiceDate || "—")}
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Due Date"
+                  variant="filled"
+                  InputProps={{ readOnly: true }}
+                  value={formatDate(viewInvoice.dueDate || "—")}
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              <Grid item xs={12}>
+              <TextField
+              fullWidth
+              label="Total Amount"
+              variant="filled"
+              InputProps={{ readOnly: true }}
+              value={viewInvoice.invoiceTotal ? `₱${viewInvoice.invoiceTotal}` : "—"}
+              sx={{ mb: 2 }}
+            />
+              </Grid>
+            </Grid>
           )}
+
+          {/* Line Items Section */}
+          <Box mt={3}>
+            <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2 }}>
+              Line Items
+            </Typography>
+            {viewInvoice?.lineItems && viewInvoice.lineItems.length > 0 ? (
+              <TableContainer component={Paper}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: "bold" }}>Item Type</TableCell>
+                      <TableCell sx={{ fontWeight: "bold" }}>Description</TableCell>
+                      <TableCell sx={{ fontWeight: "bold" }}>Qty</TableCell>
+                      <TableCell sx={{ fontWeight: "bold" }}>Unit Price</TableCell>
+                      <TableCell sx={{ fontWeight: "bold" }}>Subtotal</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {viewInvoice.lineItems.map((li, index) => (
+                      <TableRow key={index}>
+                        <TableCell>{li.ItemType || "—"}</TableCell>
+                        <TableCell>{li.Description || "—"}</TableCell>
+                        <TableCell>{li.Quantity || "—"}</TableCell>
+                        <TableCell>{li.UnitPrice ? `₱${li.UnitPrice}` : "—"}</TableCell>
+                        <TableCell>{li.Subtotal ? `₱${li.Subtotal}` : "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Typography>No line items found.</Typography>
+            )}
+          </Box>
+        </DialogContent>
+      </Dialog>
+
+
+       {/* Delete Dialog */}   
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        fullWidth
+        maxWidth="xs"
+        sx={{ "& .MuiDialog-paper": { borderRadius: 3 } }}
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            fontWeight: "bold",
+          }}
+        >
+          <DeleteForeverIcon color="error" />
+          Confirm Deletion
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography>
+            Are you sure you want to delete this record? This action cannot be undone.
+          </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setViewInvoiceOpen(false)} variant="contained" color="primary">
-            Close
+          <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: "gray" }}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleConfirmDelete}>
+            Delete
           </Button>
         </DialogActions>
       </Dialog>
+
     </Box>
   );
 }

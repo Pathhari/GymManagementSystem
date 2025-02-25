@@ -51,7 +51,6 @@ import ReactToPrint from "react-to-print";
 import AddNewStaffLayout from "../../Layouts/AddNewStaffLayout";
 import AddPayrollLayout from "../../Layouts/AddPayrollLayout";
 import AddStaffTaskLayout from "../../Layouts/AddStaffTaskLayout";
-import PayslipLayout from "../../Layouts/PayslipLayout";
 
 
 
@@ -1287,7 +1286,7 @@ const handleTabChange = (e, newValue) => {
             )}
           </Box>
         </Box>
-        <div style={{ height: 420, width: "100%" }}>
+        <div style={{ height: 400, width: "100%" }}>
       <DataGrid
             rows={
               activeTab === 0

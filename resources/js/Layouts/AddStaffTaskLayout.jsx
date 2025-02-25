@@ -8,16 +8,19 @@ import {
   DialogActions,
   Grid,
   TextField,
-  FormControl,
-  InputLabel,
-  Select,
   MenuItem,
   IconButton,
   Typography,
   useMediaQuery,
   useTheme,
+  InputAdornment,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
+import AddIcon from "@mui/icons-material/Add";
+import PersonIcon from "@mui/icons-material/Person";
+import DescriptionIcon from "@mui/icons-material/Description";
+import EventIcon from "@mui/icons-material/Event";
+import InfoIcon from "@mui/icons-material/Info";
 
 const initialTask = {
   StaffID: "",
@@ -26,11 +29,7 @@ const initialTask = {
   Status: "Pending",
 };
 
-export default function AddStaffTaskLayout({
-  onClose,
-  onAdd,
-  staffOptions = [],
-}) {
+export default function AddStaffTaskLayout({ onClose, onAdd, staffOptions }) {
   const [taskData, setTaskData] = useState(initialTask);
   const [errors, setErrors] = useState({});
 
@@ -47,9 +46,7 @@ export default function AddStaffTaskLayout({
     if (!taskData.StaffID || !taskData.TaskDescription) {
       setErrors({
         StaffID: taskData.StaffID ? "" : "Staff ID is required",
-        TaskDescription: taskData.TaskDescription
-          ? ""
-          : "Description is required",
+        TaskDescription: taskData.TaskDescription ? "" : "Description is required",
       });
       return;
     }
@@ -58,11 +55,27 @@ export default function AddStaffTaskLayout({
   };
 
   return (
-    <Dialog open onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle sx={{ pb: 1 }}>
+    <Dialog
+      open
+      onClose={onClose}
+      fullWidth
+      maxWidth="sm"
+      sx={{
+        "& .MuiDialog-paper": {
+          borderRadius: 3,
+          boxShadow: 6,
+          p: 3,
+          overflow: "hidden",
+        },
+      }}
+    >
+      <DialogTitle sx={{ p: 2 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Typography variant="h6">Add Staff Task</Typography>
-          <IconButton onClick={onClose}>
+          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+            <PersonIcon sx={{verticalAlign: "middle", mr: 1}} />
+            Add Staff Task
+          </Typography>
+          <IconButton onClick={onClose} sx={{ "&:hover": { color: theme.palette.error.main } }}>
             <CloseIcon />
           </IconButton>
         </Box>
@@ -71,33 +84,39 @@ export default function AddStaffTaskLayout({
       <DialogContent dividers>
         <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
           <Grid container spacing={2}>
-            {/* StaffID -> Dropdown */}
+            {/* Staff Dropdown with Person Icon */}
             <Grid item xs={12}>
-              <FormControl fullWidth required error={!!errors.StaffID}>
-                <InputLabel>Staff</InputLabel>
-                <Select
-                  name="StaffID"
-                  label="Staff"
-                  value={taskData.StaffID}
-                  onChange={handleChange}
-                >
-                  <MenuItem value="">
-                    <em>-- Select Staff --</em>
+              <TextField
+                fullWidth
+                select
+                label="Staff"
+                name="StaffID"
+                value={taskData.StaffID}
+                onChange={handleChange}
+                variant="outlined"
+                required
+                error={!!errors.StaffID}
+                helperText={errors.StaffID}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PersonIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              >
+                <MenuItem value="">
+                  <em>-- Select Staff --</em>
+                </MenuItem>
+                {staffOptions.map((staff) => (
+                  <MenuItem key={staff.value} value={staff.value}>
+                    {staff.label}
                   </MenuItem>
-                  {staffOptions.map((staff) => (
-                    <MenuItem key={staff.value} value={staff.value}>
-                      {staff.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-                {errors.StaffID && (
-                  <Typography variant="caption" color="error">
-                    {errors.StaffID}
-                  </Typography>
-                )}
-              </FormControl>
+                ))}
+              </TextField>
             </Grid>
 
+            {/* Task Description with Description Icon */}
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -111,9 +130,17 @@ export default function AddStaffTaskLayout({
                 required
                 multiline
                 rows={3}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <DescriptionIcon />
+                    </InputAdornment>
+                  ),
+                }}
               />
             </Grid>
 
+            {/* Task Date with Event Icon */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -124,9 +151,17 @@ export default function AddStaffTaskLayout({
                 value={taskData.TaskDate}
                 onChange={handleChange}
                 variant="outlined"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <EventIcon />
+                    </InputAdornment>
+                  ),
+                }}
               />
             </Grid>
 
+            {/* Status with Info Icon */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -135,17 +170,35 @@ export default function AddStaffTaskLayout({
                 value={taskData.Status}
                 onChange={handleChange}
                 variant="outlined"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <InfoIcon />
+                    </InputAdornment>
+                  ),
+                }}
               />
             </Grid>
           </Grid>
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ py: 2, px: 3 }}>
-        <Button onClick={onClose} color="inherit">
-          Cancel
-        </Button>
-        <Button onClick={handleSubmit} variant="contained" color="primary">
+      <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
+          color="primary"
+          sx={{
+            px: 4,
+            py: 1,
+            fontSize: "1rem",
+            fontWeight: "bold",
+            borderRadius: 2,
+            textTransform: "none",
+          }}
+          startIcon={<AddIcon />}
+        >
           Add Task
         </Button>
       </DialogActions>

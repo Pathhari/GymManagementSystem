@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Contnental Club</title>
+    <title>Continental Club</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <!-- IMPORTANT: Add this -->
+
+    <link rel="icon" href="{{ asset('favicon.ico') }}" type="image/x-icon">
+
     @routes
     @viteReactRefresh
     @vite(['resources/js/app.jsx'])

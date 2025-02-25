@@ -11,7 +11,7 @@ import {
   InputAdornment,
   Alert,
 } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import { Email, Lock, Visibility, VisibilityOff } from '@mui/icons-material';
 
 const BRANDING = {
   logo: (
@@ -96,69 +96,81 @@ export default function OwnerLogin() {
             </Typography>
 
             {/* Email Field */}
-            <TextField
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              fullWidth
-              margin="normal"
-              error={!!error} // Highlight if there's a general error
-              helperText={!!error ? '' : null} // Do not display field-specific error
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  '&.Mui-focused fieldset': {
-                    borderColor: error ? 'red' : 'black',
+              <TextField
+                label="Email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                fullWidth
+                margin="normal"
+                error={!!error} // Highlight if there's a general error
+                helperText={!!error ? '' : null} // Do not display field-specific error
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Email />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&.Mui-focused fieldset': {
+                      borderColor: error ? 'red' : 'black',
+                    },
+                    '& fieldset': {
+                      borderColor: error ? 'red' : undefined,
+                    },
                   },
-                  '& fieldset': {
-                    borderColor: error ? 'red' : undefined,
+                  '& .MuiInputLabel-root': {
+                    color: error ? 'red' : 'gray',
                   },
-                },
-                '& .MuiInputLabel-root': {
-                  color: error ? 'red' : 'gray',
-                },
-                '& .MuiInputLabel-root.Mui-focused': {
-                  color: error ? 'red' : 'black',
-                },
-              }}
-            />
+                  '& .MuiInputLabel-root.Mui-focused': {
+                    color: error ? 'red' : 'black',
+                  },
+                }}
+              />
 
-            {/* Password Field */}
-            <TextField
-              label="Password"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              fullWidth
-              margin="normal"
-              error={!!error} // Highlight if there's a general error
-              helperText={!!error ? '' : null} // Do not display field-specific error
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={togglePasswordVisibility} edge="end">
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  '&.Mui-focused fieldset': {
-                    borderColor: error ? 'red' : 'black',
+              {/* Password Field */}
+              <TextField
+                label="Password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                fullWidth
+                margin="normal"
+                error={!!error} // Highlight if there's a general error
+                helperText={!!error ? '' : null} // Do not display field-specific error
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Lock />
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={togglePasswordVisibility} edge="end">
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&.Mui-focused fieldset': {
+                      borderColor: error ? 'red' : 'black',
+                    },
+                    '& fieldset': {
+                      borderColor: error ? 'red' : undefined,
+                    },
                   },
-                  '& fieldset': {
-                    borderColor: error ? 'red' : undefined,
+                  '& .MuiInputLabel-root': {
+                    color: error ? 'red' : 'gray',
                   },
-                },
-                '& .MuiInputLabel-root': {
-                  color: error ? 'red' : 'gray',
-                },
-                '& .MuiInputLabel-root.Mui-focused': {
-                  color: error ? 'red' : 'black',
-                },
-              }}
-            />
+                  '& .MuiInputLabel-root.Mui-focused': {
+                    color: error ? 'red' : 'black',
+                  },
+                }}
+              />
 
             {/* General Error Alert */}
             {error && (

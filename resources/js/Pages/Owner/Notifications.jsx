@@ -20,19 +20,33 @@ import {
   Select,
   InputLabel,
   Stack,
+  Tabs,
+  Tab,
+  InputAdornment,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
+
+// ===== MUI Icons =====
+import CampaignIcon from "@mui/icons-material/Campaign";        // For Announcements Tab
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth"; // For Expiring Membership Tab
+import MarkunreadMailboxIcon from "@mui/icons-material/MarkunreadMailbox"; // For Bulk SMS & Email Tab
+import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive"; // For Ad-hoc
+import GroupsIcon from "@mui/icons-material/Groups";            // For Staff Notification
+import EmailIcon from "@mui/icons-material/Email";              // For Mailjet Template Tab
+import ForumIcon from "@mui/icons-material/Forum";              // For Semaphore Tab
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
+import SendIcon from "@mui/icons-material/Send";
+import SmsIcon from "@mui/icons-material/Sms";
 
-// DataGrid columns for generic "All Members"
+// ---------------- DataGrid columns ----------------
 const allMembersColumns = [
   { field: "MemberID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Email", headerName: "Email", width: 220 },
 ];
 
-// Columns for "Expiring Members"
 const expiringColumns = [
   { field: "MemberID", headerName: "ID", width: 80 },
   { field: "name", headerName: "Name", width: 180 },
@@ -40,16 +54,15 @@ const expiringColumns = [
     field: "expiry_date",
     headerName: "Expiry Date",
     width: 180,
-    valueGetter: (params) => {
-      return params.row.expiry_date
+    valueGetter: (params) =>
+      params.row.expiry_date
         ? new Date(params.row.expiry_date).toLocaleDateString()
-        : "";
-    },
+        : "",
   },
   { field: "Email", headerName: "Email", width: 220 },
 ];
 
-// NEW: Columns for the "SMS Member Selection" DataGrid
+// Columns for the "SMS Member Selection" DataGrid
 const smsColumns = [
   { field: "MemberID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
@@ -58,74 +71,65 @@ const smsColumns = [
 
 export default function Notifications() {
   // ---------------------------------------------------
-  // 1. Announcements
+  //                  STATES & HOOKS
   // ---------------------------------------------------
+  // 1) Tab
+  const [activeTab, setActiveTab] = useState(0);
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+  };
+
+  // 2) Announcements
   const [announcements, setAnnouncements] = useState([]);
   const [isEditOpen, setEditOpen] = useState(false);
   const [editData, setEditData] = useState(null);
-
   const [newTopic, setNewTopic] = useState("");
   const [newMessage, setNewMessage] = useState("");
 
-  // ---------------------------------------------------
-  // 2. Bulk SMS & Bulk Email
-  // ---------------------------------------------------
+  // 3) Bulk SMS & Bulk Email
   const [bulkSMSMessage, setBulkSMSMessage] = useState("");
   const [bulkEmailSubject, setBulkEmailSubject] = useState("");
   const [bulkEmailBody, setBulkEmailBody] = useState("");
 
-  // ---------------------------------------------------
-  // 3. Ad-hoc Notification
-  // ---------------------------------------------------
+  // 4) Ad-hoc Notification
   const [adHocMemberID, setAdHocMemberID] = useState("");
   const [adHocMethod, setAdHocMethod] = useState("SMS");
   const [adHocMessage, setAdHocMessage] = useState("");
 
-  // ---------------------------------------------------
-  // 4. Staff Notification
-  // ---------------------------------------------------
+  // 5) Staff Notification
   const [staffList, setStaffList] = useState([]);
   const [selectedStaff, setSelectedStaff] = useState([]);
   const [notifSubject, setNotifSubject] = useState("");
   const [notifMessage, setNotifMessage] = useState("");
 
-  // ---------------------------------------------------
-  // 5. Expiring Membership
-  // ---------------------------------------------------
+  // 6) Expiring Membership
   const [expiringMembers, setExpiringMembers] = useState([]);
 
-  // ---------------------------------------------------
-  // 6. Mailjet Templated Email
-  // ---------------------------------------------------
+  // 7) Mailjet Templated Email
   const [allMembers, setAllMembers] = useState([]);
   const [selectedMemberIDs, setSelectedMemberIDs] = useState([]);
   const [templateId, setTemplateId] = useState("");
 
-  // ---------------------------------------------------
-  // 7. Semaphore SMS
-  // ---------------------------------------------------
-  const [semaphoreNumbers, setSemaphoreNumbers] = useState("");  // e.g. "09998887777, 09171234567"
+  // 8) Semaphore SMS
+  const [semaphoreNumbers, setSemaphoreNumbers] = useState("");
   const [semaphoreMessage, setSemaphoreMessage] = useState("");
   const [semaphoreSenderName, setSemaphoreSenderName] = useState("");
 
-  // NEW: We’ll load the same "SMS members" data from your membership endpoint
+  // 9) SMS Members
   const [smsMembers, setSmsMembers] = useState([]);
   const [selectedSMSMemberIDs, setSelectedSMSMemberIDs] = useState([]);
 
   // ---------------------------------------------------
-  // useEffect: load everything on mount
+  //                 USE EFFECTS (LOAD DATA)
   // ---------------------------------------------------
   useEffect(() => {
     loadAnnouncements();
     loadStaff();
     loadExpiringMembers();
     loadAllMembers();
-    loadMembersForSMS(); // new
+    loadMembersForSMS();
   }, []);
 
-  // ---------------------------------------------------
-  // Loaders
-  // ---------------------------------------------------
   const loadAnnouncements = async () => {
     try {
       const res = await axios.get("/notifications/announcements");
@@ -163,11 +167,9 @@ export default function Notifications() {
     }
   };
 
-  // Load members again, but specifically for phone usage
   const loadMembersForSMS = async () => {
     try {
       const res = await axios.get("/membership/members");
-      // We'll store the same data but in a separate state if we want to filter columns, etc.
       setSmsMembers(res.data.members || []);
     } catch (error) {
       console.error("Failed to load members for SMS:", error);
@@ -175,7 +177,7 @@ export default function Notifications() {
   };
 
   // ---------------------------------------------------
-  // Announcements logic
+  //       ANNOUNCEMENTS: ADD / EDIT / DELETE
   // ---------------------------------------------------
   const handleAddAnnouncement = async () => {
     if (!newTopic.trim() || !newMessage.trim()) {
@@ -252,7 +254,7 @@ export default function Notifications() {
   };
 
   // ---------------------------------------------------
-  // Staff logic
+  //                 STAFF NOTIFICATION
   // ---------------------------------------------------
   const handleStaffToggle = (staffId) => {
     setSelectedStaff((prev) =>
@@ -288,7 +290,7 @@ export default function Notifications() {
   };
 
   // ---------------------------------------------------
-  // Bulk SMS & Email
+  //                 BULK SMS & EMAIL
   // ---------------------------------------------------
   const handleSendBulkSMS = async () => {
     if (!bulkSMSMessage.trim()) {
@@ -327,7 +329,7 @@ export default function Notifications() {
   };
 
   // ---------------------------------------------------
-  // Ad-hoc Notification
+  //                 AD-HOC NOTIFICATION
   // ---------------------------------------------------
   const handleSendAdHoc = async () => {
     if (!adHocMemberID.trim() || !adHocMessage.trim()) {
@@ -350,7 +352,7 @@ export default function Notifications() {
   };
 
   // ---------------------------------------------------
-  // Expiring membership (Mailjet)
+  //      EXPIRING MEMBERSHIP (MAILJET REMINDER)
   // ---------------------------------------------------
   const handleSendExpiringMembershipEmails = async () => {
     if (!window.confirm("Send expiring membership reminder emails via Mailjet?")) {
@@ -373,7 +375,7 @@ export default function Notifications() {
   };
 
   // ---------------------------------------------------
-  // Mailjet Templated Email
+  //       MAILJET TEMPLATED EMAIL (CUSTOM TEMPLATE)
   // ---------------------------------------------------
   const handleMemberSelection = (ids) => {
     setSelectedMemberIDs(ids);
@@ -416,7 +418,7 @@ export default function Notifications() {
   };
 
   // ---------------------------------------------------
-  // Semaphore SMS
+  //                 SEMAPHORE SMS
   // ---------------------------------------------------
   const handleSendSemaphoreSMS = async () => {
     if (!semaphoreNumbers.trim()) {
@@ -428,7 +430,7 @@ export default function Notifications() {
       return;
     }
     const payload = {
-      numbers: semaphoreNumbers, // e.g. "09998887777,09171234567"
+      numbers: semaphoreNumbers,
       message: semaphoreMessage,
       senderName: semaphoreSenderName,
     };
@@ -454,34 +456,24 @@ export default function Notifications() {
     }
   };
 
-  // NEW: auto-fill phone numbers from the selected rows
+  // Auto-fill phone numbers from selected rows in SMS DataGrid
   const handleAutoFillNumbers = () => {
-      // 1) See what IDs are currently selected
-  console.log("selectedSMSMemberIDs:", selectedSMSMemberIDs);
-
-  // 2) See what data is in smsMembers
-  console.log("smsMembers:", smsMembers);
-    // Filter the members that are selected
     const selectedRows = smsMembers.filter((m) =>
       selectedSMSMemberIDs.includes(m.MemberID)
     );
-    console.log("Selected rows =>", selectedRows);
-    // Extract phone from each
     const phones = selectedRows
       .map((m) => m.Phone)
-      .filter((p) => !!p && p.trim().length > 0); // remove empty
-      console.log("Extracted phones =>", phones);
+      .filter((p) => !!p && p.trim().length > 0);
 
     if (phones.length === 0) {
       alert("No valid phone numbers among selected members.");
       return;
     }
-    // Join them with commas
     setSemaphoreNumbers(phones.join(","));
   };
 
   // ---------------------------------------------------
-  // Rendering
+  //                    RENDER
   // ---------------------------------------------------
   return (
     <Box sx={{ p: 4 }}>
@@ -490,309 +482,409 @@ export default function Notifications() {
       </Typography>
       <Divider sx={{ mb: 3 }} />
 
-      <Grid container spacing={3}>
-        {/* ================== ANNOUNCEMENTS ================== */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6">Add Announcement</Typography>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField
-                label="Topic"
-                fullWidth
-                value={newTopic}
-                onChange={(e) => setNewTopic(e.target.value)}
-              />
-              <TextField
-                label="Message"
-                fullWidth
-                multiline
-                rows={2}
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-              />
-              <Button variant="contained" onClick={handleAddAnnouncement}>
-                Add Announcement
-              </Button>
-            </Stack>
-          </Paper>
-        </Grid>
+      {/* -------------------- TABS -------------------- */}
+      <Tabs value={activeTab} onChange={handleTabChange} sx={{ mb: 2 }}>
+        <Tab icon={<CampaignIcon />} label="Announcements" />
+        <Tab icon={<CalendarMonthIcon />} label="Expiring" />
+        <Tab icon={<MarkunreadMailboxIcon />} label="Bulk SMS & Email" />
+        <Tab icon={<NotificationsActiveIcon />} label="Ad-hoc" />
+        <Tab icon={<GroupsIcon />} label="Staff" />
+        <Tab icon={<EmailIcon />} label="Mailjet" />
+        <Tab icon={<ForumIcon />} label="Semaphore" />
+      </Tabs>
 
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: "100%" }}>
-            <Typography variant="h6" gutterBottom>
-              Recent Announcements
-            </Typography>
-            {announcements.length === 0 ? (
-              <Typography>No announcements yet...</Typography>
-            ) : (
-              announcements.map((ann) => {
-                const lines = ann.Message.split("\n");
-                const parsedTopic = lines[0].replace("Topic: ", "").trim();
-                const parsedMsg = lines.slice(1).join("\n").trim();
-
-                return (
-                  <Box
-                    key={ann.NotificationID}
-                    sx={{
-                      border: "1px solid #ccc",
-                      borderRadius: 1,
-                      p: 1,
-                      mb: 1,
-                    }}
-                  >
-                    <Typography variant="subtitle1" fontWeight="bold">
-                      {parsedTopic}
-                    </Typography>
-                    <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
-                      {parsedMsg}
-                    </Typography>
-                    <Box sx={{ mt: 1 }}>
-                      <Tooltip title="Edit">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleEditOpen(ann)}
-                        >
-                          <EditIcon fontSize="inherit" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete">
-                        <IconButton
-                          size="small"
-                          sx={{ color: "red", ml: 1 }}
-                          onClick={() =>
-                            handleDeleteAnnouncement(ann.NotificationID)
-                          }
-                        >
-                          <DeleteIcon fontSize="inherit" />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </Box>
-                );
-              })
-            )}
-          </Paper>
-        </Grid>
-
-        {/* ================== EXPIRING MEMBERSHIP ================== */}
-        <Grid item xs={12}>
-          <Paper sx={{ p: 2 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-              <Typography variant="h6">
-                Expiring Memberships (Next 7 Days)
-              </Typography>
-              <Button
-                variant="contained"
-                onClick={handleSendExpiringMembershipEmails}
-              >
-                Send Expiring Emails
-              </Button>
-            </Box>
-            <div style={{ width: "100%", height: 400 }}>
-              <DataGrid
-                rows={expiringMembers}
-                columns={expiringColumns}
-                getRowId={(row) => row.MemberID}
-                pageSize={5}
-                rowsPerPageOptions={[5, 10]}
-              />
-            </div>
-          </Paper>
-        </Grid>
-
-        {/* ================== BULK SMS & BULK EMAIL ================== */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6">Bulk SMS</Typography>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField
-                label="SMS Message"
-                fullWidth
-                multiline
-                rows={2}
-                value={bulkSMSMessage}
-                onChange={(e) => setBulkSMSMessage(e.target.value)}
-              />
-              <Button variant="contained" onClick={handleSendBulkSMS}>
-                Send Bulk SMS
-              </Button>
-            </Stack>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6">Bulk Email</Typography>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField
-                label="Subject"
-                fullWidth
-                value={bulkEmailSubject}
-                onChange={(e) => setBulkEmailSubject(e.target.value)}
-              />
-              <TextField
-                label="Email Body"
-                fullWidth
-                multiline
-                rows={3}
-                value={bulkEmailBody}
-                onChange={(e) => setBulkEmailBody(e.target.value)}
-              />
-              <Button variant="contained" onClick={handleSendBulkEmail}>
-                Send Bulk Email
-              </Button>
-            </Stack>
-          </Paper>
-        </Grid>
-
-        {/* ================== AD-HOC NOTIFICATION ================== */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6">Ad-hoc Notification</Typography>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField
-                label="Member ID"
-                fullWidth
-                value={adHocMemberID}
-                onChange={(e) => setAdHocMemberID(e.target.value)}
-              />
-              <FormControl fullWidth>
-                <InputLabel>Method</InputLabel>
-                <Select
-                  value={adHocMethod}
-                  label="Method"
-                  onChange={(e) => setAdHocMethod(e.target.value)}
+      {/* ========================== TAB PANELS ========================== */}
+      {/* -------------------- TAB 0: Announcements -------------------- */}
+      {activeTab === 0 && (
+        <Grid container spacing={3}>
+          {/* Left: Add Announcement */}
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6">Add Announcement</Typography>
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                <TextField
+                  label="Topic"
+                  fullWidth
+                  value={newTopic}
+                  onChange={(e) => setNewTopic(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <CampaignIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <TextField
+                  label="Message"
+                  fullWidth
+                  multiline
+                  rows={2}
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                />
+                <Button
+                  variant="contained"
+                  startIcon={<AddCircleOutlineIcon />}
+                  onClick={handleAddAnnouncement}
                 >
-                  <MenuItem value="SMS">SMS</MenuItem>
-                  <MenuItem value="Email">Email</MenuItem>
-                </Select>
-              </FormControl>
-              <TextField
-                label="Message"
-                fullWidth
-                multiline
-                rows={3}
-                value={adHocMessage}
-                onChange={(e) => setAdHocMessage(e.target.value)}
-              />
-              <Button variant="contained" onClick={handleSendAdHoc}>
-                Send Ad-hoc
-              </Button>
-            </Stack>
-          </Paper>
+                  Add Announcement
+                </Button>
+              </Stack>
+            </Paper>
+          </Grid>
+
+          {/* Right: Recent Announcements */}
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2, height: "100%" }}>
+              <Typography variant="h6" gutterBottom>
+                Recent Announcements
+              </Typography>
+              {announcements.length === 0 ? (
+                <Typography>No announcements yet...</Typography>
+              ) : (
+                announcements.map((ann) => {
+                  const lines = ann.Message.split("\n");
+                  const parsedTopic = lines[0].replace("Topic: ", "").trim();
+                  const parsedMsg = lines.slice(1).join("\n").trim();
+
+                  return (
+                    <Box
+                      key={ann.NotificationID}
+                      sx={{
+                        border: "1px solid #ccc",
+                        borderRadius: 1,
+                        p: 1,
+                        mb: 1,
+                      }}
+                    >
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {parsedTopic}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{ whiteSpace: "pre-line" }}
+                      >
+                        {parsedMsg}
+                      </Typography>
+                      <Box sx={{ mt: 1 }}>
+                        <Tooltip title="Edit">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEditOpen(ann)}
+                          >
+                            <EditIcon fontSize="inherit" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete">
+                          <IconButton
+                            size="small"
+                            sx={{ color: "red", ml: 1 }}
+                            onClick={() =>
+                              handleDeleteAnnouncement(ann.NotificationID)
+                            }
+                          >
+                            <DeleteIcon fontSize="inherit" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </Box>
+                  );
+                })
+              )}
+            </Paper>
+          </Grid>
         </Grid>
+      )}
 
-        {/* ================== STAFF NOTIFICATION ================== */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6">Notify Staff</Typography>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField
-                label="Subject"
-                fullWidth
-                value={notifSubject}
-                onChange={(e) => setNotifSubject(e.target.value)}
-              />
-              <TextField
-                label="Message"
-                fullWidth
-                multiline
-                rows={2}
-                value={notifMessage}
-                onChange={(e) => setNotifMessage(e.target.value)}
-              />
-              <Box
-                sx={{
-                  maxHeight: 120,
-                  overflowY: "auto",
-                  border: "1px solid #ccc",
-                  p: 1,
-                }}
-              >
-                {staffList.map((staff) => (
-                  <Box
-                    key={staff.id}
-                    sx={{ display: "flex", alignItems: "center" }}
-                  >
-                    <Checkbox
-                      checked={selectedStaff.includes(staff.id)}
-                      onChange={() => handleStaffToggle(staff.id)}
-                    />
-                    <Typography>{staff.name}</Typography>
-                  </Box>
-                ))}
-              </Box>
-              <Button variant="contained" onClick={handleSendToStaff}>
-                Send to Staff
-              </Button>
-            </Stack>
-          </Paper>
+      {/* ------------------ TAB 1: Expiring Memberships ------------------ */}
+      {activeTab === 1 && (
+        <Paper sx={{ p: 2 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+            <Typography variant="h6">
+              Expiring Memberships (Next 7 Days)
+            </Typography>
+            <Button
+              variant="contained"
+              color="warning"
+              startIcon={<CalendarMonthIcon />}
+              onClick={handleSendExpiringMembershipEmails}
+            >
+              Send Expiring Emails
+            </Button>
+          </Box>
+          <div style={{ width: "100%", height: 400 }}>
+            <DataGrid
+              rows={expiringMembers}
+              columns={expiringColumns}
+              getRowId={(row) => row.MemberID}
+              pageSize={5}
+              rowsPerPageOptions={[5, 10]}
+            />
+          </div>
+        </Paper>
+      )}
+
+      {/* ------------------ TAB 2: Bulk SMS & Email ------------------ */}
+      {activeTab === 2 && (
+        <Grid container spacing={3}>
+          {/* Bulk SMS */}
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6">Bulk SMS</Typography>
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                <TextField
+                  label="SMS Message"
+                  fullWidth
+                  multiline
+                  rows={2}
+                  value={bulkSMSMessage}
+                  onChange={(e) => setBulkSMSMessage(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SmsIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <Button
+                  variant="contained"
+                  startIcon={<SendIcon />}
+                  onClick={handleSendBulkSMS}
+                >
+                  Send Bulk SMS
+                </Button>
+              </Stack>
+            </Paper>
+          </Grid>
+
+          {/* Bulk Email */}
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6">Bulk Email</Typography>
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                <TextField
+                  label="Subject"
+                  fullWidth
+                  value={bulkEmailSubject}
+                  onChange={(e) => setBulkEmailSubject(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <EmailIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <TextField
+                  label="Email Body"
+                  fullWidth
+                  multiline
+                  rows={3}
+                  value={bulkEmailBody}
+                  onChange={(e) => setBulkEmailBody(e.target.value)}
+                />
+                <Button
+                  variant="contained"
+                  startIcon={<SendIcon />}
+                  onClick={handleSendBulkEmail}
+                >
+                  Send Bulk Email
+                </Button>
+              </Stack>
+            </Paper>
+          </Grid>
         </Grid>
+      )}
 
-        {/* ================== MAILJET TEMPLATED EMAIL ================== */}
-        <Grid item xs={12}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Mailjet Templated Email
-            </Typography>
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              Need to create or edit a new template?{" "}
-              <a
-                href="https://app.mailjet.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: "blue", textDecoration: "underline" }}
+      {/* ------------------ TAB 3: Ad-hoc Notification ------------------ */}
+      {activeTab === 3 && (
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            Ad-hoc Notification
+          </Typography>
+          <Stack spacing={2} sx={{ mt: 1, maxWidth: 600 }}>
+            <TextField
+              label="Member ID"
+              fullWidth
+              value={adHocMemberID}
+              onChange={(e) => setAdHocMemberID(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <GroupsIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <FormControl fullWidth>
+              <InputLabel>Method</InputLabel>
+              <Select
+                value={adHocMethod}
+                label="Method"
+                onChange={(e) => setAdHocMethod(e.target.value)}
               >
-                Go to Mailjet Dashboard
-              </a>
-            </Typography>
+                <MenuItem value="SMS">SMS</MenuItem>
+                <MenuItem value="Email">Email</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Message"
+              fullWidth
+              multiline
+              rows={3}
+              value={adHocMessage}
+              onChange={(e) => setAdHocMessage(e.target.value)}
+            />
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<NotificationsActiveIcon />}
+              onClick={handleSendAdHoc}
+            >
+              Send Ad-hoc
+            </Button>
+          </Stack>
+        </Paper>
+      )}
 
-            <Stack spacing={2} sx={{ mb: 2 }}>
-              <TextField
-                label="Mailjet Template ID"
-                fullWidth
-                value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
-              />
-            </Stack>
-
-            <Typography variant="subtitle1" sx={{ mb: 1 }}>
-              Select Members to Receive the Template
-            </Typography>
-            <div style={{ width: "100%", height: 400 }}>
-              <DataGrid
-                rows={allMembers}
-                columns={allMembersColumns}
-                getRowId={(row) => row.MemberID}
-                checkboxSelection
-                onSelectionModelChange={(newSelection) => {
-                  handleMemberSelection(newSelection);
-                }}
-                pageSize={5}
-                rowsPerPageOptions={[5, 10]}
-              />
-            </div>
-
-            <Box sx={{ mt: 2 }}>
-              <Button variant="contained" onClick={handleSendMailjetTemplate}>
-                Send Templated Email
-              </Button>
+      {/* ------------------ TAB 4: Staff Notification ------------------ */}
+      {activeTab === 4 && (
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            Notify Staff
+          </Typography>
+          <Stack spacing={2} sx={{ mt: 1, maxWidth: 600 }}>
+            <TextField
+              label="Subject"
+              fullWidth
+              value={notifSubject}
+              onChange={(e) => setNotifSubject(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <CampaignIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              label="Message"
+              fullWidth
+              multiline
+              rows={2}
+              value={notifMessage}
+              onChange={(e) => setNotifMessage(e.target.value)}
+            />
+            {/* Staff List */}
+            <Box
+              sx={{
+                maxHeight: 120,
+                overflowY: "auto",
+                border: "1px solid #ccc",
+                p: 1,
+              }}
+            >
+              {staffList.map((staff) => (
+                <Box
+                  key={staff.id}
+                  sx={{ display: "flex", alignItems: "center" }}
+                >
+                  <Checkbox
+                    checked={selectedStaff.includes(staff.id)}
+                    onChange={() => handleStaffToggle(staff.id)}
+                  />
+                  <Typography>{staff.name}</Typography>
+                </Box>
+              ))}
             </Box>
-          </Paper>
-        </Grid>
+            <Button
+              variant="contained"
+              startIcon={<SendIcon />}
+              onClick={handleSendToStaff}
+            >
+              Send to Staff
+            </Button>
+          </Stack>
+        </Paper>
+      )}
 
-        {/* ================== SEMAPHORE SMS ================== */}
-        <Grid item xs={12}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Send SMS via Semaphore
-            </Typography>
+      {/* ------------------ TAB 5: Mailjet Templates ------------------ */}
+      {activeTab === 5 && (
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            Mailjet Templated Email
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Need to create or edit a new template?{" "}
+            <a
+              href="https://app.mailjet.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "blue", textDecoration: "underline" }}
+            >
+              Go to Mailjet Dashboard
+            </a>
+          </Typography>
 
-            {/* 1) DataGrid to pick which members to text */}
-            <Typography variant="subtitle1" sx={{ mb: 1 }}>
-              (Optional) Select members to pull their phone numbers
-            </Typography>
-            <div style={{ width: "100%", height: 300, marginBottom: 16 }}>
+          <Stack spacing={2} sx={{ mb: 2, maxWidth: 400 }}>
+            <TextField
+              label="Mailjet Template ID"
+              fullWidth
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <EmailIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Stack>
+
+          <Typography variant="subtitle1" sx={{ mb: 1 }}>
+            Select Members to Receive the Template
+          </Typography>
+          <div style={{ width: "100%", height: 400 }}>
+            <DataGrid
+              rows={allMembers}
+              columns={allMembersColumns}
+              getRowId={(row) => row.MemberID}
+              checkboxSelection
+              onSelectionModelChange={(newSelection) => {
+                handleMemberSelection(newSelection);
+              }}
+              pageSize={5}
+              rowsPerPageOptions={[5, 10]}
+            />
+          </div>
+
+          <Box sx={{ mt: 2 }}>
+            <Button
+              variant="contained"
+              startIcon={<SendIcon />}
+              onClick={handleSendMailjetTemplate}
+            >
+              Send Templated Email
+            </Button>
+          </Box>
+        </Paper>
+      )}
+
+      {/* ------------------ TAB 6: Semaphore SMS ------------------ */}
+      {activeTab === 6 && (
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            Send SMS via Semaphore
+          </Typography>
+
+          {/* 1) DataGrid to pick which members to text */}
+          <Typography variant="subtitle1" sx={{ mb: 1 }}>
+            (Optional) Select members to pull their phone numbers
+          </Typography>
+          <div style={{ width: "100%", height: 300, marginBottom: 16 }}>
             <DataGrid
               rows={smsMembers}
               columns={smsColumns}
@@ -800,53 +892,78 @@ export default function Notifications() {
               checkboxSelection
               rowSelectionModel={selectedSMSMemberIDs}
               onRowSelectionModelChange={(newSelection) => {
-                console.log("New row selection =>", newSelection);
                 setSelectedSMSMemberIDs(newSelection);
               }}
               pageSize={5}
               rowsPerPageOptions={[5, 10]}
             />
-            </div>
+          </div>
+          <Button
+            variant="outlined"
+            sx={{ mb: 2 }}
+            startIcon={<AddCircleOutlineIcon />}
+            onClick={handleAutoFillNumbers}
+          >
+            Auto-Fill from Selected
+          </Button>
+
+          {/* 2) Manual fields for custom phone input */}
+          <Stack spacing={2} sx={{ maxWidth: 600 }}>
+            <TextField
+              label='Recipient Number(s)'
+              placeholder='e.g. "09998887777,09171234567"'
+              fullWidth
+              value={semaphoreNumbers}
+              onChange={(e) => setSemaphoreNumbers(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SmsIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              label="SMS Message"
+              multiline
+              rows={2}
+              fullWidth
+              value={semaphoreMessage}
+              onChange={(e) => setSemaphoreMessage(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <CampaignIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              label="Sender Name (optional)"
+              placeholder="Defaults to SEMAPHORE"
+              fullWidth
+              value={semaphoreSenderName}
+              onChange={(e) => setSemaphoreSenderName(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <ForumIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+
             <Button
-              variant="outlined"
-              sx={{ mb: 2 }}
-              onClick={handleAutoFillNumbers}
+              variant="contained"
+              color="primary"
+              startIcon={<SendIcon />}
+              onClick={handleSendSemaphoreSMS}
             >
-              Auto-Fill from Selected
+              Send via Semaphore
             </Button>
-
-            {/* 2) Manual fields for custom phone input */}
-            <Stack spacing={2}>
-              <TextField
-                label="Recipient Number(s)"
-                placeholder='Format: "09998887777" or "09998887777,09171234567"'
-                fullWidth
-                value={semaphoreNumbers}
-                onChange={(e) => setSemaphoreNumbers(e.target.value)}
-              />
-              <TextField
-                label="SMS Message"
-                multiline
-                rows={2}
-                fullWidth
-                value={semaphoreMessage}
-                onChange={(e) => setSemaphoreMessage(e.target.value)}
-              />
-              <TextField
-                label="Sender Name (optional)"
-                placeholder="Defaults to SEMAPHORE"
-                fullWidth
-                value={semaphoreSenderName}
-                onChange={(e) => setSemaphoreSenderName(e.target.value)}
-              />
-
-              <Button variant="contained" onClick={handleSendSemaphoreSMS}>
-                Send via Semaphore
-              </Button>
-            </Stack>
-          </Paper>
-        </Grid>
-      </Grid>
+          </Stack>
+        </Paper>
+      )}
 
       {/* ================== EDIT ANNOUNCEMENT DIALOG ================== */}
       <Dialog
@@ -866,6 +983,13 @@ export default function Notifications() {
                 name="topic"
                 value={editData.topic}
                 onChange={handleEditChange}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <CampaignIcon />
+                    </InputAdornment>
+                  ),
+                }}
               />
               <TextField
                 label="Message"

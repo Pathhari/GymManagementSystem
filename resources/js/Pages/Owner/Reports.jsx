@@ -1,4 +1,13 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  lazy,
+  Suspense,
+  memo,
+  useRef,
+} from "react";
 import {
   Box,
   Card,
@@ -20,9 +29,8 @@ import {
   DialogContent,
   DialogActions,
   Tooltip,
-  CircularProgress
+  CircularProgress,
 } from "@mui/material";
-import { DataGrid } from "@mui/x-data-grid";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import MonetizationOnIcon from "@mui/icons-material/MonetizationOn";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
@@ -34,6 +42,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import axios from "axios";
 
 import {
   Chart as ChartJS,
@@ -46,10 +55,8 @@ import {
   Title,
   Tooltip as ChartTooltip,
   Legend,
-  Filler
+  Filler,
 } from "chart.js";
-import { Line, Bar, Doughnut } from "react-chartjs-2";
-import axios from "axios";
 
 ChartJS.register(
   CategoryScale,
@@ -64,7 +71,44 @@ ChartJS.register(
   Filler
 );
 
-export default function Reports() {
+// --- Lazy load heavy modules with prefetch hints ---
+const DataGrid = lazy(() =>
+  import(/* webpackPrefetch: true */ "@mui/x-data-grid").then((module) => ({ default: module.DataGrid }))
+);
+const Doughnut = lazy(() =>
+  import(/* webpackPrefetch: true */ "react-chartjs-2").then((module) => ({ default: module.Doughnut }))
+);
+const Line = lazy(() =>
+  import(/* webpackPrefetch: true */ "react-chartjs-2").then((module) => ({ default: module.Line }))
+);
+const Bar = lazy(() =>
+  import(/* webpackPrefetch: true */ "react-chartjs-2").then((module) => ({ default: module.Bar }))
+);
+
+// --- Helper Component: LazyLoadSection ---
+// This component defers rendering its children until it comes into view.
+const LazyLoadSection = ({ children, fallback = <CircularProgress /> }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return <div ref={ref}>{isVisible ? children : fallback}</div>;
+};
+
+const Reports = () => {
   // ------------------ STATE ------------------
   const [loading, setLoading] = useState(true);
   const [timePeriod, setTimePeriod] = useState("monthly");
@@ -110,7 +154,7 @@ export default function Reports() {
           staffPerformanceResponse,
           bookingTrendsResponse,
           systemMetricsResponse,
-          branchesResponse
+          branchesResponse,
         ] = await Promise.all([
           axios.get("/finance/summary", { withCredentials: true }),
           axios.get("/membership/growth", { withCredentials: true }),
@@ -121,7 +165,7 @@ export default function Reports() {
           axios.get("/staff/performance", { withCredentials: true }),
           axios.get("/booking/trends", { withCredentials: true }),
           axios.get("/system/metrics", { withCredentials: true }),
-          axios.get("/owner/branches", { withCredentials: true })
+          axios.get("/owner/branches", { withCredentials: true }),
         ]);
 
         // Total Revenue
@@ -202,7 +246,7 @@ export default function Reports() {
       parseFloat(row.TotalSales || 0).toFixed(2),
       parseFloat(row.PettyCash || 0).toFixed(2),
       parseFloat(row.DepositedAmount || 0).toFixed(2),
-      row.Remarks
+      row.Remarks,
     ]);
     doc.autoTable({
       head: [
@@ -218,14 +262,14 @@ export default function Reports() {
           "Total Sales",
           "Petty Cash",
           "Deposited",
-          "Remarks"
-        ]
+          "Remarks",
+        ],
       ],
       body: bodyData,
       startY: 20,
       margin: { horizontal: 10 },
       styles: { fontSize: 8, cellPadding: 3 },
-      headStyles: { fillColor: [22, 160, 133] }
+      headStyles: { fillColor: [22, 160, 133] },
     });
     doc.save("DailyCashflow.pdf");
   }, [handleExportMenuClose, cashFlowRecords, selectedCashFlowBranch]);
@@ -261,15 +305,15 @@ export default function Reports() {
     datasets: [
       {
         data: membershipPlans.map((p) => Number(p.members_count) || 0),
-        backgroundColor: ["#42a5f5", "#66bb6a", "#ef5350"]
-      }
-    ]
+        backgroundColor: ["#42a5f5", "#66bb6a", "#ef5350"],
+      },
+    ],
   }), [membershipPlans]);
 
   const membershipDistOptions = useMemo(() => ({
     responsive: true,
     plugins: { legend: { position: "bottom" } },
-    maintainAspectRatio: false
+    maintainAspectRatio: false,
   }), []);
 
   const membershipGrowthData = useMemo(() => ({
@@ -281,16 +325,16 @@ export default function Reports() {
         borderColor: "#ffa726",
         backgroundColor: "rgba(255,167,38,0.2)",
         fill: true,
-        tension: 0.3
-      }
-    ]
+        tension: 0.3,
+      },
+    ],
   }), [membershipGrowth]);
 
   const membershipGrowthOptions = useMemo(() => ({
     responsive: true,
     plugins: { legend: { display: false } },
     scales: { y: { beginAtZero: true } },
-    maintainAspectRatio: false
+    maintainAspectRatio: false,
   }), []);
 
   const attendanceAnalyticsData = useMemo(() => ({
@@ -302,16 +346,16 @@ export default function Reports() {
         borderColor: "#5c6bc0",
         backgroundColor: "rgba(92,107,192,0.2)",
         fill: true,
-        tension: 0.3
-      }
-    ]
+        tension: 0.3,
+      },
+    ],
   }), [attendanceAnalytics]);
 
   const attendanceAnalyticsOptions = useMemo(() => ({
     responsive: true,
     plugins: { legend: { display: false } },
     scales: { y: { beginAtZero: true } },
-    maintainAspectRatio: false
+    maintainAspectRatio: false,
   }), []);
 
   const staffPerformanceBarData = useMemo(() => ({
@@ -320,17 +364,26 @@ export default function Reports() {
       {
         label: "Tasks Completed",
         data: staffPerformance.map((s) => s.tasksCompleted),
-        backgroundColor: "#66bb6a"
-      }
-    ]
+        backgroundColor: "#66bb6a",
+      },
+    ],
   }), [staffPerformance]);
 
   const staffPerformanceBarOptions = useMemo(() => ({
     responsive: true,
     plugins: { legend: { display: false } },
     scales: { y: { beginAtZero: true } },
-    maintainAspectRatio: false
+    maintainAspectRatio: false,
   }), []);
+
+  const handleFilterApply = useCallback(() => {
+    console.log("Filters applied:", {
+      timePeriod,
+      dateFrom,
+      dateTo,
+      selectedCashFlowBranch,
+    });
+  }, [timePeriod, dateFrom, dateTo, selectedCashFlowBranch]);
 
   const bookingTrendsData = useMemo(() => ({
     labels: bookingTrends.map((b) => b.month),
@@ -341,16 +394,16 @@ export default function Reports() {
         borderColor: "#8d6e63",
         backgroundColor: "rgba(141,110,99,0.2)",
         fill: true,
-        tension: 0.3
-      }
-    ]
+        tension: 0.3,
+      },
+    ],
   }), [bookingTrends]);
 
   const bookingTrendsOptions = useMemo(() => ({
     responsive: true,
     plugins: { legend: { display: false } },
     scales: { y: { beginAtZero: true } },
-    maintainAspectRatio: false
+    maintainAspectRatio: false,
   }), []);
 
   const systemMetricsBarData = useMemo(() => ({
@@ -359,16 +412,16 @@ export default function Reports() {
       {
         label: "Count",
         data: [systemMetrics.logsCount || 0, systemMetrics.notificationsCount || 0],
-        backgroundColor: "#ab47bc"
-      }
-    ]
+        backgroundColor: "#ab47bc",
+      },
+    ],
   }), [systemMetrics]);
 
   const systemMetricsBarOptions = useMemo(() => ({
     responsive: true,
     plugins: { legend: { display: false } },
     scales: { y: { beginAtZero: true } },
-    maintainAspectRatio: false
+    maintainAspectRatio: false,
   }), []);
 
   // ------------------ DATA GRID COLUMNS ------------------
@@ -384,7 +437,7 @@ export default function Reports() {
       renderCell: (params) => {
         const value = parseFloat(params.value);
         return isNaN(value) ? "₱0.00" : `₱${value.toFixed(2)}`;
-      }
+      },
     },
     {
       field: "GCashSales",
@@ -393,7 +446,7 @@ export default function Reports() {
       renderCell: (params) => {
         const value = parseFloat(params.value);
         return isNaN(value) ? "₱0.00" : `₱${value.toFixed(2)}`;
-      }
+      },
     },
     {
       field: "BPISales",
@@ -402,7 +455,7 @@ export default function Reports() {
       renderCell: (params) => {
         const value = parseFloat(params.value);
         return isNaN(value) ? "₱0.00" : `₱${value.toFixed(2)}`;
-      }
+      },
     },
     {
       field: "OtherSales",
@@ -411,7 +464,7 @@ export default function Reports() {
       renderCell: (params) => {
         const value = parseFloat(params.value);
         return isNaN(value) ? "₱0.00" : `₱${value.toFixed(2)}`;
-      }
+      },
     },
     {
       field: "TotalSales",
@@ -420,7 +473,7 @@ export default function Reports() {
       renderCell: (params) => {
         const value = parseFloat(params.value);
         return isNaN(value) ? "₱0.00" : `₱${value.toFixed(2)}`;
-      }
+      },
     },
     {
       field: "PettyCash",
@@ -429,7 +482,7 @@ export default function Reports() {
       renderCell: (params) => {
         const value = parseFloat(params.value);
         return isNaN(value) ? "₱0.00" : `₱${value.toFixed(2)}`;
-      }
+      },
     },
     {
       field: "DepositedAmount",
@@ -438,7 +491,7 @@ export default function Reports() {
       renderCell: (params) => {
         const value = parseFloat(params.value);
         return isNaN(value) ? "₱0.00" : `₱${value.toFixed(2)}`;
-      }
+      },
     },
     { field: "Remarks", headerName: "Remarks", width: 150 },
     {
@@ -456,7 +509,7 @@ export default function Reports() {
                 color: "#fff",
                 "&:hover": { backgroundColor: "#43a047" },
                 minWidth: "40px",
-                p: 1
+                p: 1,
               }}
               aria-label="View Cashflow"
               onClick={() => {
@@ -475,7 +528,7 @@ export default function Reports() {
                 color: "#fff",
                 "&:hover": { backgroundColor: "#1976d2" },
                 minWidth: "40px",
-                p: 1
+                p: 1,
               }}
               aria-label="Edit Cashflow"
               onClick={() => {
@@ -494,7 +547,7 @@ export default function Reports() {
                 color: "#fff",
                 "&:hover": { backgroundColor: "#d32f2f" },
                 minWidth: "40px",
-                p: 1
+                p: 1,
               }}
               aria-label="Delete Cashflow"
               onClick={() => {
@@ -508,8 +561,8 @@ export default function Reports() {
             </Button>
           </Tooltip>
         </Box>
-      )
-    }
+      ),
+    },
   ], [cashFlowRecords]);
 
   // ------------------ LOADING STATE ------------------
@@ -522,7 +575,7 @@ export default function Reports() {
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
-          height: "100vh"
+          height: "100vh",
         }}
       >
         <CircularProgress />
@@ -542,9 +595,10 @@ export default function Reports() {
           display: "flex",
           flexWrap: "wrap",
           gap: 2,
-          alignItems: "center"
+          alignItems: "center",
         }}
       >
+        {/* Time Period */}
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel id="time-period-label">Time Period</InputLabel>
           <Select
@@ -559,6 +613,8 @@ export default function Reports() {
             <MenuItem value="yearly">Yearly</MenuItem>
           </Select>
         </FormControl>
+
+        {/* Date Range */}
         <TextField
           type="date"
           size="small"
@@ -575,6 +631,8 @@ export default function Reports() {
           value={dateTo}
           onChange={handleDateToChange}
         />
+
+        {/* Branch Filter */}
         <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel id="branch-label">Branch</InputLabel>
           <Select
@@ -591,14 +649,36 @@ export default function Reports() {
             ))}
           </Select>
         </FormControl>
+
+        {/* Filter Button */}
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleFilterApply}
+          sx={{ textTransform: "none", height: "40px" }}
+        >
+          FILTER
+        </Button>
       </Box>
 
       {/* Overview KPI Cards */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         {/* Total Revenue */}
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1 }}>
-            <MonetizationOnIcon sx={{ fontSize: 40, color: "#42a5f5", mr: 2 }} />
+          <Card
+            sx={{
+              bgcolor: "text.primary",
+              color: "background.paper",
+              display: "flex",
+              alignItems: "center",
+              p: 1,
+            }}
+          >
+            <Typography
+              sx={{ fontSize: 40, color: "#42a5f5", mr: 2, fontWeight: "bold" }}
+            >
+              ₱
+            </Typography>
             <CardContent>
               <Typography variant="h6">Total Revenue</Typography>
               <Typography variant="h5">{totalRevenue}</Typography>
@@ -608,18 +688,36 @@ export default function Reports() {
 
         {/* New Members */}
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1 }}>
+          <Card
+            sx={{
+              bgcolor: "text.primary",
+              color: "background.paper",
+              display: "flex",
+              alignItems: "center",
+              p: 1,
+            }}
+          >
             <PersonAddIcon sx={{ fontSize: 40, color: "#e53935", mr: 2 }} />
             <CardContent>
               <Typography variant="h6">New Members</Typography>
-              <Typography variant="h5">{newMembersThisMonth} This Month</Typography>
+              <Typography variant="h5">
+                {newMembersThisMonth} This Month
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
 
         {/* Attendance Rate */}
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1 }}>
+          <Card
+            sx={{
+              bgcolor: "text.primary",
+              color: "background.paper",
+              display: "flex",
+              alignItems: "center",
+              p: 1,
+            }}
+          >
             <FavoriteIcon sx={{ fontSize: 40, color: "#43a047", mr: 2 }} />
             <CardContent>
               <Typography variant="h6">Attendance Rate</Typography>
@@ -630,7 +728,15 @@ export default function Reports() {
 
         {/* Most Popular Service */}
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ bgcolor: "text.primary", color: "background.paper", display: "flex", alignItems: "center", p: 1 }}>
+          <Card
+            sx={{
+              bgcolor: "text.primary",
+              color: "background.paper",
+              display: "flex",
+              alignItems: "center",
+              p: 1,
+            }}
+          >
             <GroupWorkIcon sx={{ fontSize: 40, color: "#ffca28", mr: 2 }} />
             <CardContent>
               <Typography variant="h6">Popular Service</Typography>
@@ -641,128 +747,174 @@ export default function Reports() {
       </Grid>
 
       {/* Membership Reports Section */}
-      <Grid container spacing={2} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={6}>
-          <Paper
-            elevation={3}
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column",
-              borderRadius: 2
-            }}
-          >
-            <Typography variant="h6" gutterBottom>
-              Membership Plan Distribution
-            </Typography>
-            <Box sx={{ flex: 1, position: "relative" }}>
-              <Doughnut data={membershipDistData} options={membershipDistOptions} />
-            </Box>
-          </Paper>
+      <LazyLoadSection fallback={<CircularProgress />}>
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          <Grid item xs={12} md={6}>
+            <Paper
+              elevation={3}
+              sx={{
+                p: 2,
+                height: 320,
+                display: "flex",
+                flexDirection: "column",
+                borderRadius: 2,
+              }}
+            >
+              <Typography variant="h6" gutterBottom>
+                Membership Plan Distribution
+              </Typography>
+              <Box sx={{ flex: 1, position: "relative" }}>
+                <Suspense fallback={<CircularProgress />}>
+                  <Doughnut
+                    data={membershipDistData}
+                    options={membershipDistOptions}
+                  />
+                </Suspense>
+              </Box>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper
+              elevation={3}
+              sx={{
+                p: 2,
+                height: 320,
+                display: "flex",
+                flexDirection: "column",
+                borderRadius: 2,
+              }}
+            >
+              <Typography variant="h6" gutterBottom>
+                Membership Growth
+              </Typography>
+              <Box sx={{ flex: 1, position: "relative" }}>
+                <Suspense fallback={<CircularProgress />}>
+                  <Line
+                    data={membershipGrowthData}
+                    options={membershipGrowthOptions}
+                  />
+                </Suspense>
+              </Box>
+            </Paper>
+          </Grid>
         </Grid>
-        <Grid item xs={12} md={6}>
-          <Paper
-            elevation={3}
-            sx={{
-              p: 2,
-              height: 320,
-              display: "flex",
-              flexDirection: "column",
-              borderRadius: 2
-            }}
-          >
-            <Typography variant="h6" gutterBottom>
-              Membership Growth
-            </Typography>
-            <Box sx={{ flex: 1, position: "relative" }}>
-              <Line data={membershipGrowthData} options={membershipGrowthOptions} />
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
+      </LazyLoadSection>
 
       {/* Attendance Analytics Section */}
-      <Paper
-        elevation={3}
-        sx={{
-          p: 2,
-          mb: 4,
-          borderRadius: 2,
-          height: 320,
-          display: "flex",
-          flexDirection: "column"
-        }}
-      >
-        <Typography variant="h6" gutterBottom>
-          Attendance Over Time
-        </Typography>
-        <Box sx={{ flex: 1, position: "relative" }}>
-          <Line data={attendanceAnalyticsData} options={attendanceAnalyticsOptions} />
-        </Box>
-      </Paper>
+      <LazyLoadSection fallback={<CircularProgress />}>
+        <Paper
+          elevation={3}
+          sx={{
+            p: 2,
+            mb: 4,
+            borderRadius: 2,
+            height: 320,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Attendance Over Time
+          </Typography>
+          <Box sx={{ flex: 1, position: "relative" }}>
+            <Suspense fallback={<CircularProgress />}>
+              <Line
+                data={attendanceAnalyticsData}
+                options={attendanceAnalyticsOptions}
+              />
+            </Suspense>
+          </Box>
+        </Paper>
+      </LazyLoadSection>
 
       {/* Staff Performance Section */}
-      <Paper
-        elevation={3}
-        sx={{
-          p: 2,
-          mb: 4,
-          borderRadius: 2,
-          height: 320,
-          display: "flex",
-          flexDirection: "column"
-        }}
-      >
-        <Typography variant="h6" gutterBottom>
-          Staff Performance - Tasks Completed
-        </Typography>
-        <Box sx={{ flex: 1, position: "relative" }}>
-          <Bar data={staffPerformanceBarData} options={staffPerformanceBarOptions} />
-        </Box>
-      </Paper>
+      <LazyLoadSection fallback={<CircularProgress />}>
+        <Paper
+          elevation={3}
+          sx={{
+            p: 2,
+            mb: 4,
+            borderRadius: 2,
+            height: 320,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Staff Performance - Tasks Completed
+          </Typography>
+          <Box sx={{ flex: 1, position: "relative" }}>
+            <Suspense fallback={<CircularProgress />}>
+              <Bar
+                data={staffPerformanceBarData}
+                options={staffPerformanceBarOptions}
+              />
+            </Suspense>
+          </Box>
+        </Paper>
+      </LazyLoadSection>
 
       {/* Booking Trends Section */}
-      <Paper
-        elevation={3}
-        sx={{
-          p: 2,
-          mb: 4,
-          borderRadius: 2,
-          height: 320,
-          display: "flex",
-          flexDirection: "column"
-        }}
-      >
-        <Typography variant="h6" gutterBottom>
-          Booking & Session Reports - Booking Trends
-        </Typography>
-        <Box sx={{ flex: 1, position: "relative" }}>
-          <Line data={bookingTrendsData} options={bookingTrendsOptions} />
-        </Box>
-      </Paper>
+      <LazyLoadSection fallback={<CircularProgress />}>
+        <Paper
+          elevation={3}
+          sx={{
+            p: 2,
+            mb: 4,
+            borderRadius: 2,
+            height: 320,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Booking & Session Reports - Booking Trends
+          </Typography>
+          <Box sx={{ flex: 1, position: "relative" }}>
+            <Suspense fallback={<CircularProgress />}>
+              <Line
+                data={bookingTrendsData}
+                options={bookingTrendsOptions}
+              />
+            </Suspense>
+          </Box>
+        </Paper>
+      </LazyLoadSection>
 
       {/* System Metrics Section */}
-      <Paper
-        elevation={3}
-        sx={{
-          p: 2,
-          borderRadius: 2,
-          height: 320,
-          display: "flex",
-          flexDirection: "column"
-        }}
-      >
-        <Typography variant="h6" gutterBottom>
-          Critical System Metrics
-        </Typography>
-        <Box sx={{ flex: 1, position: "relative" }}>
-          <Bar data={systemMetricsBarData} options={systemMetricsBarOptions} />
-        </Box>
-      </Paper>
+      <LazyLoadSection fallback={<CircularProgress />}>
+        <Paper
+          elevation={3}
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            height: 320,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Critical System Metrics
+          </Typography>
+          <Box sx={{ flex: 1, position: "relative" }}>
+            <Suspense fallback={<CircularProgress />}>
+              <Bar
+                data={systemMetricsBarData}
+                options={systemMetricsBarOptions}
+              />
+            </Suspense>
+          </Box>
+        </Paper>
+      </LazyLoadSection>
 
       {/* Cashflow View Dialog */}
-      <Dialog open={isViewCashFlowOpen} onClose={handleCloseViewCashFlow} fullWidth maxWidth="sm" aria-labelledby="view-cashflow-dialog-title">
+      <Dialog
+        open={isViewCashFlowOpen}
+        onClose={handleCloseViewCashFlow}
+        fullWidth
+        maxWidth="sm"
+        aria-labelledby="view-cashflow-dialog-title"
+      >
         <DialogTitle id="view-cashflow-dialog-title">
           <Typography variant="h6" color="primary">
             Daily Cashflow Details
@@ -776,25 +928,33 @@ export default function Reports() {
                   <Typography variant="body2" color="textSecondary">
                     ID:
                   </Typography>
-                  <Typography variant="body1">{selectedCashFlow.CashFlowID}</Typography>
+                  <Typography variant="body1">
+                    {selectedCashFlow.CashFlowID}
+                  </Typography>
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
                     Date:
                   </Typography>
-                  <Typography variant="body1">{selectedCashFlow.Date}</Typography>
+                  <Typography variant="body1">
+                    {selectedCashFlow.Date}
+                  </Typography>
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
                     Branch ID:
                   </Typography>
-                  <Typography variant="body1">{selectedCashFlow.BranchID}</Typography>
+                  <Typography variant="body1">
+                    {selectedCashFlow.BranchID}
+                  </Typography>
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
                     Business Type:
                   </Typography>
-                  <Typography variant="body1">{selectedCashFlow.BusinessType}</Typography>
+                  <Typography variant="body1">
+                    {selectedCashFlow.BusinessType}
+                  </Typography>
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">
@@ -856,7 +1016,9 @@ export default function Reports() {
                   <Typography variant="body2" color="textSecondary">
                     Remarks:
                   </Typography>
-                  <Typography variant="body1">{selectedCashFlow.Remarks}</Typography>
+                  <Typography variant="body1">
+                    {selectedCashFlow.Remarks}
+                  </Typography>
                 </Grid>
               </Grid>
             </Box>
@@ -870,8 +1032,16 @@ export default function Reports() {
       </Dialog>
 
       {/* Cashflow Edit Dialog */}
-      <Dialog open={isEditCashFlowOpen} onClose={handleCloseEditCashFlow} fullWidth maxWidth="sm" aria-labelledby="edit-cashflow-dialog-title">
-        <DialogTitle id="edit-cashflow-dialog-title">Edit Daily Cashflow</DialogTitle>
+      <Dialog
+        open={isEditCashFlowOpen}
+        onClose={handleCloseEditCashFlow}
+        fullWidth
+        maxWidth="sm"
+        aria-labelledby="edit-cashflow-dialog-title"
+      >
+        <DialogTitle id="edit-cashflow-dialog-title">
+          Edit Daily Cashflow
+        </DialogTitle>
         <DialogContent dividers>
           {selectedCashFlow && (
             <Box component="form" noValidate sx={{ mt: 1 }}>
@@ -883,7 +1053,10 @@ export default function Reports() {
                 type="date"
                 value={selectedCashFlow.Date}
                 onChange={(e) =>
-                  setSelectedCashFlow({ ...selectedCashFlow, Date: e.target.value })
+                  setSelectedCashFlow({
+                    ...selectedCashFlow,
+                    Date: e.target.value,
+                  })
                 }
                 InputLabelProps={{ shrink: true }}
               />
@@ -900,4 +1073,6 @@ export default function Reports() {
       </Dialog>
     </Container>
   );
-}
+};
+
+export default memo(Reports);

@@ -16,6 +16,7 @@ use App\Models\SystemLog;
 use Carbon\Carbon;
 
 
+
 class MembershipController extends Controller
 {
     /* ------------------------------------------------------------------
@@ -340,13 +341,13 @@ class MembershipController extends Controller
 
     $data = $request->validate([
         'BranchID'             => 'nullable|exists:branches,BranchID',
-        'FullName'             => 'required|string|max:255',
-        'Email'                => 'required|email|unique:members,Email,' . $member->MemberID . ',MemberID',
+        'FullName'             => 'nullable|string|max:255',
+        'Email'                => 'nullable|email|unique:members,Email,' . $member->MemberID . ',MemberID',
         'Phone'                => 'nullable|string|max:50',
         'PlanID'               => 'nullable|exists:membership_plans,PlanID',
         'MembershipCardNumber' => 'nullable|unique:members,MembershipCardNumber,' . $member->MemberID . ',MemberID',
         'MembershipCardIssued' => 'boolean',
-        'MemberStatusID'       => 'required|exists:member_statuses,MemberStatusID',
+        'MemberStatusID'       => 'nullable|exists:member_statuses,MemberStatusID',
         'MembershipStartDate'  => 'nullable|date',
         'MembershipEndDate'    => 'nullable|date|after_or_equal:MembershipStartDate',
         'Biometrics'           => 'nullable|string',
@@ -677,25 +678,17 @@ public function expiringMembers(Request $request)
             'MemberID'      => 'required|exists:members,MemberID',
             'PlanID'        => 'required|exists:membership_plans,PlanID',
             'RenewalAmount' => 'required|numeric|min:0',
-    
-            // Payment fields
             'PaymentMethod' => 'nullable|string|max:50',
             'PaymentAmount' => 'nullable|numeric|min:0',
             'PaymentFor'    => 'nullable|string',
         ]);
     
-        // 1) Create the renewal record
-        //    (assuming you have a MembershipRenewal model/table)
-        $data['RenewalDate'] = now();
-        $renewal = MembershipRenewal::create($data);
-    
-        // 2) Extend membership end date
-        $member = Member::findOrFail($data['MemberID']);
+        // 1) Fetch Member and Plan with optimized eager loading
+        $member = Member::with('plan')->findOrFail($data['MemberID']);
         $plan   = MembershipPlan::findOrFail($data['PlanID']);
     
-        $currentEnd = $member->MembershipEndDate
-            ? Carbon::parse($member->MembershipEndDate)
-            : null;
+        // 2) Determine new membership end date
+        $currentEnd = $member->MembershipEndDate ? Carbon::parse($member->MembershipEndDate) : null;
         $today = Carbon::today();
         $durationDays = (int) $plan->Duration;
     
@@ -704,44 +697,47 @@ public function expiringMembers(Request $request)
         } else {
             $newStartDate = $today;
         }
+    
         $newEndDate = $newStartDate->copy()->addDays($durationDays - 1);
     
-        $member->MembershipStartDate = $newStartDate->format('Y-m-d');
-        $member->MembershipEndDate   = $newEndDate->format('Y-m-d');
-        $member->MemberStatusID      = 1; // set to Active
-        $member->save();
+        // 3) Update Member's Membership Dates and Status
+        $member->update([
+            'MembershipStartDate' => $newStartDate->format('Y-m-d'),
+            'MembershipEndDate'   => $newEndDate->format('Y-m-d'),
+            'MemberStatusID'      => 1, // Set to Active
+        ]);
     
-        // 3) Create an invoice for the renewal
+        // 4) Create the renewal record
+        $renewal = MembershipRenewal::create([
+            'MemberID'      => $member->MemberID,
+            'PlanID'        => $plan->PlanID,
+            'RenewalAmount' => $data['RenewalAmount'],
+            'RenewalDate'   => now(),
+        ]);
+    
+        // 5) Create an invoice for the renewal
         $invoice = Invoice::create([
-            'BranchID'     => $member->StartedBranchID, // or however you track branch
+            'BranchID'     => $member->StartedBranchID,
             'MemberID'     => $member->MemberID,
-            'InvoiceDate'  => Carbon::now(),
-            'DueDate'      => Carbon::now(), // or some due date logic
+            'InvoiceDate'  => now(),
+            'DueDate'      => now(),
             'InvoiceTotal' => $data['RenewalAmount'],
         ]);
     
-        // Add one line item for the renewal
         InvoiceLineItem::create([
             'InvoiceID'   => $invoice->InvoiceID,
             'ItemType'    => 'Renewal',
-            'ItemID'      => $plan->PlanID, // or 'RenewalID' if you track it
+            'ItemID'      => $plan->PlanID,
             'Description' => "Membership Renewal",
             'Quantity'    => 1,
             'UnitPrice'   => $data['RenewalAmount'],
             'Subtotal'    => $data['RenewalAmount'],
         ]);
     
-        // 4) If PaymentMethod & PaymentAmount => create Payment
+        // 6) Process Payment (if provided)
+        $payment = null;
         if (!empty($data['PaymentMethod']) && !empty($data['PaymentAmount'])) {
-            // decode PaymentFor if present
-            $paymentFor = null;
-            if (!empty($data['PaymentFor'])) {
-                // e.g. '["Renewal Fee"]'
-                $paymentFor = json_decode($data['PaymentFor'], true);
-            } else {
-                // fallback
-                $paymentFor = ["Membership Renewal"];
-            }
+            $paymentFor = !empty($data['PaymentFor']) ? json_decode($data['PaymentFor'], true) : ["Membership Renewal"];
     
             $payment = Payment::create([
                 'MemberID'      => $member->MemberID,
@@ -749,39 +745,30 @@ public function expiringMembers(Request $request)
                 'PaymentMethod' => $data['PaymentMethod'],
                 'Amount'        => $data['PaymentAmount'],
                 'PaymentDate'   => now(),
-                'PaymentFor'    => $paymentFor, 
+                'PaymentFor'    => $paymentFor,
                 'Status'        => 'Completed',
             ]);
     
-            // 5) Optionally link Payment to this Invoice (PaymentInvoices pivot)
-            // only if you want partial allocations. 
             PaymentInvoice::create([
                 'PaymentID'       => $payment->PaymentID,
                 'InvoiceID'       => $invoice->InvoiceID,
-                'AmountAllocated' => $payment->Amount, // or partial
+                'AmountAllocated' => $payment->Amount,
             ]);
     
-            // If full payment covers entire renewal, mark invoice as paid
-            if ($payment->Amount >= $data['RenewalAmount']) {
-                $invoice->PaymentStatus = 'Paid';
-                $invoice->save();
-            } else {
-                $invoice->PaymentStatus = 'Partially Paid';
-                $invoice->save();
-            }
+            $invoice->update(['PaymentStatus' => $payment->Amount >= $data['RenewalAmount'] ? 'Paid' : 'Partially Paid']);
         } else {
-            // If no payment data => invoice remains unpaid
-            $invoice->PaymentStatus = 'Unpaid';
-            $invoice->save();
+            $invoice->update(['PaymentStatus' => 'Unpaid']);
         }
     
-        // Return the renewal record
+        // 7) Return the **updated** member details instantly to frontend
         return response()->json([
             'renewal' => $renewal,
             'invoice' => $invoice,
-            'payment' => $payment ?? null,
-          ], 201);
-              }
+            'payment' => $payment,
+            'member'  => $member,  // ✅ This ensures frontend gets updated MembershipEndDate
+        ], 201);
+    }
+    
     
 public function destroyRenewal($id)
 {
@@ -798,6 +785,7 @@ public function destroyRenewal($id)
 {
     $staff = auth('staff')->user();
 
+    // Validate the request
     $data = $request->validate([
         'MemberID'        => 'required|exists:members,MemberID',
         'FreezeStartDate' => 'required|date',
@@ -805,38 +793,34 @@ public function destroyRenewal($id)
         'Reason'          => 'nullable|string|max:255',
     ]);
 
-    // Staff branch check
-    if ($staff) {
-        $member = Member::findOrFail($data['MemberID']);
-        if ($member->StartedBranchID != $staff->BranchID) {
-            abort(403, 'Not your branch.');
-        }
+    // Fetch the member and check branch access
+    $member = Member::findOrFail($data['MemberID']);
+    if ($staff && $member->StartedBranchID != $staff->BranchID) {
+        abort(403, 'Not your branch.');
     }
 
-    // 1) Create the freeze record
+    // Add StartedBranchID to the data so it can be mass assigned
+    $data['StartedBranchID'] = $member->StartedBranchID;
+
+    // 1) Create the freeze record with the new field
     $freeze = MembershipFreeze::create($data);
 
     // 2) Update the member’s status => set to "Frozen" (assuming '2' = Frozen)
-    $member = Member::findOrFail($data['MemberID']);
-    $member->MemberStatusID = 2; 
+    $member->MemberStatusID = 2;
     $member->save();
 
     // 3) Extend the MembershipEndDate by the freeze duration
     //    3a) If FreezeEndDate is null, treat it as the same as FreezeStartDate
     $freezeStart = Carbon::parse($data['FreezeStartDate']);
-    $freezeEnd   = $data['FreezeEndDate']
-                     ? Carbon::parse($data['FreezeEndDate'])
-                     : $freezeStart;
+    $freezeEnd   = $data['FreezeEndDate'] ? Carbon::parse($data['FreezeEndDate']) : $freezeStart;
 
-    // 3b) Calculate the total freeze days (+1 so e.g. Jan 20 - Jan 20 is 1 day)
+    //    3b) Calculate the total freeze days (+1 so e.g. Jan 20 - Jan 20 is 1 day)
     $freezeDays = $freezeStart->diffInDays($freezeEnd) + 1;
 
-    // 3c) Only extend if MembershipEndDate is set (otherwise you can decide how to handle it)
+    //    3c) Only extend if MembershipEndDate is set
     if ($member->MembershipEndDate) {
         $currentEnd = Carbon::parse($member->MembershipEndDate);
-        // If you only want to extend if membership is still active, check if $currentEnd->isFuture()
-
-        // 3d) Add the freezeDays
+        // 3d) Add the freeze days to extend the membership end date
         $newEnd = $currentEnd->addDays($freezeDays);
         $member->MembershipEndDate = $newEnd->format('Y-m-d');
         $member->save();
@@ -844,7 +828,6 @@ public function destroyRenewal($id)
 
     return response()->json($freeze, 201);
 }
- 
 
 // 2) UPDATE an existing freeze
 public function updateFreeze(Request $request, $id)
@@ -852,77 +835,63 @@ public function updateFreeze(Request $request, $id)
     $staff = auth('staff')->user();
     $freeze = MembershipFreeze::findOrFail($id);
 
-    // If staff => ensure this freeze's Member belongs to their branch
-    // Assuming you have a relationship: $freeze->member
-    if ($staff) {
-        $member = $freeze->member; 
-        if ($member->StartedBranchID != $staff->BranchID) {
-            abort(403, 'Not your branch.');
-        }
+    // Ensure the freeze's member belongs to the staff's branch
+    $member = $freeze->member;
+    if ($staff && $member->StartedBranchID != $staff->BranchID) {
+        abort(403, 'Not your branch.');
     }
 
-    // Validate only the fields we can update
+    // Validate fields that can be updated
     $data = $request->validate([
         'FreezeStartDate' => 'required|date',
         'FreezeEndDate'   => 'nullable|date|after_or_equal:FreezeStartDate',
         'Reason'          => 'nullable|string|max:255',
     ]);
 
+    // Maintain the original StartedBranchID
+    $data['StartedBranchID'] = $freeze->StartedBranchID;
+
     $freeze->update($data);
     return response()->json($freeze, 200);
 }
 
+// 3) DELETE a freeze record and revert membership changes
 public function destroyFreeze($id)
 {
     $freeze = MembershipFreeze::findOrFail($id);
     $member = Member::findOrFail($freeze->MemberID);
 
-    // (Optional) staff-branch check
+    // Staff branch check
     $staff = auth('staff')->user();
     if ($staff && $member->StartedBranchID != $staff->BranchID) {
         abort(403, 'Cannot remove freeze from another branch.');
     }
 
-    // 1) Figure out how many days of the freeze remain
-    //    If FreezeEndDate is null, treat it as the same as FreezeStartDate or skip partial logic
+    // 1) Calculate freeze duration
     $freezeStart = Carbon::parse($freeze->FreezeStartDate);
-    $freezeEnd   = $freeze->FreezeEndDate
-        ? Carbon::parse($freeze->FreezeEndDate)
-        : $freezeStart; // or treat null as indefinite freeze
-
-    // Full freeze duration
+    $freezeEnd   = $freeze->FreezeEndDate ? Carbon::parse($freeze->FreezeEndDate) : $freezeStart;
     $totalFreezeDays = $freezeStart->diffInDays($freezeEnd) + 1;
 
     $today = Carbon::today();
 
-    // If the freeze hasn't started yet (today < freezeStart),
-    // then the entire freeze is unused, so leftover = total freeze days.
-    // If we've passed the freezeEnd, leftover = 0 (nothing to revert).
-    // Otherwise leftover = days from "today" to "freezeEnd".
-    
+    // Determine unused freeze days
     if ($today <= $freezeStart) {
-        // Freeze hasn't begun, so revert all freeze days
         $leftoverDays = $totalFreezeDays;
     } elseif ($today >= $freezeEnd) {
-        // Freeze fully used up or ended
         $leftoverDays = 0;
     } else {
-        // Partial: used some days, some left
         $leftoverDays = $today->diffInDays($freezeEnd) + 1;
     }
 
-    // 2) Subtract only the leftover freeze days from the membership
-    //    if the membership end date is set
+    // 2) Subtract only the unused freeze days from the membership's end date
     if (!empty($member->MembershipEndDate) && $leftoverDays > 0) {
         $currentEnd = Carbon::parse($member->MembershipEndDate);
-
-        // Ensure we don't accidentally go below the original date 
-        // if there were multiple freeze/renew combos. For a simple approach, just:
         $newEnd = $currentEnd->subDays($leftoverDays);
         $member->MembershipEndDate = $newEnd->format('Y-m-d');
+        $member->save();
     }
 
-    // 3) Revert status to Active (assuming '1' = Active)
+    // 3) Revert member status to Active (assuming '1' = Active)
     $member->MemberStatusID = 1;
     $member->save();
 
@@ -933,7 +902,6 @@ public function destroyFreeze($id)
         'message' => 'Freeze canceled. Unused freeze days removed, status reverted to Active.'
     ], 200);
 }
-
 public function growth()
 {
     // Group members by month (using MembershipStartDate) and count new members.
@@ -945,6 +913,19 @@ public function growth()
         ->get();
 
     return response()->json($growthData, 200);
+}
+public function getLatestCardNumber()
+{
+    // Get the most recent card number (last registered member)
+    $latestMember = Member::whereNotNull('MembershipCardNumber')
+        ->where('MembershipCardNumber', 'LIKE', 'CARD-%')
+        ->orderByDesc('MemberID') 
+        ->first();
+
+    // Default to "CARD-0000" if no records exist
+    $latestCardNumber = $latestMember ? $latestMember->MembershipCardNumber : "CARD-0000";
+
+    return response()->json(['latestCardNumber' => $latestCardNumber]);
 }
 
 

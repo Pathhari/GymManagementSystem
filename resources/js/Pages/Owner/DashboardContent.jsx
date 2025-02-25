@@ -24,7 +24,8 @@ import {
   DialogContent,
   DialogActions,
   Divider,
-  useTheme
+  useTheme,
+  Menu
 } from '@mui/material';
 import {
   Dashboard,
@@ -33,12 +34,30 @@ import {
   People,
   DirectionsRun,
   NotificationImportant,
+  AccountBalance,
   History as HistoryIcon,
   TrendingUp,
   ReceiptLong,
   TableView,
-  MiscellaneousServices
-} from '@mui/icons-material';
+  AccountBalanceWallet,
+  Savings,
+  EditNote,
+  Cancel,
+  Save,
+  MonetizationOn,
+  MiscellaneousServices,
+  FitnessCenter,
+  LocalCafe,
+  Icecream,
+  CreditCard as CreditCardIcon,
+  Store as StoreIcon,
+  MonetizationOn as MonetizationOnIcon,
+  DirectionsWalk as DirectionsWalkIcon,
+  AccountBalance as AccountBalanceIcon,
+  Notes as NotesIcon,
+  FileDownload as  FileDownloadIcon,
+  Close as CloseIcon,
+} from "@mui/icons-material";
 import { DataGrid } from '@mui/x-data-grid';
 import {
   Chart as ChartJS,
@@ -52,7 +71,11 @@ import {
   Legend,
   ArcElement
 } from 'chart.js';
+import { CSVLink } from "react-csv";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
 import { Line, Pie } from 'react-chartjs-2';
+import AddIcon from "@mui/icons-material/Add";
 
 // Register Chart.js components
 ChartJS.register(
@@ -77,12 +100,162 @@ const PesosIcon = ({ fontSize = 24, color = 'inherit', sx = {} }) => (
   </Typography>
 );
 
-export default function OwnerDashboard() {
+export default function OwnerDashboard(onClose) {
   const theme = useTheme();
   const darkMode = theme.palette.mode === 'dark';
 
+   // Date translator
+   const formatDate = (dateString) => {
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
+
+  const formatDateTime = (dateString) => {
+    if (!dateString) return "—";
+    const dateObj = new Date(dateString);
+  
+    return dateObj.toLocaleString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true, // Ensures AM/PM format
+    });
+  };
+  const handleExportCSV = () => {
+    handleExportMenuClose();
+  };
+  const handleExportPDF = () => {
+    handleExportMenuClose();
+
+    const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "pt",
+        format: "A4"
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // Load images from public folder
+    const coverPage = "/imgs/coverpage.png"; // First page background
+    const addPage = "/imgs/addpage.png"; // Background for succeeding pages
+
+    // ✅ Add Cover Page Background
+    doc.addImage(coverPage, "PNG", 0, 0, pageWidth, pageHeight);
+    
+    // ✅ Add Title on Cover Page
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(24);
+    doc.setTextColor("#ffffff");
+    doc.text("Cash Flow Report", pageWidth / 2, 100, { align: "center" });
+
+    doc.setFontSize(14);
+    doc.text("Generated on: " + new Date().toLocaleDateString(), pageWidth / 2, 130, { align: "center" });
+
+    // Prepare Table Data
+    const columns = [
+        { title: "Date", key: "Date" },
+        { title: "Brch", key: "BranchID" },
+        { title: "Type", key: "BusinessType" },
+        { title: "Cash", key: "CashSales" },
+        { title: "GCash", key: "GCashSales" },
+        { title: "BPI", key: "BPISales" },
+        { title: "BDO", key: "BDOSales" },
+        { title: "W/Cash", key: "WalkInCashSales" },
+        { title: "W/GCash", key: "WalkInGCashSales" },
+        { title: "W/BPI", key: "WalkInBPISales" },
+        { title: "W/BDO", key: "WalkInBDOSales" },
+        { title: "Total", key: "TotalSales" },
+        { title: "Exp", key: "DailyExpenses" },
+        { title: "Net", key: "NetProfit" },
+        { title: "Petty", key: "PettyCash" },
+        { title: "Dpst", key: "DepositedAmount" },
+        { title: "Rmks", key: "Remarks" }
+    ];
+
+    const bodyData = filteredFlows.map((row) => ({
+        Date: row.Date ? formatDate(row.Date) : "N/A",
+        BranchID: row.BranchID || "—",
+        BusinessType: row.BusinessType || "",
+        CashSales: Number(row.CashSales || 0).toFixed(2),
+        GCashSales: Number(row.GCashSales || 0).toFixed(2),
+        BPISales: Number(row.BPISales || 0).toFixed(2),
+        BDOSales: Number(row.BDOSales || 0).toFixed(2),
+        WalkInCashSales: Number(row.WalkInCashSales || 0).toFixed(2),
+        WalkInGCashSales: Number(row.WalkInGCashSales || 0).toFixed(2),
+        WalkInBPISales: Number(row.WalkInBPISales || 0).toFixed(2),
+        WalkInBDOSales: Number(row.WalkInBDOSales || 0).toFixed(2),
+        TotalSales: Number(row.TotalSales || 0).toFixed(2),
+        DailyExpenses: Number(row.DailyExpenses || 0).toFixed(2),
+        NetProfit: Number(row.NetProfit || 0).toFixed(2),
+        PettyCash: Number(row.PettyCash || 0).toFixed(2),
+        DepositedAmount: Number(row.DepositedAmount || 0).toFixed(2),
+        Remarks: row.Remarks || "—",
+    }));
+
+    // ✅ Only add new pages if the table spans multiple pages
+    if (bodyData.length > 15) { // Adjust based on your table's row height
+        doc.addPage();
+        doc.addImage(addPage, "PNG", 0, 0, pageWidth, pageHeight);
+    }
+
+    // ✅ Generate Table
+    doc.autoTable({
+        startY: 80,
+        head: [columns.map((col) => col.title)],
+        body: bodyData.map((data) => columns.map((col) => data[col.key])),
+        theme: "striped",
+        headStyles: {
+            fillColor: "#050505",
+            textColor: "#ffffff",
+            fontStyle: "bold",
+        },
+        bodyStyles: {
+            textColor: "#333333",
+        },
+        alternateRowStyles: {
+            fillColor: "#f5f5f5",
+        },
+        styles: {
+            overflow: "linebreak",
+            cellPadding: 3,
+            halign: "center",
+            valign: "middle",
+            fontSize: 8,
+        },
+        margin: { top: 50, left: 20, right: 20, bottom: 20 },
+        didDrawPage: (data) => {
+            if (doc.internal.getNumberOfPages() > 1) {
+                doc.addImage(addPage, "PNG", 0, 0, pageWidth, pageHeight);
+            }
+        }
+    });
+
+    // ✅ Save the PDF
+    doc.save("CashFlowReport.pdf");
+};
+
+
+  
+  // Export logic
+    const [exportAnchorEl, setExportAnchorEl] = useState(null);
+    const openExportMenu = Boolean(exportAnchorEl);
+    const handleExportMenuOpen = (e) => setExportAnchorEl(e.currentTarget);
+    const handleExportMenuClose = () => setExportAnchorEl(null);
+  
+  
   // Tabs
+  const [selectedTab, setSelectedTab] = useState(0);
+
   const [activeTab, setActiveTab] = useState(0);
+
 
   // Loading / Error
   const [loading, setLoading] = useState(true);
@@ -175,6 +348,7 @@ export default function OwnerDashboard() {
 
   // Tab change
   const handleTabChange = (event, newValue) => setActiveTab(newValue);
+
 
   // Initial load
   useEffect(() => {
@@ -275,6 +449,14 @@ export default function OwnerDashboard() {
       ],
     });
   };
+  
+  // Currency Format
+  const formatCurrency = (value) => {
+    if (value == null || value === "") return "—";
+    return `${parseInt(value).toLocaleString("en-PH")}`;
+  };
+  
+  
 
   const buildPaymentPie = (flows) => {
     let cash = 0,
@@ -464,27 +646,70 @@ export default function OwnerDashboard() {
   };
 
   const consolidatedColumns = [
-    { field: 'Date', headerName: 'Date', width: 110 },
-    { field: 'Gym', headerName: 'Gym', width: 80 },
-    { field: 'Cafe', headerName: 'Cafe', width: 80 },
-    { field: 'Yogurt', headerName: 'Yogurt', width: 80 },
-    { field: 'Overall', headerName: 'Overall', width: 80 },
-    { field: 'DailyExpenses', headerName: 'Expenses', width: 90 },
-    { field: 'NetProfit', headerName: 'Net Profit', width: 90 },
-    { field: 'PettyCash', headerName: 'PettyCash', width: 90 },
-    { field: 'TakeHome', headerName: 'Take-Home', width: 100 },
-  ];
+    { 
+      field: 'Date', 
+      headerName: 'Date', 
+      width: 180, 
+      renderCell: (params) => params.value ? formatDate(params.value) : "—" 
+    },
+    { 
+      field: 'Gym', 
+      headerName: 'Gym', 
+      width: 80, 
+      renderCell: (params) => formatCurrency(params.value) 
+    },
+    { 
+      field: 'Cafe', 
+      headerName: 'Cafe', 
+      width: 80, 
+      renderCell: (params) => formatCurrency(params.value) 
+    },
+    { 
+      field: 'Yogurt', 
+      headerName: 'Yogurt', 
+      width: 80, 
+      renderCell: (params) => formatCurrency(params.value) 
+    },
+    { 
+      field: 'DailyExpenses', 
+      headerName: 'Expenses', 
+      width: 90, 
+      renderCell: (params) => formatCurrency(params.value) 
+    },
+    { 
+      field: 'NetProfit', 
+      headerName: 'Net Profit', 
+      width: 90, 
+      renderCell: (params) => formatCurrency(params.value) 
+    },
+    { 
+      field: 'PettyCash', 
+      headerName: 'PettyCash', 
+      width: 90, 
+      renderCell: (params) => formatCurrency(params.value) 
+    },
+    { 
+      field: 'TakeHome', 
+      headerName: 'Take-Home', 
+      width: 100, 
+      renderCell: (params) => formatCurrency(params.value) 
+    },
+];
 
   const handleConsolidatedRowClick = (params) => {
     setSelectedConsolidatedRow(params.row);
   };
 
-  const openConsolidatedPettyDialog = () => {
-    if (!selectedConsolidatedRow) return;
-    setPettyForm({ pettyCash: '', depositedAmount: '', remarks: '' });
+  const openConsolidatedPettyDialog = (row) => {
+    console.log("Opening Petty Cash Dialog for:", row); // Debugging log
+    setSelectedConsolidatedRow(row);
+    setPettyForm({
+      pettyCash: '',
+      depositedAmount: '',
+      remarks: '',
+    });
     setPettyDialogOpen(true);
   };
-
   const closeConsolidatedPettyDialog = () => {
     setPettyDialogOpen(false);
   };
@@ -529,14 +754,50 @@ export default function OwnerDashboard() {
 
   // Expenses
   const expenseColumns = [
-    { field: 'ExpenseDate', headerName: 'Date', width: 110 },
-    { field: 'BranchID', headerName: 'Branch', width: 100 },
-    { field: 'ExpenseCategory', headerName: 'Category', width: 140 },
-    { field: 'Amount', headerName: 'Amount', width: 100 },
-    { field: 'PaymentMethod', headerName: 'Method', width: 100 },
-    { field: 'StaffID', headerName: 'StaffID', width: 80 },
-    { field: 'Notes', headerName: 'Notes', width: 160 },
-  ];
+    { 
+      field: 'ExpenseDate', 
+      headerName: 'Date', 
+      width: 180, 
+      renderCell: (params) => params.value ? formatDate(params.value) : "—" 
+    },
+    { 
+      field: 'BranchID', 
+      headerName: 'Branch', 
+      width: 100, 
+      renderCell: (params) => params.value ?? "—" 
+    },
+    { 
+      field: 'ExpenseCategory', 
+      headerName: 'Category', 
+      width: 140, 
+      renderCell: (params) => params.value ?? "—" 
+    },
+    { 
+      field: 'Amount', 
+      headerName: 'Amount', 
+      width: 100, 
+      renderCell: (params) => formatCurrency(params.value) 
+    },
+    { 
+      field: 'PaymentMethod', 
+      headerName: 'Method', 
+      width: 100, 
+      renderCell: (params) => params.value ?? "—" 
+    },
+    { 
+      field: 'StaffID', 
+      headerName: 'Staff ID', 
+      width: 80, 
+      renderCell: (params) => params.value ?? "—" 
+    },
+    { 
+      field: 'Notes', 
+      headerName: 'Notes', 
+      width: 160, 
+      renderCell: (params) => params.value ?? "—" 
+    },
+];
+
   const expenseRows = filteredExpenses.map((exp, i) => ({
     id: exp.ExpenseID || `temp-${i}`,
     ExpenseDate: exp.ExpenseDate || '',
@@ -575,25 +836,44 @@ export default function OwnerDashboard() {
 
   // Flows
   const flowColumns = [
-    { field: 'Date', headerName: 'Date', width: 110 },
-    { field: 'BranchID', headerName: 'Branch', width: 100 },
-    { field: 'BusinessType', headerName: 'Type', width: 120 },
-    { field: 'CashSales', headerName: 'Cash', width: 80 },
-    { field: 'GCashSales', headerName: 'GCash', width: 80 },
-    { field: 'BPISales', headerName: 'BPI', width: 80 },
-    { field: 'BDOSales', headerName: 'BDO', width: 80 },
-    { field: 'WalkInCashSales', headerName: 'W-In Cash', width: 90 },
-    { field: 'WalkInGCashSales', headerName: 'W-In GCash', width: 100 },
-    { field: 'WalkInBPISales', headerName: 'W-In BPI', width: 90 },
-    { field: 'WalkInBDOSales', headerName: 'W-In BDO', width: 90 },
-    { field: 'TotalSales', headerName: 'Total', width: 80 },
-    { field: 'DailyExpenses', headerName: 'Expenses', width: 90 },
-    { field: 'NetProfit', headerName: 'Net Profit', width: 90 },
-    { field: 'PettyCash', headerName: 'PettyCash', width: 90 },
-    { field: 'TakeHome', headerName: 'Take-Home', width: 100 },
-    { field: 'DepositedAmount', headerName: 'Deposited', width: 90 },
-    { field: 'Remarks', headerName: 'Remarks', width: 160 },
-  ];
+    { 
+      field: 'Date', 
+      headerName: 'Date', 
+      width: 180, 
+      renderCell: (params) => params.value ? formatDate(params.value) : "—" 
+    },
+    { 
+      field: 'BranchID', 
+      headerName: 'Branch', 
+      width: 100, 
+      renderCell: (params) => params.value ?? "—" 
+    },
+    { 
+      field: 'BusinessType', 
+      headerName: 'Type', 
+      width: 120, 
+      renderCell: (params) => params.value ?? "—" 
+    },
+    { field: 'CashSales', headerName: 'Cash', width: 80, renderCell: (params) => formatCurrency(params.value) },
+    { field: 'GCashSales', headerName: 'GCash', width: 80, renderCell: (params) => formatCurrency(params.value) },
+    { field: 'BPISales', headerName: 'BPI', width: 80, renderCell: (params) => formatCurrency(params.value) },
+    { field: 'BDOSales', headerName: 'BDO', width: 80, renderCell: (params) => formatCurrency(params.value) },
+    { field: 'WalkInCashSales', headerName: 'W-In Cash', width: 90, renderCell: (params) => formatCurrency(params.value) },
+    { field: 'WalkInGCashSales', headerName: 'W-In GCash', width: 100, renderCell: (params) => formatCurrency(params.value) },
+    { field: 'WalkInBPISales', headerName: 'W-In BPI', width: 90, renderCell: (params) => formatCurrency(params.value) },
+    { field: 'WalkInBDOSales', headerName: 'W-In BDO', width: 90, renderCell: (params) => formatCurrency(params.value) },
+    { field: 'TotalSales', headerName: 'Total', width: 80, renderCell: (params) => formatCurrency(params.value) },
+    { field: 'NetProfit', headerName: 'Net Profit', width: 90, renderCell: (params) => formatCurrency(params.value) },
+    { field: 'PettyCash', headerName: 'PettyCash', width: 90, renderCell: (params) => formatCurrency(params.value) },
+    { field: 'TakeHome', headerName: 'Take-Home', width: 100, renderCell: (params) => formatCurrency(params.value) },
+    { field: 'DepositedAmount', headerName: 'Deposited', width: 90, renderCell: (params) => formatCurrency(params.value) },
+    { 
+      field: 'Remarks', 
+      headerName: 'Remarks', 
+      width: 160, 
+      renderCell: (params) => params.value ?? "—" 
+    },
+];
 
   const flowRows = filteredFlows.map((flow, i) => {
     const dailyExpenses = allExpenses
@@ -786,20 +1066,20 @@ export default function OwnerDashboard() {
 
       {/* Tabs */}
       <Tabs
-        value={activeTab}
-        onChange={handleTabChange}
-        indicatorColor="primary"
-        textColor="primary"
-        sx={{ mb: 2 }}
-        variant="scrollable"
-        scrollButtons="auto"
-      >
-        <Tab label="Overview" icon={<TrendingUp />} iconPosition="start" />
-        <Tab label="Daily Cash Flow" icon={<PesosIcon fontSize={18} />} iconPosition="start" />
-        <Tab label="Expenses" icon={<ReceiptLong />} iconPosition="start" />
-        <Tab label="Consolidated" icon={<TableView />} iconPosition="start" />
-        <Tab label="Quick Actions" icon={<MiscellaneousServices />} iconPosition="start" />
-      </Tabs>
+          value={activeTab}
+          onChange={handleTabChange}
+          indicatorColor="primary"
+          textColor="primary"
+          sx={{ mb: 2 }}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          <Tab label="Overview" icon={<TrendingUp />} iconPosition="start" />
+          <Tab label="Daily Cash Flow" icon={<PesosIcon fontSize={18} />} iconPosition="start" />
+          <Tab label="Expenses" icon={<ReceiptLong />} iconPosition="start" />
+          <Tab label="Consolidated" icon={<TableView />} iconPosition="start" />
+          <Tab label="Quick Actions" icon={<MiscellaneousServices />} iconPosition="start" />
+        </Tabs>
 
       {error && (
         <Typography variant="body1" color="error" sx={{ mb: 2 }}>
@@ -852,16 +1132,18 @@ export default function OwnerDashboard() {
                       p: 1.5,
                     }}
                   >
-                    <AttachMoney sx={{ fontSize: 30, color: 'white', mr: 1.5 }} />
-                    <CardContent sx={{ p: 1 }}>
-                      <Typography variant="body2" sx={{ color: 'white', mb: 0.5 }}>
-                        Payments Received
-                      </Typography>
-                      <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
-                        ₱{keyMetrics.totalRevenue.toLocaleString()}
-                      </Typography>
-                    </CardContent>
-                  </Card>
+                 <Typography sx={{ fontSize: 30, color: 'white', mr: 1.5, fontWeight: 'bold' }}>
+                  ₱
+                </Typography>
+                <CardContent sx={{ p: 1 }}>
+                  <Typography variant="body2" sx={{ color: 'white', mb: 0.5 }}>
+                    Payments Received
+                  </Typography>
+                  <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
+                    {formatCurrency(keyMetrics.totalRevenue)}
+                  </Typography>
+                </CardContent>
+                </Card>
                 </Grid>
 
                 <Grid item xs={12} sm={6} md={3}>
@@ -878,7 +1160,7 @@ export default function OwnerDashboard() {
                     <People sx={{ fontSize: 30, color: 'white', mr: 1.5 }} />
                     <CardContent sx={{ p: 1 }}>
                       <Typography variant="body2" sx={{ color: 'white', mb: 0.5 }}>
-                        Emails Sent
+                        Emails Received
                       </Typography>
                       <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
                         {keyMetrics.totalEmailsSent}
@@ -899,17 +1181,20 @@ export default function OwnerDashboard() {
                   }}
                 >
                   {/* You can swap this icon with one that better represents expenses if needed */}
-                  <AttachMoney sx={{ fontSize: 30, color: 'white', mr: 1.5 }} />
+                  <Typography sx={{ fontSize: 30, color: 'white', mr: 1.5, fontWeight: 'bold' }}>
+                    ₱
+                  </Typography>
                   <CardContent sx={{ p: 1 }}>
                     <Typography variant="body2" sx={{ color: 'white', mb: 0.5 }}>
                       Total Expenses
                     </Typography>
                     <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
-                      ₱{keyMetrics.totalExpenses?.toLocaleString() || 0}
+                      {formatCurrency(keyMetrics.totalExpenses)}
                     </Typography>
                   </CardContent>
-                </Card>
-              </Grid>
+                  </Card>
+                  </Grid>
+
 
 
                 {/* Revenue Trends Chart */}
@@ -988,10 +1273,11 @@ export default function OwnerDashboard() {
                   <Divider sx={{ mb: 2 }} />
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <Paper sx={{ p: 2, height: 280, boxShadow: 3 }}>
+                <Paper sx={{ p: 2, height: 280, boxShadow: 3, display: 'flex', flexDirection: 'column' }}>
                     <Typography variant="subtitle1" gutterBottom>
                       Gym
                     </Typography>
+                    <Box sx={{ flexGrow: 1, height: '100%', minHeight: 0 }}>
                     {gymChartData ? (
                       <Line
                         data={gymChartData}
@@ -1004,13 +1290,15 @@ export default function OwnerDashboard() {
                     ) : (
                       <Typography>Loading Gym chart...</Typography>
                     )}
+                    </Box>
                   </Paper>
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <Paper sx={{ p: 2, height: 280, boxShadow: 3 }}>
+                <Paper sx={{ p: 2, height: 280, boxShadow: 3, display: 'flex', flexDirection: 'column' }}>
                     <Typography variant="subtitle1" gutterBottom>
                       Café
                     </Typography>
+                    <Box sx={{ flexGrow: 1, height: '100%', minHeight: 0 }}>
                     {cafeChartData ? (
                       <Line
                         data={cafeChartData}
@@ -1023,13 +1311,15 @@ export default function OwnerDashboard() {
                     ) : (
                       <Typography>Loading Café chart...</Typography>
                     )}
+                    </Box>
                   </Paper>
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <Paper sx={{ p: 2, height: 280, boxShadow: 3 }}>
+                <Paper sx={{ p: 2, height: 280, boxShadow: 3, display: 'flex', flexDirection: 'column' }}>
                     <Typography variant="subtitle1" gutterBottom>
                       Yogurt
                     </Typography>
+                    <Box sx={{ flexGrow: 1, height: '100%', minHeight: 0 }}>
                     {yogurtChartData ? (
                       <Line
                         data={yogurtChartData}
@@ -1042,228 +1332,358 @@ export default function OwnerDashboard() {
                     ) : (
                       <Typography>Loading Yogurt chart...</Typography>
                     )}
-                  </Paper>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Paper sx={{ p: 2, boxShadow: 3 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Recent Transactions (incl. Walk-Ins)
-                    </Typography>
-                    <Box sx={{ height: 300 }}>
-                      <DataGrid
-                        rows={recentTransactions}
-                        columns={[
-                          { field: 'id', headerName: 'ID', width: 70 },
-                          { field: 'payer', headerName: 'Payer', width: 150 },
-                          { field: 'method', headerName: 'Method', width: 100 },
-                          {
-                            field: 'amount',
-                            headerName: 'Amount',
-                            width: 100,
-                            renderCell: (params) => `₱${params.value}`,
-                          },
-                          {
-                            field: 'date',
-                            headerName: 'Date',
-                            width: 150,
-                          },
-                          {
-                            field: 'status',
-                            headerName: 'Status',
-                            width: 100,
-                          },
-                        ]}
-                        pageSize={5}
-                        rowsPerPageOptions={[5, 10]}
-                        disableSelectionOnClick
-                      />
                     </Box>
                   </Paper>
                 </Grid>
+                <Grid item xs={12} md={12}>
+                <Paper
+                sx={{
+                  p: 3,
+                  boxShadow: 4,
+                  borderRadius: 2,
+                  overflow: "hidden",
+                  width: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2 }}>
+                  Recent Transactions (incl. Walk-Ins)
+                </Typography>
+
+                {/* Box takes full available space */}
+                <Box sx={{ flexGrow: 1, width: "100%" }}>
+                  <DataGrid
+                    rows={recentTransactions}
+                    columns={[
+                      {
+                        field: "id",
+                        headerName: "ID",
+                        flex: 0.5,
+                        headerAlign: "center",
+                        align: "center",
+                      },
+                      { field: "payer", headerName: "Payer", flex: 1.5 },
+                      {
+                        field: "method",
+                        headerName: "Method",
+                        flex: 1,
+                        headerAlign: "center",
+                        align: "center",
+                      },
+                      {
+                        field: "amount",
+                        headerName: "Amount",
+                        flex: 1,
+                        headerAlign: "center",
+                        align: "center",
+                        renderCell: (params) => `₱${params.value}`,
+                      },
+                      {
+                        field: "date",
+                        headerName: "Date",
+                        flex: 1.2,
+                        headerAlign: "center",
+                        align: "center",
+                        renderCell: (params) => formatDateTime(params.value),
+                      },
+                      {
+                        field: "status",
+                        headerName: "Status",
+                        flex: 1,
+                        headerAlign: "center",
+                        align: "center",
+                        // *** ADDED COLOR INDICATOR BELOW ***
+                        renderCell: (params) => {
+                          const status = params.value;
+                          const getStatusColor = (status) => {
+                            switch (status) {
+                              case "Completed":
+                                return "#4caf50"; // green
+                              case "Pending":
+                                return "#ff9800"; // orange
+                              default:
+                                return "#f44336"; // red for any other status (e.g., Failed)
+                            }
+                          };
+                          return (
+                            <span style={{ color: getStatusColor(status), fontWeight: "bold" }}>
+                              {status}
+                            </span>
+                          );
+                        },
+                      },
+                    ]}
+                    pageSize={5}
+                    rowsPerPageOptions={[5, 10]}
+                    disableSelectionOnClick
+                    autoHeight
+                    density="compact"
+                    disableColumnMenu
+                  />
+                </Box>
+              </Paper>
+
+
+              </Grid>
+
 
               </Grid>
             </Box>
           )}
 
-          {/* =================== DAILY CASH FLOW TAB =================== */}
+            {/* =================== DAILY CASH FLOW TAB =================== */}
           {activeTab === 1 && (
-            <Box sx={{ mt: 1 }}>
-              <Paper sx={{ p: 2, mb: 2, boxShadow: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Filter Cash Flow / Expenses By Date
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <TextField
-                      label="From Date"
-                      type="date"
-                      fullWidth
-                      size="small"
-                      value={dateFrom}
-                      onChange={(e) => setDateFrom(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <TextField
-                      label="To Date"
-                      type="date"
-                      fullWidth
-                      size="small"
-                      value={dateTo}
-                      onChange={(e) => setDateTo(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Button variant="contained" onClick={handleFilterCashFlow} sx={{ mt: 1 }}>
-                      Filter
-                    </Button>
-                  </Grid>
-                </Grid>
-              </Paper>
+  <Box sx={{ mt: 1 }}>
+    {/* Date Filter Section */}
+    <Paper sx={{ p: 3, mb: 2, boxShadow: 3, borderRadius: 2 }}>
+  <Typography variant="h6" gutterBottom sx={{ mb: 3}}>
+    Filter Cash Flow & Expenses By Date
+  </Typography>
+  <Grid container spacing={2}>
+    <Grid item xs={12} sm={6} md={3}>
+      <TextField
+        label="From Date"
+        type="date"
+        fullWidth
+        size="small"
+        value={dateFrom}
+        onChange={(e) => setDateFrom(e.target.value)}
+        InputLabelProps={{ shrink: true }}
+      />
+    </Grid>
+    <Grid item xs={12} sm={6} md={3}>
+      <TextField
+        label="To Date"
+        type="date"
+        fullWidth
+        size="small"
+        value={dateTo}
+        onChange={(e) => setDateTo(e.target.value)}
+        InputLabelProps={{ shrink: true }}
+      />
+    </Grid>
+    <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Button variant="contained" onClick={handleFilterCashFlow}>
+        Filter
+      </Button>
+      <Button
+        variant="outlined"
+        startIcon={<FileDownloadIcon />}
+        onClick={(e) => setExportAnchorEl(e.currentTarget)}
+      >
+        Export
+      </Button>
+      <Menu
+        anchorEl={exportAnchorEl}
+        open={Boolean(exportAnchorEl)}
+        onClose={() => setExportAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+       <MenuItem>
+          <CSVLink
+            data={filteredFlows.map((f, i) => flowRows[i])} // Ensure mapped rows match filtered data
+            headers={flowColumns.map(col => ({ label: col.headerName, key: col.field }))} // Define headers
+            filename="CashFlowData.csv"
+            style={{ textDecoration: 'none', color: 'inherit' }}
+          >
+            Export CSV
+          </CSVLink>
+        </MenuItem>
 
-              {/* Gym flows */}
-              <Typography variant="h6" sx={{ mb: 1 }}>
+        <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
+      </Menu>
+    </Grid>
+  </Grid>
+</Paper>
+
+    {/* Cash Flow Tabs */}
+    <Paper sx={{ p: 3, boxShadow: 4, borderRadius: 2 }}>
+  <Tabs value={selectedTab} onChange={(e, newValue) => setSelectedTab(newValue)} variant="fullWidth">
+    <Tab icon={<FitnessCenter />} iconPosition="start" label="Gym Cash Flow" />
+    <Tab icon={<LocalCafe />} iconPosition="start" label="Café Cash Flow" />
+    <Tab icon={<Icecream />} iconPosition="start" label="Yogurt Cash Flow" />
+  </Tabs>
+        {/* Gym Cash Flow Table */}
+          {selectedTab === 0 && (
+            <Box sx={{ height: 400, mt: 2 }}>
+              <Typography variant="h6" sx={{ mb: 3, fontWeight: 'bold' }}>
                 Gym Cash Flow
               </Typography>
-              <Box sx={{ height: 400, mb: 4 }}>
-                <DataGrid
-                  rows={filteredFlows
-                    .map((f, i) => flowRows[i]) // match the mapping
-                    .filter((r) => r.BusinessType === 'Gym')}
-                  columns={flowColumns}
-                  pageSize={5}
-                  rowsPerPageOptions={[5, 10]}
-                  disableSelectionOnClick
-                />
-              </Box>
+              <DataGrid
+                rows={filteredFlows
+                  .map((f, i) => flowRows[i])
+                  .filter((r) => r.BusinessType === 'Gym')}
+                columns={flowColumns}
+                pageSize={5}
+                rowsPerPageOptions={[5, 10]}
+                disableSelectionOnClick
+                autoHeight
+                density="compact"
+                disableColumnMenu
+              />
+            </Box>
+          )}
 
-              {/* Cafe flows */}
-              <Typography variant="h6" sx={{ mb: 1 }}>
+          {/* Café Cash Flow Table */}
+          {selectedTab === 1 && (
+            <Box sx={{ height: 400, mt: 2 }}>
+              <Typography variant="h6" sx={{ mb: 3, fontWeight: 'bold' }}>
                 Café Cash Flow
               </Typography>
-              <Box sx={{ height: 400, mb: 4 }}>
-                <DataGrid
-                  rows={filteredFlows
-                    .map((f, i) => flowRows[i])
-                    .filter((r) => r.BusinessType === 'Cafe')}
-                  columns={flowColumns}
-                  pageSize={5}
-                  rowsPerPageOptions={[5, 10]}
-                  disableSelectionOnClick
-                />
-              </Box>
+              <DataGrid
+                rows={filteredFlows
+                  .map((f, i) => flowRows[i])
+                  .filter((r) => r.BusinessType === 'Cafe')}
+                columns={flowColumns}
+                pageSize={5}
+                rowsPerPageOptions={[5, 10]}
+                disableSelectionOnClick
+                autoHeight
+                density="compact"
+                disableColumnMenu
+              />
+            </Box>
+          )}
 
-              {/* Yogurt flows */}
-              <Typography variant="h6" sx={{ mb: 1 }}>
+          {/* Yogurt Cash Flow Table */}
+          {selectedTab === 2 && (
+            <Box sx={{ height: 400, mt: 2 }}>
+              <Typography variant="h6" sx={{ mb: 3, fontWeight: 'bold' }}>
                 Yogurt Cash Flow
               </Typography>
-              <Box sx={{ height: 400 }}>
-                <DataGrid
-                  rows={filteredFlows
-                    .map((f, i) => flowRows[i])
-                    .filter((r) => r.BusinessType === 'Yogurt')}
-                  columns={flowColumns}
-                  pageSize={5}
-                  rowsPerPageOptions={[5, 10]}
-                  disableSelectionOnClick
-                />
-              </Box>
+              <DataGrid
+                rows={filteredFlows
+                  .map((f, i) => flowRows[i])
+                  .filter((r) => r.BusinessType === 'Yogurt')}
+                columns={flowColumns}
+                pageSize={5}
+                rowsPerPageOptions={[5, 10]}
+                disableSelectionOnClick
+                autoHeight
+                density="compact"
+                disableColumnMenu
+              />
             </Box>
           )}
+        </Paper>
+          </Box>
+        )}
 
-          {/* =================== EXPENSES TAB =================== */}
-          {activeTab === 2 && (
-            <Box sx={{ mt: 1 }}>
-              <Paper sx={{ p: 2, boxShadow: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Filter Expenses
-                </Typography>
-                <Grid container spacing={2} sx={{ mb: 2 }}>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <TextField
-                      label="From Date"
-                      type="date"
-                      fullWidth
-                      size="small"
-                      value={dateFrom}
-                      onChange={(e) => setDateFrom(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <TextField
-                      label="To Date"
-                      type="date"
-                      fullWidth
-                      size="small"
-                      value={dateTo}
-                      onChange={(e) => setDateTo(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Button variant="contained" onClick={handleFilterExpenses} sx={{ mt: 1 }}>
-                      Filter
-                    </Button>
-                  </Grid>
-                </Grid>
-                <Typography variant="h6" gutterBottom>
-                  Expenses List
-                </Typography>
-                <Box sx={{ height: 400, mb: 2 }}>
-                  <DataGrid
-                    rows={expenseRows}
-                    columns={expenseColumns}
-                    pageSize={5}
-                    rowsPerPageOptions={[5, 10]}
-                    disableSelectionOnClick
-                  />
-                </Box>
-                <Button variant="contained" color="primary" onClick={() => setExpenseFormOpen(true)}>
-                  Add New Expense
-                </Button>
-              </Paper>
-            </Box>
-          )}
 
-          {/* =================== CONSOLIDATED TAB =================== */}
-          {activeTab === 3 && (
-            <Box sx={{ mt: 1 }}>
-              <Paper sx={{ p: 2, boxShadow: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Consolidated Daily Table
-                </Typography>
-                <Box sx={{ height: 400 }}>
-                  <DataGrid
-                    rows={consolidatedRows}
-                    columns={consolidatedColumns}
-                    pageSize={5}
-                    rowsPerPageOptions={[5, 10]}
-                    disableSelectionOnClick
-                    onRowClick={handleConsolidatedRowClick}
-                  />
-                </Box>
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="body2">
-                    {selectedConsolidatedRow
-                      ? `Selected Date: ${selectedConsolidatedRow.Date} | NetProfit: ₱${selectedConsolidatedRow.NetProfit} | PettyCash: ₱${selectedConsolidatedRow.PettyCash}`
-                      : 'No date selected.'}
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    sx={{ mt: 1 }}
-                    disabled={!selectedConsolidatedRow}
-                    onClick={openConsolidatedPettyDialog}
-                  >
-                    Set Petty Cash for Selected Date
-                  </Button>
-                </Box>
-              </Paper>
-            </Box>
-          )}
+  {/* =================== EXPENSES TAB =================== */}
+{activeTab === 2 && (
+  <Box sx={{ mt: 1 }}>
+    {/* Date Filter Section */}
+    <Paper sx={{ p: 3, mb: 2, boxShadow: 3, borderRadius: 2 }}>
+      <Typography variant="h6" gutterBottom sx={{ mb: 3}}>
+        Filter Expenses By Date
+      </Typography>
+      <Grid container spacing={2}>
+        <Grid item xs={12} sm={6} md={3}>
+          <TextField
+            label="From Date"
+            type="date"
+            fullWidth
+            size="small"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <TextField
+            label="To Date"
+            type="date"
+            fullWidth
+            size="small"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Button variant="contained" onClick={handleFilterExpenses}>
+            Filter
+          </Button>
+        </Grid>
+      </Grid>
+    </Paper>
+
+    {/* Expenses Table Section */}
+    <Paper sx={{ p: 3, boxShadow: 4, borderRadius: 2 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+          Expenses List
+        </Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<AddIcon />}
+          onClick={() => setExpenseFormOpen(true)}
+        >
+          Add New Expense
+        </Button>
+      </Box>
+
+      <Box sx={{ height: 400, mt: 2 }}>
+        <DataGrid
+          rows={filteredExpenses.map((e, i) => expenseRows[i])}
+          columns={expenseColumns}
+          pageSize={5}
+          rowsPerPageOptions={[5, 10]}
+          disableSelectionOnClick
+          autoHeight
+          density="compact"
+          disableColumnMenu
+        />
+      </Box>
+    </Paper>
+  </Box>
+)}
+
+{/* =================== CONSOLIDATED TAB =================== */}
+{activeTab === 3 && (
+  <Box sx={{ mt: 1 }}>
+   <Paper sx={{ p: 2, boxShadow: 3 }}>
+  <Typography variant="h6" gutterBottom sx={{ mb: 3, fontWeight: "bold" }}>
+    Consolidated Daily Table
+  </Typography>
+  <Box sx={{ height: 400 }}>
+    <DataGrid
+      rows={consolidatedRows}
+      columns={[
+        ...consolidatedColumns,
+        {
+          field: "actions",
+          headerName: "Actions",
+          width: 180, 
+          align: "center",
+          headerAlign: "center",
+          renderCell: (params) => (
+            <Button
+              variant="contained"
+              color="primary"
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation(); 
+                openConsolidatedPettyDialog(params.row);
+              }}
+            >
+              Set Petty Cash
+            </Button>
+          ),
+        },
+      ]}
+      pageSize={5}
+      rowsPerPageOptions={[5, 10]}
+      disableSelectionOnClick
+      disableColumnMenu
+    />
+  </Box>
+</Paper>
+  </Box>
+)}
 
           {/* =================== QUICK ACTIONS TAB =================== */}
           {activeTab === 4 && (
@@ -1362,394 +1782,443 @@ export default function OwnerDashboard() {
       )}
 
       {/* Overall Flow Dialog */}
-      <Dialog open={openOverallDialog} onClose={handleCloseOverallDialog}>
-        <DialogTitle>Generate Overall Daily Cash Flow</DialogTitle>
-        <DialogContent>
-          <Typography sx={{ mb: 1 }}>
-            Computed Overall Total (Gym+Cafe+Yogurt) for today: ₱
-            {computedOverallTotal.toLocaleString()}
-          </Typography>
-          <TextField
-            fullWidth
-            label="Petty Cash Deduction"
-            name="pettyDeduction"
-            type="number"
-            value={overallInput.pettyDeduction}
-            onChange={handleOverallInputChange}
-            margin="normal"
-          />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={overallInput.deposited}
-                onChange={handleOverallInputChange}
-                name="deposited"
-              />
-            }
-            label="Deposited to owner"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseOverallDialog} color="secondary">
-            Cancel
-          </Button>
-          <Button variant="contained" color="primary" onClick={handleSubmitOverallFlow}>
-            Submit Overall Flow
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <Dialog 
+  open={openOverallDialog} 
+  onClose={handleCloseOverallDialog} 
+  fullWidth 
+  maxWidth="sm" 
+  sx={{
+    "& .MuiDialog-paper": {
+      borderRadius: 3,
+      boxShadow: 6,
+      p: 4,
+      overflow: "hidden",
+    },
+  }}
+>
+  {/* Dialog Title */}
+  <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, fontWeight: "bold" }}>
+    <AccountBalance color="primary" /> Generate Overall Daily Cash Flow
+  </DialogTitle>
 
-      {/* Petty Cash Dialog */}
-      <Dialog open={pettyDialogOpen} onClose={closeConsolidatedPettyDialog} fullWidth maxWidth="sm">
-        <DialogTitle>Set Petty Cash for {selectedConsolidatedRow?.Date || ''}</DialogTitle>
-        <DialogContent dividers>
-          {selectedConsolidatedRow && (
-            <Typography gutterBottom>
-              Net Profit: ₱{selectedConsolidatedRow.NetProfit} (Take Home before petty: ₱
-              {selectedConsolidatedRow.TakeHome + selectedConsolidatedRow.PettyCash})
-            </Typography>
-          )}
-          <TextField
-            label="Petty Cash"
-            name="pettyCash"
-            type="number"
-            value={pettyForm.pettyCash}
-            onChange={handlePettyFormChange}
-            fullWidth
-            margin="dense"
-          />
-          <TextField
-            label="Deposited Amount"
-            name="depositedAmount"
-            type="number"
-            value={pettyForm.depositedAmount}
-            onChange={handlePettyFormChange}
-            fullWidth
-            margin="dense"
-          />
-          <TextField
-            label="Remarks"
-            name="remarks"
-            value={pettyForm.remarks}
-            onChange={handlePettyFormChange}
-            fullWidth
-            multiline
-            rows={2}
-            margin="dense"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeConsolidatedPettyDialog} color="secondary">
-            Cancel
-          </Button>
-          <Button variant="contained" color="primary" onClick={handleSubmitConsolidatedPetty}>
-            Save Petty Cash
-          </Button>
-        </DialogActions>
-      </Dialog>
+  {/* Dialog Content */}
+  <DialogContent dividers sx={{ p: 3 }}>
+    <Typography 
+      variant="h8" 
+      sx={{ mb: 2, fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}
+    >
+      <MonetizationOn color="success" />
+      Computed Overall Total (Gym + Cafe + Yogurt): 
+      <span style={{ color: "#66BB6A", fontWeight: "bold" }}>
+        ₱{computedOverallTotal.toLocaleString()}
+      </span>
+    </Typography>
+
+    {/* Petty Cash Deduction */}
+    <TextField
+      fullWidth
+      label="Petty Cash Deduction"
+      name="pettyDeduction"
+      type="number"
+      value={overallInput.pettyDeduction}
+      onChange={handleOverallInputChange}
+      margin="dense"
+      variant="outlined"
+      InputProps={{
+        startAdornment: <AccountBalance sx={{ color: "primary.main", mr: 1 }} />,
+      }}
+    />
+
+    {/* Deposited Checkbox */}
+    <FormControlLabel
+      control={
+        <Checkbox
+          checked={overallInput.deposited}
+          onChange={handleOverallInputChange}
+          name="deposited"
+        />
+      }
+      label="Deposited to owner"
+      sx={{ mt: 2 }}
+    />
+  </DialogContent>
+
+  {/* Dialog Actions */}
+  <DialogActions sx={{ justifyContent: "space-between", p: 3 }}>
+    <Button 
+      onClick={handleCloseOverallDialog} 
+      sx={{ color: "red" }} 
+      startIcon={<Cancel />}
+    >
+      Cancel
+    </Button>
+    <Button 
+      variant="contained" 
+      color="primary" 
+      onClick={handleSubmitOverallFlow} 
+      startIcon={<Save />}
+    >
+      Submit Overall Flow
+    </Button>
+  </DialogActions>
+</Dialog>
+
+    {/* Petty Cash Dialog */}
+    <Dialog open={pettyDialogOpen} onClose={closeConsolidatedPettyDialog} fullWidth maxWidth="sm">
+  <DialogTitle sx={{ fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}>
+    <AccountBalanceWallet color="primary" /> Set Petty Cash for {selectedConsolidatedRow?.Date ? formatDate(selectedConsolidatedRow.Date) : ''}
+  </DialogTitle>
+  
+  <DialogContent dividers sx={{ p: 3 }}>
+    {selectedConsolidatedRow && (
+      <>
+        <Typography variant="h6" sx={{ mb: 1, fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}>
+          <MonetizationOn color="success" /> 
+          Net Profit: <span style={{ color: "#66BB6A" }}>₱{Number(selectedConsolidatedRow.NetProfit || 0).toLocaleString()}</span>
+        </Typography>
+
+        <Typography variant="body1" sx={{ mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
+          <Savings color="action" />
+          Take Home before petty: <strong>₱{Number(selectedConsolidatedRow.TakeHome || 0).toLocaleString()}</strong>
+        </Typography>
+      </>
+    )}
+
+    {/* Petty Cash Input */}
+    <TextField
+      label="Petty Cash Deduction"
+      name="pettyCash"
+      type="number"
+      value={pettyForm.pettyCash}
+      onChange={handlePettyFormChange}
+      fullWidth
+      margin="dense"
+      variant="outlined"
+      InputProps={{
+        startAdornment: <AccountBalanceWallet sx={{ color: "white", mr: 1 }} />,
+      }}
+    />
+
+    {/* Deposited Amount Input */}
+    <TextField
+      label="Deposited Amount"
+      name="depositedAmount"
+      type="number"
+      value={pettyForm.depositedAmount}
+      onChange={handlePettyFormChange}
+      fullWidth
+      margin="dense"
+      variant="outlined"
+      InputProps={{
+        startAdornment: <Savings sx={{ color: "white", mr: 1 }} />,
+      }}
+    />
+
+    {/* Remarks Input */}
+    <TextField
+      label="Remarks"
+      name="remarks"
+      value={pettyForm.remarks}
+      onChange={handlePettyFormChange}
+      fullWidth
+      multiline
+      rows={3}
+      margin="dense"
+      variant="outlined"
+      InputProps={{
+        startAdornment: <EditNote sx={{ color: "white", mr: 1 }} />,
+      }}
+    />
+  </DialogContent>
+
+  <DialogActions sx={{ justifyContent: "space-between", p: 3 }}>
+    <Button 
+      onClick={closeConsolidatedPettyDialog} 
+      sx={{ color: "red" }}
+      startIcon={<Cancel />}
+    >
+      Cancel
+    </Button>
+    <Button
+      variant="contained"
+      color="primary"
+      onClick={handleSubmitConsolidatedPetty}
+      disabled={!pettyForm.pettyCash || pettyForm.pettyCash <= 0} // Prevents empty or negative submissions
+      startIcon={<Save />}
+    >
+      Save Petty Cash
+    </Button>
+  </DialogActions>
+</Dialog>
+
+
 
       {/* Create Expense Form Dialog */}
       <Dialog open={expenseFormOpen} onClose={() => setExpenseFormOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Add New Expense</DialogTitle>
-        <DialogContent dividers>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Branch</InputLabel>
-                <Select
-                  name="BranchID"
-                  label="Branch"
-                  value={expenseForm.BranchID}
-                  onChange={handleExpenseChange}
-                >
-                  <MenuItem value="">
-                    <em>-- Select Branch --</em>
-                  </MenuItem>
-                  {branchOptions
-                    .filter((b) => b.value !== 'all')
-                    .map((b) => (
-                      <MenuItem key={b.value} value={b.value}>
-                        {b.label}
-                      </MenuItem>
-                    ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Expense Date"
-                type="date"
-                fullWidth
-                name="ExpenseDate"
-                value={expenseForm.ExpenseDate}
-                onChange={handleExpenseChange}
-                InputLabelProps={{ shrink: true }}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Category"
-                fullWidth
-                name="ExpenseCategory"
-                value={expenseForm.ExpenseCategory}
-                onChange={handleExpenseChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Amount"
-                type="number"
-                fullWidth
-                name="Amount"
-                value={expenseForm.Amount}
-                onChange={handleExpenseChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Payment Method"
-                fullWidth
-                name="PaymentMethod"
-                value={expenseForm.PaymentMethod}
-                onChange={handleExpenseChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Staff ID (optional)"
-                fullWidth
-                name="StaffID"
-                value={expenseForm.StaffID}
-                onChange={handleExpenseChange}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Notes"
-                fullWidth
-                name="Notes"
-                value={expenseForm.Notes}
-                onChange={handleExpenseChange}
-                size="small"
-                multiline
-                rows={2}
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setExpenseFormOpen(false)} color="secondary">
-            Cancel
-          </Button>
-          <Button variant="contained" color="primary" onClick={handleSubmitExpense}>
-            Save Expense
-          </Button>
-        </DialogActions>
-      </Dialog>
+  <DialogTitle sx={{ fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}>
+    
+    <ReceiptLong color="primary" /> Add New Expense
+    
+  </DialogTitle>
+ 
+  <DialogContent dividers>
+    <Grid container spacing={2}>
+      {/* Branch Selection */}
+      <Grid item xs={12} sm={6}>
+        <FormControl fullWidth size="small">
+          <InputLabel>Branch</InputLabel>
+          <Select
+            name="BranchID"
+            label="Branch"
+            value={expenseForm.BranchID}
+            onChange={handleExpenseChange}
+            startAdornment={<StoreIcon sx={{ color: "white", mr: 1 }} />}
+          >
+            <MenuItem value="">
+              <em>-- Select Branch --</em>
+            </MenuItem>
+            {branchOptions
+              .filter((b) => b.value !== "all")
+              .map((b) => (
+                <MenuItem key={b.value} value={b.value}>
+                  {b.label}
+                </MenuItem>
+              ))}
+          </Select>
+        </FormControl>
+      </Grid>
 
-      {/* Cash Flow Dialog */}
-      <Dialog open={cashFlowDialogOpen} onClose={handleCloseCashFlowDialog} fullWidth maxWidth="sm">
-        <DialogTitle>Record a New Daily Cash Flow Entry</DialogTitle>
-        <DialogContent dividers>
-          <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid item xs={12} sm={6} md={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Branch</InputLabel>
-                <Select
-                  name="BranchID"
-                  label="Branch"
-                  value={cashFlowForm.BranchID}
-                  onChange={handleCashFlowChange}
-                >
-                  <MenuItem value="">
-                    <em>-- Select Branch --</em>
-                  </MenuItem>
-                  {branchOptions.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Business Type</InputLabel>
-                <Select
-                  name="BusinessType"
-                  label="Business Type"
-                  value={cashFlowForm.BusinessType}
-                  onChange={handleCashFlowChange}
-                >
-                  <MenuItem value="">
-                    <em>-- Select --</em>
-                  </MenuItem>
-                  <MenuItem value="Gym">Gym</MenuItem>
-                  <MenuItem value="Cafe">Cafe</MenuItem>
-                  <MenuItem value="Yogurt">Yogurt</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                type="date"
-                label="Date"
-                name="Date"
-                value={cashFlowForm.Date}
-                onChange={handleCashFlowChange}
-                InputLabelProps={{ shrink: true }}
-                variant="outlined"
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Cash Sales"
-                name="CashSales"
-                value={cashFlowForm.CashSales}
-                onChange={handleCashFlowChange}
-                variant="outlined"
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                type="number"
-                label="GCash Sales"
-                name="GCashSales"
-                value={cashFlowForm.GCashSales}
-                onChange={handleCashFlowChange}
-                variant="outlined"
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                type="number"
-                label="BPI Sales"
-                name="BPISales"
-                value={cashFlowForm.BPISales}
-                onChange={handleCashFlowChange}
-                variant="outlined"
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                type="number"
-                label="BDO Sales"
-                name="BDOSales"
-                value={cashFlowForm.BDOSales}
-                onChange={handleCashFlowChange}
-                variant="outlined"
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Walk-In Cash"
-                name="WalkInCashSales"
-                value={cashFlowForm.WalkInCashSales}
-                onChange={handleCashFlowChange}
-                variant="outlined"
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Walk-In GCash"
-                name="WalkInGCashSales"
-                value={cashFlowForm.WalkInGCashSales}
-                onChange={handleCashFlowChange}
-                variant="outlined"
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Walk-In BPI"
-                name="WalkInBPISales"
-                value={cashFlowForm.WalkInBPISales}
-                onChange={handleCashFlowChange}
-                variant="outlined"
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Walk-In BDO"
-                name="WalkInBDOSales"
-                value={cashFlowForm.WalkInBDOSales}
-                onChange={handleCashFlowChange}
-                variant="outlined"
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Deposited Amount"
-                name="DepositedAmount"
-                value={cashFlowForm.DepositedAmount}
-                onChange={handleCashFlowChange}
-                variant="outlined"
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Petty Cash"
-                name="PettyCash"
-                value={cashFlowForm.PettyCash}
-                onChange={handleCashFlowChange}
-                variant="outlined"
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Remarks"
-                name="Remarks"
-                value={cashFlowForm.Remarks}
-                onChange={handleCashFlowChange}
-                variant="outlined"
-                size="small"
-                multiline
-                rows={2}
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseCashFlowDialog}>Cancel</Button>
-          <Button variant="contained" onClick={handleCashFlowSubmit}>
-            Submit Cash Flow
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Expense Date */}
+      <Grid item xs={12} sm={6}>
+        <TextField
+          label="Expense Date"
+          type="date"
+          fullWidth
+          name="ExpenseDate"
+          value={expenseForm.ExpenseDate}
+          onChange={handleExpenseChange}
+          InputLabelProps={{ shrink: true }}
+          size="small"
+          InputProps={{
+            startAdornment: <HistoryIcon sx={{ color: "white", mr: 1 }} />,
+          }}
+        />
+      </Grid>
+
+      {/* Expense Category */}
+      <Grid item xs={12} sm={6}>
+        <TextField
+          label="Category"
+          fullWidth
+          name="ExpenseCategory"
+          value={expenseForm.ExpenseCategory}
+          onChange={handleExpenseChange}
+          size="small"
+          InputProps={{
+            startAdornment: <MiscellaneousServices sx={{ color: "white", mr: 1 }} />,
+          }}
+        />
+      </Grid>
+
+      {/* Amount */}
+      <Grid item xs={12} sm={6}>
+        <TextField
+          label="Amount"
+          type="number"
+          fullWidth
+          name="Amount"
+          value={expenseForm.Amount}
+          onChange={handleExpenseChange}
+          size="small"
+          InputProps={{
+            startAdornment: <MonetizationOnIcon sx={{ color: "white", mr: 1 }} />,
+          }}
+        />
+      </Grid>
+
+      {/* Payment Method */}
+      <Grid item xs={12} sm={6}>
+        <TextField
+          label="Payment Method"
+          fullWidth
+          name="PaymentMethod"
+          value={expenseForm.PaymentMethod}
+          onChange={handleExpenseChange}
+          size="small"
+          InputProps={{
+            startAdornment: <CreditCardIcon sx={{ color: "white", mr: 1 }} />,
+          }}
+        />
+      </Grid>
+
+      {/* Staff ID */}
+      <Grid item xs={12} sm={6}>
+        <TextField
+          label="Staff ID (optional)"
+          fullWidth
+          name="StaffID"
+          value={expenseForm.StaffID}
+          onChange={handleExpenseChange}
+          size="small"
+          InputProps={{
+            startAdornment: <Person sx={{ color: "white", mr: 1 }} />,
+          }}
+        />
+      </Grid>
+
+      {/* Notes */}
+      <Grid item xs={12}>
+        <TextField
+          label="Notes"
+          fullWidth
+          name="Notes"
+          value={expenseForm.Notes}
+          onChange={handleExpenseChange}
+          size="small"
+          multiline
+          rows={2}
+          InputProps={{
+            startAdornment: <EditNote sx={{ color: "white", mr: 1 }} />,
+          }}
+        />
+      </Grid>
+    </Grid>
+  </DialogContent>
+
+  {/* Dialog Actions - Cancel on the left, Save on the right */}
+  <DialogActions sx={{ justifyContent: "space-between", p: 3 }}>
+    <Button variant="contained" color="primary" onClick={handleSubmitExpense} startIcon={<Save />}>
+      Save Expense
+    </Button>
+  </DialogActions>
+</Dialog>
+
+
+    {/* Cash Flow Dialog */}
+    <Dialog
+  open={cashFlowDialogOpen}
+  onClose={handleCloseCashFlowDialog}
+  fullWidth
+  maxWidth="lg"
+  sx={{
+    "& .MuiDialog-paper": {
+      borderRadius: 3,
+      boxShadow: 6,
+      p: 4,
+      overflow: "hidden",
+    },
+  }}
+>
+  {/* Title Section with Icon */}
+  <DialogTitle
+    sx={{
+      textAlign: "center",
+      fontWeight: "bold",
+      fontSize: "1.6rem",
+      py: 2,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 1,
+    }}
+  >
+    <CreditCardIcon sx={{ fontSize: 32, color: "primary.main" }} />
+    Record a New Daily Cash Flow Entry
+  </DialogTitle>
+
+  {/* Content Section */}
+  <DialogContent dividers sx={{ p: 4 }}>
+    <Grid container spacing={3}>
+      {/* Business Details */}
+      <Grid item xs={12} sm={4}>
+        <Typography variant="h5" sx={{ fontWeight: "bold", mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
+          <StoreIcon color="primary" /> Business Information
+        </Typography>
+        <FormControl fullWidth size="medium" sx={{ mb: 2 }}>
+          <InputLabel>Branch</InputLabel>
+          <Select name="BranchID" label="Branch" value={cashFlowForm.BranchID} onChange={handleCashFlowChange}>
+            <MenuItem value=""><em>-- Select Branch --</em></MenuItem>
+            {branchOptions.map((option) => (
+              <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        <FormControl fullWidth size="medium" sx={{ mb: 2 }}>
+          <InputLabel>Business Type</InputLabel>
+          <Select name="BusinessType" label="Business Type" value={cashFlowForm.BusinessType} onChange={handleCashFlowChange}>
+            <MenuItem value=""><em>-- Select --</em></MenuItem>
+            <MenuItem value="Gym">Gym</MenuItem>
+            <MenuItem value="Cafe">Cafe</MenuItem>
+            <MenuItem value="Yogurt">Yogurt</MenuItem>
+          </Select>
+        </FormControl>
+
+        <TextField fullWidth type="date" label="Date" name="Date" value={cashFlowForm.Date} onChange={handleCashFlowChange} InputLabelProps={{ shrink: true }} variant="outlined" size="medium" sx={{ mb: 2 }} />
+      </Grid>
+
+      {/* Sales Breakdown */}
+      <Grid item xs={12} sm={4}>
+        <Typography variant="h5" sx={{ fontWeight: "bold", mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
+          <MonetizationOnIcon color="primary" /> Sales Breakdown
+        </Typography>
+
+        <TextField fullWidth type="number" label="Cash Sales" name="CashSales" value={cashFlowForm.CashSales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
+        <TextField fullWidth type="number" label="GCash Sales" name="GCashSales" value={cashFlowForm.GCashSales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
+        <TextField fullWidth type="number" label="BPI Sales" name="BPISales" value={cashFlowForm.BPISales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
+        <TextField fullWidth type="number" label="BDO Sales" name="BDOSales" value={cashFlowForm.BDOSales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
+      </Grid>
+
+      {/* Walk-In Sales */}
+      <Grid item xs={12} sm={4}>
+        <Typography variant="h5" sx={{ fontWeight: "bold", mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
+          <DirectionsWalkIcon color="primary" /> Walk-In & Finances
+        </Typography>
+
+        <TextField fullWidth type="number" label="Walk-In Cash" name="WalkInCashSales" value={cashFlowForm.WalkInCashSales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
+        <TextField fullWidth type="number" label="Walk-In GCash" name="WalkInGCashSales" value={cashFlowForm.WalkInGCashSales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
+        <TextField fullWidth type="number" label="Walk-In BPI" name="WalkInBPISales" value={cashFlowForm.WalkInBPISales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
+        <TextField fullWidth type="number" label="Walk-In BDO" name="WalkInBDOSales" value={cashFlowForm.WalkInBDOSales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
+      </Grid>
+
+      {/* Deposits & Petty Cash */}
+      <Grid item xs={12} sm={6}>
+        <Typography variant="h5" sx={{ fontWeight: "bold", mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
+          <AccountBalanceIcon color="primary" /> Deposits & Petty Cash
+        </Typography>
+
+        <TextField fullWidth type="number" label="Deposited Amount" name="DepositedAmount" value={cashFlowForm.DepositedAmount} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
+        <TextField fullWidth type="number" label="Petty Cash" name="PettyCash" value={cashFlowForm.PettyCash} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
+      </Grid>
+
+      {/* Remarks */}
+      <Grid item xs={12}>
+        <Typography variant="h5" sx={{ fontWeight: "bold", mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
+          <NotesIcon color="primary" /> Remarks
+        </Typography>
+        <TextField fullWidth label="Remarks" name="Remarks" value={cashFlowForm.Remarks} onChange={handleCashFlowChange} variant="outlined" size="medium" multiline rows={3} />
+      </Grid>
+    </Grid>
+  </DialogContent>
+
+  {/* Dialog Actions - Adjusted Button Positioning */}
+  <DialogActions sx={{ justifyContent: "space-between", p: 3 }}>
+    <Button 
+    onClick={handleCloseCashFlowDialog} 
+    sx={{ color: "red" }} // Red color applied 
+    startIcon={<Cancel />}
+  >
+    Cancel
+  </Button>
+
+    <Button variant="contained" color="primary" onClick={handleCashFlowSubmit} startIcon={<Save />}>
+      Submit Cash Flow
+    </Button>
+  </DialogActions>
+</Dialog>
+
+
+
     </Box>
   );
 }

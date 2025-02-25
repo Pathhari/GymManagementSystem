@@ -1,31 +1,50 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import {
+  Box,
+  Typography,
+  Paper,
+  Button,
+  TextField,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
-  Box,
-  TextField,
-  Typography,
   IconButton,
   Tooltip,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
+  Divider,
+  InputAdornment,
 } from "@mui/material";
+import { DataGrid } from "@mui/x-data-grid";
+import { useTheme } from "@mui/material/styles";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
+import AddIcon from "@mui/icons-material/Add";
 import CloseIcon from "@mui/icons-material/Close";
+import SaveIcon from "@mui/icons-material/Save";
+import WarningIcon from "@mui/icons-material/Warning";
+import AssignmentIcon from "@mui/icons-material/Assignment";
+import PersonIcon from "@mui/icons-material/Person";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import StickyNote2Icon from "@mui/icons-material/StickyNote2";
 
-export default function ManagePlansLayout({ onClose }) {
+export default function ManagePlansModal({ onClose }) {
+  const theme = useTheme();
+
+  // Data and loading state
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Search state
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // Dialog states for add/edit and delete confirmation
+  const [isPlanDialogOpen, setPlanDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  // Save confirmation state for add/edit
+  const [isSaveConfirmOpen, setSaveConfirmOpen] = useState(false);
+
+  // For add/edit: if editing, planForm.PlanID will be set
   const [planForm, setPlanForm] = useState({
     PlanID: null,
     PlanName: "",
@@ -33,69 +52,99 @@ export default function ManagePlansLayout({ onClose }) {
     Duration: "",
     Features: "",
   });
-  const [isEditing, setIsEditing] = useState(false);
+  // For deletion: store the plan ID to delete
+  const [planToDelete, setPlanToDelete] = useState(null);
+  // Form errors for UI validation
+  const [formErrors, setFormErrors] = useState({});
 
   useEffect(() => {
-    loadPlans();
+    fetchPlans();
   }, []);
 
-  const loadPlans = async () => {
+  const fetchPlans = async () => {
     try {
+      setLoading(true);
       const res = await axios.get("/membership/plans");
       setPlans(res.data || []);
     } catch (err) {
-      console.error("Error fetching membership plans:", err);
-      alert("Failed to load plans");
+      console.error("Error fetching plans:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddPlan = () => {
-    setIsEditing(false);
-    setPlanForm({
-      PlanID: null,
-      PlanName: "",
-      Price: 0,
-      Duration: "",
-      Features: "",
-    });
+  // Filter plans based on search term
+  const filteredPlans = plans.filter((plan) =>
+    Object.values(plan)
+      .join(" ")
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase())
+  );
+
+  // Open add/edit dialog
+  const openPlanDialog = (plan = null) => {
+    if (plan) {
+      setPlanForm({ ...plan });
+    } else {
+      setPlanForm({
+        PlanID: null,
+        PlanName: "",
+        Price: 0,
+        Duration: "",
+        Features: "",
+      });
+    }
+    setFormErrors({});
+    setPlanDialogOpen(true);
   };
 
-  const handleEditPlan = (plan) => {
-    setIsEditing(true);
-    setPlanForm({
-      PlanID: plan.PlanID,
-      PlanName: plan.PlanName,
-      Price: plan.Price,
-      Duration: plan.Duration,
-      Features: plan.Features || "",
-    });
+  const closePlanDialog = () => {
+    setPlanDialogOpen(false);
+    setFormErrors({});
   };
 
-  const handleChange = (e) => {
+  const handleFormChange = (e) => {
     const { name, value } = e.target;
     setPlanForm((prev) => ({ ...prev, [name]: value }));
+    // Remove error for the field as the user types
+    setFormErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
-  const handleSubmitPlan = async (e) => {
-    e.preventDefault();
+  // Validate required fields before showing confirmation
+  const validatePlanForm = () => {
+    let errors = {};
     if (!planForm.PlanName.trim()) {
-      alert("Plan Name is required");
+      errors.PlanName = "Plan Name is required";
+    }
+    // You can add more validations here if needed.
+    return errors;
+  };
+
+  // Open the save confirmation dialog only if validation passes
+  const handleOpenSaveConfirm = () => {
+    const errors = validatePlanForm();
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
       return;
     }
+    setSaveConfirmOpen(true);
+  };
+
+  const handleSavePlan = async () => {
     try {
-      if (isEditing && planForm.PlanID) {
+      if (planForm.PlanID) {
+        // Update existing plan
         const res = await axios.put(`/membership/plans/${planForm.PlanID}`, {
           PlanName: planForm.PlanName,
           Price: parseFloat(planForm.Price) || 0,
-          Duration: parseInt(planForm.Duration, 10),
+          Duration: planForm.Duration,
           Features: planForm.Features,
         });
         setPlans((prev) =>
           prev.map((p) => (p.PlanID === planForm.PlanID ? res.data : p))
         );
       } else {
+        // Create new plan
         const res = await axios.post("/membership/plans", {
           PlanName: planForm.PlanName,
           Price: parseFloat(planForm.Price) || 0,
@@ -104,174 +153,312 @@ export default function ManagePlansLayout({ onClose }) {
         });
         setPlans((prev) => [...prev, res.data]);
       }
-      setPlanForm({
-        PlanID: null,
-        PlanName: "",
-        Price: 0,
-        Duration: "",
-        Features: "",
-      });
-      setIsEditing(false);
+      closePlanDialog();
     } catch (err) {
       console.error("Error saving plan:", err);
-      alert("Error saving plan");
     }
   };
 
-  const handleDeletePlan = async (planId) => {
-    if (!window.confirm("Are you sure you want to delete this plan?")) return;
+  // Triggered from the confirmation dialog
+  const confirmSavePlan = async () => {
+    setSaveConfirmOpen(false);
+    await handleSavePlan();
+  };
+
+  // Open delete confirmation dialog
+  const openDeleteConfirm = (planId) => {
+    setPlanToDelete(planId);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeletePlan = async () => {
+    setDeleteDialogOpen(false);
     try {
-      await axios.delete(`/membership/plans/${planId}`);
-      setPlans((prev) => prev.filter((p) => p.PlanID !== planId));
+      await axios.delete(`/membership/plans/${planToDelete}`);
+      setPlans((prev) => prev.filter((p) => p.PlanID !== planToDelete));
+      setPlanToDelete(null);
     } catch (err) {
       console.error("Error deleting plan:", err);
-      alert("Error deleting plan");
     }
   };
+
+  // DataGrid column definitions
+  const columns = [
+    {
+      field: "PlanID",
+      headerName: "ID",
+      width: 80,
+      renderCell: (params) => params.value ?? "—",
+    },
+    {
+      field: "PlanName",
+      headerName: "Plan Name",
+      width: 200,
+      renderCell: (params) => params.value ?? "—",
+    },
+    {
+      field: "Price",
+      headerName: "Price",
+      width: 100,
+      renderCell: (params) => params.value ?? "—",
+    },
+    {
+      field: "Duration",
+      headerName: "Duration",
+      width: 120,
+      renderCell: (params) => params.value ?? "—",
+    },
+    {
+      field: "Features",
+      headerName: "Features",
+      width: 200,
+      renderCell: (params) => params.value || "—",
+    },
+    {
+      field: "Actions",
+      headerName: "Actions",
+      width: 150,
+      sortable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title="Edit Plan">
+            <IconButton
+              color="primary"
+              onClick={() => openPlanDialog(params.row)}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Delete Plan">
+            <IconButton
+              color="error"
+              onClick={() => openDeleteConfirm(params.row.PlanID)}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      ),
+    },
+  ];
 
   return (
     <Dialog open onClose={onClose} maxWidth="lg" fullWidth>
-      <DialogTitle sx={{ display: "flex", justifyContent: "space-between" }}>
-        <Typography variant="h6">Manage Membership Plans</Typography>
-        <IconButton onClick={onClose}>
+      <DialogTitle
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <Typography variant="h5">
+          <PersonIcon sx={{verticalalign: "middle", mr: 1}} />
+          Manage Membership Plans</Typography>
+        <IconButton
+          onClick={onClose}
+          sx={{ "&:hover": { color: "red" } }}
+        >
           <CloseIcon />
         </IconButton>
       </DialogTitle>
       <DialogContent dividers>
-        {loading ? (
-          <Typography>Loading plans...</Typography>
-        ) : (
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: { xs: "column", md: "row" }, // Responsive layout
-              gap: 2, // Space between table and form
-            }}
+        {/* Top bar with search and add plan */}
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            mb: 2,
+          }}
+        >
+          <TextField
+            variant="outlined"
+            size="small"
+            placeholder="Search..."
+            value={searchTerm}
+            fullWidth
+            sx={{ maxWidth: 350 }}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={() => openPlanDialog()}
+            sx={{ textTransform: "none" }}
           >
-            {/* Table of Plans */}
-            <Box
-              sx={{
-                flex: { xs: 1, md: 0.6 }, // Take 60% width on desktop
-                minWidth: { xs: "100%", md: "50%" }, // Ensure proper width on mobile
-              }}
-            >
-              <TableContainer component={Paper} sx={{ mb: 3 }}>
-                <Table>
-                  <TableHead sx={{ backgroundColor: "black" }}>
-                    <TableRow>
-                      <TableCell>PlanID</TableCell>
-                      <TableCell>PlanName</TableCell>
-                      <TableCell>Price</TableCell>
-                      <TableCell>Duration</TableCell>
-                      <TableCell>Features</TableCell>
-                      <TableCell width={150}>Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {plans.map((plan) => (
-                      <TableRow key={plan.PlanID}>
-                        <TableCell>{plan.PlanID}</TableCell>
-                        <TableCell>{plan.PlanName}</TableCell>
-                        <TableCell>{plan.Price}</TableCell>
-                        <TableCell>{plan.Duration}</TableCell>
-                        <TableCell>{plan.Features || "—"}</TableCell>
-                        <TableCell>
-                          <Tooltip title="Edit Plan">
-                            <IconButton
-                              onClick={() => handleEditPlan(plan)}
-                              sx={{ color: "#2196f3" }}
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete Plan">
-                            <IconButton
-                              onClick={() => handleDeletePlan(plan.PlanID)}
-                              sx={{ color: "#f44336" }}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Box>
-
-            {/* Form for Add/Edit */}
-            <Box
-              component="form"
-              onSubmit={handleSubmitPlan}
-              sx={{
-                flex: { xs: 1, md: 0.4 }, // Take 40% width on desktop
-                minWidth: { xs: "100%", md: "300px" }, // Ensure proper width on mobile
-                p: 2,
-                border: "1px solid #ccc",
-                borderRadius: 2,
-              }}
-            >
-              <Typography variant="subtitle1" sx={{ mb: 2 }}>
-                {isEditing ? "Edit Plan" : "Add New Plan"}
-              </Typography>
-              <TextField
-                label="Plan Name"
-                name="PlanName"
-                value={planForm.PlanName}
-                onChange={handleChange}
-                required
-                fullWidth
-                sx={{ mb: 2 }}
-              />
-              <TextField
-                label="Price"
-                name="Price"
-                type="number"
-                value={planForm.Price}
-                onChange={handleChange}
-                required
-                fullWidth
-                sx={{ mb: 2 }}
-              />
-              <TextField
-                label="Duration"
-                name="Duration"
-                value={planForm.Duration}
-                onChange={handleChange}
-                required
-                fullWidth
-                sx={{ mb: 2 }}
-              />
-              <TextField
-                label="Features"
-                name="Features"
-                multiline
-                rows={2}
-                value={planForm.Features}
-                onChange={handleChange}
-                fullWidth
-                sx={{ mb: 2 }}
-              />
-              <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1 }}>
-                {!isEditing && (
-                  <Button variant="outlined" onClick={handleAddPlan}>
-                    Clear
-                  </Button>
-                )}
-                <Button variant="contained" color="primary" type="submit">
-                  {isEditing ? "Save Changes" : "Add Plan"}
-                </Button>
-              </Box>
-            </Box>
-          </Box>
-        )}
+            ADD PLAN
+          </Button>
+        </Box>
+        {/* Data grid */}
+        <Paper elevation={2} sx={{ height: 450, width: "100%" }}>
+          <DataGrid
+            rows={filteredPlans}
+            columns={columns}
+            getRowId={(row) => row.PlanID}
+            pageSize={5}
+            rowsPerPageOptions={[5, 10]}
+            loading={loading}
+            disableSelectionOnClick
+          />
+        </Paper>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} color="secondary">
-          Close
-        </Button>
-      </DialogActions>
+      {/* Add/Edit Plan Dialog */}
+      <Dialog open={isPlanDialogOpen} onClose={closePlanDialog} fullWidth maxWidth="sm">
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="h5">
+              {planForm.PlanID ? "Edit Plan" : "Add New Plan"}
+            </Typography>
+            <IconButton
+              onClick={closePlanDialog}
+              sx={{ "&:hover": { color: "red" } }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ p: 2 }}>
+            <Divider sx={{ mb: 3 }} />
+            <form onSubmit={(e) => e.preventDefault()}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {/* Plan Name */}
+                <TextField
+                  label="Plan Name"
+                  name="PlanName"
+                  fullWidth
+                  required
+                  value={planForm.PlanName}
+                  onChange={handleFormChange}
+                  variant="outlined"
+                  error={!!formErrors.PlanName}
+                  helperText={formErrors.PlanName}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <AssignmentIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                {/* Price */}
+                <TextField
+                  label="Price"
+                  name="Price"
+                  type="number"
+                  fullWidth
+                  required
+                  value={planForm.Price}
+                  onChange={handleFormChange}
+                  variant="outlined"
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                {/* Duration */}
+                <TextField
+                  label="Duration (In Days)"
+                  name="Duration"
+                  fullWidth
+                  required
+                  value={planForm.Duration}
+                  onChange={handleFormChange}
+                  variant="outlined"
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <AccessTimeIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                {/* Features */}
+                <TextField
+                  label="Features"
+                  name="Features"
+                  fullWidth
+                  multiline
+                  rows={2}
+                  value={planForm.Features}
+                  onChange={handleFormChange}
+                  variant="outlined"
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <StickyNote2Icon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
+            </form>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: "flex-end", gap: 2, p: 3 }}>
+          <Button
+            variant="contained"
+            onClick={handleOpenSaveConfirm}
+            startIcon={<SaveIcon />}
+            sx={{ textTransform: "none" }}
+          >
+            {planForm.PlanID ? "Save Changes" : "Add Plan"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* Save Confirmation Dialog */}
+      <Dialog
+        open={isSaveConfirmOpen}
+        onClose={() => setSaveConfirmOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle
+          sx={{ display: "flex", alignItems: "center", gap: 1, fontWeight: "bold" }}
+        >
+          <WarningIcon color="warning" />
+          Confirm Save
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography>
+            Are you sure you want to save this plan?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSaveConfirmOpen(false)}>Cancel</Button>
+          <Button variant="contained" color="primary" onClick={confirmSavePlan}>
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={isDeleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle
+          sx={{ display: "flex", alignItems: "center", gap: 1, fontWeight: "bold" }}
+        >
+          <DeleteForeverIcon color="error" />
+          Confirm Deletion
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography>
+            Are you sure you want to delete this plan? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleDeletePlan}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }

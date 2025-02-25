@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { AppProvider } from '@toolpad/core/AppProvider';
+
 import { useTheme } from '@mui/material/styles';
 import {
   TextField,
@@ -11,7 +12,7 @@ import {
   InputAdornment,
   Alert,
 } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import { Email, Lock, Visibility, VisibilityOff } from '@mui/icons-material';
 
 const BRANDING = {
   logo: (
@@ -104,7 +105,14 @@ export default function AdminLogin() {
               fullWidth
               margin="normal"
               error={!!error} // Highlight if there's a general error
-              helperText={!!error ? '' : null} // No specific error message
+              helperText={!!error ? '' : null} // Do not display field-specific error
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Email />
+                  </InputAdornment>
+                ),
+              }}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   '&.Mui-focused fieldset': {
@@ -132,8 +140,13 @@ export default function AdminLogin() {
               fullWidth
               margin="normal"
               error={!!error} // Highlight if there's a general error
-              helperText={!!error ? '' : null} // No specific error message
+              helperText={!!error ? '' : null} // Do not display field-specific error
               InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Lock />
+                  </InputAdornment>
+                ),
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton onClick={togglePasswordVisibility} edge="end">

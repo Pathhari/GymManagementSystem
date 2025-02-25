@@ -5,6 +5,17 @@ use Inertia\Inertia;
 
 /*
 |--------------------------------------------------------------------------
+| Root: Redirect to log-in page if not log-in but trying to put redirection url
+|--------------------------------------------------------------------------
+*/
+
+Route::get('/login', function () {
+    return redirect()->route('root');
+})->name('login');
+
+
+/*
+|--------------------------------------------------------------------------
 | Root: Redirect to Correct Dashboard if Logged In
 |--------------------------------------------------------------------------
 */
@@ -317,7 +328,9 @@ Route::prefix('notifications')->group(function() {
 */
 use App\Http\Controllers\MembershipController;
 
-Route::prefix('membership')->group(function() {
+    Route::get('/membership/latest-card-number', [MembershipController::class, 'getLatestCardNumber']);
+
+    Route::prefix('membership')->group(function() {
 
     // 1) Members
     Route::get('members', [MembershipController::class, 'apiIndex'])

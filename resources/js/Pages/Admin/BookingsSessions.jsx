@@ -1085,7 +1085,7 @@ export default function BookingsSessions() {
           </Box>
 
           {/* DATAGRID */}
-          <Box sx={{ height: 420, width: "100%" }}>
+          <Box style={{ height: 420, width: "100%" }}>
             <DataGrid
               rows={rows}
               columns={columns}
@@ -1105,7 +1105,8 @@ export default function BookingsSessions() {
           fullWidth
           maxWidth="sm"
         >
-          <DialogTitle>Add New Booking</DialogTitle>
+          <DialogTitle>
+            Add New Booking</DialogTitle>
           <DialogContent dividers>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <FormControl fullWidth size="small">

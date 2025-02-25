@@ -12,18 +12,19 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('membership_freezes', function (Blueprint $table) {
-            $table->id('FreezeID');
-            $table->unsignedBigInteger('MemberID');
+            $table->id('FreezeID'); 
+            $table->unsignedBigInteger('MemberID'); 
+            $table->unsignedBigInteger('StartedBranchID')->nullable(); 
             $table->date('FreezeStartDate');
             $table->date('FreezeEndDate')->nullable();
             $table->string('Reason')->nullable();
             $table->date('OriginalEndDate')->nullable();
-            
             $table->timestamps();
-        
+
+            // ✅ Add foreign keys after defining columns
             $table->foreign('MemberID')->references('MemberID')->on('members')->onDelete('cascade');
+            $table->foreign('StartedBranchID')->references('BranchID')->on('branches')->onDelete('set null'); 
         });
-        
     }
 
     /**

@@ -309,7 +309,7 @@ class BookingController extends Controller
             ]);
         });
     }
-
+    
     /**
      * NEW: listSessionBookings
      */

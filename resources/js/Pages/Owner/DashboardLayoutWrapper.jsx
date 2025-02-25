@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTheme } from '@mui/material/styles';
 import PropTypes from 'prop-types';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
@@ -53,6 +54,8 @@ const NAVIGATION = [
   { segment: 'notifications', title: 'Notifications', icon: <NotificationsIcon /> },
   { segment: 'editaccount', title: 'Edit Account', icon: <ManageAccountsIcon /> },
 ];
+
+
 
 const demoTheme = createTheme({
   cssVariables: {
@@ -120,10 +123,15 @@ DemoPageContent.propTypes = {
 };
 
 function CustomAppTitle() {
+  const theme = useTheme();
+  const logoSrc = theme.palette.mode === 'light' 
+    ? '/imgs/logo-mainb.png' // For light mode
+    : '/imgs/logo-main.png'; // For dark mode
+
   return (
     <Stack direction="row" alignItems="center" spacing={2}>
       <img
-        src="/imgs/logo-main.png" // Replace with your logo path
+        src={logoSrc}
         alt="Logo"
         style={{ height: '40px', width: 'auto' }}
       />
@@ -131,7 +139,6 @@ function CustomAppTitle() {
     </Stack>
   );
 }
-
 function SidebarFooter({ onLogout }) {
   return (
     <Box
