@@ -145,19 +145,31 @@ class Branch extends Model
     }
 
     public function staffAssignments()
-{
-    return $this->belongsToMany(
-        Staff::class,
-        'branch_staff',
-        'BranchID',
-        'StaffID',
-        'BranchID',
-        'StaffID'
-    );
-}
+    {
+        return $this->belongsToMany(
+            Staff::class,
+            'branch_staff',
+            'BranchID',
+            'StaffID',
+            'BranchID',
+            'StaffID'
+        );
+    }
+
+    public function admins()
+    {
+        return $this->belongsToMany(
+            Admin::class, 
+            'admin_branch',    // pivot table name
+            'BranchID',        // foreign key on pivot table
+            'AdminID'          // related key on pivot table
+        );
+    }
 
     public function members()
     {
         return $this->hasMany(\App\Models\Member::class, 'StartedBranchID', 'BranchID');
     }
+
+    
 }

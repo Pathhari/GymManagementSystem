@@ -139,7 +139,7 @@ export default function OwnerDashboard(onClose) {
         unit: "pt",
         format: "A4"
     });
-
+    const [branchFormValue, setBranchFormValue] = useState("");
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -716,30 +716,50 @@ export default function OwnerDashboard(onClose) {
 
   const handlePettyFormChange = (e) => {
     const { name, value } = e.target;
-    setPettyForm((prev) => ({ ...prev, [name]: value }));
+
+    setPettyForm((prev) => {
+      let next = { ...prev, [name]: value };
+
+      if (name === "pettyCash") {
+        const netProfit = Number(selectedConsolidatedRow?.NetProfit || 0);
+        const pettyNum = parseFloat(value) || 0;
+        next.depositedAmount = netProfit - pettyNum >= 0 ? netProfit - pettyNum : 0;
+      }
+      return next;
+    });
   };
 
   const handleSubmitConsolidatedPetty = async () => {
     if (!selectedConsolidatedRow) return;
+  
     const petty = parseFloat(pettyForm.pettyCash) || 0;
     const deposit = parseFloat(pettyForm.depositedAmount) || 0;
     const dateStr = selectedConsolidatedRow.Date;
+  
+    // 1) If your user picks "all" in a dropdown, you can do:
+    let branchPayload = pettyForm.branchSelection;
+    if (branchPayload === 'all') {
+      branchPayload = null;
+    }
+  
     try {
-      await axios.post('/finance/cashflow', {
-        BranchID: branchOptions[0]?.value || 1,
+      await axios.post("/finance/cashflow", {
+        BranchID: branchPayload,      // <--- If null or omitted, your back-end can skip validation
         Date: dateStr,
-        BusinessType: 'Overall',
+        BusinessType: "Overall",      // Tells your back-end to allow no BranchID
         TotalSales: 0,
         PettyCash: petty,
         DepositedAmount: deposit,
         Remarks: pettyForm.remarks,
       });
+  
       alert(`Petty Cash for ${dateStr} saved!`);
       setPettyDialogOpen(false);
-      const cfRes = await axios.get('/finance/cashflow');
+  
+      const cfRes = await axios.get("/finance/cashflow");
       const flows = cfRes.data.flows || [];
       setAllFlows(flows);
-
+  
       // Re-filter
       const newFiltered = applyDateFilter(flows, dateFrom, dateTo);
       setFilteredFlows(newFiltered);
@@ -748,9 +768,10 @@ export default function OwnerDashboard(onClose) {
       buildBusinessCharts(newFiltered);
     } catch (err) {
       console.error(err);
-      alert('Failed to set petty cash');
+      alert("Failed to set petty cash");
     }
   };
+  
 
   // Expenses
   const expenseColumns = [
@@ -941,7 +962,17 @@ export default function OwnerDashboard(onClose) {
 
   const handleCashFlowSubmit = async () => {
     try {
-      await axios.post('/finance/cashflow', { ...cashFlowForm });
+      const payload = {
+        ...cashFlowForm,
+        // Force these fields to zero
+        WalkInCashSales: 0,
+        WalkInGCashSales: 0,
+        WalkInBPISales: 0,
+        WalkInBDOSales: 0,
+        DepositedAmount: 0,
+        PettyCash: 0,
+      };
+      await axios.post('/finance/cashflow', payload);
       alert('Daily cash flow entry created successfully!');
 
       const cfRes = await axios.get('/finance/cashflow');
@@ -1078,7 +1109,7 @@ export default function OwnerDashboard(onClose) {
           <Tab label="Daily Cash Flow" icon={<PesosIcon fontSize={18} />} iconPosition="start" />
           <Tab label="Expenses" icon={<ReceiptLong />} iconPosition="start" />
           <Tab label="Consolidated" icon={<TableView />} iconPosition="start" />
-          <Tab label="Quick Actions" icon={<MiscellaneousServices />} iconPosition="start" />
+          <Tab label="Good One" icon={<MiscellaneousServices />} iconPosition="start" />
         </Tabs>
 
       {error && (
@@ -1692,7 +1723,7 @@ export default function OwnerDashboard(onClose) {
                 <Grid item xs={12} sm={6} md={4}>
                   <Paper sx={{ p: 2, mb: 2, boxShadow: 3 }}>
                     <Typography variant="h6" gutterBottom>
-                      Daily Cash Flow
+                     Good One Cash Flow
                     </Typography>
                     <Button
                       variant="contained"
@@ -1701,78 +1732,10 @@ export default function OwnerDashboard(onClose) {
                       sx={{ mb: 2 }}
                       onClick={handleOpenCashFlowDialog}
                     >
-                      Add Cash Flow Entry
+                      Add Good One Cash Flow Entry
                     </Button>
 
-                    <Typography variant="subtitle2">Generate Gym Daily Flow</Typography>
-                    <TextField
-                      label="Branch"
-                      select
-                      value={selectedBranchId}
-                      onChange={(e) => setSelectedBranchId(e.target.value)}
-                      size="small"
-                      fullWidth
-                      sx={{ mb: 1, mt: 1 }}
-                    >
-                      <MenuItem value="">
-                        <em>-- Select Branch --</em>
-                      </MenuItem>
-                      {branchOptions
-                        .filter((b) => b.value !== 'all')
-                        .map((b) => (
-                          <MenuItem key={b.value} value={b.value}>
-                            {b.label}
-                          </MenuItem>
-                        ))}
-                    </TextField>
-                    <TextField
-                      label="Date"
-                      type="date"
-                      size="small"
-                      fullWidth
-                      value={selectedDate.toISOString().substr(0, 10)}
-                      onChange={(e) => setSelectedDate(new Date(e.target.value))}
-                      InputLabelProps={{ shrink: true }}
-                      sx={{ mb: 2 }}
-                    />
-                    <Button
-                      variant="contained"
-                      color="secondary"
-                      fullWidth
-                      disabled={!selectedBranchId}
-                      onClick={handleGenerateCashFlow}
-                    >
-                      Generate Gym Daily Flow
-                    </Button>
-                  </Paper>
-                </Grid>
 
-                {/* Overall Flow */}
-                <Grid item xs={12} sm={6} md={4}>
-                  <Paper sx={{ p: 2, boxShadow: 3 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Overall Flow
-                    </Typography>
-                    <Typography variant="body2" sx={{ mb: 2 }}>
-                      Consolidate total Gym/Cafe/Yogurt sales for today.
-                    </Typography>
-                    <Button variant="contained" color="primary" fullWidth onClick={handleOpenOverallDialog}>
-                      Generate Overall Flow
-                    </Button>
-                  </Paper>
-                </Grid>
-
-                {/* Additional Quick Actions or Promotions, Logs, etc. */}
-                <Grid item xs={12} md={4}>
-                  <Paper sx={{ p: 2, boxShadow: 3 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Current Promotions
-                    </Typography>
-                    {currentPromotions.map((promo) => (
-                      <Typography key={promo.PromotionID}>
-                        {promo.Name} - {promo.DiscountValue} until {promo.EndDate}
-                      </Typography>
-                    ))}
                   </Paper>
                 </Grid>
               </Grid>
@@ -1863,93 +1826,132 @@ export default function OwnerDashboard(onClose) {
   </DialogActions>
 </Dialog>
 
-    {/* Petty Cash Dialog */}
-    <Dialog open={pettyDialogOpen} onClose={closeConsolidatedPettyDialog} fullWidth maxWidth="sm">
-  <DialogTitle sx={{ fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}>
-    <AccountBalanceWallet color="primary" /> Set Petty Cash for {selectedConsolidatedRow?.Date ? formatDate(selectedConsolidatedRow.Date) : ''}
-  </DialogTitle>
-  
-  <DialogContent dividers sx={{ p: 3 }}>
-    {selectedConsolidatedRow && (
-      <>
-        <Typography variant="h6" sx={{ mb: 1, fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}>
-          <MonetizationOn color="success" /> 
-          Net Profit: <span style={{ color: "#66BB6A" }}>₱{Number(selectedConsolidatedRow.NetProfit || 0).toLocaleString()}</span>
-        </Typography>
+  {/* =================== Petty Cash Dialog =================== */}
+  <Dialog
+        open={pettyDialogOpen}
+        onClose={closeConsolidatedPettyDialog}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle sx={{ fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}>
+          <AccountBalanceWallet color="primary" />
+          Set Petty Cash for{" "}
+          {selectedConsolidatedRow?.Date ? formatDate(selectedConsolidatedRow.Date) : ""}
+        </DialogTitle>
 
-        <Typography variant="body1" sx={{ mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
-          <Savings color="action" />
-          Take Home before petty: <strong>₱{Number(selectedConsolidatedRow.TakeHome || 0).toLocaleString()}</strong>
-        </Typography>
-      </>
-    )}
+        <DialogContent dividers sx={{ p: 3 }}>
+          {selectedConsolidatedRow && (
+            <>
+              <Typography
+                variant="h6"
+                sx={{ mb: 1, fontWeight: "bold", display: "flex", alignItems: "center", gap: 1 }}
+              >
+                <MonetizationOn color="success" />
+                Net Profit:{" "}
+                <span style={{ color: "#66BB6A" }}>
+                  ₱{Number(selectedConsolidatedRow.NetProfit || 0).toLocaleString()}
+                </span>
+              </Typography>
 
-    {/* Petty Cash Input */}
-    <TextField
-      label="Petty Cash Deduction"
-      name="pettyCash"
-      type="number"
-      value={pettyForm.pettyCash}
-      onChange={handlePettyFormChange}
-      fullWidth
-      margin="dense"
-      variant="outlined"
-      InputProps={{
-        startAdornment: <AccountBalanceWallet sx={{ color: "white", mr: 1 }} />,
-      }}
-    />
+              <Typography
+                variant="body1"
+                sx={{ mb: 2, display: "flex", alignItems: "center", gap: 1 }}
+              >
+                <Savings color="action" />
+                Take Home before petty:{" "}
+                <strong>
+                  ₱{Number(selectedConsolidatedRow.TakeHome || 0).toLocaleString()}
+                </strong>
+              </Typography>
+            </>
+          )}
 
-    {/* Deposited Amount Input */}
-    <TextField
-      label="Deposited Amount"
-      name="depositedAmount"
-      type="number"
-      value={pettyForm.depositedAmount}
-      onChange={handlePettyFormChange}
-      fullWidth
-      margin="dense"
-      variant="outlined"
-      InputProps={{
-        startAdornment: <Savings sx={{ color: "white", mr: 1 }} />,
-      }}
-    />
+          {/* A) Select the Branch ("all" or numeric) */}
+          <FormControl fullWidth size="small" sx={{ mt: 2, mb: 2 }}>
+            <InputLabel>Branch</InputLabel>
+            <Select
+              label="Branch"
+              name="branchSelection"
+              value={pettyForm.branchSelection}
+              onChange={handlePettyFormChange}
+            >
+              <MenuItem value="all">All / Overall</MenuItem>
+              {branchOptions
+                .filter((b) => b.value !== 'all')
+                .map((b) => (
+                  <MenuItem key={b.value} value={b.value}>
+                    {b.label}
+                  </MenuItem>
+                ))}
+            </Select>
+          </FormControl>
 
-    {/* Remarks Input */}
-    <TextField
-      label="Remarks"
-      name="remarks"
-      value={pettyForm.remarks}
-      onChange={handlePettyFormChange}
-      fullWidth
-      multiline
-      rows={3}
-      margin="dense"
-      variant="outlined"
-      InputProps={{
-        startAdornment: <EditNote sx={{ color: "white", mr: 1 }} />,
-      }}
-    />
-  </DialogContent>
+          {/* Petty Cash Input */}
+          <TextField
+            label="Petty Cash Deduction"
+            name="pettyCash"
+            type="number"
+            value={pettyForm.pettyCash}
+            onChange={handlePettyFormChange}
+            fullWidth
+            margin="dense"
+            variant="outlined"
+            InputProps={{
+              startAdornment: <AccountBalanceWallet sx={{ color: "white", mr: 1 }} />,
+            }}
+          />
 
-  <DialogActions sx={{ justifyContent: "space-between", p: 3 }}>
-    <Button 
-      onClick={closeConsolidatedPettyDialog} 
-      sx={{ color: "red" }}
-      startIcon={<Cancel />}
-    >
-      Cancel
-    </Button>
-    <Button
-      variant="contained"
-      color="primary"
-      onClick={handleSubmitConsolidatedPetty}
-      disabled={!pettyForm.pettyCash || pettyForm.pettyCash <= 0} // Prevents empty or negative submissions
-      startIcon={<Save />}
-    >
-      Save Petty Cash
-    </Button>
-  </DialogActions>
-</Dialog>
+          {/* Deposited Amount (Read-Only) */}
+          <TextField
+            label="Deposited Amount"
+            name="depositedAmount"
+            type="number"
+            value={pettyForm.depositedAmount}
+            InputProps={{
+              readOnly: true,
+              startAdornment: <Savings sx={{ color: "white", mr: 1 }} />,
+            }}
+            fullWidth
+            margin="dense"
+            variant="outlined"
+          />
+
+          {/* Remarks */}
+          <TextField
+            label="Remarks"
+            name="remarks"
+            value={pettyForm.remarks}
+            onChange={handlePettyFormChange}
+            fullWidth
+            multiline
+            rows={3}
+            margin="dense"
+            variant="outlined"
+            InputProps={{
+              startAdornment: <EditNote sx={{ color: "white", mr: 1 }} />,
+            }}
+          />
+        </DialogContent>
+
+        <DialogActions sx={{ justifyContent: "space-between", p: 3 }}>
+          <Button
+            onClick={closeConsolidatedPettyDialog}
+            sx={{ color: "red" }}
+            startIcon={<Cancel />}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleSubmitConsolidatedPetty}
+            disabled={!pettyForm.pettyCash || pettyForm.pettyCash <= 0}
+            startIcon={<Save />}
+          >
+            Save Petty Cash
+          </Button>
+        </DialogActions>
+      </Dialog>
 
 
 
@@ -2123,7 +2125,7 @@ export default function OwnerDashboard(onClose) {
     }}
   >
     <CreditCardIcon sx={{ fontSize: 32, color: "primary.main" }} />
-    Record a New Daily Cash Flow Entry
+    Record Yogurt/Cafe Daily Cash Flow Entry
   </DialogTitle>
 
   {/* Content Section */}
@@ -2132,7 +2134,7 @@ export default function OwnerDashboard(onClose) {
       {/* Business Details */}
       <Grid item xs={12} sm={4}>
         <Typography variant="h5" sx={{ fontWeight: "bold", mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
-          <StoreIcon color="primary" /> Business Information
+          <StoreIcon color="primary" /> Yogurt or Cafe?
         </Typography>
         <FormControl fullWidth size="medium" sx={{ mb: 2 }}>
           <InputLabel>Branch</InputLabel>
@@ -2148,7 +2150,6 @@ export default function OwnerDashboard(onClose) {
           <InputLabel>Business Type</InputLabel>
           <Select name="BusinessType" label="Business Type" value={cashFlowForm.BusinessType} onChange={handleCashFlowChange}>
             <MenuItem value=""><em>-- Select --</em></MenuItem>
-            <MenuItem value="Gym">Gym</MenuItem>
             <MenuItem value="Cafe">Cafe</MenuItem>
             <MenuItem value="Yogurt">Yogurt</MenuItem>
           </Select>
@@ -2167,28 +2168,6 @@ export default function OwnerDashboard(onClose) {
         <TextField fullWidth type="number" label="GCash Sales" name="GCashSales" value={cashFlowForm.GCashSales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
         <TextField fullWidth type="number" label="BPI Sales" name="BPISales" value={cashFlowForm.BPISales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
         <TextField fullWidth type="number" label="BDO Sales" name="BDOSales" value={cashFlowForm.BDOSales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
-      </Grid>
-
-      {/* Walk-In Sales */}
-      <Grid item xs={12} sm={4}>
-        <Typography variant="h5" sx={{ fontWeight: "bold", mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
-          <DirectionsWalkIcon color="primary" /> Walk-In & Finances
-        </Typography>
-
-        <TextField fullWidth type="number" label="Walk-In Cash" name="WalkInCashSales" value={cashFlowForm.WalkInCashSales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
-        <TextField fullWidth type="number" label="Walk-In GCash" name="WalkInGCashSales" value={cashFlowForm.WalkInGCashSales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
-        <TextField fullWidth type="number" label="Walk-In BPI" name="WalkInBPISales" value={cashFlowForm.WalkInBPISales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
-        <TextField fullWidth type="number" label="Walk-In BDO" name="WalkInBDOSales" value={cashFlowForm.WalkInBDOSales} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
-      </Grid>
-
-      {/* Deposits & Petty Cash */}
-      <Grid item xs={12} sm={6}>
-        <Typography variant="h5" sx={{ fontWeight: "bold", mb: 2, display: "flex", alignItems: "center", gap: 1 }}>
-          <AccountBalanceIcon color="primary" /> Deposits & Petty Cash
-        </Typography>
-
-        <TextField fullWidth type="number" label="Deposited Amount" name="DepositedAmount" value={cashFlowForm.DepositedAmount} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
-        <TextField fullWidth type="number" label="Petty Cash" name="PettyCash" value={cashFlowForm.PettyCash} onChange={handleCashFlowChange} variant="outlined" size="medium" sx={{ mb: 2 }} />
       </Grid>
 
       {/* Remarks */}

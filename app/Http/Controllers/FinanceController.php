@@ -97,10 +97,20 @@ class FinanceController extends Controller
     {
         $staff = auth('staff')->user();
     
+        // 1) Conditionally build validation rule for BranchID
+        //    If BusinessType === 'Overall', we allow null. Otherwise, require exists:branches
+        $branchRule = ['required','exists:branches,BranchID'];
+        if ($request->BusinessType === 'Overall') {
+            // Let BranchID be nullable
+            $branchRule = ['nullable'];
+        }
+    
+        // 2) Validate, using the conditional BranchID rule
         $data = $request->validate([
-            'BranchID'         => 'required|exists:branches,BranchID',
+            'BranchID'         => $branchRule,
             'Date'             => 'required|date',
             'BusinessType'     => 'required|string|max:100',
+    
             'CashSales'        => 'nullable|numeric|min:0',
             'GCashSales'       => 'nullable|numeric|min:0',
             'BPISales'         => 'nullable|numeric|min:0',
@@ -114,37 +124,40 @@ class FinanceController extends Controller
             'Remarks'          => 'nullable|string',
         ]);
     
-        // Only "Overall" can have PettyCash. For Gym, Cafe, Yogurt, etc. => PettyCash=0
-        if ($data['BusinessType'] !== 'Overall') {
+        // 3) If 'Overall', set BranchID to null and skip the normal staff check
+        if ($data['BusinessType'] === 'Overall') {
+            $data['BranchID'] = null; // We don't store a real numeric branch
+        } else {
+            // If not Overall, you can keep the logic that ensures PettyCash=0, etc.
+            // OR keep your existing code that sets PettyCash=0 for non-Overall
             $data['PettyCash']       = 0;
             $data['DepositedAmount'] = 0;
-        } else {
-            // If "Overall", optionally carry over from yesterday's Overall
-            $today = \Carbon\Carbon::parse($data['Date']);
-            $yesterday = (clone $today)->subDay();
     
-            $yesterdaysOverall = DailyCashFlow::where('BranchID', $data['BranchID'])
-                ->where('BusinessType', 'Overall')
+            // Staff check only if we actually have a BranchID
+            if ($staff && !empty($data['BranchID'])) {
+                $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
+                if (!in_array($data['BranchID'], $staffBranchIDs)) {
+                    return response()->json([
+                        'error' => 'You cannot create a Cash Flow for a branch you are not assigned to.'
+                    ], 403);
+                }
+            }
+        }
+    
+        // 4) If "Overall", optionally carry over from yesterday
+        if ($data['BusinessType'] === 'Overall') {
+            $today      = \Carbon\Carbon::parse($data['Date']);
+            $yesterday  = (clone $today)->subDay();
+            $yesterdays = DailyCashFlow::where('BusinessType', 'Overall')
                 ->whereDate('Date', $yesterday)
                 ->first();
     
-            if ($yesterdaysOverall) {
-                // Combine leftover with newly input
-                $data['PettyCash'] = ($data['PettyCash'] ?? 0) + ($yesterdaysOverall->PettyCash ?? 0);
+            if ($yesterdays) {
+                $data['PettyCash'] = ($data['PettyCash'] ?? 0) + ($yesterdays->PettyCash ?? 0);
             }
         }
     
-        // staff check
-        if ($staff) {
-            $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
-            if (!in_array($data['BranchID'], $staffBranchIDs)) {
-                return response()->json([
-                    'error' => 'You cannot create a Cash Flow for a branch you are not assigned to.'
-                ], 403);
-            }
-        }
-    
-        // Sum up total
+        // 5) Compute total
         $total = 0;
         $total += $data['CashSales']        ?? 0;
         $total += $data['GCashSales']       ?? 0;
@@ -156,6 +169,7 @@ class FinanceController extends Controller
         $total += $data['WalkInBDOSales']   ?? 0;
         $data['TotalSales'] = $total;
     
+        // 6) Create record
         $flow = DailyCashFlow::create($data);
     
         return response()->json([
@@ -164,6 +178,7 @@ class FinanceController extends Controller
             'data'    => $flow,
         ], 201);
     }
+    
     
 
     public function indexCashFlow()

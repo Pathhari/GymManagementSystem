@@ -191,18 +191,44 @@ class BookingController extends Controller
      */
     public function storeSession(Request $request)
     {
+        // 1) Merge front-end fields into the single fields your validation expects
+        //    e.g. "2025-03-10" + "13:00:00" => "2025-03-10T13:00"
+        //    (Trim to just "HH:mm" so it matches 'date_format:Y-m-d\TH:i')
+        $startDate = $request->input('StartDate');      // e.g. "2025-03-10"
+        $startTime = $request->input('StartTime');      // e.g. "13:00:00"
+        $endDate   = $request->input('EndDate');        // e.g. "2025-03-10"
+        $endTime   = $request->input('EndTime');        // e.g. "14:30:00"
+    
+        // If you want to allow seconds, expand \TH:i -> \TH:i:s. Otherwise, just take HH:mm
+        $startIso = $startDate && $startTime
+            ? ($startDate . 'T' . substr($startTime, 0, 5)) // => "2025-03-10T13:00"
+            : null;
+    
+        $endIso = $endDate && $endTime
+            ? ($endDate . 'T' . substr($endTime, 0, 5))     // => "2025-03-10T14:30"
+            : null;
+    
+        // Overwrite the request data so the upcoming validation sees these
+        $request->merge([
+            'StartTime' => $startIso,
+            'EndTime'   => $endIso,
+        ]);
+    
+        // 2) Validate everything
         $data = $request->validate([
             'BranchID'     => 'required|integer|exists:branches,BranchID',
             'SessionName'  => 'required|string|max:255',
             'SessionType'  => 'required|string|max:50',
             'CoachID'      => 'required|exists:coaches,CoachID',
+            // The newly merged 'StartTime'/'EndTime' must match "Y-m-d\TH:i"
             'StartTime'    => 'required|date_format:Y-m-d\TH:i',
             'EndTime'      => 'nullable|date_format:Y-m-d\TH:i|after:StartTime',
             'Capacity'     => 'nullable|integer|min:1',
             'Location'     => 'nullable|string|max:255',
             'Fee'          => 'nullable|numeric|min:0',
         ]);
-
+    
+        // 3) Create the session record
         $session = CoachingSession::create([
             'BranchID'   => $data['BranchID'],
             'SessionName'=> $data['SessionName'],
@@ -214,13 +240,15 @@ class BookingController extends Controller
             'Location'   => $data['Location'] ?? null,
             'Fee'        => $data['Fee']       ?? 0,
         ]);
-
+    
+        // 4) Return JSON
         return response()->json([
             'message' => 'Session created successfully.',
             'session' => $session,
         ], 201);
     }
-
+    
+    
     /**
      * Update an existing Coaching Session
      */
@@ -251,12 +279,11 @@ class BookingController extends Controller
     public function cancelSession($id)
     {
         $session = CoachingSession::findOrFail($id);
-        if (empty($session->Status) || $session->Status !== 'Cancelled') {
-            $session->Status = 'Cancelled';
-            $session->save();
-        }
-        return response()->json(['message' => 'Session cancelled.']);
+        $session->delete();  
+    
+        return response()->json(['message' => 'Session successfully deleted (cancelled).']);
     }
+    
 
     /**
      * Store a Session Booking, now with Payment creation here.

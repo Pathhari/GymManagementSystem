@@ -325,20 +325,50 @@ public function staffDashboardInfo()
         ]);
     }
 
-    public function attendanceAnalytics()
+    public function attendanceAnalytics(Request $request)
     {
-        // Use the correct table name (attendances) instead of attendance.
-        $analytics = \DB::table('attendances')
-            ->select(
+        $from = $request->query('dateFrom');
+        $to   = $request->query('dateTo');
+        $branch = $request->query('branchID');
+        $timePeriod = $request->query('timePeriod'); // daily, weekly, monthly, yearly?
+    
+        $query = \DB::table('attendances');
+    
+        // If there's a BranchID in the attendances table, you can filter:
+        if ($branch && $branch !== 'All Branches') {
+            $query->where('BranchID', $branch);
+        }
+    
+        if ($from && $to) {
+            $query->whereBetween('Date', [$from, $to]);
+        }
+    
+        // For weekly grouping
+        if ($timePeriod === 'weekly') {
+            $query->select(
                 \DB::raw("YEAR(Date) as year"),
                 \DB::raw("WEEK(Date, 1) as week"),
                 \DB::raw("COUNT(*) as totalAttendance")
             )
             ->groupBy('year', 'week')
             ->orderBy('year')
-            ->orderBy('week')
-            ->get();
+            ->orderBy('week');
+        }
+        // For monthly grouping
+        else if ($timePeriod === 'monthly') {
+            $query->select(
+                \DB::raw("YEAR(Date) as year"),
+                \DB::raw("MONTH(Date) as monthNum"),
+                \DB::raw("DATE_FORMAT(Date, '%b %Y') as monthText"),
+                \DB::raw("COUNT(*) as totalAttendance")
+            )
+            ->groupBy('year', 'monthNum')
+            ->orderBy('year')
+            ->orderBy('monthNum');
+        }
+        // etc. (Add daily, yearly, etc.)
     
+        $analytics = $query->get();
         return response()->json($analytics, 200);
     }
     
@@ -434,7 +464,6 @@ public function indexTasks()
 
     public function performance()
     {
-        // Aggregate completed tasks per staff member.
         $performance = \DB::table('staff_tasks')
             ->select(
                 'staff.StaffID',
@@ -445,7 +474,7 @@ public function indexTasks()
             ->where('staff_tasks.Status', 'Completed')
             ->groupBy('staff.StaffID', 'staff.FullName')
             ->get();
-    
+        
         return response()->json($performance, 200);
     }
 

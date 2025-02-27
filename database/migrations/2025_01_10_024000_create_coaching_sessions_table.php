@@ -15,21 +15,31 @@ return new class extends Migration
             $table->id('SessionID');
             $table->unsignedBigInteger('BranchID')->nullable();
             $table->foreign('BranchID')->references('BranchID')->on('branches');
+    
             $table->string('SessionName');
-            $table->string('SessionType')->nullable(); // "group class" or "personal training"
+            $table->string('SessionType')->nullable(); // e.g. "group class" or "personal training"
             $table->unsignedBigInteger('CoachID');
-            $table->time('StartTime')->nullable();
-            $table->time('EndTime')->nullable();
+    
+            // Store full date + time
+            $table->dateTime('StartTime')->nullable();
+            $table->dateTime('EndTime')->nullable();
+    
             $table->unsignedInteger('Capacity')->default(1);
             $table->string('Location')->nullable();
             $table->decimal('Fee', 10, 2)->nullable();
-        
+    
+            // ADD these two new columns to avoid "Unknown column" errors:
+            $table->unsignedInteger('Participants')->default(0);
+            $table->string('Status')->nullable();
+    
             $table->timestamps();
-        
-            $table->foreign('CoachID')->references('CoachID')->on('coaches')->onDelete('cascade');
+    
+            $table->foreign('CoachID')
+                  ->references('CoachID')->on('coaches')
+                  ->onDelete('cascade');
         });
-        
     }
+    
 
     /**
      * Reverse the migrations.

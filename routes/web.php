@@ -221,8 +221,9 @@ Route::prefix('invoices')->middleware('multiGuard:owner,admin,staff')->group(fun
     Route::post('/', [InvoiceController::class, 'store'])->name('invoices.store');
     Route::get('{id}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::put('{id}', [InvoiceController::class, 'update'])->name('invoices.update');
-    Route::delete('{id}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');
-});
+    Route::delete('{id}/delete', [InvoiceController::class, 'destroy'])
+         ->name('invoices.delete');
+        });
 
 /*
 |--------------------------------------------------------------------------

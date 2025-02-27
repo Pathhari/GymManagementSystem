@@ -14,7 +14,6 @@ import {
   CardContent,
   Container,
   Typography,
-  Divider,
   Paper,
   Button,
   TextField,
@@ -23,13 +22,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Menu,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Tooltip,
   CircularProgress,
+  Tooltip,
 } from "@mui/material";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import MonetizationOnIcon from "@mui/icons-material/MonetizationOn";
@@ -44,6 +38,7 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 import axios from "axios";
 
+// ChartJS stuff
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -57,7 +52,6 @@ import {
   Legend,
   Filler,
 } from "chart.js";
-
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -71,22 +65,21 @@ ChartJS.register(
   Filler
 );
 
-// --- Lazy load heavy modules with prefetch hints ---
+// Lazy-loaded components
 const DataGrid = lazy(() =>
-  import(/* webpackPrefetch: true */ "@mui/x-data-grid").then((module) => ({ default: module.DataGrid }))
+  import("@mui/x-data-grid").then((module) => ({ default: module.DataGrid }))
 );
 const Doughnut = lazy(() =>
-  import(/* webpackPrefetch: true */ "react-chartjs-2").then((module) => ({ default: module.Doughnut }))
+  import("react-chartjs-2").then((module) => ({ default: module.Doughnut }))
 );
 const Line = lazy(() =>
-  import(/* webpackPrefetch: true */ "react-chartjs-2").then((module) => ({ default: module.Line }))
+  import("react-chartjs-2").then((module) => ({ default: module.Line }))
 );
 const Bar = lazy(() =>
-  import(/* webpackPrefetch: true */ "react-chartjs-2").then((module) => ({ default: module.Bar }))
+  import("react-chartjs-2").then((module) => ({ default: module.Bar }))
 );
 
-// --- Helper Component: LazyLoadSection ---
-// This component defers rendering its children until it comes into view.
+/** Simple component that defers rendering until it scrolls into view. */
 const LazyLoadSection = ({ children, fallback = <CircularProgress /> }) => {
   const [isVisible, setIsVisible] = useState(false);
   const ref = useRef(null);
@@ -132,10 +125,10 @@ const Reports = () => {
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
 
   // Charts & Tables Data
-  const [membershipPlans, setMembershipPlans] = useState([]);
-  const [membershipGrowth, setMembershipGrowth] = useState([]);
+  const [membershipPlans, setMembershipPlans] = useState([]); // now includes .members
+  const [membershipGrowth, setMembershipGrowth] = useState([]); // each has .BranchID
   const [attendanceAnalytics, setAttendanceAnalytics] = useState({ labels: [], data: [] });
-  const [staffPerformance, setStaffPerformance] = useState([]);
+  const [staffPerformance, setStaffPerformance] = useState([]); // each has .BranchID
   const [bookingTrends, setBookingTrends] = useState([]);
   const [systemMetrics, setSystemMetrics] = useState({});
   const [branches, setBranches] = useState([]);
@@ -150,7 +143,7 @@ const Reports = () => {
           attendanceResponse,
           popularServiceResponse,
           cashflowResponse,
-          membershipPlansResponse,
+          membershipPlansResponse,   // returns plan + .members
           staffPerformanceResponse,
           bookingTrendsResponse,
           systemMetricsResponse,
@@ -161,53 +154,55 @@ const Reports = () => {
           axios.get("/staff/attendance-analytics", { withCredentials: true }),
           axios.get("/booking/most-popular", { withCredentials: true }),
           axios.get("/finance/cashflow", { withCredentials: true }),
-          axios.get("/membership/plans", { withCredentials: true }),
+          axios.get("/membership/plans", { withCredentials: true }),    // <== has .members
           axios.get("/staff/performance", { withCredentials: true }),
           axios.get("/booking/trends", { withCredentials: true }),
           axios.get("/system/metrics", { withCredentials: true }),
           axios.get("/owner/branches", { withCredentials: true }),
         ]);
 
-        // Total Revenue
+        // 1) Total Revenue
         const rev = financeSummary.data.total_revenue || 0;
         setTotalRevenue(`₱${Number(rev).toLocaleString()}`);
 
-        // Membership Growth & New Members
+        // 2) Membership Growth & new members
         const growthData = growthResponse.data || [];
         setMembershipGrowth(growthData);
         const thisMonthYear = new Date().toLocaleString("en-US", { month: "short", year: "numeric" });
         const found = growthData.find((g) => g.month === thisMonthYear);
         setNewMembersThisMonth(found ? found.count : 0);
 
-        // Attendance Analytics & Rate
+        // 3) Attendance Analytics & Rate
         const analytics = attendanceResponse.data || [];
         let sum = 0;
-        analytics.forEach((a) => { sum += Number(a.totalAttendance); });
+        analytics.forEach((a) => {
+          sum += Number(a.totalAttendance);
+        });
         const avg = analytics.length > 0 ? sum / analytics.length : 0;
         setAttendanceRate(Math.min(avg, 100).toFixed(0) + "%");
         const labels = analytics.map((d) => `${d.year}-W${String(d.week).padStart(2, "0")}`);
         const data = analytics.map((d) => Number(d.totalAttendance));
         setAttendanceAnalytics({ labels, data });
 
-        // Popular Service
+        // 4) Popular Service
         setMostPopularService(popularServiceResponse.data.mostPopularService || "N/A");
 
-        // Cashflow Records
+        // 5) Cashflow Records
         setCashFlowRecords(cashflowResponse.data.flows || []);
 
-        // Membership Plans
+        // 6) Membership Plans (with .members)
         setMembershipPlans(membershipPlansResponse.data || []);
 
-        // Staff Performance
+        // 7) Staff Performance
         setStaffPerformance(staffPerformanceResponse.data || []);
 
-        // Booking Trends
+        // 8) Booking Trends
         setBookingTrends(bookingTrendsResponse.data || []);
 
-        // System Metrics
+        // 9) System Metrics
         setSystemMetrics(systemMetricsResponse.data || {});
 
-        // Branches
+        // 10) Branches
         setBranches(branchesResponse.data.branches || []);
       } catch (err) {
         console.error("Error loading data:", err);
@@ -227,7 +222,7 @@ const Reports = () => {
   const handleExportMenuClose = useCallback(() => setExportAnchorEl(null), []);
   const handleExportCSV = useCallback(() => {
     handleExportMenuClose();
-    // CSV export handled via CSVLink (if needed)
+    // CSV export logic if needed
   }, [handleExportMenuClose]);
 
   const handleExportPDF = useCallback(() => {
@@ -272,18 +267,16 @@ const Reports = () => {
       headStyles: { fillColor: [22, 160, 133] },
     });
     doc.save("DailyCashflow.pdf");
-  }, [handleExportMenuClose, cashFlowRecords, selectedCashFlowBranch]);
+  }, [handleExportMenuClose, /* also depends on filteredCashFlowRecords */]);
 
   const handleCloseViewCashFlow = useCallback(() => {
     setViewCashFlowOpen(false);
     setSelectedCashFlow(null);
   }, []);
-
   const handleCloseEditCashFlow = useCallback(() => {
     setEditCashFlowOpen(false);
     setSelectedCashFlow(null);
   }, []);
-
   const handleSaveCashFlowEdits = useCallback(() => {
     const updatedRecords = cashFlowRecords.map((c) =>
       c.CashFlowID === selectedCashFlow.CashFlowID ? selectedCashFlow : c
@@ -292,23 +285,62 @@ const Reports = () => {
     setEditCashFlowOpen(false);
   }, [cashFlowRecords, selectedCashFlow]);
 
-  // ------------------ FILTERED DATA ------------------
+  // The main "Apply" button
+  const handleFilterApply = useCallback(() => {
+    console.log("Filters applied:", {
+      timePeriod,
+      dateFrom,
+      dateTo,
+      selectedCashFlowBranch,
+    });
+  }, [timePeriod, dateFrom, dateTo, selectedCashFlowBranch]);
+
+  // ------------------ 1) FILTER CASHFLOW (Branch + Date) ------------------
   const filteredCashFlowRecords = useMemo(() => {
-    return selectedCashFlowBranch === "All Branches"
+    let filtered = (selectedCashFlowBranch === "All Branches")
       ? cashFlowRecords
       : cashFlowRecords.filter((rec) => rec.BranchID === selectedCashFlowBranch);
-  }, [cashFlowRecords, selectedCashFlowBranch]);
 
-  // ------------------ MEMOIZED CHART DATA & OPTIONS ------------------
-  const membershipDistData = useMemo(() => ({
-    labels: membershipPlans.map((p) => p.PlanName),
-    datasets: [
-      {
-        data: membershipPlans.map((p) => Number(p.members_count) || 0),
-        backgroundColor: ["#42a5f5", "#66bb6a", "#ef5350"],
-      },
-    ],
-  }), [membershipPlans]);
+    if (dateFrom && dateTo) {
+      const from = new Date(dateFrom);
+      const to = new Date(dateTo);
+      filtered = filtered.filter((rec) => {
+        const recordDate = new Date(rec.Date);
+        return recordDate >= from && recordDate <= to;
+      });
+    }
+    return filtered;
+  }, [cashFlowRecords, selectedCashFlowBranch, dateFrom, dateTo]);
+
+  // ------------------ 2) MEMBERSHIP PLAN DISTRIBUTION by Branch ------------------
+  // membershipPlans: array of plans. Each plan has `.members` which is an array of members.
+  // We'll count how many members belong to the chosen branch.
+  const membershipDistData = useMemo(() => {
+    const labels = [];
+    const data = [];
+
+    membershipPlans.forEach((plan) => {
+      // plan.members is e.g. [{MemberID, StartedBranchID, ...}, ...]
+      let relevantMembers = plan.members || [];
+      if (selectedCashFlowBranch !== "All Branches") {
+        relevantMembers = relevantMembers.filter(
+          (m) => m.StartedBranchID === parseInt(selectedCashFlowBranch)
+        );
+      }
+      labels.push(plan.PlanName);
+      data.push(relevantMembers.length);
+    });
+
+    return {
+      labels,
+      datasets: [
+        {
+          data,
+          backgroundColor: ["#42a5f5", "#66bb6a", "#ef5350", "#ffa726", "#ab47bc"],
+        },
+      ],
+    };
+  }, [membershipPlans, selectedCashFlowBranch]);
 
   const membershipDistOptions = useMemo(() => ({
     responsive: true,
@@ -316,19 +348,26 @@ const Reports = () => {
     maintainAspectRatio: false,
   }), []);
 
+  // ------------------ 3) MEMBERSHIP GROWTH by Branch ------------------
+  // We assume each item has { BranchID, month, count }
+  const filteredMembershipGrowth = useMemo(() => {
+    if (selectedCashFlowBranch === "All Branches") return membershipGrowth;
+    return membershipGrowth.filter((g) => g.BranchID === parseInt(selectedCashFlowBranch));
+  }, [membershipGrowth, selectedCashFlowBranch]);
+
   const membershipGrowthData = useMemo(() => ({
-    labels: membershipGrowth.map((d) => d.month),
+    labels: filteredMembershipGrowth.map((d) => d.month),
     datasets: [
       {
         label: "New Members",
-        data: membershipGrowth.map((d) => Number(d.count)),
+        data: filteredMembershipGrowth.map((d) => Number(d.count)),
         borderColor: "#ffa726",
         backgroundColor: "rgba(255,167,38,0.2)",
         fill: true,
         tension: 0.3,
       },
     ],
-  }), [membershipGrowth]);
+  }), [filteredMembershipGrowth]);
 
   const membershipGrowthOptions = useMemo(() => ({
     responsive: true,
@@ -337,6 +376,32 @@ const Reports = () => {
     maintainAspectRatio: false,
   }), []);
 
+  // ------------------ 4) STAFF PERFORMANCE by Branch ------------------
+  // staffPerformance: array with { StaffID, FullName, BranchID, tasksCompleted } presumably
+  const filteredStaffPerformance = useMemo(() => {
+    if (selectedCashFlowBranch === "All Branches") return staffPerformance;
+    return staffPerformance.filter((s) => s.BranchID === parseInt(selectedCashFlowBranch));
+  }, [staffPerformance, selectedCashFlowBranch]);
+
+  const staffPerformanceBarData = useMemo(() => ({
+    labels: filteredStaffPerformance.map((s) => s.FullName),
+    datasets: [
+      {
+        label: "Tasks Completed",
+        data: filteredStaffPerformance.map((s) => s.tasksCompleted),
+        backgroundColor: "#66bb6a",
+      },
+    ],
+  }), [filteredStaffPerformance]);
+
+  const staffPerformanceBarOptions = useMemo(() => ({
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true } },
+    maintainAspectRatio: false,
+  }), []);
+
+  // ------------------ REMAINING CHARTS (Attendance, Booking, System Metrics) ------------------
   const attendanceAnalyticsData = useMemo(() => ({
     labels: attendanceAnalytics.labels,
     datasets: [
@@ -357,33 +422,6 @@ const Reports = () => {
     scales: { y: { beginAtZero: true } },
     maintainAspectRatio: false,
   }), []);
-
-  const staffPerformanceBarData = useMemo(() => ({
-    labels: staffPerformance.map((s) => s.FullName),
-    datasets: [
-      {
-        label: "Tasks Completed",
-        data: staffPerformance.map((s) => s.tasksCompleted),
-        backgroundColor: "#66bb6a",
-      },
-    ],
-  }), [staffPerformance]);
-
-  const staffPerformanceBarOptions = useMemo(() => ({
-    responsive: true,
-    plugins: { legend: { display: false } },
-    scales: { y: { beginAtZero: true } },
-    maintainAspectRatio: false,
-  }), []);
-
-  const handleFilterApply = useCallback(() => {
-    console.log("Filters applied:", {
-      timePeriod,
-      dateFrom,
-      dateTo,
-      selectedCashFlowBranch,
-    });
-  }, [timePeriod, dateFrom, dateTo, selectedCashFlowBranch]);
 
   const bookingTrendsData = useMemo(() => ({
     labels: bookingTrends.map((b) => b.month),
@@ -586,7 +624,7 @@ const Reports = () => {
   // ------------------ RENDER UI ------------------
   return (
     <Container maxWidth="xl" sx={{ py: 3 }}>
-      {/* Filter Section */}
+      {/* FILTER SECTION */}
       <Box
         sx={{
           mb: 3,
@@ -600,9 +638,8 @@ const Reports = () => {
       >
         {/* Time Period */}
         <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel id="time-period-label">Time Period</InputLabel>
+          <InputLabel>Time Period</InputLabel>
           <Select
-            labelId="time-period-label"
             value={timePeriod}
             label="Time Period"
             onChange={handleTimePeriodChange}
@@ -616,27 +653,26 @@ const Reports = () => {
 
         {/* Date Range */}
         <TextField
+          label="From"
           type="date"
           size="small"
-          label="From"
-          InputLabelProps={{ shrink: true }}
           value={dateFrom}
           onChange={handleDateFromChange}
+          InputLabelProps={{ shrink: true }}
         />
         <TextField
+          label="To"
           type="date"
           size="small"
-          label="To"
-          InputLabelProps={{ shrink: true }}
           value={dateTo}
           onChange={handleDateToChange}
+          InputLabelProps={{ shrink: true }}
         />
 
         {/* Branch Filter */}
         <FormControl size="small" sx={{ minWidth: 140 }}>
-          <InputLabel id="branch-label">Branch</InputLabel>
+          <InputLabel>Branch</InputLabel>
           <Select
-            labelId="branch-label"
             value={selectedCashFlowBranch}
             label="Branch"
             onChange={(e) => setSelectedCashFlowBranch(e.target.value)}
@@ -650,105 +686,15 @@ const Reports = () => {
           </Select>
         </FormControl>
 
-        {/* Filter Button */}
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleFilterApply}
-          sx={{ textTransform: "none", height: "40px" }}
-        >
-          FILTER
+        <Button variant="contained" color="primary" onClick={handleFilterApply}>
+          Filter
         </Button>
       </Box>
 
-      {/* Overview KPI Cards */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        {/* Total Revenue */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              bgcolor: "text.primary",
-              color: "background.paper",
-              display: "flex",
-              alignItems: "center",
-              p: 1,
-            }}
-          >
-            <Typography
-              sx={{ fontSize: 40, color: "#42a5f5", mr: 2, fontWeight: "bold" }}
-            >
-              ₱
-            </Typography>
-            <CardContent>
-              <Typography variant="h6">Total Revenue</Typography>
-              <Typography variant="h5">{totalRevenue}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* New Members */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              bgcolor: "text.primary",
-              color: "background.paper",
-              display: "flex",
-              alignItems: "center",
-              p: 1,
-            }}
-          >
-            <PersonAddIcon sx={{ fontSize: 40, color: "#e53935", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">New Members</Typography>
-              <Typography variant="h5">
-                {newMembersThisMonth} This Month
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Attendance Rate */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              bgcolor: "text.primary",
-              color: "background.paper",
-              display: "flex",
-              alignItems: "center",
-              p: 1,
-            }}
-          >
-            <FavoriteIcon sx={{ fontSize: 40, color: "#43a047", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Attendance Rate</Typography>
-              <Typography variant="h5">{attendanceRate}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Most Popular Service */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              bgcolor: "text.primary",
-              color: "background.paper",
-              display: "flex",
-              alignItems: "center",
-              p: 1,
-            }}
-          >
-            <GroupWorkIcon sx={{ fontSize: 40, color: "#ffca28", mr: 2 }} />
-            <CardContent>
-              <Typography variant="h6">Popular Service</Typography>
-              <Typography variant="h5">{mostPopularService}</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Membership Reports Section */}
+      {/* MEMBERSHIP REPORTS: Plans + Growth */}
       <LazyLoadSection fallback={<CircularProgress />}>
         <Grid container spacing={2} sx={{ mb: 4 }}>
+          {/* Membership Plan Distribution */}
           <Grid item xs={12} md={6}>
             <Paper
               elevation={3}
@@ -773,6 +719,8 @@ const Reports = () => {
               </Box>
             </Paper>
           </Grid>
+
+          {/* Membership Growth */}
           <Grid item xs={12} md={6}>
             <Paper
               elevation={3}
@@ -800,34 +748,7 @@ const Reports = () => {
         </Grid>
       </LazyLoadSection>
 
-      {/* Attendance Analytics Section */}
-      <LazyLoadSection fallback={<CircularProgress />}>
-        <Paper
-          elevation={3}
-          sx={{
-            p: 2,
-            mb: 4,
-            borderRadius: 2,
-            height: 320,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <Typography variant="h6" gutterBottom>
-            Attendance Over Time
-          </Typography>
-          <Box sx={{ flex: 1, position: "relative" }}>
-            <Suspense fallback={<CircularProgress />}>
-              <Line
-                data={attendanceAnalyticsData}
-                options={attendanceAnalyticsOptions}
-              />
-            </Suspense>
-          </Box>
-        </Paper>
-      </LazyLoadSection>
-
-      {/* Staff Performance Section */}
+      {/* STAFF PERFORMANCE */}
       <LazyLoadSection fallback={<CircularProgress />}>
         <Paper
           elevation={3}
@@ -854,7 +775,7 @@ const Reports = () => {
         </Paper>
       </LazyLoadSection>
 
-      {/* Booking Trends Section */}
+      {/* EXAMPLE: DAILY CASHFLOW TABLE */}
       <LazyLoadSection fallback={<CircularProgress />}>
         <Paper
           elevation={3}
@@ -862,215 +783,27 @@ const Reports = () => {
             p: 2,
             mb: 4,
             borderRadius: 2,
-            height: 320,
+            height: 450,
             display: "flex",
             flexDirection: "column",
           }}
         >
           <Typography variant="h6" gutterBottom>
-            Booking & Session Reports - Booking Trends
+            Daily Cashflow Records
           </Typography>
           <Box sx={{ flex: 1, position: "relative" }}>
             <Suspense fallback={<CircularProgress />}>
-              <Line
-                data={bookingTrendsData}
-                options={bookingTrendsOptions}
+              <DataGrid
+                rows={filteredCashFlowRecords}
+                columns={dailyCashFlowColumns}
+                getRowId={(row) => row.CashFlowID}
+                pageSize={5}
+                rowsPerPageOptions={[5, 10]}
               />
             </Suspense>
           </Box>
         </Paper>
       </LazyLoadSection>
-
-      {/* System Metrics Section */}
-      <LazyLoadSection fallback={<CircularProgress />}>
-        <Paper
-          elevation={3}
-          sx={{
-            p: 2,
-            borderRadius: 2,
-            height: 320,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <Typography variant="h6" gutterBottom>
-            Critical System Metrics
-          </Typography>
-          <Box sx={{ flex: 1, position: "relative" }}>
-            <Suspense fallback={<CircularProgress />}>
-              <Bar
-                data={systemMetricsBarData}
-                options={systemMetricsBarOptions}
-              />
-            </Suspense>
-          </Box>
-        </Paper>
-      </LazyLoadSection>
-
-      {/* Cashflow View Dialog */}
-      <Dialog
-        open={isViewCashFlowOpen}
-        onClose={handleCloseViewCashFlow}
-        fullWidth
-        maxWidth="sm"
-        aria-labelledby="view-cashflow-dialog-title"
-      >
-        <DialogTitle id="view-cashflow-dialog-title">
-          <Typography variant="h6" color="primary">
-            Daily Cashflow Details
-          </Typography>
-        </DialogTitle>
-        <DialogContent dividers>
-          {selectedCashFlow && (
-            <Box sx={{ p: 2 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    ID:
-                  </Typography>
-                  <Typography variant="body1">
-                    {selectedCashFlow.CashFlowID}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Date:
-                  </Typography>
-                  <Typography variant="body1">
-                    {selectedCashFlow.Date}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Branch ID:
-                  </Typography>
-                  <Typography variant="body1">
-                    {selectedCashFlow.BranchID}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Business Type:
-                  </Typography>
-                  <Typography variant="body1">
-                    {selectedCashFlow.BusinessType}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Cash Sales:
-                  </Typography>
-                  <Typography variant="body1">
-                    ₱{parseFloat(selectedCashFlow.CashSales || 0).toFixed(2)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    GCash Sales:
-                  </Typography>
-                  <Typography variant="body1">
-                    ₱{parseFloat(selectedCashFlow.GCashSales || 0).toFixed(2)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    BPI Sales:
-                  </Typography>
-                  <Typography variant="body1">
-                    ₱{parseFloat(selectedCashFlow.BPISales || 0).toFixed(2)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Other Sales:
-                  </Typography>
-                  <Typography variant="body1">
-                    ₱{parseFloat(selectedCashFlow.OtherSales || 0).toFixed(2)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Total Sales:
-                  </Typography>
-                  <Typography variant="body1">
-                    ₱{parseFloat(selectedCashFlow.TotalSales || 0).toFixed(2)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Petty Cash:
-                  </Typography>
-                  <Typography variant="body1">
-                    ₱{parseFloat(selectedCashFlow.PettyCash || 0).toFixed(2)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Deposited Amount:
-                  </Typography>
-                  <Typography variant="body1">
-                    ₱{parseFloat(selectedCashFlow.DepositedAmount || 0).toFixed(2)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="body2" color="textSecondary">
-                    Remarks:
-                  </Typography>
-                  <Typography variant="body1">
-                    {selectedCashFlow.Remarks}
-                  </Typography>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseViewCashFlow} variant="contained" color="primary">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Cashflow Edit Dialog */}
-      <Dialog
-        open={isEditCashFlowOpen}
-        onClose={handleCloseEditCashFlow}
-        fullWidth
-        maxWidth="sm"
-        aria-labelledby="edit-cashflow-dialog-title"
-      >
-        <DialogTitle id="edit-cashflow-dialog-title">
-          Edit Daily Cashflow
-        </DialogTitle>
-        <DialogContent dividers>
-          {selectedCashFlow && (
-            <Box component="form" noValidate sx={{ mt: 1 }}>
-              <TextField
-                fullWidth
-                margin="dense"
-                label="Date"
-                name="Date"
-                type="date"
-                value={selectedCashFlow.Date}
-                onChange={(e) =>
-                  setSelectedCashFlow({
-                    ...selectedCashFlow,
-                    Date: e.target.value,
-                  })
-                }
-                InputLabelProps={{ shrink: true }}
-              />
-              {/* Additional edit fields can be added here */}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseEditCashFlow}>Cancel</Button>
-          <Button variant="contained" onClick={handleSaveCashFlowEdits}>
-            Save Changes
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Container>
   );
 };

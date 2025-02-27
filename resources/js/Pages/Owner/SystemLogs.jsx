@@ -120,8 +120,8 @@ export default function SystemLogs() {
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
+  const [branchOptions, setBranchOptions] = useState(["All Branches"]);
   const [selectedBranch, setSelectedBranch] = useState("All Branches");
-  const branchOptions = ["All Branches", "New York", "Los Angeles", "Chicago"];
 
   const [dateRange, setDateRange] = useState("last7days");
   const [dateFrom, setDateFrom] = useState("");
@@ -155,6 +155,28 @@ export default function SystemLogs() {
       })
       .catch((err) => console.error("Error:", err))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetch("/owner/branches", {
+      method: "GET",
+      headers: {
+        "X-CSRF-TOKEN": csrfToken,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch branches");
+        return res.json();
+      })
+      .then((data) => {
+        if (data.branches) {
+          // Suppose each branch has { BranchID, BranchName }
+          const fetched = data.branches.map((b) => b.BranchName);
+          setBranchOptions(["All Branches", ...fetched]);
+        }
+      })
+      .catch((err) => console.error("Error fetching branches:", err));
   }, []);
 
   // ------------------ Overview Stats ------------------
@@ -231,7 +253,7 @@ export default function SystemLogs() {
       dateTo,
     });
   }, [selectedBranch, dateRange, dateFrom, dateTo]);
-
+  
   // ------------------ Build Chart Data ------------------
   const lineChartData = useMemo(() => {
     const countsByDate = {};

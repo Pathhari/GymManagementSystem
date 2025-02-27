@@ -76,7 +76,7 @@ export default function PaymentsAndInvoices() {
       return;
     }
 
-  
+    
     // Filter payments and invoices based on date range
     const filteredPaymentsByDate = payments.filter((p) => {
       const paymentDate = new Date(p.paymentDate);
@@ -98,14 +98,11 @@ export default function PaymentsAndInvoices() {
   const [deleteType, setDeleteType] = useState("");
   const [deleteItemId, setDeleteItemId] = useState(null);
 
-  const handleOpenDeleteDialog = (type, id) => {
-    setDeleteType(type);
-    setDeleteItemId(id);
-    setDeleteDialogOpen(true);
-  };
-
-
-
+function handleOpenDeleteDialog(type, id) {
+  setDeleteType(type);     // e.g. "payment" or "invoice"
+  setDeleteItemId(id);     // store the row ID
+  setDeleteDialogOpen(true);
+}
 
   // Selected branch, date filters
   const [branch, setBranch] = useState("all");
@@ -212,39 +209,55 @@ export default function PaymentsAndInvoices() {
     axios
       .get("/membership/members")
       .then((res) => {
+        // If res.data.members exist, or res.data is array
         const data = Array.isArray(res.data) ? res.data : res.data.members || [];
         setMembers(data);
       })
       .catch((err) => console.error(err));
   };
 
-const fetchPayments = () => {
+  // 2) PAYMENTS (AUTO-FETCH MEMBER NAME, ID)
+  const fetchPayments = () => {
     axios
       .get("/payments")
       .then((res) => {
+        // For each payment p, store 'memberId', 'payerName', etc.
         const mapped = res.data.map((p) => ({
           paymentId: p.PaymentID,
-          payerName: p.member ? p.member.FullName : p.WalkInName || "N/A",
-          paymentDate: new Date(p.PaymentDate).toISOString(), // Ensure consistency in UTC
+  
+          // If there's a Member object, use that ID; else empty string
+          memberId: p.MemberID ? p.MemberID.toString() : "",
+  
+          // We unify both member & walk-in under one "payerName"
+          payerName: p.member 
+            ? p.member.FullName            // If it’s linked to a member
+            : p.WalkInName || "N/A",       // Otherwise fallback to walkInName
+  
+          paymentDate: new Date(p.PaymentDate).toISOString(),
           amountPaid: Number(p.Amount),
           method: p.PaymentMethod,
           status: p.Status,
           branchId: p.BranchID ? p.BranchID.toString() : "",
-          paymentFor: Array.isArray(p.PaymentFor) ? p.PaymentFor : [],          
+          paymentFor: Array.isArray(p.PaymentFor) ? p.PaymentFor : [],
         }));
         setPayments(mapped);
       })
       .catch((err) => console.error(err));
   };
+  
 
-
+  // 3) INVOICES
   const fetchInvoices = () => {
     axios
       .get("/invoices")
       .then((res) => {
         const mapped = res.data.map((inv) => ({
           invoiceId: inv.InvoiceID,
-          memberName: inv.member ? inv.member.FullName : "N/A",
+  
+          // Add these two lines:
+          memberId: inv.MemberID ? inv.MemberID.toString() : "",    
+          memberName: inv.member ? inv.member.FullName : "N/A",     
+  
           invoiceDate: inv.InvoiceDate,
           dueDate: inv.DueDate,
           invoiceTotal: inv.InvoiceTotal,
@@ -254,7 +267,9 @@ const fetchPayments = () => {
       })
       .catch((err) => console.error(err));
   };
+  
 
+  // 4) BRANCH
   const fetchBranches = () => {
     axios
       .get("/owner/branches")
@@ -271,7 +286,7 @@ const fetchPayments = () => {
       });
   };
 
-  // For partial payments, we might need a list of unpaid or partially paid invoices
+  // 5) For partial Payment
   const fetchUnpaidInvoices = () => {
     axios
       .get("/invoices?status=unpaid_or_partial")
@@ -288,21 +303,44 @@ const fetchPayments = () => {
   };
 
   //delete
-  const handleConfirmDelete = async () => {
+  async function handleConfirmDelete() {
     try {
       if (deleteType === "payment") {
+        // Delete the payment (and its uniquely linked invoice(s)) via your backend's destroy method
         await axios.delete(`/payments/${deleteItemId}`);
-        setPayments((prev) => prev.filter((p) => p.paymentId !== deleteItemId));
+        // Remove it from local state
+        setPayments(prev => prev.filter((p) => p.paymentId !== deleteItemId));
       } else if (deleteType === "invoice") {
-        await axios.delete(`/invoices/${deleteItemId}`);
-        setInvoices((prev) => prev.filter((i) => i.invoiceId !== deleteItemId));
+        // For invoices, use your appropriate endpoint (adjust if needed)
+        await axios.delete(`/invoices/${deleteItemId}/delete`);
+        setInvoices(prev => prev.filter((i) => i.invoiceId !== deleteItemId));
       }
-      setDeleteDialogOpen(false);
-    } catch (err) {
-      console.error("Failed to delete:", err);
+      alert(`${deleteType} #${deleteItemId} deleted successfully!`);
+    } catch (error) {
+      console.error(`Failed to delete ${deleteType}:`, error);
+      alert("Error deleting record. Check console.");
+    } finally {
+      // Close the dialog and reset delete state
+      handleCloseDeleteDialog();
     }
-  };
+  }
 
+  function getDeleteMessage() {
+    if (deleteType === "payment") {
+      return "Are you sure you want to delete this Payment? This action cannot be undone. If this payment is the only one linked to its invoice, the invoice will also be deleted.";
+    }
+    if (deleteType === "invoice") {
+      return "Are you sure you want to delete this Invoice? This action cannot be undone.";
+    }
+    return "Are you sure you want to delete this record? This action cannot be undone.";
+  }
+
+  function handleCloseDeleteDialog() {
+    setDeleteDialogOpen(false);
+    setDeleteType("");
+    setDeleteItemId(null);
+  }
+  
   // =============== Payment Tab Logic ===============
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
@@ -397,15 +435,15 @@ const filteredInvoices = invoices
               <EditIcon fontSize="small" />
             </Button>
           </Tooltip>
-          <Tooltip title="Refund">
-            <Button
-              variant="contained"
-              sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
-              onClick={() => handleRefundPayment(params.row)}
-            >
-              <ReplayCircleFilledIcon fontSize="small" />
-            </Button>
-          </Tooltip>
+          <Tooltip title="Refund Payment">
+              <Button
+                variant="contained"
+                color="error"
+                onClick={() => handleOpenDeleteDialog("payment", params.row.paymentId)}
+                >
+                <DeleteIcon fontSize="small" />
+              </Button>
+            </Tooltip>
         </Box>
       ),
     },
@@ -471,7 +509,7 @@ const invoiceColumns = [
           <Button
             variant="contained"
             color="error"
-            onClick={() => handleOpenDeleteDialog(params.row.type, params.row.id)}
+            onClick={() => handleOpenDeleteDialog("invoice", params.row.invoiceId)}
           >
             <DeleteIcon fontSize="small" />
           </Button>
@@ -623,14 +661,15 @@ const invoiceColumns = [
   };
 
   const handleEditPaymentOpen = (row) => {
+    // row has memberId, paymentDate, method, status, etc.
     setEditPayment(row);
     setEditPaymentOpen(true);
   };
-
   const handleEditPaymentChange = (e) => {
     const { name, value } = e.target;
     setEditPayment((prev) => ({ ...prev, [name]: value }));
   };
+
 
   const handleEditPaymentSubmit = () => {
     // Keep the same PaymentFor array if row had it
@@ -662,12 +701,6 @@ const invoiceColumns = [
     setViewPaymentOpen(true);
   };
 
-  const handleRefundPayment = (row) => {
-    axios
-      .post(`/payments/${row.paymentId}/refund/initiate`)
-      .then(() => fetchPayments())
-      .catch((err) => console.error(err));
-  };
 
   // =============== Invoice: Add, Edit, View ===============
   const handleAddInvoiceChange = (e) => {
@@ -746,13 +779,17 @@ const invoiceColumns = [
 
   const handleDeleteInvoice = (row) => {
     if (!window.confirm(`Are you sure you want to delete Invoice #${row.invoiceId}?`)) return;
-
+  
     axios
-      .delete(`/invoices/${row.invoiceId}`)
-      .then(() => fetchInvoices())
-      .catch((err) => console.error(err));
+      .delete(`/invoices/${row.invoiceId}/delete`)
+      .then(() => {
+        alert("Invoice deleted successfully!");
+        fetchInvoices(); // Re-fetch or remove from state
+      })
+      .catch((err) => console.error("Failed to delete invoice:", err));
   };
-    
+  
+  
   // Currency Format
   const formatCurrency = (value) => {
     if (value == null || value === "") return "—";
@@ -1380,125 +1417,129 @@ const invoiceColumns = [
 
 
       {/* ================= EDIT Payment Dialog ================= */}
-    <Dialog
-      open={isEditPaymentOpen}
-      onClose={() => setEditPaymentOpen(false)}
-      fullWidth
-      maxWidth="sm"
-      sx={{
-        "& .MuiDialog-paper": {
-          borderRadius: 3,
-          boxShadow: 6,
-          p: 3,
-          overflow: "hidden",
-        },
-      }}
-    >
-      <DialogTitle sx={{ p: 2 }}>
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <MonetizationOnIcon sx={{ fontSize: 32, color: "primary.main" }} />
-            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-              Edit Payment
-            </Typography>
+      <Dialog
+        open={isEditPaymentOpen}
+        onClose={() => setEditPaymentOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3, overflow: "hidden" } }}
+      >
+        <DialogTitle sx={{ p: 2 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <MonetizationOnIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Edit Payment
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setEditPaymentOpen(false)} sx={{ "&:hover": { color: theme.palette.error.main } }}>
+              <CloseIcon />
+            </IconButton>
           </Box>
-          <IconButton
-            onClick={() => setEditPaymentOpen(false)}
-            sx={{
-              "&:hover": { color: theme.palette.error.main },
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </Box>
-      </DialogTitle>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 4 }}>
+          {/* Payment ID - read-only */}
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Payment ID"
+            name="paymentId"
+            variant="filled"
+            InputProps={{ readOnly: true }}
+            value={editPayment.paymentId || ""}
+            sx={{ mb: 2 }}
+          />
 
-      <DialogContent dividers sx={{ p: 4 }}>
-        <TextField
-          fullWidth
-          margin="normal"
-          label="Payment ID"
-          name="paymentId"
-          value={editPayment.paymentId || ""}
-          disabled
-          variant="filled"
-        />
-
-        <FormControl fullWidth margin="normal">
-          <InputLabel>Member Name</InputLabel>
-          <Select
-            name="memberId"
-            value={editPayment.memberId || ""}
-            onChange={handleEditPaymentChange}
-          >
-            {(members || []).map((m) => (
-              <MenuItem key={m.MemberID} value={m.MemberID}>
-                {m.FullName}
+          {/* Auto-Fetch Member as a Dropdown */}
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Member Name</InputLabel>
+            <Select
+              name="memberId"
+              value={editPayment.memberId || ""}
+              onChange={handleEditPaymentChange}
+              label="Member Name"
+            >
+              <MenuItem value="">
+                <em>-- Select Member --</em>
               </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+              {members.map((m) => (
+                <MenuItem key={m.MemberID} value={m.MemberID}>
+                  {m.FullName}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
-        <TextField
-          fullWidth
-          margin="normal"
-          type="date"
-          label="Payment Date"
-          name="paymentDate"
-          InputLabelProps={{ shrink: true }}
-          value={editPayment.paymentDate || ""}
-          onChange={handleEditPaymentChange}
-        />
+          {/* Payment Date */}
+          <TextField
+            fullWidth
+            margin="normal"
+            type="date"
+            label="Payment Date"
+            name="paymentDate"
+            InputLabelProps={{ shrink: true }}
+            value={editPayment.paymentDate ? editPayment.paymentDate.split("T")[0] : ""} 
+            onChange={handleEditPaymentChange}
+            sx={{ mb: 2 }}
+          />
 
-        <TextField
-          fullWidth
-          margin="normal"
-          label="Amount Paid"
-          name="amountPaid"
-          type="number"
-          value={editPayment.amountPaid || ""}
-          onChange={handleEditPaymentChange}
-        />
+          {/* Amount Paid */}
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Amount Paid"
+            name="amountPaid"
+            type="number"
+            value={editPayment.amountPaid || ""}
+            onChange={handleEditPaymentChange}
+            sx={{ mb: 2 }}
+          />
 
-        <TextField
-          fullWidth
-          margin="normal"
-          label="Payment Method"
-          name="method"
-          value={editPayment.method || ""}
-          onChange={handleEditPaymentChange}
-        />
+          {/* Payment Method => Dropdown */}
+          <FormControl fullWidth margin="normal" sx={{ mb: 2 }}>
+            <InputLabel>Payment Method</InputLabel>
+            <Select
+              name="method"
+              value={editPayment.method || ""}
+              onChange={handleEditPaymentChange}
+              label="Payment Method"
+            >
+              <MenuItem value="">-- Select Method --</MenuItem>
+              <MenuItem value="Cash">Cash</MenuItem>
+              <MenuItem value="BDO">BDO</MenuItem>
+              <MenuItem value="BPI">BPI</MenuItem>
+              <MenuItem value="GCash">GCash</MenuItem>
+            </Select>
+          </FormControl>
 
-        <TextField
-          fullWidth
-          margin="normal"
-          label="Status"
-          name="status"
-          value={editPayment.status || ""}
-          onChange={handleEditPaymentChange}
-        />
-      </DialogContent>
+          {/* Payment Status => Dropdown */}
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Payment Status</InputLabel>
+            <Select
+              name="status"
+              value={editPayment.status || ""}
+              onChange={handleEditPaymentChange}
+              label="Payment Status"
+            >
+              <MenuItem value="Pending">Pending</MenuItem>
+              <MenuItem value="Completed">Completed</MenuItem>
+              <MenuItem value="Refunded">Refunded</MenuItem>
+              <MenuItem value="Failed">Failed</MenuItem>
+            </Select>
+          </FormControl>
+        </DialogContent>
 
-      {/* Dialog Actions - Save aligned to the right */}
-      <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleEditPaymentSubmit}
-          sx={{
-            textTransform: "none",
-          }}
-        >
-          <SaveIcon sx={{ mr: 1 }} /> Save Changes
-        </Button>
-      </DialogActions>
-    </Dialog>
+        <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleEditPaymentSubmit}
+            sx={{ textTransform: "none" }}
+          >
+            <SaveIcon sx={{ mr: 1 }} /> Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
 
 
       {/* ================= VIEW Payment Dialog ================= */}
@@ -1508,23 +1549,10 @@ const invoiceColumns = [
         onClose={() => setViewPaymentOpen(false)}
         fullWidth
         maxWidth="sm"
-        sx={{
-          "& .MuiDialog-paper": {
-            borderRadius: 3,
-            boxShadow: 6,
-            p: 3,
-            overflow: "hidden",
-          },
-        }}
+        sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3, overflow: "hidden" } }}
       >
         <DialogTitle sx={{ p: 2 }}>
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
+          <Box display="flex" justifyContent="space-between" alignItems="center">
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <MonetizationOnIcon sx={{ fontSize: 32, color: "primary.main" }} />
               <Typography variant="h6" sx={{ fontWeight: "bold" }}>
@@ -1533,9 +1561,7 @@ const invoiceColumns = [
             </Box>
             <IconButton
               onClick={() => setViewPaymentOpen(false)}
-              sx={{
-                "&:hover": { color: theme.palette.error.main },
-              }}
+              sx={{ "&:hover": { color: theme.palette.error.main } }}
             >
               <CloseIcon />
             </IconButton>
@@ -1556,12 +1582,13 @@ const invoiceColumns = [
                 />
               </Grid>
               <Grid item xs={6}>
+                {/* Auto-Fetched Member Name from fetchPayments() */}
                 <TextField
                   fullWidth
                   label="Member Name"
                   variant="filled"
                   InputProps={{ readOnly: true }}
-                  value={viewPayment.memberName || "—"}
+                  value={viewPayment.payerName || "—"}
                   sx={{ mb: 2 }}
                 />
               </Grid>
@@ -1571,7 +1598,8 @@ const invoiceColumns = [
                   label="Payment Date"
                   variant="filled"
                   InputProps={{ readOnly: true }}
-                  value={formatDateTime(viewPayment.paymentDate || "—")}
+                  // Because we stored paymentDate as ISO, format or slice as needed
+                  value={viewPayment.paymentDate ? dayjs(viewPayment.paymentDate).format("YYYY-MM-DD") : "—"}
                   sx={{ mb: 2 }}
                 />
               </Grid>
@@ -1606,7 +1634,7 @@ const invoiceColumns = [
                 />
               </Grid>
 
-              {/* Payment For Section */}
+              {/* Payment For array, if any */}
               {viewPayment.paymentFor && viewPayment.paymentFor.length > 0 && (
                 <Grid item xs={12}>
                   <TextField
@@ -1615,7 +1643,6 @@ const invoiceColumns = [
                     variant="filled"
                     InputProps={{ readOnly: true }}
                     value={viewPayment.paymentFor.join(", ") || "—"}
-                    sx={{ mb: 2 }}
                   />
                 </Grid>
               )}
@@ -2032,37 +2059,41 @@ const invoiceColumns = [
       </Dialog>
 
 
-       {/* Delete Dialog */}   
       <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        fullWidth
-        maxWidth="xs"
-        sx={{ "& .MuiDialog-paper": { borderRadius: 3 } }}
+      open={deleteDialogOpen}
+      onClose={handleCloseDeleteDialog}
+      fullWidth
+      maxWidth="xs"
+      sx={{ "& .MuiDialog-paper": { borderRadius: 3 } }}
+    >
+      <DialogTitle
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          fontWeight: "bold",
+        }}
       >
-        <DialogTitle
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 1,
-            fontWeight: "bold",
-          }}
-        >
-          <DeleteForeverIcon color="error" />
-          Confirm Deletion
-        </DialogTitle>
-        <DialogContent dividers>
-          <Typography>
-            Are you sure you want to delete this record? This action cannot be undone.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: "gray" }}>Cancel</Button>
-          <Button variant="contained" color="error" onClick={handleConfirmDelete}>
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
+        <DeleteForeverIcon color="error" />
+        Confirm Deletion
+      </DialogTitle>
+
+      <DialogContent dividers>
+        <Typography>
+          {getDeleteMessage()}
+        </Typography>
+      </DialogContent>
+
+      <DialogActions>
+        <Button onClick={handleCloseDeleteDialog} sx={{ color: "gray" }}>
+          Cancel
+        </Button>
+        <Button variant="contained" color="error" onClick={handleConfirmDelete}>
+          Delete
+        </Button>
+      </DialogActions>
+    </Dialog>
+
 
     </Box>
   );

@@ -385,10 +385,11 @@ const handleCloseWalkInDialog = () => {
         formData.append("PhotoFile", selectedMembership.PhotoFile);
       }
 
-      await axios.put(`/membership/members/${memberID}`, formData, {
+      await axios.post(`/membership/members/${memberID}`, formData, {
+        params: { _method: "PUT" },                 // Tells Laravel to treat it as PUT
         headers: { "Content-Type": "multipart/form-data" },
       });
-
+      
       // Update local membershipRecords
       setMembershipRecords((prev) =>
         prev.map((m) => (m.MemberID === memberID ? selectedMembership : m))
@@ -2585,375 +2586,387 @@ const freezeColumns = [
         </DialogContent>
       </Dialog>
 
-      {/* EDIT Membership */}
-      <Dialog
-        open={isEditMembershipOpen}
-        onClose={() => setEditMembershipOpen(false)}
-        fullWidth
-        maxWidth="xl"
-        sx={{
-          "& .MuiDialog-paper": {
-            borderRadius: 3,
-            boxShadow: 6,
-            p: 3,
-          },
-        }}
-      >
-       <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <PersonIcon sx={{ fontSize: 32, color: "primary.main" }} />
-            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-              Edit Membership
-            </Typography>
-          </Box>
-          <IconButton
-            onClick={() => setEditMembershipOpen(false)}
-            sx={{ "&:hover": { color: theme.palette.error.main } }}
+{/* EDIT Membership */}
+<Dialog
+  open={isEditMembershipOpen}
+  onClose={() => setEditMembershipOpen(false)}
+  fullWidth
+  maxWidth="xl"
+  sx={{
+    "& .MuiDialog-paper": {
+      borderRadius: 3,
+      boxShadow: 6,
+      p: 3,
+    },
+  }}
+>
+  <Box display="flex" justifyContent="space-between" alignItems="center">
+    <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+      <PersonIcon sx={{ fontSize: 32, color: "primary.main" }} />
+      <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+        Edit Membership
+      </Typography>
+    </Box>
+    <IconButton
+      onClick={() => setEditMembershipOpen(false)}
+      sx={{ "&:hover": { color: theme.palette.error.main } }}
+    >
+      <CloseIcon />
+    </IconButton>
+  </Box>
+  <DialogContent dividers sx={{ p: 4 }}>
+    {selectedMembership && (
+      <Box>
+        <Grid container spacing={4}>
+          <Grid
+            item
+            xs={12}
+            sm={3}
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+            gap={2}
           >
-            <CloseIcon />
-          </IconButton>
-        </Box>
-        <DialogContent dividers sx={{ p: 4 }}>
-          {selectedMembership && (
-            <Box>
-              <Grid container spacing={4}>
-                <Grid
-                  item
-                  xs={12}
-                  sm={3}
-                  display="flex"
-                  flexDirection="column"
-                  alignItems="center"
-                  gap={2}
+            {/* Photo Preview */}
+            <Box
+              sx={{
+                width: 250,
+                height: 250,
+                borderRadius: 2,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                bgcolor: "#f9f9f9",
+                border: "1px solid #ddd",
+                boxShadow: 1,
+              }}
+            >
+              {capturedImage ? (
+                <Box
+                  component="img"
+                  src={capturedImage}
+                  alt="Captured"
+                  sx={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    borderRadius: 2,
+                  }}
+                />
+              ) : selectedMembership.PhotoPath ? (
+                <Box
+                  component="img"
+                  src={`/storage/${selectedMembership.PhotoPath}`}
+                  alt="Member"
+                  sx={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    borderRadius: 2,
+                  }}
+                />
+              ) : (
+                <Typography
+                  variant="body1"
+                  sx={{ color: "gray", textAlign: "center" }}
                 >
-                   {/* Photo Preview */}
-                  <Box
-                    sx={{
-                      width: 250,
-                      height: 250,
-                      borderRadius: 2,
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      bgcolor: "#f9f9f9",
-                      border: "1px solid #ddd",
-                      boxShadow: 1,
-                    }}
-                  >
-                    {capturedImage ? (
-                      <Box
-                        component="img"
-                        src={capturedImage}
-                        alt="Captured"
-                        sx={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          borderRadius: 2,
-                        }}
-                      />
-                    ) : selectedMembership.PhotoPath ? (
-                      <Box
-                        component="img"
-                        src={`/storage/${selectedMembership.PhotoPath}`}
-                        alt="Member"
-                        sx={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          borderRadius: 2,
-                        }}
-                      />
-                    ) : (
-                      <Typography variant="body1" sx={{ color: "gray", textAlign: "center" }}>
-                        No photo available.
-                      </Typography>
-                    )}
-                  </Box>
-                 
-                    {/* Upload & Recapture Buttons */}
-                    <Box display="flex" gap={1}>
-                      {/* Upload Button */}
-                      <Button variant="outlined" component="label" startIcon={<FileUploadIcon />}>
-                        Upload Photo
-                        <input type="file" hidden accept="image/*" onChange={handlePhotoUpload} />
-                      </Button>
+                  No photo available.
+                </Typography>
+              )}
+            </Box>
 
-                      {/* Recapture Button */}
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        startIcon={<PhotoCameraIcon />}
-                        onClick={() => setOpenWebcam(true)}
+            {/* Upload & Recapture Buttons */}
+            <Box display="flex" gap={1}>
+              {/* Upload Button */}
+              <Button variant="outlined" component="label" startIcon={<FileUploadIcon />}>
+                Upload Photo
+                <input type="file" hidden accept="image/*" onChange={handlePhotoUpload} />
+              </Button>
+
+              {/* Recapture Button */}
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<PhotoCameraIcon />}
+                onClick={() => setOpenWebcam(true)}
+              >
+                Recapture
+              </Button>
+            </Box>
+          </Grid>
+
+          {/* Webcam Dialog */}
+          <Dialog open={openWebcam} onClose={handleCloseWebcam} maxWidth="sm" fullWidth>
+            <DialogTitle sx={{ textAlign: "center" }}>Capture Profile Picture</DialogTitle>
+            <DialogContent
+              dividers
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Webcam
+                audio={false}
+                height={240}
+                ref={webcamRef}
+                screenshotFormat="image/jpeg"
+                width={320}
+                videoConstraints={{ width: 320, height: 240, facingMode: "user" }}
+              />
+            </DialogContent>
+            <DialogActions sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
+              <IconButton onClick={handleCloseWebcam} sx={{ color: "#FF0000" }}>
+                <CloseIcon fontSize="large" />
+              </IconButton>
+              <IconButton onClick={captureImage} color="primary">
+                <CameraAltIcon fontSize="large" />
+              </IconButton>
+            </DialogActions>
+          </Dialog>
+
+          <Grid item xs={12} sm={9}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} sm={4}>
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight: "bold",
+                    mb: 2,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  <PeopleIcon color="white" />
+                  Personal Information
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="Full Name"
+                  variant="filled"
+                  value={selectedMembership.FullName || ""}
+                  onChange={(e) =>
+                    setSelectedMembership((prev) => ({
+                      ...prev,
+                      FullName: e.target.value,
+                    }))
+                  }
+                  sx={{ mb: 2 }}
+                />
+                <TextField
+                  fullWidth
+                  label="Email"
+                  variant="filled"
+                  value={selectedMembership.Email || ""}
+                  onChange={(e) =>
+                    setSelectedMembership((prev) => ({
+                      ...prev,
+                      Email: e.target.value,
+                    }))
+                  }
+                  sx={{ mb: 2 }}
+                />
+                <TextField
+                  fullWidth
+                  label="Phone"
+                  variant="filled"
+                  value={selectedMembership.Phone || ""}
+                  onChange={(e) =>
+                    setSelectedMembership((prev) => ({
+                      ...prev,
+                      Phone: e.target.value,
+                    }))
+                  }
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={8}>
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight: "bold",
+                    mb: 2,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  <AutorenewIcon color="white" />
+                  Membership Info
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={4}>
+                    <FormControl variant="filled" fullWidth>
+                      <InputLabel>Plan</InputLabel>
+                      <Select
+                        value={selectedMembership.PlanID || ""}
+                        onChange={(e) =>
+                          setSelectedMembership((prev) => ({
+                            ...prev,
+                            PlanID: e.target.value,
+                          }))
+                        }
                       >
-                        Recapture
-                      </Button>
-                    </Box>
+                        {plans.map((plan) => (
+                          <MenuItem key={plan.PlanID} value={plan.PlanID}>
+                            {plan.PlanName}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   </Grid>
-
-                  {/* Webcam Dialog */}
-                  <Dialog open={openWebcam} onClose={handleCloseWebcam} maxWidth="sm" fullWidth>
-                    <DialogTitle sx={{ textAlign: "center" }}>
-                      Capture Profile Picture
-                    </DialogTitle>
-                    <DialogContent
-                      dividers
-                      sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Webcam
-                        audio={false}
-                        height={240}
-                        ref={webcamRef}
-                        screenshotFormat="image/jpeg"
-                        width={320}
-                        videoConstraints={{ width: 320, height: 240, facingMode: "user" }}
-                      />
-                    </DialogContent>
-                    <DialogActions sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
-                      <IconButton onClick={handleCloseWebcam} sx={{color: "#FF0000"}}>
-                        <CloseIcon fontSize="large" />
-                      </IconButton>
-                      <IconButton onClick={captureImage} color="primary">
-                        <CameraAltIcon fontSize="large" />
-                      </IconButton>
-                    </DialogActions>
-                  </Dialog>
-
-                <Grid item xs={12} sm={9}>
-                  <Grid container spacing={3}>
-                    <Grid item xs={12} sm={4}>
-                      <Typography
-                        variant="h5"
-                        sx={{
-                          fontWeight: "bold",
-                          mb: 2,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 1,
-                        }}
+                  <Grid item xs={12} sm={4}>
+                    <FormControl variant="filled" fullWidth>
+                      <InputLabel>Membership Status</InputLabel>
+                      <Select
+                        value={selectedMembership.MemberStatusID || ""}
+                        onChange={(e) =>
+                          setSelectedMembership((prev) => ({
+                            ...prev,
+                            MemberStatusID: e.target.value,
+                          }))
+                        }
                       >
-                        <PeopleIcon color="white" />
-                        Personal Information
-                      </Typography>
-                      <TextField
-                        fullWidth
-                        label="Full Name"
-                        variant="filled"
-                        value={selectedMembership.FullName || ""}
+                        {memberStatuses.map((status) => (
+                          <MenuItem key={status.MemberStatusID} value={status.MemberStatusID}>
+                            {status.StatusName}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="Start Date"
+                      variant="filled"
+                      type="date"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      value={selectedMembership.MembershipStartDate || ""}
+                      onChange={(e) =>
+                        setSelectedMembership((prev) => ({
+                          ...prev,
+                          MembershipStartDate: e.target.value,
+                        }))
+                      }
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="End Date"
+                      variant="filled"
+                      type="date"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      value={selectedMembership.MembershipEndDate || ""}
+                      onChange={(e) =>
+                        setSelectedMembership((prev) => ({
+                          ...prev,
+                          MembershipEndDate: e.target.value,
+                        }))
+                      }
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="Free Sessions"
+                      variant="filled"
+                      type="number"
+                      fullWidth
+                      value={selectedMembership.FreeSessions || 0}
+                      onChange={(e) =>
+                        setSelectedMembership((prev) => ({
+                          ...prev,
+                          FreeSessions: e.target.value,
+                        }))
+                      }
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="Card Number"
+                      variant="filled"
+                      fullWidth
+                      value={selectedMembership.MembershipCardNumber || ""}
+                      onChange={(e) =>
+                        setSelectedMembership((prev) => ({
+                          ...prev,
+                          MembershipCardNumber: e.target.value,
+                        }))
+                      }
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <FormControl variant="filled" fullWidth>
+                      <InputLabel>Card Issued?</InputLabel>
+                      <Select
+                        value={selectedMembership.MembershipCardIssued ? "Yes" : "No"}
                         onChange={(e) =>
                           setSelectedMembership((prev) => ({
                             ...prev,
-                            FullName: e.target.value,
+                            MembershipCardIssued: e.target.value === "Yes",
                           }))
                         }
-                        sx={{ mb: 2 }}
-                      />
-                      <TextField
-                        fullWidth
-                        label="Email"
-                        variant="filled"
-                        value={selectedMembership.Email || ""}
-                        onChange={(e) =>
-                          setSelectedMembership((prev) => ({
-                            ...prev,
-                            Email: e.target.value,
-                          }))
-                        }
-                        sx={{ mb: 2 }}
-                      />
-                      <TextField
-                        fullWidth
-                        label="Phone"
-                        variant="filled"
-                        value={selectedMembership.Phone || ""}
-                        onChange={(e) =>
-                          setSelectedMembership((prev) => ({
-                            ...prev,
-                            Phone: e.target.value,
-                          }))
-                        }
-                        sx={{ mb: 2 }}
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={8}>
-                      <Typography
-                        variant="h5"
-                        sx={{
-                          fontWeight: "bold",
-                          mb: 2,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 1,
-                        }}
                       >
-                        <AutorenewIcon color="white" />
-                        Membership Info
-                      </Typography>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={4}>
-                          <FormControl variant="filled" fullWidth>
-                            <InputLabel>Plan</InputLabel>
-                            <Select
-                              value={selectedMembership.PlanID || ""}
-                              onChange={(e) =>
-                                setSelectedMembership((prev) => ({
-                                  ...prev,
-                                  PlanID: e.target.value,
-                                }))
-                              }
-                            >
-                              {plans.map((plan) => (
-                                <MenuItem key={plan.PlanID} value={plan.PlanID}>
-                                  {plan.PlanName}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </Grid>
-                        <Grid item xs={12} sm={4}>
-                          <TextField
-                            label="Membership Status"
-                            variant="filled"
-                            fullWidth
-                            value={selectedMembership.MemberStatusID || ""}
-                            onChange={(e) =>
-                              setSelectedMembership((prev) => ({
-                                ...prev,
-                                MemberStatusID: e.target.value,
-                              }))
-                            }
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={4}>
-                          <TextField
-                            label="Start Date"
-                            variant="filled"
-                            type="date"
-                            fullWidth
-                            InputLabelProps={{ shrink: true }}
-                            value={selectedMembership.MembershipStartDate || ""}
-                            onChange={(e) =>
-                              setSelectedMembership((prev) => ({
-                                ...prev,
-                                MembershipStartDate: e.target.value,
-                              }))
-                            }
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={4}>
-                          <TextField
-                            label="End Date"
-                            variant="filled"
-                            type="date"
-                            fullWidth
-                            InputLabelProps={{ shrink: true }}
-                            value={selectedMembership.MembershipEndDate || ""}
-                            onChange={(e) =>
-                              setSelectedMembership((prev) => ({
-                                ...prev,
-                                MembershipEndDate: e.target.value,
-                              }))
-                            }
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={4}>
-                          <TextField
-                            label="Free Sessions"
-                            variant="filled"
-                            type="number"
-                            fullWidth
-                            value={selectedMembership.FreeSessions || 0}
-                            onChange={(e) =>
-                              setSelectedMembership((prev) => ({
-                                ...prev,
-                                FreeSessions: e.target.value,
-                              }))
-                            }
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={4}>
-                          <TextField
-                            label="Card Number"
-                            variant="filled"
-                            fullWidth
-                            value={selectedMembership.MembershipCardNumber || ""}
-                            onChange={(e) =>
-                              setSelectedMembership((prev) => ({
-                                ...prev,
-                                MembershipCardNumber: e.target.value,
-                              }))
-                            }
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={4}>
-                          <FormControl variant="filled" fullWidth>
-                            <InputLabel>Card Issued?</InputLabel>
-                            <Select
-                              value={selectedMembership.MembershipCardIssued ? "Yes" : "No"}
-                              onChange={(e) => {
-                                setSelectedMembership((prev) => ({
-                                  ...prev,
-                                  MembershipCardIssued: e.target.value === "Yes",
-                                }));
-                              }}
-                            >
-                              <MenuItem value="No">No</MenuItem>
-                              <MenuItem value="Yes">Yes</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </Grid>
-                        <Grid item xs={12} sm={4} />
-                        <Grid item xs={12} sm={4} />
-                        <Grid item xs={12}>
-                          <Typography variant="h6" sx={{ fontWeight: "bold", mt: 2, mb: 1 }}>
-                            Notes
-                          </Typography>
-                          <TextField
-                            label="Notes"
-                            variant="filled"
-                            fullWidth
-                            multiline
-                            rows={3}
-                            value={selectedMembership.Notes || ""}
-                            onChange={(e) =>
-                              setSelectedMembership((prev) => ({
-                                ...prev,
-                                Notes: e.target.value,
-                              }))
-                            }
-                          />
-                        </Grid>
-                      </Grid>
-                    </Grid>
+                        <MenuItem value="No">No</MenuItem>
+                        <MenuItem value="Yes">Yes</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    {/* Empty grid for spacing */}
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    {/* Empty grid for spacing */}
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="h6" sx={{ fontWeight: "bold", mt: 2, mb: 1 }}>
+                      Notes
+                    </Typography>
+                    <TextField
+                      label="Notes"
+                      variant="filled"
+                      fullWidth
+                      multiline
+                      rows={3}
+                      value={selectedMembership.Notes || ""}
+                      onChange={(e) =>
+                        setSelectedMembership((prev) => ({
+                          ...prev,
+                          Notes: e.target.value,
+                        }))
+                      }
+                    />
                   </Grid>
                 </Grid>
               </Grid>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
-        <Button
-          variant="contained"
-          onClick={handleEditMembershipSubmit}
-          sx={{
-            px: 4,
-            py: 1,
-            fontSize: "1rem",
-            fontWeight: "bold",
-            borderRadius: 2,
-            textTransform: "none",
-          }}
-          startIcon={<SaveIcon />}
-        >
-          Save Changes
-        </Button>
-      </DialogActions>
-      </Dialog>
+            </Grid>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+    <Button
+      variant="contained"
+      onClick={handleEditMembershipSubmit}
+      sx={{
+        px: 4,
+        py: 1,
+        fontSize: "1rem",
+        fontWeight: "bold",
+        borderRadius: 2,
+        textTransform: "none",
+      }}
+      startIcon={<SaveIcon />}
+    >
+      Save Changes
+    </Button>
+  </DialogActions>
+</Dialog>
+
 
       {/* CREATE Freeze */}
       <Dialog

@@ -15,123 +15,6 @@ use Illuminate\Support\Facades\DB;
 class PaymentController extends Controller
 {
     /* ------------------------------------------------------------------
-     * A) Payment Setup & Configuration
-     * ------------------------------------------------------------------ */
-
-    /**
-     * 1. PayMongo API Credentials (owner-only route)
-     * Show a form for viewing/updating PayMongo API keys.
-     */
-    public function viewPayMongoCredentials()
-    {
-        // Additional Gate check if you want (beyond route-level middleware)
-        if (Gate::denies('view-paymongo-creds')) {
-            abort(403, 'You do not have permission to view PayMongo credentials.');
-        }
-
-        // Load from system_settings or from .env
-        $setting = SystemSetting::where('key', 'paymongo_api_key')->first();
-        $apiKey  = $setting ? $setting->value : '';
-
-        return Inertia::render('Payments/Setup/PayMongoCredentials', [
-            'credentials' => [
-                'apiKey' => $apiKey
-            ],
-        ]);
-    }
-
-    /**
-     * Update PayMongo credentials in system_settings or .env
-     */
-    public function updatePayMongoCredentials(Request $request)
-    {
-        $data = $request->validate([
-            'apiKey' => 'required|string|max:255',
-        ]);
-
-        SystemSetting::updateOrCreate(
-            ['key' => 'paymongo_api_key'],
-            ['value' => $data['apiKey']]
-        );
-
-        return redirect()
-            ->back()
-            ->with('success', 'PayMongo credentials updated successfully.');
-    }
-
-    /**
-     * 2. Transaction Fee Rules / Markups (Owner,Admin)
-     */
-    public function viewFeeRules()
-    {
-        if (Gate::denies('set-fee-rules')) {
-            abort(403, 'You do not have permission to set fee rules.');
-        }
-
-        // Suppose we store keys: 'card_fee', 'card_fixed'
-        $cardFeeSetting   = SystemSetting::where('key','card_fee')->first();
-        $cardFixedSetting = SystemSetting::where('key','card_fixed')->first();
-
-        $feeRules = [
-            'cardFee'   => $cardFeeSetting   ? $cardFeeSetting->value : 3.5,
-            'cardFixed' => $cardFixedSetting ? $cardFixedSetting->value : 15,
-        ];
-
-        return Inertia::render('Payments/Setup/FeeRules', [
-            'feeRules' => $feeRules,
-        ]);
-    }
-
-    public function updateFeeRules(Request $request)
-    {
-        $data = $request->validate([
-            'cardFee'   => 'required|numeric|min:0',
-            'cardFixed' => 'required|numeric|min:0',
-        ]);
-
-        SystemSetting::updateOrCreate(['key' => 'card_fee'],   ['value' => $data['cardFee']]);
-        SystemSetting::updateOrCreate(['key' => 'card_fixed'], ['value' => $data['cardFixed']]);
-
-        return redirect()
-            ->back()
-            ->with('success', 'Transaction fee rules updated successfully.');
-    }
-
-    /**
-     * 3. Enable/Disable Payment Methods (Owner,Admin)
-     */
-    public function indexPaymentMethods()
-    {
-        // Could also store each method in system_settings; 
-        // for demonstration, we show a static array:
-        $methods = [
-            ['name' => 'Card',           'enabled' => true],
-            ['name' => 'E-Wallet',       'enabled' => false],
-            ['name' => 'OnlineBanking',  'enabled' => true],
-        ];
-
-        return Inertia::render('Payments/Setup/PaymentMethods', [
-            'methods' => $methods,
-        ]);
-    }
-
-    public function togglePaymentMethod(Request $request)
-    {
-        $data = $request->validate([
-            'methodName' => 'required|string|max:50',
-            'enabled'    => 'required|boolean',
-        ]);
-
-        // If storing in DB, update or create a setting:
-        // SystemSetting::updateOrCreate(['key' => 'method_'.$data['methodName']], ['value' => $data['enabled']]);
-
-        return redirect()
-            ->back()
-            ->with('success', 'Payment method toggled.');
-    }
-
-
-    /* ------------------------------------------------------------------
      * B) Transaction Logs
      * ------------------------------------------------------------------ */
 
@@ -178,52 +61,6 @@ class PaymentController extends Controller
             ->header('Content-Type', 'text/csv')
             ->header('Content-Disposition', 'attachment; filename=transactions.csv');
     }
-
-
-    /* ------------------------------------------------------------------
-     * C) Issue Refunds (PayMongo)
-     * ------------------------------------------------------------------ */
-
-    /**
-     * 6. Initiate Refunds (Owner,Admin)
-     */
-    public function initiateRefund(Request $request, $paymentId)
-    {
-        $payment = Payment::findOrFail($paymentId);
-
-        if ($payment->Status !== 'Completed') {
-            return redirect()
-                ->back()
-                ->with('error','Refund cannot be initiated for non-completed payments.');
-        }
-
-        // Possibly call PayMongo API. For demonstration:
-        $payment->update(['Status' => 'RefundRequested']);
-
-        return redirect()->back()->with('success','Refund initiated successfully.');
-    }
-
-    /**
-     * 7. Approve Refunds (2-step) (Owner,Admin)
-     */
-    public function approveRefund(Request $request, $paymentId)
-    {
-        $payment = Payment::findOrFail($paymentId);
-
-        if ($payment->Status !== 'RefundRequested') {
-            return redirect()
-                ->route('payments.transactions.index')
-                ->with('error','No pending refund request for this payment.');
-        }
-
-        // Possibly finalize with PayMongo. We'll just set 'Refunded':
-        $payment->update(['Status' => 'Refunded']);
-
-        return redirect()
-            ->route('payments.transactions.index')
-            ->with('success','Refund approved successfully.');
-    }
-
 
     /* ------------------------------------------------------------------
      * K) Payment (Direct Table) CRUD
@@ -325,14 +162,33 @@ class PaymentController extends Controller
      */
     public function destroy($id)
     {
-        $payment = Payment::findOrFail($id);
-        $payment->delete();
-
-        return redirect()
-            ->route('payments.index')
-            ->with('success','Payment deleted successfully.');
+        // Load the payment along with its related invoices
+        $payment = Payment::with('invoices')->findOrFail($id);
+    
+        DB::transaction(function () use ($payment) {
+            // Loop through each related invoice
+            foreach ($payment->invoices as $invoice) {
+                // Count how many payments reference this invoice
+                $paymentCount = $invoice->payments()->count();
+    
+                // If only this payment is linked, then delete the invoice
+                if ($paymentCount <= 1) {
+                    $invoice->delete();
+                }
+                // Otherwise, you might want to detach this payment's pivot record.
+                // (If your pivot table has proper ON DELETE CASCADE, this may be automatic.)
+            }
+    
+            // Finally, delete the payment record
+            $payment->delete();
+        });
+    
+        return response()->json([
+            'message' => 'Payment and associated invoice(s) (if unlinked) deleted successfully.'
+        ], 200);
     }
-
+    
+    
 
     /* ------------------------------------------------------------------
      * M) Partial / Multiple Payments

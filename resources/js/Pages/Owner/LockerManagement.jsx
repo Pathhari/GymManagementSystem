@@ -171,20 +171,24 @@ export default function LockerManagement() {
     MemberID: "",
     Notes: "",
   });
+  const [searchBranchID, setSearchBranchID] = useState(null);
   const [memberSearch, setMemberSearch] = useState("");
   const [memberOptions, setMemberOptions] = useState([]);
 
   // Member search
   useEffect(() => {
-    if (memberSearch.trim().length > 0) {
+    if (memberSearch.trim().length > 0 && searchBranchID) {
       axios
-        .get(`/membership/members/search?q=${memberSearch.trim()}`)
+        .get(
+          `/membership/members/search?q=${memberSearch.trim()}&branchId=${searchBranchID}`
+        )
         .then((res) => setMemberOptions(res.data))
         .catch((err) => console.error("Error searching members:", err));
     } else {
+      // Clear out the options if there is no text or no branch
       setMemberOptions([]);
     }
-  }, [memberSearch]);
+  }, [memberSearch, searchBranchID]);
 
   const openBorrowForm = (lockerItem) => {
     setBorrowData({
@@ -194,6 +198,7 @@ export default function LockerManagement() {
     });
     setMemberSearch("");
     setMemberOptions([]);
+    setSearchBranchID(lockerItem.BranchID || null);
     setBorrowOpen(true);
   };
 
@@ -278,7 +283,14 @@ export default function LockerManagement() {
       .delete(`/operations/lockers/${lockerToDelete}`)
       .then(() => axios.get("/operations/lockers"))
       .then((res) => setLockers(res.data.lockers || []))
-      .catch((err) => console.error("Error removing locker:", err))
+      .catch((err) => {
+        console.error("Error removing locker:", err);
+        if (err.response?.data?.message) {
+          alert(err.response.data.message);
+        } else {
+          alert("An error occurred while deleting the locker.");
+        }
+      })
       .finally(() => {
         setDeleteDialogOpen(false);
         setLockerToDelete(null);

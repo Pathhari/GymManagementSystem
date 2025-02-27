@@ -60,11 +60,18 @@ class InvoiceController extends Controller
         return response()->json($invoice);
     }
 
-    // DELETE /invoices/{id}
     public function destroy($id)
     {
         $invoice = Invoice::findOrFail($id);
+    
+        // Optionally do checks or validations here,
+        // e.g. if invoice is fully paid, confirm user wants to delete, etc.
+    
         $invoice->delete();
-        return response()->json(['message' => 'Invoice deleted']);
+    
+        return response()->json([
+            'message' => "Invoice #{$id} deleted successfully."
+        ], 200);
     }
+    
 }

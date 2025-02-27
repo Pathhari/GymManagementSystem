@@ -331,6 +331,7 @@ class MembershipController extends Controller
      */
     public function apiUpdateMember(Request $request, $id)
 {
+    \Log::info('Message here');
     $member = Member::findOrFail($id);
 
     // Staff => block updating cross‐branch
@@ -613,11 +614,20 @@ public function expiringMembers(Request $request)
      */
     public function indexPlans()
     {
-        // Use withCount to get the members count.
-        $plans = MembershipPlan::withCount('members')->orderBy('PlanID')->get();
+        // We join the "members" relationship, but we only need to select
+        // minimal columns: MemberID, PlanID, StartedBranchID
+        // so we can do branch-based filtering on the frontend
+        $plans = MembershipPlan::with([
+            'members' => function ($q) {
+                // Only select the minimal fields
+                $q->select('MemberID', 'PlanID', 'StartedBranchID');
+            }
+        ])
+        ->orderBy('PlanID')
+        ->get();
+    
         return response()->json($plans, 200);
     }
-
     /**
      * Create a new plan.
      * POST /membership/plans
@@ -902,18 +912,24 @@ public function destroyFreeze($id)
         'message' => 'Freeze canceled. Unused freeze days removed, status reverted to Active.'
     ], 200);
 }
+
 public function growth()
 {
-    // Group members by month (using MembershipStartDate) and count new members.
     $growthData = \DB::table('members')
-        ->select(\DB::raw("DATE_FORMAT(MembershipStartDate, '%b %Y') as month"), \DB::raw("COUNT(*) as count"))
+        ->select(
+            'StartedBranchID as BranchID',
+            \DB::raw("DATE_FORMAT(MembershipStartDate, '%b %Y') as month"),
+            \DB::raw("COUNT(*) as count")
+        )
         ->whereNotNull('MembershipStartDate')
-        ->groupBy('month')
+        ->groupBy('StartedBranchID', 'month')
         ->orderByRaw("MIN(MembershipStartDate)")
         ->get();
 
     return response()->json($growthData, 200);
 }
+
+
 public function getLatestCardNumber()
 {
     // Get the most recent card number (last registered member)

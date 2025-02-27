@@ -9,16 +9,28 @@ use Illuminate\Notifications\Notifiable;
 
 class Admin extends Authenticatable
 {
-    use Notifiable;
+    use HasFactory;
 
     protected $table = 'admins';
-    protected $primaryKey = 'id';
+    protected $primaryKey = 'AdminID';
 
+    // Fillable or guarded fields
     protected $fillable = [
-        'name','email','password',
+        'FullName',
+        'Email',
+        'password',
+        'Role',
     ];
 
-    protected $hidden = [
-        'password','remember_token',
-    ];
+    // Many-to-many relation to Branch
+    public function branches()
+    {
+        // If your pivot table is named 'admin_branch'
+        return $this->belongsToMany(
+            Branch::class, 
+            'admin_branch',    // pivot table
+            'AdminID',         // foreign key on pivot table
+            'BranchID'         // related key on pivot table
+        );
+    }
 }
