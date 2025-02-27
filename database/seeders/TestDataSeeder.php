@@ -67,19 +67,12 @@ class TestDataSeeder extends Seeder
                 'Location'   => $faker->streetAddress,
             ]);
         }
-
         // 2) Owners and Admins
         Owner::create([
             'name'     => 'Juan dela Cruz (Owner)',
             'email'    => 'owner@example.com',
             'password' => Hash::make('owner123'),
         ]);
-        Admin::create([
-            'name'     => 'Maria Admin',
-            'email'    => 'admin@example.com',
-            'password' => Hash::make('admin123'),
-        ]);
-
         // 3) Membership Plans
         $planLockIn = MembershipPlan::create([
             'PlanName'     => 'New Member Lock-In (3 months)',
