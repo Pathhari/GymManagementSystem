@@ -166,6 +166,7 @@ class MembershipController extends Controller
 
             Payment::create([
                 'MemberID'      => $member->MemberID,
+                'BranchID'      => $member->StartedBranchID,  // <-- Add this line
                 'PaymentMethod' => $data['PaymentMethod'],
                 'Amount'        => $data['PaymentAmount'],
                 'PaymentDate'   => now(),
@@ -252,6 +253,7 @@ class MembershipController extends Controller
 
             Payment::create([
                 'MemberID'      => $member->MemberID,
+                'BranchID'      => $member->StartedBranchID,  // <-- Add this line
                 'PaymentMethod' => $data['PaymentMethod'],
                 'Amount'        => $data['PaymentAmount'],
                 'PaymentDate'   => now(),
