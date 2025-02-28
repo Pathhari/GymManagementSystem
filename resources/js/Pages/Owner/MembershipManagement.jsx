@@ -103,8 +103,12 @@ export default function MembershipManagement() {
   const [isManagePlansOpen, setManagePlansOpen] = useState(false);
   const [branchFilter, setBranchFilter] = useState("all");
 
-    // Confirmation dialog
-    const [openConfirmation, setOpenConfirmation] = useState(false);
+  // New state to control expiring soon filter on memberships
+  const [filterExpiring, setFilterExpiring] = useState(false);
+  const [filterExpired, setFilterExpired] = useState(false);
+
+  // Confirmation dialog
+  const [openConfirmation, setOpenConfirmation] = useState(false);
 
   // Add-member layout
   const [isAddMembershipLayoutVisible, setAddMembershipLayoutVisible] = useState(false);
@@ -132,30 +136,28 @@ export default function MembershipManagement() {
 
   const handleOpenAddWalkIn = () => {
     setNewWalkIn({
-        FullName: "",
-        VisitDate: "",
-        PaymentID: "",
-        PaymentMethod: "",
-        PaymentAmount: 350, // ✅ Ensure this resets every time
-        Notes: "",
-    });
-    setAddWalkInOpen(true);
-};
-
-const handleCloseWalkInDialog = () => {
-  setAddWalkInOpen(false);
-  setNewWalkIn({
       FullName: "",
       VisitDate: "",
       PaymentID: "",
       PaymentMethod: "",
-      PaymentAmount: 350, // ✅ Reset on close
+      PaymentAmount: 350,
       Notes: "",
-  });
-};
+    });
+    setAddWalkInOpen(true);
+  };
 
-  
-    
+  const handleCloseWalkInDialog = () => {
+    setAddWalkInOpen(false);
+    setNewWalkIn({
+      FullName: "",
+      VisitDate: "",
+      PaymentID: "",
+      PaymentMethod: "",
+      PaymentAmount: 350,
+      Notes: "",
+    });
+  };
+
   // FREEZE CRUD
   const [selectedFreeze, setSelectedFreeze] = useState(null);
   const [isViewFreezeOpen, setViewFreezeOpen] = useState(false);
@@ -202,7 +204,6 @@ const handleCloseWalkInDialog = () => {
   const formatDateTime = (dateString) => {
     if (!dateString) return "—";
     const dateObj = new Date(dateString);
-  
     return dateObj.toLocaleString("en-US", {
       year: "numeric",
       month: "long",
@@ -212,60 +213,55 @@ const handleCloseWalkInDialog = () => {
       hour12: true, 
     });
   };
-  
 
-  
-   // Currency Format
-   const formatCurrency = (value) => {
+  // Currency Format
+  const formatCurrency = (value) => {
     if (value == null || value === "") return "—";
     return `₱${parseInt(value).toLocaleString("en-PH")}`;
   };
 
   // Convert base64 to File
-    const dataURLToFile = (dataURL, filename) => {
-      const arr = dataURL.split(",");
-      const mime = arr[0].match(/:(.*?);/)[1];
-      const bstr = atob(arr[1]);
-      let n = bstr.length;
-      const u8arr = new Uint8Array(n);
-      while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
-      }
-      return new File([u8arr], filename, { type: mime });
-    };
+  const dataURLToFile = (dataURL, filename) => {
+    const arr = dataURL.split(",");
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
+  };
 
-    // Handle Capturing Image from Webcam
-    const captureImage = () => {
-      if (webcamRef.current) {
-        const imageSrc = webcamRef.current.getScreenshot();
-        setCapturedImage(imageSrc);
-        setSelectedMembership((prev) => ({
-          ...prev,
-          PhotoFile: dataURLToFile(imageSrc, "captured_photo.jpg"),
-        }));
-        setOpenWebcam(false);
-      }
-    };
+  // Handle Capturing Image from Webcam
+  const captureImage = () => {
+    if (webcamRef.current) {
+      const imageSrc = webcamRef.current.getScreenshot();
+      setCapturedImage(imageSrc);
+      setSelectedMembership((prev) => ({
+        ...prev,
+        PhotoFile: dataURLToFile(imageSrc, "captured_photo.jpg"),
+      }));
+      setOpenWebcam(false);
+    }
+  };
 
-    // Handle File Upload
-    const handlePhotoUpload = (e) => {
-      if (e.target.files && e.target.files[0]) {
-        setSelectedMembership((prev) => ({
-          ...prev,
-          PhotoFile: e.target.files[0],
-        }));
-        setCapturedImage(null);
-      }
-    };
-  //Webcam handlers
+  // Handle File Upload
+  const handlePhotoUpload = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedMembership((prev) => ({
+        ...prev,
+        PhotoFile: e.target.files[0],
+      }));
+      setCapturedImage(null);
+    }
+  };
+  // Webcam handlers
   const handleOpenWebcam = () => setOpenWebcam(true);
   const handleCloseWebcam = () => setOpenWebcam(false);
-  
-
 
   // Fetch data on mount
   useEffect(() => {
-    // 1) membership/members
     axios
       .get("/membership/members")
       .then((res) => {
@@ -278,46 +274,38 @@ const handleCloseWalkInDialog = () => {
       })
       .catch((err) => console.error("Error fetching members:", err));
 
-    // 2) membership/plans
     axios
       .get("/membership/plans")
       .then((res) => setPlans(res.data || []))
       .catch((err) => console.error("Error fetching plans:", err));
 
-    // 3) membership/statuses
     axios
       .get("/membership/statuses")
       .then((res) => setMemberStatuses(res.data || []))
       .catch((err) => console.error("Error fetching statuses:", err));
 
-    // 4) walk-ins
     axios
       .get("/operations/walk-ins")
       .then((res) => setWalkInRecords(res.data))
       .catch((err) => console.error("Error fetching walk-ins:", err));
 
-    // 5) branches
     axios.get("/owner/branches")
-    .then((res) => {
-      const branchArray = res.data.branches || [];
+      .then((res) => {
+        const branchArray = res.data.branches || [];
+        const branchMap = {};
+        branchArray.forEach(branch => {
+          branchMap[branch.BranchID] = branch.BranchName;
+        });
+        setBranches(branchMap);
+      })
+      .catch((err) => console.error("Error fetching branches:", err));
 
-      // Convert array to a Map for quick lookups
-      const branchMap = {};
-      branchArray.forEach(branch => {
-        branchMap[branch.BranchID] = branch.BranchName;
-      });
-
-      setBranches(branchMap); // ✅ Store as an object instead of an array
-    })
-    .catch((err) => console.error("Error fetching branches:", err));
-  
-    // Periodic refresh for membership
     const intervalId = setInterval(() => {
       axios
         .get("/membership/members")
         .then((res) => setMembershipRecords(res.data.members || []))
         .catch(console.error);
-    }, 100000); // 100s
+    }, 100000);
 
     return () => clearInterval(intervalId);
   }, []);
@@ -330,7 +318,6 @@ const handleCloseWalkInDialog = () => {
 
   // Called by AddNewMemberLayout => new member created
   function handleNewMemberCreated(resData) {
-    // resData = { member: {...} }
     const memberObj = resData.member;
     setMembershipRecords((prev) => [memberObj, ...prev]);
     showSuccessMessage("New member added successfully!");
@@ -340,6 +327,8 @@ const handleCloseWalkInDialog = () => {
   const handleTabChange = (e, newValue) => {
     setActiveTab(newValue);
     setSearchTerm("");
+    // Reset the expiring filter when changing tabs
+    if(newValue !== 0) setFilterExpiring(false);
   };
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value.toLowerCase());
@@ -364,8 +353,6 @@ const handleCloseWalkInDialog = () => {
     if (!selectedMembership) return;
     try {
       const memberID = selectedMembership.MemberID;
-
-      // Construct FormData
       const formData = new FormData();
       formData.append("FullName", selectedMembership.FullName);
       formData.append("Email", selectedMembership.Email);
@@ -380,17 +367,15 @@ const handleCloseWalkInDialog = () => {
       formData.append("FreeSessions", selectedMembership.FreeSessions || "0");
       formData.append("Notes", selectedMembership.Notes || "");
 
-      // If a new file was selected, append it
       if (selectedMembership.PhotoFile) {
         formData.append("PhotoFile", selectedMembership.PhotoFile);
       }
 
       await axios.post(`/membership/members/${memberID}`, formData, {
-        params: { _method: "PUT" },                 // Tells Laravel to treat it as PUT
+        params: { _method: "PUT" },
         headers: { "Content-Type": "multipart/form-data" },
       });
       
-      // Update local membershipRecords
       setMembershipRecords((prev) =>
         prev.map((m) => (m.MemberID === memberID ? selectedMembership : m))
       );
@@ -402,13 +387,11 @@ const handleCloseWalkInDialog = () => {
     }
   };
 
-  // Instead of window.confirm, we open the custom confirmation dialog
   const openDeleteDialog = (type, id) => {
     setDeleteInfo({ type, id });
     setDeleteDialogOpen(true);
   };
 
-  // Actual membership deletion now is called *after* user confirms in the dialog
   const handleDeleteMembership = async (memberID) => {
     try {
       await axios.delete(`/membership/members/${memberID}`);
@@ -440,7 +423,6 @@ const handleCloseWalkInDialog = () => {
     if (!selectedWalkIn) return;
     try {
       const walkInID = selectedWalkIn.WalkInID;
-
       await axios.put(`/operations/walk-ins/${walkInID}`, {
         FullName:      selectedWalkIn.FullName,
         VisitDate:     selectedWalkIn.VisitDate,
@@ -449,7 +431,6 @@ const handleCloseWalkInDialog = () => {
         AmountPaid:    selectedWalkIn.AmountPaid,
         Notes:         selectedWalkIn.Notes,
       });
-
       setWalkInRecords((prev) =>
         prev.map((w) => (w.WalkInID === walkInID ? selectedWalkIn : w))
       );
@@ -461,7 +442,6 @@ const handleCloseWalkInDialog = () => {
     }
   }
 
-  // No more window confirm, use our custom dialog
   async function handleDeleteWalkIn(walkInID) {
     try {
       await axios.delete(`/operations/walk-ins/${walkInID}`);
@@ -473,9 +453,6 @@ const handleCloseWalkInDialog = () => {
     }
   }
   
-
-
-  // “Add New Walk-In”
   function handleAddWalkInChange(e) {
     const { name, value } = e.target;
     setNewWalkIn((prev) => ({ ...prev, [name]: value }));
@@ -484,64 +461,54 @@ const handleCloseWalkInDialog = () => {
     const errors = validateWalkIn();
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
-      return; // Do not open the confirmation dialog if there are errors
+      return;
     }
-    // Clear previous errors and open confirmation dialog
     setValidationErrors({});
     setOpenConfirmation(true);
   };
 
-  
   const handleAddWalkIn = async () => {
     const errors = validateWalkIn();
     if (Object.keys(errors).length > 0) {
-        setValidationErrors(errors);
-        return; // Prevent submission if there are errors
+      setValidationErrors(errors);
+      return;
     }
-    
     try {
-        const res = await axios.post(`/operations/walk-ins`, {
-            FullName: newWalkIn.FullName,
-            VisitDate: newWalkIn.VisitDate,
-            PaymentID: newWalkIn.PaymentID,
-            PaymentMethod: newWalkIn.PaymentMethod,
-            PaymentAmount: newWalkIn.PaymentAmount || 350,
-            PaymentFor: JSON.stringify(["Walk-In Payment"]),
-            Notes: newWalkIn.Notes,
-        });
-
-        const newWalkInRecord = res.data;
-
-        setWalkInRecords((prev) => [newWalkInRecord, ...prev]);
-
-        // Reset form and errors after successful submission
-        setNewWalkIn({
-            FullName: "",
-            VisitDate: "",
-            PaymentID: "",
-            PaymentMethod: "",
-            PaymentAmount: 350,
-            Notes: "",
-        });
-
-        setValidationErrors({});
-        setAddWalkInOpen(false);
-        showSuccessMessage("Walk-In created successfully!");
+      const res = await axios.post(`/operations/walk-ins`, {
+        FullName: newWalkIn.FullName,
+        VisitDate: newWalkIn.VisitDate,
+        PaymentID: newWalkIn.PaymentID,
+        PaymentMethod: newWalkIn.PaymentMethod,
+        PaymentAmount: newWalkIn.PaymentAmount || 350,
+        PaymentFor: JSON.stringify(["Walk-In Payment"]),
+        Notes: newWalkIn.Notes,
+      });
+      const newWalkInRecord = res.data;
+      setWalkInRecords((prev) => [newWalkInRecord, ...prev]);
+      setNewWalkIn({
+        FullName: "",
+        VisitDate: "",
+        PaymentID: "",
+        PaymentMethod: "",
+        PaymentAmount: 350,
+        Notes: "",
+      });
+      setValidationErrors({});
+      setAddWalkInOpen(false);
+      showSuccessMessage("Walk-In created successfully!");
     } catch (err) {
-        console.error("Error creating walk-in:", err);
-        alert("Create error. Check console for details.");
+      console.error("Error creating walk-in:", err);
+      alert("Create error. Check console for details.");
     }
-};
+  };
 
-
-const getTodayWalkIns = () => {
-  const todayDate = new Date().toISOString().split("T")[0]; // Format YYYY-MM-DD
-
-  return walkInRecords.filter((walkIn) => {
-    const walkInDate = new Date(walkIn.VisitDate).toISOString().split("T")[0]; // Format YYYY-MM-DD
-    return walkInDate === todayDate;
-  }).length;
-};
+  const getTodayWalkIns = () => {
+    const todayDate = new Date().toISOString().split("T")[0];
+    return walkInRecords.filter((walkIn) => {
+      const walkInDate = new Date(walkIn.VisitDate).toISOString().split("T")[0];
+      return walkInDate === todayDate;
+    }).length;
+  };
 
   // --------------- FREEZE HANDLERS ---------------
   function handleOpenFreezeModal(memberID) {
@@ -564,11 +531,8 @@ const getTodayWalkIns = () => {
       const res = await axios.post("/membership/freezes", freezeForm);
       const newFreeze = res.data;
       setFreezeRecords((prev) => [newFreeze, ...prev]);
-
-      // Re-fetch membership
       const refreshed = await axios.get("/membership/members");
       setMembershipRecords(refreshed.data.members || []);
-
       setFreezeModalOpen(false);
       showSuccessMessage("Freeze created successfully. Member is now Frozen!");
     } catch (err) {
@@ -602,7 +566,6 @@ const getTodayWalkIns = () => {
         Reason:          selectedFreeze.Reason,
       });
       const updatedFreeze = res.data;
-
       setFreezeRecords((prev) =>
         prev.map((f) => (f.FreezeID === freezeID ? updatedFreeze : f))
       );
@@ -614,7 +577,6 @@ const getTodayWalkIns = () => {
     }
   }
 
-  // No more window confirm
   async function handleDeleteFreeze(freezeID) {
     try {
       await axios.delete(`/membership/freezes/${freezeID}`);
@@ -638,7 +600,7 @@ const getTodayWalkIns = () => {
     });
     setAddRenewalOpen(true);
   }
-  // Validaions
+
   const validateRenewal = () => {
     let errors = {};
     if (!newRenewal.PlanID) {
@@ -649,7 +611,6 @@ const getTodayWalkIns = () => {
     }
     return errors;
   };
-  
 
   function handleAddRenewalChange(e) {
     const { name, value } = e.target;
@@ -680,72 +641,65 @@ const getTodayWalkIns = () => {
       }
     }
   }, [newRenewal.PlanID, plans]);
-  
 
-const handleAddRenewal = async () => {
-  const errors = validateRenewal();
-  if (Object.keys(errors).length > 0) {
-    setValidationErrors(errors);
-    return; // Do not submit if there are errors
-  }
-  
-  try {
-    const body = {
-      MemberID: newRenewal.MemberID,
-      PlanID: newRenewal.PlanID,
-      RenewalAmount: newRenewal.RenewalAmount,
-      PaymentMethod: newRenewal.PaymentMethod,
-      PaymentAmount: newRenewal.PaymentAmount,
-      PaymentFor: newRenewal.PaymentFor,
-    };
-
-    const res = await axios.post("/membership/renewals", body);
-    const { renewal, member } = res.data;
-
-    // Update renewal and membership records
-    setRenewalRecords((prev) => [renewal, ...prev]);
-    setMembershipRecords((prev) =>
-      prev.map((m) => (m.MemberID === member.MemberID ? member : m))
-    );
-
-    // Reset the form and errors
-    setNewRenewal({
-      MemberID: "",
-      PlanID: "",
-      RenewalAmount: 0,
-      PaymentMethod: "",
-      PaymentAmount: "",
-      PaymentFor: '["Renewal Fee"]',
-    });
-    setValidationErrors({});
-    setAddRenewalOpen(false);
-    showSuccessMessage("Renewal created successfully!");
-  } catch (err) {
-    console.error("Error creating renewal:", err);
-    alert("Create error. Check console for details.");
-  }
-};
-
-      //Walk-in Validation
-      const validateWalkIn = () => {
-        let errors = {};
-      
-        if (!newWalkIn.FullName.trim()) {
-          errors.FullName = "Full Name is required.";
-        }
-        if (!newWalkIn.VisitDate) {
-          errors.VisitDate = "Visit Date is required.";
-        }
-        if (!newWalkIn.PaymentMethod) {
-          errors.PaymentMethod = "Please select a Payment Method.";
-        }
-        if (!newWalkIn.PaymentAmount || newWalkIn.PaymentAmount <= 0) {
-          errors.PaymentAmount = "Payment Amount must be greater than zero.";
-        }
-        // Optionally, add validation for Notes if needed
-      
-        return errors;
+  const handleAddRenewal = async () => {
+    const errors = validateRenewal();
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+    
+    try {
+      const body = {
+        MemberID: newRenewal.MemberID,
+        PlanID: newRenewal.PlanID,
+        RenewalAmount: newRenewal.RenewalAmount,
+        PaymentMethod: newRenewal.PaymentMethod,
+        PaymentAmount: newRenewal.PaymentAmount,
+        PaymentFor: newRenewal.PaymentFor,
       };
+
+      const res = await axios.post("/membership/renewals", body);
+      const { renewal, member } = res.data;
+
+      setRenewalRecords((prev) => [renewal, ...prev]);
+      setMembershipRecords((prev) =>
+        prev.map((m) => (m.MemberID === member.MemberID ? member : m))
+      );
+
+      setNewRenewal({
+        MemberID: "",
+        PlanID: "",
+        RenewalAmount: 0,
+        PaymentMethod: "",
+        PaymentAmount: "",
+        PaymentFor: '["Renewal Fee"]',
+      });
+      setValidationErrors({});
+      setAddRenewalOpen(false);
+      showSuccessMessage("Renewal created successfully!");
+    } catch (err) {
+      console.error("Error creating renewal:", err);
+      alert("Create error. Check console for details.");
+    }
+  };
+
+  const validateWalkIn = () => {
+    let errors = {};
+    if (!newWalkIn.FullName.trim()) {
+      errors.FullName = "Full Name is required.";
+    }
+    if (!newWalkIn.VisitDate) {
+      errors.VisitDate = "Visit Date is required.";
+    }
+    if (!newWalkIn.PaymentMethod) {
+      errors.PaymentMethod = "Please select a Payment Method.";
+    }
+    if (!newWalkIn.PaymentAmount || newWalkIn.PaymentAmount <= 0) {
+      errors.PaymentAmount = "Payment Amount must be greater than zero.";
+    }
+    return errors;
+  };
 
   const handleViewRenewal = (row) => {
     setSelectedRenewal(row);
@@ -760,7 +714,6 @@ const handleAddRenewal = async () => {
     // If you have an update route for renewal, call it here
   };
 
-  // Now we open the delete dialog, not window.confirm
   const handleDeleteRenewal = async (renewalID) => {
     try {
       await axios.delete(`/membership/renewals/${renewalID}`);
@@ -778,18 +731,16 @@ const handleAddRenewal = async () => {
     setViewLogOpen(true);
   }
 
-  // Example log delete function (not fully used in UI, but included)
   async function handleDeleteLog(logID) {
-    // If you'd like, you can implement an axios.delete call here
-    // For now, just demonstrate the pattern
-    // showSuccessMessage("Log deleted!");
+    // Implementation for log deletion if needed
   }
 
   // METRICS
   const totalMembers = membershipRecords.length;
+  // FIX: Make sure "Expired" is matched in lowercase
   const expiredMemberships = membershipRecords.filter((m) => {
     if (!m?.MemberStatusID) return false;
-    return getStatusNameByID(m.MemberStatusID) === "Expired";
+    return getStatusNameByID(m.MemberStatusID)?.toLowerCase() === "expired";
   }).length;
 
   const today = new Date();
@@ -812,7 +763,6 @@ const handleAddRenewal = async () => {
         return branches[params.value] || "—"; 
       },
     },    
-    
     { 
       field: "FullName", 
       headerName: "Full Name", 
@@ -849,20 +799,18 @@ const handleAddRenewal = async () => {
       renderCell: (params) => {
         const msid = params.value;
         const stName = getStatusNameByID(msid) ?? "—";
-
         const getStatusColor = (status) => {
           switch (status?.toLowerCase()) {
             case "active":
-              return "#4caf50"; // Green
+              return "#4caf50";
             case "expired":
-              return "#f44336"; // Red
+              return "#f44336";
             case "frozen":
-              return "#2196f3"; // Blue
+              return "#2196f3";
             default:
-              return "#757575"; // Grey
+              return "#757575";
           }
         };
-
         return (
           <span style={{ color: getStatusColor(stName), fontWeight: "bold" }}>
             {stName}
@@ -936,215 +884,214 @@ const handleAddRenewal = async () => {
         </Box>
       ),
     },
-];
+  ];
 
-const walkInColumns = [
-  { 
-    field: "WalkInID", 
-    headerName: "Walk-In ID", 
-    width: 100,
-    renderCell: (params) => params.value ?? "—"
-  },
-  { 
-    field: "FullName", 
-    headerName: "Full Name", 
-    width: 160,
-    renderCell: (params) => params.value ?? "—"
-  },
-  {
-    field: "VisitDate",
-    headerName: "Visit Date",
-    width: 300,
-    renderCell: (params) => params.value ? formatDateTime(params.value) : "—",
-  },
-  { 
-    field: "PaymentID", 
-    headerName: "Payment ID", 
-    width: 110,
-    renderCell: (params) => params.value ?? "—"
-  },
-  { 
-    field: "Notes", 
-    headerName: "Notes", 
-    width: 150,
-    renderCell: (params) => params.value ?? "—"
-  },
-  {
-    field: "Actions",
-    headerName: "Actions",
-    width: 250,
-    sortable: false,
-    renderCell: (params) => (
-      <Box sx={{ display: "flex", gap: 1 }}>
-        <Tooltip title="View">
+  const walkInColumns = [
+    { 
+      field: "WalkInID", 
+      headerName: "Walk-In ID", 
+      width: 100,
+      renderCell: (params) => params.value ?? "—"
+    },
+    { 
+      field: "FullName", 
+      headerName: "Full Name", 
+      width: 160,
+      renderCell: (params) => params.value ?? "—"
+    },
+    {
+      field: "VisitDate",
+      headerName: "Visit Date",
+      width: 300,
+      renderCell: (params) => params.value ? formatDateTime(params.value) : "—",
+    },
+    { 
+      field: "PaymentID", 
+      headerName: "Payment ID", 
+      width: 110,
+      renderCell: (params) => params.value ?? "—"
+    },
+    { 
+      field: "Notes", 
+      headerName: "Notes", 
+      width: 150,
+      renderCell: (params) => params.value ?? "—"
+    },
+    {
+      field: "Actions",
+      headerName: "Actions",
+      width: 250,
+      sortable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title="View">
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#4caf50", color: "#fff", minWidth: 40 }}
+              onClick={() => handleViewWalkIn(params.row)}
+            >
+              <VisibilityIcon fontSize="small" />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Edit">
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#2196f3", color: "#fff", minWidth: 40 }}
+              onClick={() => handleEditWalkIn(params.row)}
+            >
+              <EditIcon fontSize="small" />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
+              onClick={() => openDeleteDialog("walkin", params.row.WalkInID)}
+            >
+              <DeleteIcon fontSize="small" />
+            </Button>
+          </Tooltip>
+        </Box>
+      ),
+    },
+  ];
+
+  const renewalColumns = [
+    {
+      field: "MemberID",
+      headerName: "Member Name",
+      width: 160,
+      renderCell: (params) => {
+        const memberId = Number(params.value);
+        if (!memberId) return "—";
+        const member = membershipRecords.find((m) => m.MemberID === memberId);
+        return member ? member.FullName : "—";
+      },
+    },
+    { 
+      field: "RenewalDate", 
+      headerName: "Renewal Date", 
+      width: 150,
+      renderCell: (params) => params.value ? formatDate(params.value) : "—",
+    },
+    {
+      field: "PlanID",
+      headerName: "Plan",
+      width: 280,
+      renderCell: (params) => {
+        const pid = Number(params.value);
+        if (!pid) return "—";
+        const plan = plans.find((pl) => pl.PlanID === pid);
+        return plan ? plan.PlanName : "—";
+      },
+    },
+    { 
+      field: "RenewalAmount", 
+      headerName: "Amount", 
+      width: 100,
+      renderCell: (params) => formatCurrency(params.value),
+    },
+    {
+      field: "Actions",
+      headerName: "Actions",
+      width: 240,
+      sortable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 1 }}>
           <Button
             variant="contained"
             sx={{ backgroundColor: "#4caf50", color: "#fff", minWidth: 40 }}
-            onClick={() => handleViewWalkIn(params.row)}
+            onClick={() => handleViewRenewal(params.row)}
           >
             <VisibilityIcon fontSize="small" />
           </Button>
-        </Tooltip>
-        <Tooltip title="Edit">
           <Button
             variant="contained"
             sx={{ backgroundColor: "#2196f3", color: "#fff", minWidth: 40 }}
-            onClick={() => handleEditWalkIn(params.row)}
+            onClick={() => handleEditRenewal(params.row)}
           >
             <EditIcon fontSize="small" />
           </Button>
-        </Tooltip>
-        <Tooltip title="Delete">
           <Button
             variant="contained"
             sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
-            onClick={() => openDeleteDialog("walkin", params.row.WalkInID)}
+            onClick={() => openDeleteDialog("renewal", params.row.RenewalID)}
           >
             <DeleteIcon fontSize="small" />
           </Button>
-        </Tooltip>
-      </Box>
-    ),
-  },
-];
+        </Box>
+      ),
+    },
+  ];
 
-const renewalColumns = [
-  {
-    field: "MemberID",
-    headerName: "Member Name",
-    width: 160,
-    renderCell: (params) => {
-      const memberId = Number(params.value);
-      if (!memberId) return "—";
-      const member = membershipRecords.find((m) => m.MemberID === memberId);
-      return member ? member.FullName : "—";
+  const freezeColumns = [
+    {
+      field: "StartedBranchID",
+      headerName: "Branch",
+      width: 180,
+      renderCell: (params) => {
+        return branches[params.value] || "—"; 
+      },
+    },    
+    {
+      field: "MemberName",
+      headerName: "Member Name",
+      width: 160,
+      renderCell: (params) => {
+        if (!params.row.MemberID) return "—";
+        const member = membershipRecords.find((m) => m.MemberID === params.row.MemberID);
+        return member ? member.FullName : "—";
+      },
     },
-  },
-  { 
-    field: "RenewalDate", 
-    headerName: "Renewal Date", 
-    width: 150,
-    renderCell: (params) => params.value ? formatDate(params.value) : "—",
-  },
-  {
-    field: "PlanID",
-    headerName: "Plan",
-    width: 280,
-    renderCell: (params) => {
-      const pid = Number(params.value);
-      if (!pid) return "—";
-      const plan = plans.find((pl) => pl.PlanID === pid);
-      return plan ? plan.PlanName : "—";
+    { 
+      field: "FreezeStartDate", 
+      headerName: "Start Date", 
+      width: 180,
+      renderCell: (params) => params.value ? formatDate(params.value) : "—",
     },
-  },
-  { 
-    field: "RenewalAmount", 
-    headerName: "Amount", 
-    width: 100,
-    renderCell: (params) => formatCurrency(params.value),
-  },
-  {
-    field: "Actions",
-    headerName: "Actions",
-    width: 240,
-    sortable: false,
-    renderCell: (params) => (
-      <Box sx={{ display: "flex", gap: 1 }}>
-        <Button
-          variant="contained"
-          sx={{ backgroundColor: "#4caf50", color: "#fff", minWidth: 40 }}
-          onClick={() => handleViewRenewal(params.row)}
-        >
-          <VisibilityIcon fontSize="small" />
-        </Button>
-        <Button
-          variant="contained"
-          sx={{ backgroundColor: "#2196f3", color: "#fff", minWidth: 40 }}
-          onClick={() => handleEditRenewal(params.row)}
-        >
-          <EditIcon fontSize="small" />
-        </Button>
-        <Button
-          variant="contained"
-          sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
-          onClick={() => openDeleteDialog("renewal", params.row.RenewalID)}
-        >
-          <DeleteIcon fontSize="small" />
-        </Button>
-      </Box>
-    ),
-  },
-];
-
-const freezeColumns = [
-  {
-    field: "StartedBranchID",
-    headerName: "Branch",
-    width: 180,
-    renderCell: (params) => {
-      return branches[params.value] || "—"; 
+    { 
+      field: "FreezeEndDate", 
+      headerName: "End Date", 
+      width: 180,
+      renderCell: (params) => params.value ? formatDate(params.value) : "—",
     },
-  },    
-  {
-    field: "MemberName",
-    headerName: "Member Name",
-    width: 160,
-    renderCell: (params) => {
-      if (!params.row.MemberID) return "—";
-      const member = membershipRecords.find((m) => m.MemberID === params.row.MemberID);
-      return member ? member.FullName : "—";
+    { 
+      field: "Reason", 
+      headerName: "Reason", 
+      width: 150,
+      renderCell: (params) => params.value ?? "—",
     },
-  },
-  { 
-    field: "FreezeStartDate", 
-    headerName: "Start Date", 
-    width: 180,
-    renderCell: (params) => params.value ? formatDate(params.value) : "—",
-  },
-  { 
-    field: "FreezeEndDate", 
-    headerName: "End Date", 
-    width: 180,
-    renderCell: (params) => params.value ? formatDate(params.value) : "—",
-  },
-  { 
-    field: "Reason", 
-    headerName: "Reason", 
-    width: 150,
-    renderCell: (params) => params.value ?? "—",
-  },
-  {
-    field: "Actions",
-    headerName: "Actions",
-    width: 240,
-    renderCell: (params) => (
-      <Box sx={{ display: "flex", gap: 1 }}>
-        <Button
-          variant="contained"
-          sx={{ backgroundColor: "#4caf50", color: "#fff", minWidth: 40 }}
-          onClick={() => handleViewFreeze(params.row)}
-        >
-          <VisibilityIcon fontSize="small" />
-        </Button>
-        <Button
-          variant="contained"
-          sx={{ backgroundColor: "#2196f3", color: "#fff", minWidth: 40 }}
-          onClick={() => handleEditFreeze(params.row)}
-        >
-          <EditIcon fontSize="small" />
-        </Button>
-        <Button
-          variant="contained"
-          sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
-          onClick={() => openUnfreezeDialog("freeze", params.row.FreezeID)}
-        >
-          <AcUnitIcon fontSize="small" />
-        </Button>
-      </Box>
-    ),
-  },
-];
-
+    {
+      field: "Actions",
+      headerName: "Actions",
+      width: 240,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Button
+            variant="contained"
+            sx={{ backgroundColor: "#4caf50", color: "#fff", minWidth: 40 }}
+            onClick={() => handleViewFreeze(params.row)}
+          >
+            <VisibilityIcon fontSize="small" />
+          </Button>
+          <Button
+            variant="contained"
+            sx={{ backgroundColor: "#2196f3", color: "#fff", minWidth: 40 }}
+            onClick={() => handleEditFreeze(params.row)}
+          >
+            <EditIcon fontSize="small" />
+          </Button>
+          <Button
+            variant="contained"
+            sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
+            onClick={() => openUnfreezeDialog("freeze", params.row.FreezeID)}
+          >
+            <AcUnitIcon fontSize="small" />
+          </Button>
+        </Box>
+      ),
+    },
+  ];
 
   const logColumns = [
     { field: "UserID", headerName: "User ID", width: 100 },
@@ -1176,7 +1123,7 @@ const freezeColumns = [
     },
   ];
 
-  // Filter rows by tab
+  // Modified getFilteredData for memberships to support expiring soon & expired filters
   function getFilteredData() {
     const applyBranchAndSearch = (arr) =>
       arr.filter((item) => {
@@ -1187,8 +1134,33 @@ const freezeColumns = [
         );
         return branchMatches && searchMatches;
       });
-  
-    if (activeTab === 0) return applyBranchAndSearch(membershipRecords);
+      
+    if (activeTab === 0) {
+      let data = membershipRecords;
+
+      // Expiring Soon filter
+      if (filterExpiring) {
+        const today = new Date();
+        const next7 = new Date();
+        next7.setDate(today.getDate() + 7);
+        data = data.filter((m) => {
+          if (!m?.MembershipEndDate) return false;
+          const endDate = new Date(m.MembershipEndDate);
+          return endDate > today && endDate <= next7;
+        });
+      }
+
+      // Expired filter (case-insensitive check)
+      if (filterExpired) {
+        data = data.filter((m) => {
+          const statusName = getStatusNameByID(m.MemberStatusID);
+          return statusName?.toLowerCase() === "expired";
+        });
+      }
+
+      return applyBranchAndSearch(data);
+    }
+
     if (activeTab === 1) return applySearchFilter(walkInRecords);
     if (activeTab === 2) return applySearchFilter(renewalRecords);
     if (activeTab === 3) return applyBranchAndSearch(freezeRecords); 
@@ -1203,7 +1175,6 @@ const freezeColumns = [
   else if (activeTab === 3) columns = freezeColumns;
   else columns = logColumns;
 
-  // Unique ID for each tab
   const getRowId = (row) => {
     if (activeTab === 0) return row.MemberID;
     if (activeTab === 1) return row.WalkInID;
@@ -1221,16 +1192,13 @@ const freezeColumns = [
   const [csvHeaders, setCsvHeaders] = useState([]);
   const [csvFilename, setCsvFilename] = useState("export.csv");
 
-
   const handleExportCSV = () => {
     handleExportMenuClose();
-  
     let headers = [];
     let data = [];
     let filename = "";
-  
+
     if (activeTab === 0) {
-      // Memberships
       headers = [
         { label: "Member ID", key: "MemberID" },
         { label: "Full Name", key: "FullName" },
@@ -1243,7 +1211,6 @@ const freezeColumns = [
         { label: "Free Sessions", key: "FreeSessions" },
         { label: "Notes", key: "Notes" },
       ];
-  
       data = rows.map((m) => ({
         MemberID: m.MemberID,
         FullName: m.FullName,
@@ -1256,10 +1223,9 @@ const freezeColumns = [
         FreeSessions: m.FreeSessions || "0",
         Notes: m.Notes || "—",
       }));
-  
       filename = "Memberships.csv";
+
     } else if (activeTab === 1) {
-      // Walk-Ins
       headers = [
         { label: "Walk-In ID", key: "WalkInID" },
         { label: "Full Name", key: "FullName" },
@@ -1268,7 +1234,6 @@ const freezeColumns = [
         { label: "Amount Paid", key: "AmountPaid" },
         { label: "Notes", key: "Notes" },
       ];
-  
       data = rows.map((w) => ({
         WalkInID: w.WalkInID,
         FullName: w.FullName,
@@ -1277,10 +1242,9 @@ const freezeColumns = [
         AmountPaid: `₱${parseFloat(w.AmountPaid || 0).toFixed(2)}`,
         Notes: w.Notes || "—",
       }));
-  
       filename = "WalkIns.csv";
+
     } else if (activeTab === 2) {
-      // Renewals
       headers = [
         { label: "Renewal ID", key: "RenewalID" },
         { label: "Member ID", key: "MemberID" },
@@ -1288,7 +1252,6 @@ const freezeColumns = [
         { label: "Plan", key: "PlanID" },
         { label: "Amount", key: "RenewalAmount" },
       ];
-  
       data = rows.map((r) => ({
         RenewalID: r.RenewalID,
         MemberID: r.MemberID,
@@ -1296,10 +1259,9 @@ const freezeColumns = [
         PlanID: plans.find((p) => p.PlanID === r.PlanID)?.PlanName || "Unknown",
         RenewalAmount: `₱${parseFloat(r.RenewalAmount || 0).toFixed(2)}`,
       }));
-  
       filename = "Renewals.csv";
+
     } else if (activeTab === 3) {
-      // Freezes
       headers = [
         { label: "Freeze ID", key: "FreezeID" },
         { label: "Member ID", key: "MemberID" },
@@ -1307,7 +1269,6 @@ const freezeColumns = [
         { label: "End Date", key: "FreezeEndDate" },
         { label: "Reason", key: "Reason" },
       ];
-  
       data = rows.map((f) => ({
         FreezeID: f.FreezeID,
         MemberID: f.MemberID,
@@ -1315,21 +1276,18 @@ const freezeColumns = [
         FreezeEndDate: formatDate(f.FreezeEndDate),
         Reason: f.Reason || "—",
       }));
-  
       filename = "Freezes.csv";
     }
-  
+
     if (data.length === 0) {
       alert("No data available for export!");
       return;
     }
-  
-    // ✅ Set CSV data in state so it can be accessed in CSVLink
     setCsvHeaders(headers);
     setCsvData(data);
     setCsvFilename(filename);
   };
-  
+
   const handleExportPDF = () => {
     handleExportMenuClose();
     const doc = new jsPDF({
@@ -1337,16 +1295,13 @@ const freezeColumns = [
       unit: "pt",
       format: "A4"
     });
-  
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    
     const coverPage = "/imgs/coverpage2.png";
-    
     let tableHeaders = [];
     let tableBody = [];
     let title = "";
-    
+
     if (activeTab === 0) {
       title = "Memberships Report";
       tableHeaders = ["ID", "Full Name", "Email", "Plan", "Status", "Start Date", "End Date", "Notes"];
@@ -1360,6 +1315,7 @@ const freezeColumns = [
         formatDate(m.MembershipEndDate),
         m.Notes || "—"
       ]);
+
     } else if (activeTab === 1) {
       title = "Walk-In Report";
       tableHeaders = ["ID", "Name", "Visit Date", "Payment Method", "Amount Paid", "Notes"];
@@ -1371,6 +1327,7 @@ const freezeColumns = [
         Number(w.AmountPaid || 0).toFixed(2),
         w.Notes || "—"
       ]);
+
     } else if (activeTab === 2) {
       title = "Renewal Report";
       tableHeaders = ["ID", "Member Name", "Renewal Date", "Plan", "Amount"];
@@ -1381,6 +1338,7 @@ const freezeColumns = [
         plans.find((p) => p.PlanID === r.PlanID)?.PlanName || "Unknown",
         parseFloat(r.RenewalAmount || 0).toFixed(2)
       ]);
+
     } else if (activeTab === 3) {
       title = "Freeze Report";
       tableHeaders = ["ID", "Member Name", "Branch", "Start Date", "End Date", "Reason"];
@@ -1393,21 +1351,16 @@ const freezeColumns = [
         f.Reason || "—"
       ]);
     }
-    
-    // Sort the tableBody by the first column (ID)
+
     tableBody.sort((a, b) => a[0] - b[0]);
-    
-    // Add cover page background and header text
     doc.addImage(coverPage, "PNG", 0, 0, pageWidth, pageHeight);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(24);
     doc.setTextColor("#ffffff");
     doc.text(title, pageWidth / 2, 100, { align: "center" });
-    
     doc.setFontSize(14);
     doc.text("Generated on: " + new Date().toLocaleDateString(), pageWidth / 2, 130, { align: "center" });
-    
-    // Create the table starting lower to avoid overlapping header content
+
     doc.autoTable({
       head: [tableHeaders],
       body: tableBody,
@@ -1435,7 +1388,6 @@ const freezeColumns = [
       margin: { top: 50, left: 20, right: 20, bottom: 20 },
       didParseCell: (data) => {
         if (activeTab === 0 && data.column.index === 4) {
-          // Status column: adjust text color based on status
           const statusText = data.cell.raw;
           const statusColor = (status) => {
             switch (status?.toLowerCase()) {
@@ -1453,54 +1405,41 @@ const freezeColumns = [
         }
       }
     });
-    
+
     const pdfFilename = 
       activeTab === 0 ? "MembershipList.pdf" :
       activeTab === 1 ? "WalkInsList.pdf" :
       activeTab === 2 ? "RenewalsList.pdf" : "FreezesList.pdf";
-    
     doc.save(pdfFilename);
   };
-  
-    // This is called after user clicks "Yes, Unfreeze" in the confirmation dialog
-    const [isUnfreezeDialogOpen, setUnfreezeDialogOpen] = useState(false);
-    const [freezeToUnfreeze, setFreezeToUnfreeze] = useState(null);
 
-    const openUnfreezeDialog = (type, freezeID) => {
-      if (type === "freeze") {
-        setFreezeToUnfreeze(freezeID);
-        setUnfreezeDialogOpen(true);
-      }
-    };
-    const handleUnfreezeMember = async () => {
-      if (!freezeToUnfreeze) return;
+  const [isUnfreezeDialogOpen, setUnfreezeDialogOpen] = useState(false);
+  const [freezeToUnfreeze, setFreezeToUnfreeze] = useState(null);
 
-      try {
-        await axios.delete(`/membership/freezes/${freezeToUnfreeze}`);
+  const openUnfreezeDialog = (type, freezeID) => {
+    if (type === "freeze") {
+      setFreezeToUnfreeze(freezeID);
+      setUnfreezeDialogOpen(true);
+    }
+  };
+  const handleUnfreezeMember = async () => {
+    if (!freezeToUnfreeze) return;
+    try {
+      await axios.delete(`/membership/freezes/${freezeToUnfreeze}`);
+      setFreezeRecords((prev) => prev.filter((f) => f.FreezeID !== freezeToUnfreeze));
+      const refreshed = await axios.get("/membership/members");
+      setMembershipRecords(refreshed.data.members || []);
+      setUnfreezeDialogOpen(false);
+      showSuccessMessage("Member successfully unfrozen!");
+    } catch (err) {
+      console.error("Error unfreezing member:", err);
+      alert("Error. Check console for details.");
+    }
+  };
 
-        // Remove the freeze from state
-        setFreezeRecords((prev) => prev.filter((f) => f.FreezeID !== freezeToUnfreeze));
-
-        // Fetch updated members to reflect status change
-        const refreshed = await axios.get("/membership/members");
-        setMembershipRecords(refreshed.data.members || []);
-
-        setUnfreezeDialogOpen(false);
-        showSuccessMessage("Member successfully unfrozen!");
-      } catch (err) {
-        console.error("Error unfreezing member:", err);
-        alert("Error. Check console for details.");
-      }
-    };
-
-
-
-  
-  // This is called after user clicks "Yes, Delete" in the confirmation dialog
   const confirmDelete = () => {
     setDeleteDialogOpen(false);
     if (!deleteInfo.id || !deleteInfo.type) return;
-
     switch (deleteInfo.type) {
       case "membership":
         handleDeleteMembership(deleteInfo.id);
@@ -1563,37 +1502,54 @@ const freezeColumns = [
             </CardContent>
           </Card>
         </Grid>
-
         <Grid item xs={12} sm={6} md={3}>
+          {/* Expired Card now clickable */}
           <Card
+            onClick={() => {
+              setActiveTab(0);
+              setFilterExpired((prev) => !prev);
+              setFilterExpiring(false); // reset other filter
+            }}
             sx={{
+              cursor: "pointer",
               bgcolor: "text.primary",
               color: "background.paper",
               p: 1.5,
               display: "flex",
               alignItems: "center",
               boxShadow: 2,
+              ...(filterExpired && { border: "2px solid blue" }),
             }}
           >
             <WarningIcon sx={{ fontSize: 30, color: "red", mr: 1.5 }} />
             <CardContent sx={{ p: 0.5 }}>
               <Typography variant="body2">Expired</Typography>
               <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                {expiredMemberships}
+                {
+                  membershipRecords.filter(
+                    (m) => getStatusNameByID(m.MemberStatusID)?.toLowerCase() === "expired"
+                  ).length
+                }
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-
         <Grid item xs={12} sm={6} md={3}>
           <Card
+            onClick={() => {
+              setActiveTab(0);
+              setFilterExpiring((prev) => !prev);
+              setFilterExpired(false); // reset the other filter
+            }}
             sx={{
+              cursor: "pointer",
               bgcolor: "text.primary",
               color: "background.paper",
               p: 1.5,
               display: "flex",
               alignItems: "center",
               boxShadow: 2,
+              ...(filterExpiring && { border: "2px solid blue" }),
             }}
           >
             <EventAvailableIcon sx={{ fontSize: 30, color: "blue", mr: 1.5 }} />
@@ -1620,103 +1576,89 @@ const freezeColumns = [
 
       <Paper elevation={2} sx={{ p: 2 }}>
         {/* Toolbar Container */}
-         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-        <Grid container spacing={2} alignItems="center" sx={{ flexWrap: "wrap" }}>
-          {/* Branch Filter Dropdown */}
-          <Grid item>
-          <FormControl variant="outlined" size="small" sx={{ width: 150 }}>
-            <InputLabel>Branch</InputLabel>
-            <Select
-              value={branchFilter} // ✅ Set selected value
-              onChange={(e) => setBranchFilter(e.target.value)} // ✅ Handle selection
-              label="Branch"
-            >
-              <MenuItem value="all">All Branches</MenuItem> {/* ✅ Option to show all */}
-              {Object.entries(branches).map(([BranchID, BranchName]) => (
-                <MenuItem key={BranchID} value={BranchID}>
-                  {BranchName}
+        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+          <Grid container spacing={2} alignItems="center" sx={{ flexWrap: "wrap" }}>
+            <Grid item>
+              <FormControl variant="outlined" size="small" sx={{ width: 150 }}>
+                <InputLabel>Branch</InputLabel>
+                <Select
+                  value={branchFilter}
+                  onChange={(e) => setBranchFilter(e.target.value)}
+                  label="Branch"
+                >
+                  <MenuItem value="all">All Branches</MenuItem>
+                  {Object.entries(branches).map(([BranchID, BranchName]) => (
+                    <MenuItem key={BranchID} value={BranchID}>
+                      {BranchName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs>
+              <TextField
+                variant="outlined"
+                size="small"
+                placeholder="Search..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                fullWidth
+                sx={{ maxWidth: 350 }}
+              />
+            </Grid>
+            <Grid item sx={{ ml: "auto", display: "flex", gap: 1 }}>
+              <Button
+                variant="outlined"
+                startIcon={<FileDownloadIcon />}
+                onClick={(e) => setExportAnchorEl(e.currentTarget)}
+                sx={{ textTransform: "none" }}
+              >
+                Export
+              </Button>
+              <Menu
+                anchorEl={exportAnchorEl}
+                open={openExportMenu}
+                onClose={handleExportMenuClose}
+                anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+              >
+                <MenuItem onClick={handleExportCSV}>
+                  <CSVLink
+                    data={csvData}
+                    headers={csvHeaders}
+                    filename={csvFilename}
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
+                    Export CSV
+                  </CSVLink>
                 </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          </Grid>
-
-          {/* Search Field */}
-          <Grid item xs>
-            <TextField
-              variant="outlined"
-              size="small"
-              placeholder="Search..."
-              value={searchTerm}
-              onChange={handleSearchChange}
-              fullWidth
-              sx={{ maxWidth: 350 }}
-            />
-          </Grid>
-
-          {/* Buttons Group (Right-aligned) */}
-          <Grid item sx={{ ml: "auto", display: "flex", gap: 1 }}>
-            {/* Export Button */}
-            <Button
-              variant="outlined"
-              startIcon={<FileDownloadIcon />}
-              onClick={(e) => setExportAnchorEl(e.currentTarget)}
-              sx={{ textTransform: "none" }}
-            >
-              Export
-            </Button>
-            <Menu
-              anchorEl={exportAnchorEl}
-              open={openExportMenu}
-              onClose={handleExportMenuClose}
-              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-            >
-          <MenuItem onClick={handleExportCSV}>
-          <CSVLink
-            data={csvData}
-            headers={csvHeaders}
-            filename={csvFilename}
-            style={{ textDecoration: "none", color: "inherit" }}
-          >
-            Export CSV
-          </CSVLink>
-        </MenuItem>
-
-              <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
-            </Menu>
-
-            {/* Manage Plans Button */}
-            <Button variant="outlined" onClick={() => setManagePlansOpen(true)}>
-              Manage Plans and Promotions
-            </Button>
-
-            {/* Dynamic Add Buttons */}
-            {activeTab === 0 && (
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => setAddMembershipLayoutVisible(true)}
-              >
-                Add Member
+                <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
+              </Menu>
+              <Button variant="outlined" onClick={() => setManagePlansOpen(true)}>
+                Manage Plans and Promotions
               </Button>
-            )}
-            {activeTab === 1 && (
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => setAddWalkInOpen(true)}
-              >
-                Add Walk-In
-              </Button>
-            )}
-           
+              {activeTab === 0 && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<AddIcon />}
+                  onClick={() => setAddMembershipLayoutVisible(true)}
+                >
+                  Add Member
+                </Button>
+              )}
+              {activeTab === 1 && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<AddIcon />}
+                  onClick={() => setAddWalkInOpen(true)}
+                >
+                  Add Walk-In
+                </Button>
+              )}
+            </Grid>
           </Grid>
-        </Grid>
         </Box>
-        {/* Data Grid */}
         <Box style={{ height: 510, width: "100%", mt: 2 }}>
           <DataGrid
             rows={rows}
@@ -1728,45 +1670,31 @@ const freezeColumns = [
         </Box>
       </Paper>
 
-      {/* Add Member Layout */}
       {isAddMembershipLayoutVisible && (
         <AddNewMemberLayout
           onClose={() => setAddMembershipLayoutVisible(false)}
           onMemberCreated={handleNewMemberCreated}
         />
       )}
-
-      {/* Manage Plans Layout */}
       {isManagePlansOpen && <ManagePlansLayout onClose={() => setManagePlansOpen(false)} />}
 
       {/* ADD Walk-In Dialog */}
       <Dialog open={isAddWalkInOpen} onClose={() => setAddWalkInOpen(false)} fullWidth maxWidth="sm">
-        {/* DIALOG TITLE */}
         <DialogTitle>
           <Box display="flex" justifyContent="space-between" alignItems="center">
-            
             <Typography variant="h5">
-            <PersonIcon sx={{ verticalAlign: "middle", mr: 1 }} />Add New Walk-In</Typography>
-            <IconButton onClick={() => setAddWalkInOpen(false)} sx={{
-                color: "inherit", 
-                "&:hover": {
-                  color: "red", 
-                },
-              }}
-            >
+              <PersonIcon sx={{ verticalAlign: "middle", mr: 1 }} />Add New Walk-In
+            </Typography>
+            <IconButton onClick={() => setAddWalkInOpen(false)} sx={{ color: "inherit", "&:hover": { color: "red" } }}>
               <CloseIcon />
             </IconButton>
           </Box>
         </DialogTitle>
-
-        {/* DIALOG CONTENT */}
         <DialogContent dividers>
           <Box sx={{ p: 2 }}>
             <Divider sx={{ mb: 3 }} />
-
             <form onSubmit={(e) => e.preventDefault()}>
               <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-               {/* Full Name */}
                 <TextField
                   label="Full Name"
                   name="FullName"
@@ -1784,8 +1712,6 @@ const freezeColumns = [
                     ),
                   }}
                 />
-
-               {/* Visit Date */}
                 <TextField
                   label="Visit Date"
                   name="VisitDate"
@@ -1798,8 +1724,6 @@ const freezeColumns = [
                   onChange={handleAddWalkInChange}
                   InputLabelProps={{ shrink: true }}
                 />
-
-                {/* Payment Method */}
                 <FormControl fullWidth required error={!!validationErrors.PaymentMethod}>
                   <InputLabel>Payment Method</InputLabel>
                   <Select
@@ -1829,8 +1753,6 @@ const freezeColumns = [
                     </Typography>
                   )}
                 </FormControl>
-
-                {/* Payment Amount */}
                 <TextField
                   label="Payment Amount"
                   name="PaymentAmount"
@@ -1852,9 +1774,6 @@ const freezeColumns = [
                     ),
                   }}
                 />
-
-
-                {/* Notes */}
                 <TextField
                   label="Notes"
                   name="Notes"
@@ -1872,8 +1791,6 @@ const freezeColumns = [
                   }}
                 />
               </Box>
-
-              {/* BUTTONS */}
               <Box sx={{ mt: 4, display: "flex", flexDirection: "row", gap: 3, justifyContent: "flex-end" }}>
                 <Button
                   variant="contained"
@@ -1893,405 +1810,370 @@ const freezeColumns = [
                   Save Walk-In
                 </Button>
               </Box>
-
             </form>
           </Box>
         </DialogContent>
       </Dialog>
 
-      {/* CONFIRMATION DIALOG */}
-        <Dialog
-          open={openConfirmation}
-          onClose={() => setOpenConfirmation(false)}
-          PaperProps={{
-            sx: { borderRadius: 3, minWidth: 350 },
-          }}
-        >
-          <DialogTitle sx={{ textAlign: "center", p: 3 }}>
-            <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
-              <CheckCircleOutlineIcon sx={{ fontSize: 50, color: "primary.main" }} />
+      <Dialog
+        open={openConfirmation}
+        onClose={() => setOpenConfirmation(false)}
+        PaperProps={{ sx: { borderRadius: 3, minWidth: 350 } }}
+      >
+        <DialogTitle sx={{ textAlign: "center", p: 3 }}>
+          <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
+            <CheckCircleOutlineIcon sx={{ fontSize: 50, color: "primary.main" }} />
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              Confirm Submission
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers sx={{ textAlign: "center", py: 2 }}>
+          <Typography variant="body1">Are you sure you want to add this walk-in?</Typography>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: "center", gap: 2, py: 2 }}>
+          <Button onClick={() => setOpenConfirmation(false)} sx={{ textTransform: "none" }} style={{ color: "red" }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            sx={{ textTransform: "none" }}
+            onClick={async () => {
+              await handleAddWalkIn(); 
+              setOpenConfirmation(false);
+            }}
+          >
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={isViewWalkInOpen}
+        onClose={() => setViewWalkInOpen(false)}
+        fullWidth
+        maxWidth="lg"
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle sx={{ p: 2 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <DirectionsWalkIcon sx={{ fontSize: 32, color: "primary.main" }} />
               <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                Confirm Submission
+                Walk-in Details
               </Typography>
             </Box>
-          </DialogTitle>
-
-          <DialogContent dividers sx={{ textAlign: "center", py: 2 }}>
-            <Typography variant="body1">Are you sure you want to add this walk-in?</Typography>
-          </DialogContent>
-
-          <DialogActions sx={{ justifyContent: "center", gap: 2, py: 2 }}>
-            <Button onClick={() => setOpenConfirmation(false)} sx={{ textTransform: "none" }} style={{ color: "red" }}>
-              Cancel
-            </Button>
-            <Button
-              variant="contained"
-              color="primary"
-              sx={{ textTransform: "none" }}
-              onClick={async () => {
-                await handleAddWalkIn(); 
-                setOpenConfirmation(false);
-              }}
-            >
-              Confirm
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* VIEW WALK-IN */}
-        <Dialog
-          open={isViewWalkInOpen}
-          onClose={() => setViewWalkInOpen(false)}
-          fullWidth
-          maxWidth="lg" // Increased width for landscape layout
-          sx={{
-            "& .MuiDialog-paper": {
-              borderRadius: 3,
-              boxShadow: 6,
-              p: 3,
-              overflow: "hidden", // Prevent vertical scrolling
-            },
-          }}
-        >
-            <DialogTitle sx={{ p: 2 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <DirectionsWalkIcon sx={{ fontSize: 32, color: "primary.main" }} />
-            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-              Walk-in Details
-            </Typography>
+            <IconButton onClick={() => setViewWalkInOpen(false)} sx={{ "&:hover": { color: theme.palette.error.main } }}>
+              <CloseIcon />
+            </IconButton>
           </Box>
-          <IconButton
-            onClick={() => setViewWalkInOpen(false)}
-            sx={{ "&:hover": { color: theme.palette.error.main } }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </Box>
-      </DialogTitle>
-          {/* Content */}
-          <DialogContent dividers sx={{ p: 4 }}>
-            {selectedWalkIn && (
-              <Box sx={{ display: "flex", flexDirection: "row", gap: 4 }}>
-                <Grid container spacing={3}>
-                  {/* Left Column: Personal & Visit Details */}
-                  <Grid item xs={6}>
-                    {/* Personal Information */}
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: "bold",
-                        mb: 2,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                      }}
-                    >
-                      <PersonIcon color="primary" /> Personal Information
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      label="Full Name"
-                      variant="filled"
-                    
-                      InputProps={{ readOnly: true }}
-                      value={selectedWalkIn.FullName || "—"}
-                      sx={{ mb: 2 }}
-                    />
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 4 }}>
+          {selectedWalkIn && (
+            <Box sx={{ display: "flex", flexDirection: "row", gap: 4 }}>
+              <Grid container spacing={3}>
+                <Grid item xs={6}>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <PersonIcon color="primary" /> Personal Information
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Full Name"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={selectedWalkIn.FullName || "—"}
+                    sx={{ mb: 2 }}
+                  />
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mt: 3,
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <EventIcon color="primary" /> Visit Details
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Visit Date & Time"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={
+                      selectedWalkIn.VisitDate
+                        ? new Date(selectedWalkIn.VisitDate).toLocaleString("en-US", {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                            hour12: true,
+                          })
+                        : "—"
+                    }
+                    sx={{ mb: 2 }}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <PaymentIcon color="primary" /> Payment Details
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Payment Method"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={selectedWalkIn.PaymentMethod || "N/A"}
+                    sx={{ mb: 2 }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Payment Amount"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={
+                      selectedWalkIn.AmountPaid
+                        ? `₱${parseFloat(selectedWalkIn.AmountPaid).toFixed(2)}`
+                        : "N/A"
+                    }
+                    sx={{ mb: 2 }}
+                  />
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mt: 3,
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <NotesIcon color="primary" /> Notes
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Notes"
+                    variant="filled"
+                    multiline
+                    rows={3}
+                    InputProps={{ readOnly: true }}
+                    value={selectedWalkIn.Notes?.length ? selectedWalkIn.Notes : "No notes available."}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={isEditWalkInOpen}
+        onClose={() => setEditWalkInOpen(false)}
+        fullWidth
+        maxWidth="lg"
+        fullScreen={window.innerWidth < 600}
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle sx={{ p: 2 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <DirectionsWalkIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Edit Walk-in Details
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setEditWalkInOpen(false)} sx={{ "&:hover": { color: theme.palette.error.main } }}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 4 }}>
+          {selectedWalkIn && (
+            <Box sx={{ display: "flex", flexDirection: "row", gap: 4 }}>
+              <Grid container spacing={3}>
+                {/* Left Column: Personal & Visit Details */}
+                <Grid item xs={6}>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <PersonIcon color="primary" /> Personal Information
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Full Name"
+                    name="FullName"
+                    variant="outlined"
+                    value={selectedWalkIn.FullName || ""}
+                    onChange={(e) =>
+                      setSelectedWalkIn((prev) => ({ ...prev, FullName: e.target.value }))
+                    }
+                    sx={{ mb: 2 }}
+                  />
 
-                    {/* Visit Details */}
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: "bold",
-                        mt: 3,
-                        mb: 2,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                      }}
-                    >
-                      <EventIcon color="primary" /> Visit Details
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      label="Visit Date & Time"
-                      variant="filled"
-                      InputProps={{ readOnly: true }}
-                      value={
-                        selectedWalkIn.VisitDate
-                          ? new Date(selectedWalkIn.VisitDate).toLocaleString("en-US", {
-                              year: "numeric",
-                              month: "long",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              second: "2-digit",
-                              hour12: true, // 12-hour format with AM/PM
-                            })
-                          : "—"
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mt: 3,
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <EventIcon color="primary" /> Visit Details
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Visit Date & Time"
+                    name="VisitDate"
+                    type="datetime-local"
+                    variant="outlined"
+                    value={selectedWalkIn.VisitDate || ""}
+                    onChange={(e) =>
+                      setSelectedWalkIn((prev) => ({ ...prev, VisitDate: e.target.value }))
+                    }
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ mb: 2 }}
+                  />
+                </Grid>
+
+                {/* Right Column: Payment Details & Notes */}
+                <Grid item xs={6}>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <PaymentIcon color="primary" /> Payment Details
+                  </Typography>
+                  <FormControl fullWidth variant="outlined" sx={{ mb: 2 }}>
+                    <InputLabel>Payment Method</InputLabel>
+                    <Select
+                      name="PaymentMethod"
+                      value={selectedWalkIn.PaymentMethod || ""}
+                      onChange={(e) =>
+                        setSelectedWalkIn((prev) => ({ ...prev, PaymentMethod: e.target.value }))
                       }
-                      sx={{ mb: 2 }}
-                    />
-                  </Grid>
-
-                  {/* Right Column: Payment Details & Notes */}
-                  <Grid item xs={6}>
-                    {/* Payment Details */}
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: "bold",
-                        mb: 2,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                      }}
-                    >
-                      <PaymentIcon color="primary" /> Payment Details
-                    </Typography>
-                    <TextField
-                      fullWidth
                       label="Payment Method"
-                      variant="filled"
-                      InputProps={{ readOnly: true }}
-                      value={selectedWalkIn.PaymentMethod || "N/A"}
-                      sx={{ mb: 2 }}
-                    />
-                    <TextField
-                      fullWidth
-                      label="Payment Amount"
-                      variant="filled"
-                      InputProps={{ readOnly: true }}
-                      value={
-                        selectedWalkIn.AmountPaid
-                          ? `₱${parseFloat(selectedWalkIn.AmountPaid).toFixed(2)}`
-                          : "N/A"
-                      }
-                      sx={{ mb: 2 }}
-                    />
-
-                    {/* Notes */}
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: "bold",
-                        mt: 3,
-                        mb: 2,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                      }}
                     >
-                      <NotesIcon color="primary" /> Notes
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      label="Notes"
-                      variant="filled"
-                      multiline
-                      rows={3}
-                      InputProps={{ readOnly: true }}
-                      value={selectedWalkIn.Notes?.length ? selectedWalkIn.Notes : "No notes available."}
-                    />
-                  </Grid>
-                </Grid>
-              </Box>
-            )}
-          </DialogContent>
-        </Dialog>
+                      <MenuItem value="">-- Select Payment Method --</MenuItem>
+                      <MenuItem value="Cash">Cash</MenuItem>
+                      <MenuItem value="BDO">BDO</MenuItem>
+                      <MenuItem value="BPI">BPI</MenuItem>
+                      <MenuItem value="GCash">GCash</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    fullWidth
+                    label="Payment Amount"
+                    name="AmountPaid"
+                    type="number"
+                    variant="outlined"
+                    value={selectedWalkIn.AmountPaid || ""}
+                    onChange={(e) =>
+                      setSelectedWalkIn((prev) => ({ ...prev, AmountPaid: e.target.value }))
+                    }
+                    sx={{ mb: 2 }}
+                  />
 
-    {/* EDIT WALK-IN */}
-        <Dialog
-          open={isEditWalkInOpen}
-          onClose={() => setEditWalkInOpen(false)}
-          fullWidth
-          maxWidth="lg" // Increased width for landscape layout
-          fullScreen={window.innerWidth < 600} // Full-screen on mobile
-          sx={{
-            "& .MuiDialog-paper": {
-              borderRadius: 3,
-              boxShadow: 6,
-              p: 3,
-              overflow: "hidden", // Prevent vertical scrolling
-            },
-          }}
-        >
-            <DialogTitle sx={{ p: 2 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <DirectionsWalkIcon sx={{ fontSize: 32, color: "primary.main" }} />
-            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-              Edit Walk-in Details
-            </Typography>
-          </Box>
-          <IconButton
-            onClick={() => setEditWalkInOpen(false)}
-            sx={{ "&:hover": { color: theme.palette.error.main } }}
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mt: 3,
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <NotesIcon color="primary" /> Notes
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Notes"
+                    name="Notes"
+                    variant="outlined"
+                    multiline
+                    rows={3}
+                    value={selectedWalkIn.Notes || ""}
+                    onChange={(e) =>
+                      setSelectedWalkIn((prev) => ({ ...prev, Notes: e.target.value }))
+                    }
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+          <Button
+            variant="contained"
+            onClick={handleEditWalkInSubmit}
+            sx={{
+              px: 4,
+              py: 1,
+              fontSize: "1rem",
+              fontWeight: "bold",
+              borderRadius: 2,
+              textTransform: "none",
+            }}
+            startIcon={<SaveIcon />}
           >
-            <CloseIcon />
-          </IconButton>
-        </Box>
-      </DialogTitle>
-
-          {/* Content */}
-          <DialogContent dividers sx={{ p: 4 }}>
-            {selectedWalkIn && (
-              <Box sx={{ display: "flex", flexDirection: "row", gap: 4 }}>
-                <Grid container spacing={3}>
-                  {/* Left Column: Personal & Visit Details */}
-                  <Grid item xs={6}>
-                    {/* Personal Information */}
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: "bold",
-                        mb: 2,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                      }}
-                    >
-                      <PersonIcon color="primary" /> Personal Information
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      label="Full Name"
-                      name="FullName"
-                      variant="outlined"
-                      value={selectedWalkIn.FullName || ""}
-                      onChange={(e) =>
-                        setSelectedWalkIn((prev) => ({ ...prev, FullName: e.target.value }))
-                      }
-                      sx={{ mb: 2 }}
-                    />
-
-                    {/* Visit Details */}
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: "bold",
-                        mt: 3,
-                        mb: 2,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                      }}
-                    >
-                      <EventIcon color="primary" /> Visit Details
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      label="Visit Date & Time"
-                      name="VisitDate"
-                      type="datetime-local"
-                      variant="outlined"
-                      value={selectedWalkIn.VisitDate || ""}
-                      onChange={(e) =>
-                        setSelectedWalkIn((prev) => ({ ...prev, VisitDate: e.target.value }))
-                      }
-                      InputLabelProps={{ shrink: true }}
-                      sx={{ mb: 2 }}
-                    />
-                  </Grid>
-
-                  {/* Right Column: Payment Details & Notes */}
-                  <Grid item xs={6}>
-                    {/* Payment Details */}
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: "bold",
-                        mb: 2,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                      }}
-                    >
-                      <PaymentIcon color="primary" /> Payment Details
-                    </Typography>
-                    <FormControl fullWidth variant="outlined" sx={{ mb: 2 }}>
-                      <InputLabel>Payment Method</InputLabel>
-                      <Select
-                        name="PaymentMethod"
-                        value={selectedWalkIn.PaymentMethod || ""}
-                        onChange={(e) =>
-                          setSelectedWalkIn((prev) => ({ ...prev, PaymentMethod: e.target.value }))
-                        }
-                        label="Payment Method"
-                      >
-                        <MenuItem value="">-- Select Payment Method --</MenuItem>
-                        <MenuItem value="Cash">Cash</MenuItem>
-                        <MenuItem value="BDO">BDO</MenuItem>
-                        <MenuItem value="BPI">BPI</MenuItem>
-                        <MenuItem value="GCash">GCash</MenuItem>
-                      </Select>
-                    </FormControl>
-                    <TextField
-                      fullWidth
-                      label="Payment Amount"
-                      name="AmountPaid"
-                      type="number"
-                      variant="outlined"
-                      value={selectedWalkIn.AmountPaid || ""}
-                      onChange={(e) =>
-                        setSelectedWalkIn((prev) => ({ ...prev, AmountPaid: e.target.value }))
-                      }
-                      sx={{ mb: 2 }}
-                    />
-
-                    {/* Notes */}
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: "bold",
-                        mt: 3,
-                        mb: 2,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                      }}
-                    >
-                      <NotesIcon color="primary" /> Notes
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      label="Notes"
-                      name="Notes"
-                      variant="outlined"
-                      multiline
-                      rows={3}
-                      value={selectedWalkIn.Notes || ""}
-                      onChange={(e) =>
-                        setSelectedWalkIn((prev) => ({ ...prev, Notes: e.target.value }))
-                      }
-                    />
-                  </Grid>
-                </Grid>
-              </Box>
-            )}
-          </DialogContent>
-
-          {/* Actions */}
-          <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
-        <Button
-          variant="contained"
-          onClick={handleEditWalkInSubmit}
-          sx={{
-            px: 4,
-            py: 1,
-            fontSize: "1rem",
-            fontWeight: "bold",
-            borderRadius: 2,
-            textTransform: "none",
-          }}
-          startIcon={<SaveIcon />}
-        >
-          Save Changes
-        </Button>
-      </DialogActions>
-        </Dialog>
-
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
       {/* VIEW Membership */}
       <Dialog
         open={isViewMembershipOpen}
