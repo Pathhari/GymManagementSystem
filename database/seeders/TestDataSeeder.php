@@ -64,31 +64,15 @@ class TestDataSeeder extends Seeder
         for ($i = 1; $i <= 2; $i++) {
             $branches[] = Branch::create([
                 'BranchName' => "Contnental Branch $i",
-                'Location'   => $faker->streetAddress,
+                'Location'   => "Sputnik St., Torres Ave., Davao City",
             ]);
         }
-        // 2) Owners and Admins
+        // 2) Owners 
         Owner::create([
             'name'     => 'Juan dela Cruz (Owner)',
             'email'    => 'owner@example.com',
             'password' => Hash::make('owner123'),
         ]);
-        // 3) Membership Plans
-        $planLockIn = MembershipPlan::create([
-            'PlanName'     => 'New Member Lock-In (3 months)',
-            'Price'        => 1999,
-            'Duration'     => 90,
-            'LockInMonths' => 3,
-            'BillingMode'  => 'half-month',
-        ]);
-        $planMonthly = MembershipPlan::create([
-            'PlanName'     => 'Regular Monthly',
-            'Price'        => 1999,
-            'Duration'     => 30,
-            'LockInMonths' => null,
-            'BillingMode'  => null,
-        ]);
-        $membershipPlans = [$planLockIn, $planMonthly];
 
         // 29) Lockers
         $lockers = [];
