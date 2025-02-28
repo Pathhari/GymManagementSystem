@@ -498,17 +498,23 @@ export default function LockerManagement() {
 
   {/* Dialog Actions - Add aligned to the right */}
   <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
-    <Button
-      variant="contained"
-      color="primary"
-      onClick={handleAddLocker}
-      sx={{
-        textTransform: "none",
-      }}
-    >
-      <AddIcon sx={{ mr: 1 }} /> Add Locker
-    </Button>
-  </DialogActions>
+  <Button
+    variant="contained"
+    color="primary"
+    onClick={handleAddLocker}
+    disabled={!newLockerNumber.trim() || !newLockerBranch}
+    sx={{
+      textTransform: "none",
+      fontWeight: "bold",
+      px: 4,
+      py: 1,
+      borderRadius: 2,
+    }}
+  >
+    <AddIcon sx={{ mr: 1 }} /> Add Locker
+  </Button>
+</DialogActions>
+
 </Dialog>
 
 

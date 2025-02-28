@@ -1033,13 +1033,19 @@ export default function MaintenanceEquip() {
             variant="contained"
             color="primary"
             onClick={handleAddEquipSubmit}
+            disabled={!newEquipData.Name?.trim() || !newEquipData.SerialNumber?.trim() || !newEquipData.BranchID}
             sx={{
               textTransform: "none",
+              fontWeight: "bold",
+              px: 4,
+              py: 1,
+              borderRadius: 2,
             }}
           >
             <SaveIcon sx={{ mr: 1 }} /> Save Equipment
           </Button>
         </DialogActions>
+
       </Dialog>
 
       {/* STATUS TRANSITION DIALOG */}

@@ -545,14 +545,7 @@ export default function SystemLogs() {
     <Box sx={{ p: 4 }}>
       {/* ---------- Date/Branch Filters ---------- */}
       <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap", gap: 2, alignItems: "center" }}>
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Date Range</InputLabel>
-          <Select value={dateRange} label="Date Range" onChange={(e) => setDateRange(e.target.value)}>
-            <MenuItem value="last7days">Last 7 Days</MenuItem>
-            <MenuItem value="lastMonth">Last Month</MenuItem>
-            <MenuItem value="lastYear">Last Year</MenuItem>
-          </Select>
-        </FormControl>
+    
         <TextField
           type="date"
           size="small"

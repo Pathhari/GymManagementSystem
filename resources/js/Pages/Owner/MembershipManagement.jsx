@@ -1333,142 +1333,135 @@ const freezeColumns = [
   const handleExportPDF = () => {
     handleExportMenuClose();
     const doc = new jsPDF({
-        orientation: "portrait",
-        unit: "pt",
-        format: "A4"
+      orientation: "portrait",
+      unit: "pt",
+      format: "A4"
     });
-
+  
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-
+    
     const coverPage = "/imgs/coverpage2.png";
-    const addPage = "/imgs/addpage2.png";
-
+    
     let tableHeaders = [];
     let tableBody = [];
     let title = "";
-
+    
     if (activeTab === 0) {
-        title = "Memberships Report";
-        tableHeaders = ["ID", "Full Name", "Email", "Plan", "Status", "Start Date", "End Date", "Notes"];
-        tableBody = rows.map((m) => [
-            m.MemberID, m.FullName, m.Email,
-            plans.find((p) => p.PlanID === m.PlanID)?.PlanName || "Unknown",
-            getStatusNameByID(m.MemberStatusID),
-            formatDate(m.MembershipStartDate),
-            formatDate(m.MembershipEndDate),
-            m.Notes || "—"
-        ]);
+      title = "Memberships Report";
+      tableHeaders = ["ID", "Full Name", "Email", "Plan", "Status", "Start Date", "End Date", "Notes"];
+      tableBody = rows.map((m) => [
+        m.MemberID,
+        m.FullName,
+        m.Email,
+        plans.find((p) => p.PlanID === m.PlanID)?.PlanName || "Unknown",
+        getStatusNameByID(m.MemberStatusID),
+        formatDate(m.MembershipStartDate),
+        formatDate(m.MembershipEndDate),
+        m.Notes || "—"
+      ]);
     } else if (activeTab === 1) {
-        title = "Walk-In Report";
-        tableHeaders = ["ID", "Name", "Visit Date", "Payment Method", "Amount Paid", "Notes"];
-        tableBody = rows.map((w) => [
-            w.WalkInID,
-            w.FullName,
-            formatDateTime(w.VisitDate),
-            w.PaymentMethod || "N/A",
-            Number(w.AmountPaid || 0).toFixed(2), 
-            w.Notes || "—"
-        ]);    
+      title = "Walk-In Report";
+      tableHeaders = ["ID", "Name", "Visit Date", "Payment Method", "Amount Paid", "Notes"];
+      tableBody = rows.map((w) => [
+        w.WalkInID,
+        w.FullName,
+        formatDateTime(w.VisitDate),
+        w.PaymentMethod || "N/A",
+        Number(w.AmountPaid || 0).toFixed(2),
+        w.Notes || "—"
+      ]);
     } else if (activeTab === 2) {
-        title = "Renewal Report";
-        tableHeaders = ["ID", "Member Name", "Renewal Date", "Plan", "Amount"];
-        tableBody = rows.map((r) => [
-            r.RenewalID,
-            membershipRecords.find((m) => m.MemberID === r.MemberID)?.FullName || "Unknown",
-            formatDate(r.RenewalDate),
-            plans.find((p) => p.PlanID === r.PlanID)?.PlanName || "Unknown",
-            parseFloat(r.RenewalAmount || 0).toFixed(2)
-        ]);
+      title = "Renewal Report";
+      tableHeaders = ["ID", "Member Name", "Renewal Date", "Plan", "Amount"];
+      tableBody = rows.map((r) => [
+        r.RenewalID,
+        membershipRecords.find((m) => m.MemberID === r.MemberID)?.FullName || "Unknown",
+        formatDate(r.RenewalDate),
+        plans.find((p) => p.PlanID === r.PlanID)?.PlanName || "Unknown",
+        parseFloat(r.RenewalAmount || 0).toFixed(2)
+      ]);
     } else if (activeTab === 3) {
-        title = "Freeze Report";
-        tableHeaders = ["ID", "Member Name", "Branch", "Start Date", "End Date", "Reason"];
-        tableBody = rows.map((f) => [
-            f.FreezeID,
-            membershipRecords.find((m) => m.MemberID === f.MemberID)?.FullName || "Unknown",
-            branches[f.StartedBranchID] || "Unknown", 
-            formatDate(f.FreezeStartDate),
-            formatDate(f.FreezeEndDate),
-            f.Reason || "—"
-        ]);
+      title = "Freeze Report";
+      tableHeaders = ["ID", "Member Name", "Branch", "Start Date", "End Date", "Reason"];
+      tableBody = rows.map((f) => [
+        f.FreezeID,
+        membershipRecords.find((m) => m.MemberID === f.MemberID)?.FullName || "Unknown",
+        branches[f.StartedBranchID] || "Unknown",
+        formatDate(f.FreezeStartDate),
+        formatDate(f.FreezeEndDate),
+        f.Reason || "—"
+      ]);
     }
-
-    // ✅ Sort the tableBody by the first column (ID)
+    
+    // Sort the tableBody by the first column (ID)
     tableBody.sort((a, b) => a[0] - b[0]);
-
+    
+    // Add cover page background and header text
     doc.addImage(coverPage, "PNG", 0, 0, pageWidth, pageHeight);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(24);
     doc.setTextColor("#ffffff");
     doc.text(title, pageWidth / 2, 100, { align: "center" });
-
+    
     doc.setFontSize(14);
     doc.text("Generated on: " + new Date().toLocaleDateString(), pageWidth / 2, 130, { align: "center" });
-
-    if (tableBody.length > 10) {
-        doc.addPage();
-        doc.addImage(addPage, "PNG", 0, 0, pageWidth, pageHeight);
-    }
-
-    // ✅ Function to get the color for the status
-    const getStatusColor = (status) => {
-        switch (status?.toLowerCase()) {
-            case "active":
-                return "#4caf50"; // Green
-            case "expired":
-                return "#f44336"; // Red
-            case "frozen":
-                return "#2196f3"; // Blue
-        }
-    };
-
+    
+    // Create the table starting lower to avoid overlapping header content
     doc.autoTable({
-        head: [tableHeaders],
-        body: tableBody,
-        startY: 100,
-        theme: "striped",
-        headStyles: {
-            fillColor: "#050505",
-            textColor: "#ffffff",
-            fontStyle: "bold",
-            fontSize: 10,
-        },
-        bodyStyles: {
-            textColor: "#333333",
-            fontSize: 10,
-        },
-        alternateRowStyles: {
-            fillColor: "#f5f5f5",
-        },
-        styles: {
-            overflow: "linebreak",
-            cellPadding: 5,
-            halign: "center",
-            valign: "middle",
-        },
-        margin: { top: 50, left: 20, right: 20, bottom: 20 },
-        didParseCell: (data) => {
-            if (activeTab === 0 && data.column.index === 4) { // Status column
-                const statusText = data.cell.raw;
-                const statusColor = getStatusColor(statusText);
-                data.cell.styles.textColor = statusColor;
+      head: [tableHeaders],
+      body: tableBody,
+      startY: 100,
+      theme: "striped",
+      headStyles: {
+        fillColor: "#050505",
+        textColor: "#ffffff",
+        fontStyle: "bold",
+        fontSize: 10,
+      },
+      bodyStyles: {
+        textColor: "#333333",
+        fontSize: 10,
+      },
+      alternateRowStyles: {
+        fillColor: "#f5f5f5",
+      },
+      styles: {
+        overflow: "linebreak",
+        cellPadding: 5,
+        halign: "center",
+        valign: "middle",
+      },
+      margin: { top: 50, left: 20, right: 20, bottom: 20 },
+      didParseCell: (data) => {
+        if (activeTab === 0 && data.column.index === 4) {
+          // Status column: adjust text color based on status
+          const statusText = data.cell.raw;
+          const statusColor = (status) => {
+            switch (status?.toLowerCase()) {
+              case "active":
+                return "#4caf50";
+              case "expired":
+                return "#f44336";
+              case "frozen":
+                return "#2196f3";
+              default:
+                return "#000000";
             }
-        },
-        didDrawPage: (data) => {
-            if (doc.internal.getNumberOfPages() > 1) {
-                doc.addImage(addPage, "PNG", 0, 0, pageWidth, pageHeight);
-            }
+          };
+          data.cell.styles.textColor = statusColor(statusText);
         }
+      }
     });
-
-    const pdfFilename =
-        activeTab === 0 ? "MembershipList.pdf"
-        : activeTab === 1 ? "WalkInsList.pdf"
-        : activeTab === 2 ? "RenewalsList.pdf"
-        : "FreezesList.pdf";
-
+    
+    const pdfFilename = 
+      activeTab === 0 ? "MembershipList.pdf" :
+      activeTab === 1 ? "WalkInsList.pdf" :
+      activeTab === 2 ? "RenewalsList.pdf" : "FreezesList.pdf";
+    
     doc.save(pdfFilename);
-};
+  };
+  
     // This is called after user clicks "Yes, Unfreeze" in the confirmation dialog
     const [isUnfreezeDialogOpen, setUnfreezeDialogOpen] = useState(false);
     const [freezeToUnfreeze, setFreezeToUnfreeze] = useState(null);
@@ -1627,6 +1620,7 @@ const freezeColumns = [
 
       <Paper elevation={2} sx={{ p: 2 }}>
         {/* Toolbar Container */}
+         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
         <Grid container spacing={2} alignItems="center" sx={{ flexWrap: "wrap" }}>
           {/* Branch Filter Dropdown */}
           <Grid item>
@@ -1721,7 +1715,7 @@ const freezeColumns = [
            
           </Grid>
         </Grid>
-
+        </Box>
         {/* Data Grid */}
         <Box style={{ height: 510, width: "100%", mt: 2 }}>
           <DataGrid
@@ -1881,10 +1875,25 @@ const freezeColumns = [
 
               {/* BUTTONS */}
               <Box sx={{ mt: 4, display: "flex", flexDirection: "row", gap: 3, justifyContent: "flex-end" }}>
-              <Button variant="contained" color="primary" onClick={handleOpenConfirmation}>
-              <SaveIcon /> Save Walk-In
-            </Button>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleOpenConfirmation}
+                  disabled={
+                    !newWalkIn.FullName.trim() ||
+                    !newWalkIn.VisitDate ||
+                    !newWalkIn.PaymentMethod ||
+                    !newWalkIn.PaymentAmount ||
+                    isNaN(newWalkIn.PaymentAmount) ||
+                    Number(newWalkIn.PaymentAmount) <= 0
+                  }
+                  sx={{ textTransform: "none" }}
+                >
+                  <SaveIcon sx={{ mr: 1 }} />
+                  Save Walk-In
+                </Button>
               </Box>
+
             </form>
           </Box>
         </DialogContent>
@@ -3059,19 +3068,22 @@ const freezeColumns = [
         <Button
           variant="contained"
           onClick={handleSubmitFreeze}
+          disabled={
+            !freezeForm.FreezeStartDate ||
+            !freezeForm.FreezeEndDate ||
+            !freezeForm.Reason.trim()
+          }
           sx={{
             px: 4,
             py: 1,
-            fontSize: "1rem",
-            fontWeight: "bold",
-            borderRadius: 2,
             textTransform: "none",
           }}
           startIcon={<SaveIcon />}
         >
-          Submit Freeze
+          SUBMIT FREEZE
         </Button>
       </DialogActions>
+
     </Dialog>
 
       {/* VIEW Freeze */}
@@ -3436,189 +3448,197 @@ const freezeColumns = [
 
 
      {/* ADD Renewal Dialog */}
-<Dialog open={isAddRenewalOpen} onClose={() => setAddRenewalOpen(false)} fullWidth maxWidth="sm" sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3, overflow: "hidden" } }}>
-  <DialogTitle sx={{ p: 2 }}>
-    <Box display="flex" justifyContent="space-between" alignItems="center">
-      <Box display="flex" alignItems="center" gap={1}>
-        <AutorenewIcon sx={{ fontSize: 32, color: "primary.main" }} />
-        <Typography variant="h6" sx={{ fontWeight: "bold" }}>Add New Renewal</Typography>
-      </Box>
-      <IconButton onClick={() => setAddRenewalOpen(false)} sx={{ "&:hover": { color: theme.palette.error.main } }}>
-        <CloseIcon />
-      </IconButton>
-    </Box>
-  </DialogTitle>
+      <Dialog open={isAddRenewalOpen} onClose={() => setAddRenewalOpen(false)} fullWidth maxWidth="sm" sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3, overflow: "hidden" } }}>
+        <DialogTitle sx={{ p: 2 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" alignItems="center" gap={1}>
+              <AutorenewIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>Add New Renewal</Typography>
+            </Box>
+            <IconButton onClick={() => setAddRenewalOpen(false)} sx={{ "&:hover": { color: theme.palette.error.main } }}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
 
-  <DialogContent dividers>
-    <TextField
-      label="Member Name"
-      fullWidth
-      variant="outlined"
-      margin="normal"
-      value={membershipRecords.find(m => m.MemberID === newRenewal.MemberID)?.FullName || "Unknown Member"}
-      InputProps={{
-        readOnly: true, 
-        startAdornment: (<InputAdornment position="start"><PersonIcon /></InputAdornment>)
-      }}
-    />
+        <DialogContent dividers>
+          <TextField
+            label="Member Name"
+            fullWidth
+            variant="outlined"
+            margin="normal"
+            value={membershipRecords.find(m => m.MemberID === newRenewal.MemberID)?.FullName || "Unknown Member"}
+            InputProps={{
+              readOnly: true, 
+              startAdornment: (<InputAdornment position="start"><PersonIcon /></InputAdornment>)
+            }}
+          />
 
-    <FormControl fullWidth margin="dense" variant="outlined" error={!!validationErrors.PlanID}>
-      <InputLabel>Plan</InputLabel>
-      <Select
-        name="PlanID"
-        label="Plan"
-        value={newRenewal.PlanID}
-        onChange={(e) => {
-          const selectedPlanID = e.target.value;
-          setNewRenewal((prev) => ({ ...prev, PlanID: selectedPlanID }));
-          const planObj = plans.find((p) => p.PlanID === selectedPlanID);
-          if (planObj) {
-            setNewRenewal((prev) => ({ ...prev, RenewalAmount: planObj.Price }));
+          <FormControl fullWidth margin="dense" variant="outlined" error={!!validationErrors.PlanID}>
+            <InputLabel>Plan</InputLabel>
+            <Select
+              name="PlanID"
+              label="Plan"
+              value={newRenewal.PlanID}
+              onChange={(e) => {
+                const selectedPlanID = e.target.value;
+                setNewRenewal((prev) => ({ ...prev, PlanID: selectedPlanID }));
+                const planObj = plans.find((p) => p.PlanID === selectedPlanID);
+                if (planObj) {
+                  setNewRenewal((prev) => ({ ...prev, RenewalAmount: planObj.Price }));
+                }
+              }}
+              startAdornment={
+                <InputAdornment position="start">
+                  <LocalOfferIcon />
+                </InputAdornment>
+              }
+            >
+              {plans.map((p) => (
+                <MenuItem key={p.PlanID} value={p.PlanID}>
+                  {p.PlanName}
+                </MenuItem>
+              ))}
+            </Select>
+            {validationErrors.PlanID && (
+              <Typography color="error" variant="caption">{validationErrors.PlanID}</Typography>
+            )}
+          </FormControl>
+
+          <TextField
+            label="Renewal Amount"
+            name="RenewalAmount"
+            type="number"
+            fullWidth
+            margin="dense"
+            value={newRenewal.RenewalAmount}
+            onChange={handleAddRenewalChange}
+            variant="outlined"
+            InputProps={{
+              readOnly: true, 
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Typography sx={{ fontWeight: 'bold' }}>₱</Typography>
+                </InputAdornment>
+              ),
+            }}
+          />
+
+          <FormControl fullWidth margin="dense" variant="outlined" error={!!validationErrors.PaymentMethod}>
+            <InputLabel>Payment Method</InputLabel>
+            <Select
+              name="PaymentMethod"
+              label="Payment Method"
+              value={newRenewal.PaymentMethod}
+              onChange={handleAddRenewalChange}
+              startAdornment={
+                <InputAdornment position="start">
+                  <PaymentIcon />
+                </InputAdornment>
+              }
+            >
+              <MenuItem value="">
+                <em>-- Select Method --</em>
+              </MenuItem>
+              <MenuItem value="Cash">Cash</MenuItem>
+              <MenuItem value="BDO">BDO</MenuItem>
+              <MenuItem value="BPI">BPI</MenuItem>
+              <MenuItem value="GCash">GCash</MenuItem>
+            </Select>
+            {validationErrors.PaymentMethod && (
+              <Typography color="error" variant="caption">{validationErrors.PaymentMethod}</Typography>
+            )}
+          </FormControl>
+
+          <TextField
+            label="Payment Amount"
+            name="PaymentAmount"
+            type="number"
+            fullWidth
+            margin="dense"
+            value={
+              newRenewal.PlanID
+                ? plans.find(p => p.PlanID === Number(newRenewal.PlanID))?.Price || 0
+                : newRenewal.PaymentAmount || 0
+            }
+            onChange={handleAddRenewalChange}
+            variant="outlined"
+            InputProps={{
+              readOnly: true,
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
+                </InputAdornment>
+              ),
+            }}
+            error={!!validationErrors.PaymentAmount}
+            helperText={validationErrors.PaymentAmount}
+          />
+
+          <TextField
+            label="New Membership End Date"
+            fullWidth
+            margin="normal"
+            variant="outlined"
+            value={(() => {
+              if (!newRenewal.PlanID) return "Select a plan first";
+              const selectedPlan = plans.find(p => p.PlanID === newRenewal.PlanID);
+              if (!selectedPlan) return "Invalid plan selected";
+              const durationDays = selectedPlan.Duration || 0;
+              const member = membershipRecords.find(m => m.MemberID === newRenewal.MemberID);
+              let startDate = member?.MembershipEndDate
+                ? new Date(member.MembershipEndDate)
+                : new Date();
+              startDate.setDate(startDate.getDate() + durationDays);
+              return formatDate(startDate);
+            })()}
+            InputProps={{ readOnly: true }}
+          />
+
+          <TextField
+            label="Payment For"
+            name="PaymentFor"
+            fullWidth
+            margin="dense"
+            value={newRenewal.PaymentFor.replace(/^\["|"\]$/g, '')} 
+            variant="outlined"
+            disabled
+            InputProps={{
+                startAdornment: (
+                    <InputAdornment position="start">
+                        <DescriptionIcon />
+                    </InputAdornment>
+                ),
+            }}
+          />
+        </DialogContent>
+
+        <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+        <Button
+          variant="contained"
+          onClick={handleAddRenewal}
+          disabled={
+            !newRenewal.PlanID ||
+            !newRenewal.PaymentMethod ||
+            !newRenewal.PaymentAmount ||
+            isNaN(newRenewal.PaymentAmount) ||
+            Number(newRenewal.PaymentAmount) <= 0 ||
+            !newRenewal.RenewalAmount ||
+            isNaN(newRenewal.RenewalAmount) ||
+            Number(newRenewal.RenewalAmount) <= 0 ||
+            !newRenewal.PaymentFor.trim()
           }
-        }}
-        startAdornment={
-          <InputAdornment position="start">
-            <LocalOfferIcon />
-          </InputAdornment>
-        }
-      >
-        {plans.map((p) => (
-          <MenuItem key={p.PlanID} value={p.PlanID}>
-            {p.PlanName}
-          </MenuItem>
-        ))}
-      </Select>
-      {validationErrors.PlanID && (
-        <Typography color="error" variant="caption">{validationErrors.PlanID}</Typography>
-      )}
-    </FormControl>
-
-    <TextField
-      label="Renewal Amount"
-      name="RenewalAmount"
-      type="number"
-      fullWidth
-      margin="dense"
-      value={newRenewal.RenewalAmount}
-      onChange={handleAddRenewalChange}
-      variant="outlined"
-      InputProps={{
-        readOnly: true, 
-        startAdornment: (
-          <InputAdornment position="start">
-            <Typography sx={{ fontWeight: 'bold' }}>₱</Typography>
-          </InputAdornment>
-        ),
-      }}
-    />
-
-    <FormControl fullWidth margin="dense" variant="outlined" error={!!validationErrors.PaymentMethod}>
-      <InputLabel>Payment Method</InputLabel>
-      <Select
-        name="PaymentMethod"
-        label="Payment Method"
-        value={newRenewal.PaymentMethod}
-        onChange={handleAddRenewalChange}
-        startAdornment={
-          <InputAdornment position="start">
-            <PaymentIcon />
-          </InputAdornment>
-        }
-      >
-        <MenuItem value="">
-          <em>-- Select Method --</em>
-        </MenuItem>
-        <MenuItem value="Cash">Cash</MenuItem>
-        <MenuItem value="BDO">BDO</MenuItem>
-        <MenuItem value="BPI">BPI</MenuItem>
-        <MenuItem value="GCash">GCash</MenuItem>
-      </Select>
-      {validationErrors.PaymentMethod && (
-        <Typography color="error" variant="caption">{validationErrors.PaymentMethod}</Typography>
-      )}
-    </FormControl>
-
-    <TextField
-      label="Payment Amount"
-      name="PaymentAmount"
-      type="number"
-      fullWidth
-      margin="dense"
-      value={
-        newRenewal.PlanID
-          ? plans.find(p => p.PlanID === Number(newRenewal.PlanID))?.Price || 0
-          : newRenewal.PaymentAmount || 0
-      }
-      onChange={handleAddRenewalChange}
-      variant="outlined"
-      InputProps={{
-        readOnly: true,
-        startAdornment: (
-          <InputAdornment position="start">
-            <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
-          </InputAdornment>
-        ),
-      }}
-      error={!!validationErrors.PaymentAmount}
-      helperText={validationErrors.PaymentAmount}
-    />
-
-    <TextField
-      label="New Membership End Date"
-      fullWidth
-      margin="normal"
-      variant="outlined"
-      value={(() => {
-        if (!newRenewal.PlanID) return "Select a plan first";
-        const selectedPlan = plans.find(p => p.PlanID === newRenewal.PlanID);
-        if (!selectedPlan) return "Invalid plan selected";
-        const durationDays = selectedPlan.Duration || 0;
-        const member = membershipRecords.find(m => m.MemberID === newRenewal.MemberID);
-        let startDate = member?.MembershipEndDate
-          ? new Date(member.MembershipEndDate)
-          : new Date();
-        startDate.setDate(startDate.getDate() + durationDays);
-        return formatDate(startDate);
-      })()}
-      InputProps={{ readOnly: true }}
-    />
-
-    <TextField
-      label="Payment For"
-      name="PaymentFor"
-      fullWidth
-      margin="dense"
-      value={newRenewal.PaymentFor.replace(/^\["|"\]$/g, '')} 
-      variant="outlined"
-      disabled
-      InputProps={{
-          startAdornment: (
-              <InputAdornment position="start">
-                  <DescriptionIcon />
-              </InputAdornment>
-          ),
-      }}
-    />
-  </DialogContent>
-
-  <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
-    <Button
-      variant="contained"
-      onClick={handleAddRenewal}
-      sx={{
-        px: 4,
-        py: 1,
-        fontSize: "1rem",
-        fontWeight: "bold",
-        borderRadius: 2,
-        textTransform: "none",
-      }}
-      startIcon={<SaveIcon />}
-    >
-      Save
-    </Button>
-  </DialogActions>
-</Dialog>
+          sx={{
+            px: 4,
+            py: 1,
+            textTransform: "none",
+          }}
+          startIcon={<SaveIcon />}
+        >
+        SAVE RENEWAL
+        </Button>
+      </DialogActions>
+      </Dialog>
 
      {/* EDIT Renewal */}
       <Dialog

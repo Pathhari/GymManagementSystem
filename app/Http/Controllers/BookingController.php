@@ -151,102 +151,102 @@ class BookingController extends Controller
     public function indexSessions(Request $request)
     {
         $staff = auth('staff')->user();
-        $query = CoachingSession::with(['coach','branch']);
-
+        $query = CoachingSession::with(['coach', 'branch'])
+            ->select([
+                'SessionID', 
+                'BranchID', 
+                'SessionName', 
+                'SessionType', 
+                'CoachID', 
+                'StartTime', 
+                'EndTime', 
+                'Capacity', 
+                'Location', 
+                'Fee', 
+                'Participants', 
+                'Status'
+            ]);
+    
+        // If staff is authenticated, filter sessions by assigned branches
         if ($staff) {
             $branchIDs = $staff->branches->pluck('BranchID');
-            $query->whereHas('branch', function($q) use ($branchIDs) {
-                $q->whereIn('BranchID', $branchIDs);
-            });
+            $query->whereIn('BranchID', $branchIDs);
         }
-
+    
+        // Filter by branch name if provided
         if ($request->filled('branch')) {
             $branchParam = $request->get('branch');
-            $query->whereHas('branch', function($q) use ($branchParam) {
+            $query->whereHas('branch', function ($q) use ($branchParam) {
                 $q->where('BranchName', $branchParam);
             });
         }
-
-        $sessions = $query->orderBy('StartTime','desc')->get();
-
-        $data = $sessions->map(function($s) {
+    
+        // Order sessions by latest start time
+        $sessions = $query->orderBy('StartTime', 'desc')->get();
+    
+        // Format response data
+        $data = $sessions->map(function ($s) {
             return [
                 'SessionID'    => $s->SessionID,
                 'Branch'       => optional($s->branch)->BranchName ?? '',
                 'SessionName'  => $s->SessionName,
+                'SessionType'  => $s->SessionType ?? '',
                 'CoachName'    => optional($s->coach)->FullName ?? '',
-                'StartTime'    => $s->StartTime,
-                'EndTime'      => $s->EndTime,
+                'StartTime'    => $s->StartTime ?? '',
+                'EndTime'      => $s->EndTime ?? '',
                 'Capacity'     => $s->Capacity,
+                'Location'     => $s->Location ?? '',
+                'Fee'          => $s->Fee ? number_format($s->Fee, 2) : '0.00', // Format fee as decimal
                 'Participants' => $s->Participants ?? 0,
                 'Status'       => $s->Status ?? '',
             ];
         });
-
+    
         return response()->json(['sessions' => $data]);
     }
-
+    
     /**
      * Create a Coaching Session (no Payment creation here).
      */
     public function storeSession(Request $request)
-    {
-        // 1) Merge front-end fields into the single fields your validation expects
-        //    e.g. "2025-03-10" + "13:00:00" => "2025-03-10T13:00"
-        //    (Trim to just "HH:mm" so it matches 'date_format:Y-m-d\TH:i')
-        $startDate = $request->input('StartDate');      // e.g. "2025-03-10"
-        $startTime = $request->input('StartTime');      // e.g. "13:00:00"
-        $endDate   = $request->input('EndDate');        // e.g. "2025-03-10"
-        $endTime   = $request->input('EndTime');        // e.g. "14:30:00"
-    
-        // If you want to allow seconds, expand \TH:i -> \TH:i:s. Otherwise, just take HH:mm
-        $startIso = $startDate && $startTime
-            ? ($startDate . 'T' . substr($startTime, 0, 5)) // => "2025-03-10T13:00"
-            : null;
-    
-        $endIso = $endDate && $endTime
-            ? ($endDate . 'T' . substr($endTime, 0, 5))     // => "2025-03-10T14:30"
-            : null;
-    
-        // Overwrite the request data so the upcoming validation sees these
-        $request->merge([
-            'StartTime' => $startIso,
-            'EndTime'   => $endIso,
-        ]);
-    
-        // 2) Validate everything
-        $data = $request->validate([
-            'BranchID'     => 'required|integer|exists:branches,BranchID',
-            'SessionName'  => 'required|string|max:255',
-            'SessionType'  => 'required|string|max:50',
-            'CoachID'      => 'required|exists:coaches,CoachID',
-            // The newly merged 'StartTime'/'EndTime' must match "Y-m-d\TH:i"
-            'StartTime'    => 'required|date_format:Y-m-d\TH:i',
-            'EndTime'      => 'nullable|date_format:Y-m-d\TH:i|after:StartTime',
-            'Capacity'     => 'nullable|integer|min:1',
-            'Location'     => 'nullable|string|max:255',
-            'Fee'          => 'nullable|numeric|min:0',
-        ]);
-    
-        // 3) Create the session record
-        $session = CoachingSession::create([
-            'BranchID'   => $data['BranchID'],
-            'SessionName'=> $data['SessionName'],
-            'SessionType'=> $data['SessionType'],
-            'CoachID'    => $data['CoachID'],
-            'StartTime'  => $data['StartTime'],
-            'EndTime'    => $data['EndTime'],
-            'Capacity'   => $data['Capacity'] ?? 10,
-            'Location'   => $data['Location'] ?? null,
-            'Fee'        => $data['Fee']       ?? 0,
-        ]);
-    
-        // 4) Return JSON
-        return response()->json([
-            'message' => 'Session created successfully.',
-            'session' => $session,
-        ], 201);
-    }
+{
+    // Adjust your validation to accept "YYYY-MM-DD HH:mm:ss"
+    $data = $request->validate([
+        'BranchID'    => 'required|integer|exists:branches,BranchID',
+        'SessionName' => 'required|string|max:255',
+        'SessionType' => 'required|string|max:50',
+        'CoachID'     => 'required|exists:coaches,CoachID',
+        
+        // IMPORTANT: now using 'Y-m-d H:i:s'
+        'StartTime'   => 'required|date_format:Y-m-d H:i:s',
+        'EndTime'     => 'required|date_format:Y-m-d H:i:s|after:StartTime',
+
+        'Capacity'    => 'nullable|integer|min:1',
+        'Location'    => 'nullable|string|max:255',
+        'Fee'         => 'nullable|numeric|min:0',
+    ]);
+
+    // Create the session
+    $session = CoachingSession::create([
+        'BranchID'    => $data['BranchID'],
+        'SessionName' => $data['SessionName'],
+        'SessionType' => $data['SessionType'],
+        'CoachID'     => $data['CoachID'],
+        'StartTime'   => $data['StartTime'],  // "2025-03-10 13:00:00"
+        'EndTime'     => $data['EndTime'],    // "2025-03-10 14:00:00"
+        'Capacity'    => $data['Capacity'] ?? 10,
+        'Location'    => $data['Location'] ?? null,
+        'Fee'         => $data['Fee'] ?? 0,
+        'Participants'=> 0,
+        'Status'      => 'Scheduled',
+    ]);
+
+    return response()->json([
+        'message' => 'Session created successfully.',
+        'session' => $session,
+    ], 201);
+}
+
     
     
     /**

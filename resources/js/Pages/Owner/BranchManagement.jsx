@@ -554,94 +554,87 @@ export default function BranchManagement() {
   const handleExportPDF = () => {
     handleExportMenuClose();
     const doc = new jsPDF({
-        orientation: "portrait", // Ensure portrait mode
-        unit: "pt",
-        format: "A4"
+      orientation: "portrait",
+      unit: "pt",
+      format: "A4",
     });
-
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-
-    // ✅ Load Background Images for Portrait Mode
-    const coverPage = "/imgs/coverpage2.png"; // First page background
-    const addPage = "/imgs/addpage2.png"; // Background for succeeding pages
-
+  
+    // Background images for cover and (optionally) succeeding pages
+    const coverPage = "/imgs/coverpage2.png";
+    // const addPage = "/imgs/addpage2.png"; // Not used now
+  
     let tableHeaders = [];
     let tableBody = [];
     let title = "";
     let filename = "";
-
+  
     if (activeTab === 0) {
-        title = "Branch Directory Export";
-        filename = "BranchDirectory.pdf";
-        tableHeaders = ["ID", "Name", "Location", "Status", "Contact"];
-        tableBody = tableRows.map((b) => [
-            b.BranchID, b.BranchName, b.Location, b.Status, b.Contact
-        ]);
+      title = "Branch Directory Export";
+      filename = "BranchDirectory.pdf";
+      tableHeaders = ["ID", "Name", "Location", "Status", "Contact"];
+      tableBody = tableRows.map((b) => [
+        b.BranchID,
+        b.BranchName,
+        b.Location,
+        b.Status,
+        b.Contact,
+      ]);
     } else {
-        title = "Facilities Export";
-        filename = "Facilities.pdf";
-        tableHeaders = ["ID", "Name", "Description", "Status"];
-        tableBody = tableRows.map((f) => [
-            f.FacilityID, f.FacilityName, f.Description, f.Status
-        ]);
+      title = "Facilities Export";
+      filename = "Facilities.pdf";
+      tableHeaders = ["ID", "Name", "Description", "Status"];
+      tableBody = tableRows.map((f) => [
+        f.FacilityID,
+        f.FacilityName,
+        f.Description,
+        f.Status,
+      ]);
     }
-
-    // ✅ Add Cover Page Background
+  
+    // Draw the cover page background and header text (applied only on the first page)
     doc.addImage(coverPage, "PNG", 0, 0, pageWidth, pageHeight);
-
-    // ✅ Title on Cover Page
     doc.setFont("helvetica", "bold");
     doc.setFontSize(24);
-    doc.setTextColor("#ffffff"); // White for contrast
+    doc.setTextColor("#ffffff");
     doc.text(title, pageWidth / 2, 100, { align: "center" });
-
     doc.setFontSize(14);
     doc.text("Generated on: " + new Date().toLocaleDateString(), pageWidth / 2, 130, { align: "center" });
-
-    // ✅ Add a new page for table data if required
-    if (tableBody.length > 10) { // Adjust based on table size
-        doc.addPage();
-        doc.addImage(addPage, "PNG", 0, 0, pageWidth, pageHeight);
-    }
-
-    // ✅ Generate the Table with Styled Headers and Rows
+  
+    // Generate the table starting below the header.
     doc.autoTable({
-        head: [tableHeaders],
-        body: tableBody,
-        startY: 100,
-        theme: "striped",
-        headStyles: {
-            fillColor: "#050505",
-            textColor: "#ffffff",
-            fontStyle: "bold",
-            fontSize: 10,
-        },
-        bodyStyles: {
-            textColor: "#333333",
-            fontSize: 10
-        },
-        alternateRowStyles: {
-            fillColor: "#f0f4f7" // Light gray for alternating rows
-        },
-        styles: {
-            overflow: "linebreak",
-            cellPadding: 5,
-            halign: "center",
-            valign: "middle",
-        },
-        margin: { top: 50, left: 20, right: 20, bottom: 20 },
-        didDrawPage: (data) => {
-            if (doc.internal.getNumberOfPages() > 1) {
-                doc.addImage(addPage, "PNG", 0, 0, pageWidth, pageHeight);
-            }
-        }
+      startY: 100,
+      head: [tableHeaders],
+      body: tableBody,
+      theme: "striped",
+      headStyles: {
+        fillColor: "#050505",
+        textColor: "#ffffff",
+        fontStyle: "bold",
+        fontSize: 10,
+      },
+      bodyStyles: {
+        textColor: "#333333",
+        fontSize: 10,
+      },
+      alternateRowStyles: {
+        fillColor: "#f0f4f7",
+      },
+      styles: {
+        overflow: "linebreak",
+        cellPadding: 5,
+        halign: "center",
+        valign: "middle",
+      },
+      margin: { top: 50, left: 20, right: 20, bottom: 20 },
+      // Removed didDrawPage callback to avoid re‑adding backgrounds on subsequent pages
     });
-
-    // ✅ Save the PDF with the correct filename
+  
+    // Save the PDF with the correct filename
     doc.save(filename);
-};
-
+  };
+  
 
   // ============ DELETE CONFIRMATION =============
   function openDeleteDialog(type, id) {
@@ -866,14 +859,28 @@ export default function BranchManagement() {
                 </Box>
                 {/* BUTTONS */}
                 <Box sx={{ mt: 4, display: "flex", flexDirection: "row", gap: 3, justifyContent: "flex-end" }}>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    onClick={handleBranchOpenConfirmation}
-                  >
-                    <SaveIcon /> Save Branch
-                  </Button>
-                </Box>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleBranchOpenConfirmation}
+                  disabled={
+                    !newBranch.BranchName.trim() ||
+                    !newBranch.Location.trim() ||
+                    !newBranch.Status ||
+                    !newBranch.Contact.trim()
+                  }
+                  sx={{
+                    textTransform: "none",
+                    fontWeight: "bold",
+                    px: 4,
+                    py: 1,
+                    borderRadius: 2,
+                  }}
+                >
+                  <SaveIcon sx={{ mr: 1 }} /> Save Branch
+                </Button>
+              </Box>
+
               </form>
             </Box>
           </DialogContent>
@@ -1334,10 +1341,18 @@ export default function BranchManagement() {
                     variant="contained"
                     color="primary"
                     onClick={handleFacilityOpenConfirmation}
+                    disabled={
+                      !newFacility.BranchID ||
+                      !newFacility.FacilityName.trim() ||
+                      !newFacility.Description.trim() ||
+                      !newFacility.Status
+                    }
+                    sx={{ textTransform: "none" }}
                   >
-                    <SaveIcon /> Save Facility
+                    <SaveIcon sx={{ mr: 1 }} /> Save Facility
                   </Button>
                 </Box>
+
               </form>
             </Box>
           </DialogContent>

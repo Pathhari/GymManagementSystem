@@ -641,23 +641,43 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
             </Grid>
 
             <Box
-              sx={{
-                mt: 4,
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 2,
-              }}
+            sx={{
+              mt: 4,
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 2,
+            }}
+          >
+            <Button
+              variant="contained"
+              color="primary"
+              type="submit"
+              
+              disabled={
+                !fullName.trim() ||
+                /\d/.test(fullName) ||
+                !email.trim() ||
+                !validateEmail(email) ||
+                !phoneNumber.trim() ||
+                !validatePhoneNumber(phoneNumber) ||
+                !selectedPlanID ||
+                !membershipCardNumber.trim() ||
+                freeSessions === "" ||
+                !branch ||
+                !notes.trim() ||
+                !paymentMethod ||
+                !paymentAmount ||
+                isNaN(paymentAmount) ||
+                Number(paymentAmount) <= 0 ||
+                (!photoFile && !capturedImage)
+              }
+              sx={{ textTransform: "none" }}
             >
-              <Button
-                variant="contained"
-                color="primary"
-                type="submit"
-                startIcon={<Save />}
-                sx={{ textTransform: "none" }}
-              >
-                Submit Registration
-              </Button>
-            </Box>
+              <Save sx={{ mr: 1 }} />
+              Submit Registration
+            </Button>
+          </Box>
+
           </form>
 
           {/* Webcam Dialog */}

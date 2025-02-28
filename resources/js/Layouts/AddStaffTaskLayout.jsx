@@ -184,7 +184,6 @@ export default function AddStaffTaskLayout({ onClose, onAdd, staffOptions }) {
       </DialogContent>
 
       <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
-
         <Button
           onClick={handleSubmit}
           variant="contained"
@@ -192,16 +191,21 @@ export default function AddStaffTaskLayout({ onClose, onAdd, staffOptions }) {
           sx={{
             px: 4,
             py: 1,
-            fontSize: "1rem",
-            fontWeight: "bold",
-            borderRadius: 2,
+
             textTransform: "none",
           }}
           startIcon={<AddIcon />}
+          disabled={
+            !taskData.StaffID ||
+            !taskData.TaskDescription.trim() ||
+            !taskData.TaskDate ||
+            !taskData.Status.trim()
+          }
         >
-          Add Task
+          ADD TASK
         </Button>
       </DialogActions>
+
     </Dialog>
   );
 }

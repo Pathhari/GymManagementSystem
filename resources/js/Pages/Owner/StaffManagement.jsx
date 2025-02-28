@@ -1140,7 +1140,7 @@ function handleNewPayrollCreated(resData) {
           const pageHeight = doc.internal.pageSize.getHeight();
         
           const coverPage = "/imgs/coverpage2.png";
-          const addPage = "/imgs/addpage2.png";
+          const addPage = "/imgs/addpage2.png"; // If you wish to use it for subsequent pages, you can—but below it's removed
         
           let tableHeaders = [];
           let tableBody = [];
@@ -1166,7 +1166,6 @@ function handleNewPayrollCreated(resData) {
               s.Email || "—",
               s.Phone || "—",
               s.Role || "—",
-              // Export branch names: if s.branches exists and has items, join the BranchName fields; otherwise "—"
               s.branches && s.branches.length > 0
                 ? s.branches.map((b) => b.BranchName).join(", ")
                 : "—",
@@ -1178,7 +1177,16 @@ function handleNewPayrollCreated(resData) {
             ]);
           } else if (activeTab === 1) {
             title = "Attendance Export";
-            tableHeaders = ["ID", "StaffID", "Date", "TimeIn", "TimeOut", "Hours", "OT", "PayrollID"];
+            tableHeaders = [
+              "ID",
+              "StaffID",
+              "Date",
+              "TimeIn",
+              "TimeOut",
+              "Hours",
+              "OT",
+              "PayrollID",
+            ];
             tableBody = rows.map((a) => [
               a.AttendanceID || "—",
               a.StaffID || "—",
@@ -1191,7 +1199,17 @@ function handleNewPayrollCreated(resData) {
             ]);
           } else if (activeTab === 2) {
             title = "Payroll Export";
-            tableHeaders = ["ID", "StaffID", "Start", "End", "Gross", "Deductions", "NetPay", "Generated", "Status"];
+            tableHeaders = [
+              "ID",
+              "StaffID",
+              "Start",
+              "End",
+              "Gross",
+              "Deductions",
+              "NetPay",
+              "Generated",
+              "Status",
+            ];
             tableBody = rows.map((p) => [
               p.PayrollID || "—",
               p.StaffID || "—",
@@ -1226,14 +1244,19 @@ function handleNewPayrollCreated(resData) {
             ]);
           }
         
-          // Variables to control drawing the background once per page
-          let currentPageNumber = 1;
-          let backgroundDrawn = false;
+          // Draw the cover page background and header on the first page
+          doc.addImage(coverPage, "PNG", 0, 0, pageWidth, pageHeight);
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(24);
+          doc.setTextColor("#ffffff");
+          // Use title if provided, otherwise fallback to a default
+          doc.text(title || "Staff List", pageWidth / 2, 50, { align: "center" });
         
+          // Generate table starting at a Y position that does not overlap the header
           doc.autoTable({
+            startY: 100,
             head: [tableHeaders],
             body: tableBody,
-            startY: 100, 
             theme: "striped",
             headStyles: {
               fillColor: "#050505",
@@ -1255,27 +1278,7 @@ function handleNewPayrollCreated(resData) {
               valign: "middle",
             },
             margin: { top: 100, left: 20, right: 20, bottom: 20 },
-            willDrawCell: function (data) {
-              if (data.pageNumber !== currentPageNumber) {
-                currentPageNumber = data.pageNumber;
-                backgroundDrawn = false;
-              }
-              if (!backgroundDrawn) {
-                if (data.pageNumber === 1) {
-                  doc.addImage(coverPage, "PNG", 0, 0, pageWidth, pageHeight);
-                } else {
-                  doc.addImage(addPage, "PNG", 0, 0, pageWidth, pageHeight);
-                }
-                backgroundDrawn = true;
-              }
-            },
-            didDrawPage: function (data) {
-              doc.setFont("helvetica", "bold");
-              doc.setFontSize(24);
-              doc.setTextColor("#ffffff");
-              doc.text(title, pageWidth / 2, 50, { align: "center" });
-              doc.setFontSize(14);
-            },
+            // Removed willDrawCell and didDrawPage callbacks to prevent redrawing backgrounds over the table
           });
         
           const pdfFilename =
@@ -1291,6 +1294,7 @@ function handleNewPayrollCreated(resData) {
         
           doc.save(pdfFilename);
         };
+        
 
          // ======================= PRINT PAYSLIP ======================
          const handlePrintPayslip = () => {

@@ -11,11 +11,9 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
-  useMediaQuery,
-  useTheme,
   MenuItem,
   InputAdornment,
-  Snackbar, // Added Snackbar import
+  Snackbar,
 } from "@mui/material";
 
 import CloseIcon from "@mui/icons-material/Close";
@@ -26,7 +24,6 @@ import PhoneIcon from "@mui/icons-material/Phone";
 import WorkIcon from "@mui/icons-material/Work";
 import StoreIcon from "@mui/icons-material/Store";
 import DateRangeIcon from "@mui/icons-material/DateRange";
-import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import TimelapseIcon from "@mui/icons-material/Timelapse";
 import StickyNote2Icon from "@mui/icons-material/StickyNote2";
@@ -52,16 +49,16 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
   const [newStaff, setNewStaff] = useState(initialStaff);
   const [branches, setBranches] = useState([]);
   const [errors, setErrors] = useState({});
-  
-  // Added state for snackbar visibility and message
+
+  // Snackbar state for success messages
   const [snackMessage, setSnackMessage] = useState("");
   const [snackOpen, setSnackOpen] = useState(false);
 
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-
   // Confirmation modal state
   const [openConfirmation, setOpenConfirmation] = useState(false);
+
+  // State for realtime submit button enablement
+  const [isSubmitEnabled, setIsSubmitEnabled] = useState(false);
 
   // Fetch branches on mount
   useEffect(() => {
@@ -88,8 +85,17 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
     setSnackMessage(msg);
     setSnackOpen(true);
   };
-  
-  
+
+  // Realtime validation function: checks that required fields are filled
+  const isValidForm = () => {
+    return newStaff.FullName.trim() !== "" && newStaff.Email.trim() !== "";
+  };
+
+  // useEffect to update submit button enablement in realtime
+  useEffect(() => {
+    setIsSubmitEnabled(isValidForm());
+  }, [newStaff]);
+
   // Submit the staff form
   const handleSubmit = async () => {
     const newErrors = {};
@@ -158,8 +164,14 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
             <Divider sx={{ mb: 3 }} />
 
             {/* The Form */}
-            <form onSubmit={(e) => e.preventDefault()}>
-              <Grid container spacing={3} direction={isMobile ? "column" : "row"}>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                // Use realtime validation as well as confirmation dialog
+                if (isValidForm()) setOpenConfirmation(true);
+              }}
+            >
+              <Grid container spacing={3} direction="row">
                 <Grid item xs={12} sx={{ p: 2, borderRadius: 2 }}>
                   <Typography variant="subtitle1" sx={{ mb: 2 }}>
                     Basic &amp; Employment Information
@@ -384,26 +396,27 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
                   </Grid>
                 </Grid>
               </Grid>
-            </form>
 
-            {/* Action Button Container - aligned to right */}
-            <Box
-              sx={{
-                mt: 4,
-                display: "flex",
-                justifyContent: "flex-end",
-                alignItems: "center",
-              }}
-            >
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={() => setOpenConfirmation(true)}
-                sx={{ textTransform: "none" }}
+              {/* Action Button Container */}
+              <Box
+                sx={{
+                  mt: 4,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  alignItems: "center",
+                }}
               >
-                <SaveIcon sx={{ mr: 1 }} /> SUBMIT REGISTRATION
-              </Button>
-            </Box>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={() => setOpenConfirmation(true)}
+                  sx={{ textTransform: "none" }}
+                  disabled={!isSubmitEnabled}
+                >
+                  <SaveIcon sx={{ mr: 1 }} /> SUBMIT REGISTRATION
+                </Button>
+              </Box>
+            </form>
           </Box>
         </DialogContent>
       </Dialog>

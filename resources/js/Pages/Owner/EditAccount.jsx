@@ -1,3 +1,4 @@
+// File: EditProfile.jsx
 import React, { useState, useEffect } from "react";
 import {
   Box,
@@ -38,9 +39,7 @@ import axios from "axios";
 const roleOptions = ["Staff", "Admin", "Owner"];
 
 export default function EditProfile() {
-  // ----------------------------------------------------------------
-  // 1) MY ACCOUNT (CURRENT USER)
-  // ----------------------------------------------------------------
+  // ------------------ MY ACCOUNT (CURRENT USER) ------------------
   const [userEmail, setUserEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
@@ -68,17 +67,13 @@ export default function EditProfile() {
       return;
     }
     try {
-      // Build the payload
       const payload = { email: userEmail.trim() };
       if (newPassword.trim()) {
         payload.password = newPassword.trim();
         payload.password_confirmation = confirmPass.trim();
       }
-
       await axios.put("/profile", payload);
       alert("Your account changes have been saved!");
-
-      // Clear out password fields
       setNewPassword("");
       setConfirmPass("");
     } catch (error) {
@@ -87,19 +82,17 @@ export default function EditProfile() {
     }
   };
 
-  // ----------------------------------------------------------------
-  // 2) ADD / CREATE NEW STAFF, ADMIN, or OWNER
-  // ----------------------------------------------------------------
+  // ------------------ ADD / CREATE NEW STAFF, ADMIN, or OWNER ------------------
   const [isAddStaffOpen, setAddStaffOpen] = useState(false);
 
-  // Single object for the staff/admin data
+  // Staff data state
   const [staffData, setStaffData] = useState({
     FullName: "",
     Email: "",
     Phone: "",
     Role: "Staff",
-    BranchID: "",   // single-branch for Staff
-    BranchIDs: [],  // multi-branch for Admin
+    BranchID: "",
+    BranchIDs: [],
     DateHired: "",
     DailyRate: "",
     HourlyRate: "",
@@ -109,10 +102,13 @@ export default function EditProfile() {
     confirmPassword: ""
   });
 
-  // For multi-branch Admin usage
+  // For branch selection
   const [branchOptions, setBranchOptions] = useState([]);
 
-  // Error state for server-side validations
+  // Client-side validation errors for staff fields
+  const [staffErrors, setStaffErrors] = useState({});
+
+  // Server-side error state (if needed)
   const [apiErrors, setApiErrors] = useState({});
 
   // Snackbar for success messages
@@ -122,17 +118,21 @@ export default function EditProfile() {
   // Show/hide password icons
   const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [showStaffConfirmPassword, setShowStaffConfirmPassword] = useState(false);
-  const handleToggleShowStaffPassword = () =>
-    setShowStaffPassword((prev) => !prev);
+  const handleToggleShowStaffPassword = () => setShowStaffPassword((prev) => !prev);
   const handleToggleShowStaffConfirmPassword = () =>
     setShowStaffConfirmPassword((prev) => !prev);
 
   useEffect(() => {
-    // Load real branches
+    // Load branches for staff selection
     const loadBranches = async () => {
       try {
         const res = await axios.get("/owner/branches");
-        setBranchOptions(res.data.branches || res.data);
+        const branchesData = res.data.branches || res.data;
+        const formattedBranches = branchesData.map((branch) => ({
+          BranchID: branch.BranchID || branch.id,
+          BranchName: branch.BranchName || branch.name
+        }));
+        setBranchOptions(formattedBranches);
       } catch (err) {
         console.error("Error loading branches:", err);
         alert("Failed to load branches from server.");
@@ -141,7 +141,7 @@ export default function EditProfile() {
     loadBranches();
   }, []);
 
-  // Open the dialog
+  // Open the dialog for adding new staff
   const handleOpenAddStaff = () => {
     setStaffData({
       FullName: "",
@@ -158,37 +158,78 @@ export default function EditProfile() {
       password: "",
       confirmPassword: ""
     });
-    setApiErrors({}); // clear previous errors
+    setApiErrors({});
+    setStaffErrors({});
     setAddStaffOpen(true);
   };
 
-  // Handle changes to the staffData object
+  // Handle changes to staff data fields
   const handleStaffDataChange = (field, value) => {
     setStaffData((prev) => ({
       ...prev,
       [field]: value
     }));
-    setApiErrors((prevErrors) => ({
+    setStaffErrors((prevErrors) => ({
       ...prevErrors,
-      [field]: undefined // clear error as user types
+      [field]: undefined
     }));
   };
 
+  // Client-side validation for Add Staff form
+  const validateStaffData = () => {
+    let errors = {};
+    if (!staffData.FullName.trim()) {
+      errors.FullName = "Full Name is required.";
+    }
+    if (!staffData.Email.trim()) {
+      errors.Email = "Email is required.";
+    }
+    // If either password field is nonempty, they must match
+    if (staffData.password.trim() || staffData.confirmPassword.trim()) {
+      if (staffData.password.trim() !== staffData.confirmPassword.trim()) {
+        errors.confirmPassword = "Passwords do not match.";
+      }
+    }
+    // For Staff and Admin, branch selection is required
+    if ((staffData.Role === "Staff" || staffData.Role === "Admin") && !staffData.BranchID) {
+      errors.BranchID = `Please select a branch for ${staffData.Role}.`;
+    }
+    return errors;
+  };
+
+  // New: Validate that the Full Name is unique (via API)
+  const checkDuplicateFullName = async (fullName) => {
+    try {
+      // Assumes endpoint returns { exists: true/false }
+      const res = await axios.get("/staff/exists", {
+        params: { fullname: fullName.trim() }
+      });
+      return res.data.exists;
+    } catch (error) {
+      console.error("Error checking duplicate full name:", error);
+      return false;
+    }
+  };
+
   const handleAddStaff = async () => {
-    // Reset errors before submission
-    setApiErrors({});
-
-    // Basic front-end check
-    if (!staffData.FullName.trim() || !staffData.Email.trim()) {
-      alert("Please fill out Full Name and Email.");
+    // Run client-side validation first
+    const errors = validateStaffData();
+    if (Object.keys(errors).length > 0) {
+      setStaffErrors(errors);
       return;
     }
-    if (staffData.password.trim() !== staffData.confirmPassword.trim()) {
-      alert("Password and Confirm Password do not match!");
+    // Check if the full name already exists in the database
+    const isDuplicate = await checkDuplicateFullName(staffData.FullName);
+    if (isDuplicate) {
+      setStaffErrors((prev) => ({
+        ...prev,
+        FullName: "Full Name already exists."
+      }));
       return;
     }
+    setStaffErrors({});
 
-    // Build final payload
+    // Build payload
     const payload = {
       FullName: staffData.FullName.trim(),
       Email: staffData.Email.trim(),
@@ -198,51 +239,27 @@ export default function EditProfile() {
       password: staffData.password.trim() || null,
       password_confirmation: staffData.confirmPassword.trim() || null
     };
-
-    if (staffData.Role === "Staff") {
-      // Staff => single Branch & staff-specific fields
-      if (!staffData.BranchID) {
-        alert("Please select a branch for Staff.");
-        return;
-      }
+    if (staffData.Role === "Staff" || staffData.Role === "Admin") {
       payload.BranchID = staffData.BranchID;
-      payload.DateHired = staffData.DateHired || null;
-      payload.DailyRate = staffData.DailyRate || null;
-      payload.HourlyRate = staffData.HourlyRate || null;
-      payload.OvertimeRate = staffData.OvertimeRate || null;
-    } else if (staffData.Role === "Admin") {
-      // Admin => multiple branches
-      if (!staffData.BranchIDs || staffData.BranchIDs.length === 0) {
-        alert("Please select at least one branch for Admin.");
-        return;
+      if (staffData.Role === "Staff") {
+        payload.DateHired = staffData.DateHired || null;
+        payload.DailyRate = staffData.DailyRate || null;
+        payload.HourlyRate = staffData.HourlyRate || null;
+        payload.OvertimeRate = staffData.OvertimeRate || null;
       }
-      payload.BranchIDs = staffData.BranchIDs;
     }
-    // Owner => no branch needed
 
     try {
       const res = await axios.post("/staff", payload);
-
       setSnackMessage(`New ${staffData.Role} created: ${res.data.FullName}`);
       setSnackOpen(true);
       setAddStaffOpen(false);
     } catch (err) {
       console.error("Failed to create staff:", err);
-
-      // Check for Laravel 422 validation error
       if (err.response && err.response.status === 422) {
-        const { errors, message } = err.response.data;
-
-        // Store the field-level errors in state
+        const { errors } = err.response.data;
         if (errors) {
           setApiErrors(errors);
-        }
-
-        // Optionally show the top-level message
-        // e.g. "The password field must be at least 8 characters."
-        if (message) {
-          setSnackMessage(message);
-          setSnackOpen(true);
         }
       } else {
         alert("Error creating staff. Check console for details.");
@@ -257,7 +274,7 @@ export default function EditProfile() {
       </Typography>
       <Divider sx={{ mb: 3 }} />
 
-      {/* ------------- MY ACCOUNT SECTION ------------- */}
+      {/* MY ACCOUNT SECTION */}
       <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
         <Typography variant="h6" gutterBottom>
           My Account
@@ -320,20 +337,20 @@ export default function EditProfile() {
         </Box>
       </Paper>
 
-      {/* ------------- CREATE STAFF SECTION ------------- */}
+      {/* CREATE STAFF SECTION */}
       <Paper elevation={2} sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>
           Add New Staff / Admin / Owner
         </Typography>
         <Typography variant="body2" sx={{ mb: 2 }}>
-          Create a new user with the appropriate role and branch(es).
+          Create a new user with the appropriate role and branch.
         </Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenAddStaff}>
           Create Staff
         </Button>
       </Paper>
 
-      {/* --------- ADD STAFF DIALOG --------- */}
+      {/* ADD STAFF DIALOG */}
       <Dialog
         open={isAddStaffOpen}
         onClose={() => setAddStaffOpen(false)}
@@ -349,25 +366,14 @@ export default function EditProfile() {
         }}
       >
         <DialogTitle sx={{ p: 2 }}>
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center"
-            }}
-          >
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <PersonAddIcon sx={{ fontSize: 32, color: "primary.main" }} />
               <Typography variant="h6" sx={{ fontWeight: "bold" }}>
                 Create {staffData.Role}
               </Typography>
             </Box>
-            <IconButton
-              onClick={() => setAddStaffOpen(false)}
-              sx={{
-                "&:hover": { color: "red" }
-              }}
-            >
+            <IconButton onClick={() => setAddStaffOpen(false)} sx={{ "&:hover": { color: "red" } }}>
               <CloseIcon />
             </IconButton>
           </Box>
@@ -383,8 +389,8 @@ export default function EditProfile() {
                 fullWidth
                 value={staffData.FullName}
                 onChange={(e) => handleStaffDataChange("FullName", e.target.value)}
-                error={!!apiErrors.FullName}
-                helperText={apiErrors.FullName ? apiErrors.FullName[0] : ""}
+                error={!!staffErrors.FullName}
+                helperText={staffErrors.FullName}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -403,8 +409,8 @@ export default function EditProfile() {
                 fullWidth
                 value={staffData.Email}
                 onChange={(e) => handleStaffDataChange("Email", e.target.value)}
-                error={!!apiErrors.Email}
-                helperText={apiErrors.Email ? apiErrors.Email[0] : ""}
+                error={!!staffErrors.Email}
+                helperText={staffErrors.Email}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -424,8 +430,8 @@ export default function EditProfile() {
                 type={showStaffPassword ? "text" : "password"}
                 value={staffData.password}
                 onChange={(e) => handleStaffDataChange("password", e.target.value)}
-                error={!!apiErrors.password}
-                helperText={apiErrors.password ? apiErrors.password[0] : ""}
+                error={!!staffErrors.password}
+                helperText={staffErrors.password}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
@@ -446,24 +452,14 @@ export default function EditProfile() {
                 fullWidth
                 type={showStaffConfirmPassword ? "text" : "password"}
                 value={staffData.confirmPassword}
-                onChange={(e) =>
-                  handleStaffDataChange("confirmPassword", e.target.value)
-                }
-                error={!!apiErrors.password_confirmation}
-                helperText={
-                  apiErrors.password_confirmation
-                    ? apiErrors.password_confirmation[0]
-                    : ""
-                }
+                onChange={(e) => handleStaffDataChange("confirmPassword", e.target.value)}
+                error={!!staffErrors.confirmPassword}
+                helperText={staffErrors.confirmPassword}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
                       <IconButton onClick={handleToggleShowStaffConfirmPassword}>
-                        {showStaffConfirmPassword ? (
-                          <VisibilityOffIcon />
-                        ) : (
-                          <VisibilityIcon />
-                        )}
+                        {showStaffConfirmPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
                       </IconButton>
                     </InputAdornment>
                   )
@@ -479,8 +475,8 @@ export default function EditProfile() {
                 fullWidth
                 value={staffData.Phone}
                 onChange={(e) => handleStaffDataChange("Phone", e.target.value)}
-                error={!!apiErrors.Phone}
-                helperText={apiErrors.Phone ? apiErrors.Phone[0] : ""}
+                error={!!staffErrors.Phone}
+                helperText={staffErrors.Phone}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -511,6 +507,7 @@ export default function EditProfile() {
                       OvertimeRate: ""
                     }));
                     setApiErrors({});
+                    setStaffErrors({});
                   }}
                   startAdornment={
                     <InputAdornment position="start">
@@ -527,56 +524,13 @@ export default function EditProfile() {
               </FormControl>
             </Grid>
 
-            {/* Branch (Single or Multiple) */}
-            {staffData.Role === "Owner" ? (
+            {/* Branch Selection (if Role is not Owner) */}
+            {staffData.Role !== "Owner" && (
               <Grid item xs={12}>
-                <Typography variant="body1" color="textSecondary">
-                  Owners have access to all branches.
-                </Typography>
-              </Grid>
-            ) : staffData.Role === "Admin" ? (
-              /* Admin => multi-select branches */
-              <Grid item xs={12}>
-                <FormControl fullWidth variant="outlined">
-                  <InputLabel>Branches</InputLabel>
+                <FormControl fullWidth variant="outlined" error={!!staffErrors.BranchID}>
+                  <InputLabel>Select Branch</InputLabel>
                   <Select
-                    multiple
-                    label="Branches"
-                    value={staffData.BranchIDs}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      handleStaffDataChange(
-                        "BranchIDs",
-                        typeof value === "string" ? value.split(",") : value
-                      );
-                    }}
-                    renderValue={(selected) => {
-                      const selectedNames = branchOptions
-                        .filter((b) => selected.includes(b.BranchID))
-                        .map((b) => b.BranchName);
-                      return selectedNames.join(", ");
-                    }}
-                    startAdornment={
-                      <InputAdornment position="start">
-                        <StoreIcon />
-                      </InputAdornment>
-                    }
-                  >
-                    {branchOptions.map((b) => (
-                      <MenuItem key={b.BranchID} value={b.BranchID}>
-                        {b.BranchName}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-            ) : (
-              /* Staff => single-select branch, plus staff-specific fields */
-              <Grid item xs={12}>
-                <FormControl fullWidth variant="outlined">
-                  <InputLabel>Branch</InputLabel>
-                  <Select
-                    label="Branch"
+                    label="Select Branch"
                     value={staffData.BranchID}
                     onChange={(e) => handleStaffDataChange("BranchID", e.target.value)}
                     startAdornment={
@@ -584,35 +538,34 @@ export default function EditProfile() {
                         <StoreIcon />
                       </InputAdornment>
                     }
-                    error={!!apiErrors.BranchID}
                   >
-                    <MenuItem value="">
-                      <em>-- Select Branch --</em>
-                    </MenuItem>
                     {branchOptions.map((b) => (
                       <MenuItem key={b.BranchID} value={b.BranchID}>
                         {b.BranchName}
                       </MenuItem>
                     ))}
                   </Select>
+                  {staffErrors.BranchID && (
+                    <Typography variant="caption" color="error">
+                      {staffErrors.BranchID}
+                    </Typography>
+                  )}
                 </FormControl>
               </Grid>
             )}
 
-            {/* Show these fields ONLY if Role === 'Staff' */}
+            {/* Fields for Staff role only */}
             {staffData.Role === "Staff" && (
               <>
-                {/* DateHired */}
-                <Grid item xs={12} sm={6}>
+                <Grid item xs={12}>
                   <TextField
                     label="Date Hired"
-                    variant="outlined"
                     type="date"
                     fullWidth
                     value={staffData.DateHired}
                     onChange={(e) => handleStaffDataChange("DateHired", e.target.value)}
-                    error={!!apiErrors.DateHired}
-                    helperText={apiErrors.DateHired ? apiErrors.DateHired[0] : ""}
+                    error={!!staffErrors.DateHired}
+                    helperText={staffErrors.DateHired}
                     InputLabelProps={{ shrink: true }}
                     InputProps={{
                       startAdornment: (
@@ -623,75 +576,64 @@ export default function EditProfile() {
                     }}
                   />
                 </Grid>
-
-                {/* Daily Rate */}
-                <Grid item xs={12} sm={4}>
-                  <TextField
-                    label="Daily Rate"
-                    variant="outlined"
-                    fullWidth
-                    type="number"
-                    value={staffData.DailyRate}
-                    onChange={(e) => handleStaffDataChange("DailyRate", e.target.value)}
-                    error={!!apiErrors.DailyRate}
-                    helperText={apiErrors.DailyRate ? apiErrors.DailyRate[0] : ""}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <span>₱</span>
-                        </InputAdornment>
-                      )
-                    }}
-                  />
-                </Grid>
-
-                {/* Hourly Rate */}
-                <Grid item xs={12} sm={4}>
-                  <TextField
-                    label="Hourly Rate"
-                    variant="outlined"
-                    fullWidth
-                    type="number"
-                    value={staffData.HourlyRate}
-                    onChange={(e) => handleStaffDataChange("HourlyRate", e.target.value)}
-                    error={!!apiErrors.HourlyRate}
-                    helperText={apiErrors.HourlyRate ? apiErrors.HourlyRate[0] : ""}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <AccessTimeIcon />
-                        </InputAdornment>
-                      )
-                    }}
-                  />
-                </Grid>
-
-                {/* Overtime Rate */}
-                <Grid item xs={12} sm={4}>
-                  <TextField
-                    label="Overtime Rate"
-                    variant="outlined"
-                    fullWidth
-                    type="number"
-                    value={staffData.OvertimeRate}
-                    onChange={(e) =>
-                      handleStaffDataChange("OvertimeRate", e.target.value)
-                    }
-                    error={!!apiErrors.OvertimeRate}
-                    helperText={apiErrors.OvertimeRate ? apiErrors.OvertimeRate[0] : ""}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <TimelapseIcon />
-                        </InputAdornment>
-                      )
-                    }}
-                  />
+                <Grid item xs={12}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={4}>
+                      <TextField
+                        label="Daily Rate"
+                        type="number"
+                        fullWidth
+                        value={staffData.DailyRate}
+                        onChange={(e) => handleStaffDataChange("DailyRate", e.target.value)}
+                        error={!!staffErrors.DailyRate}
+                        helperText={staffErrors.DailyRate}
+                        InputProps={{
+                          startAdornment: <InputAdornment position="start">₱</InputAdornment>
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={4}>
+                      <TextField
+                        label="Hourly Rate"
+                        type="number"
+                        fullWidth
+                        value={staffData.HourlyRate}
+                        onChange={(e) => handleStaffDataChange("HourlyRate", e.target.value)}
+                        error={!!staffErrors.HourlyRate}
+                        helperText={staffErrors.HourlyRate}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <AccessTimeIcon />
+                            </InputAdornment>
+                          )
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={4}>
+                      <TextField
+                        label="Overtime Rate"
+                        type="number"
+                        fullWidth
+                        value={staffData.OvertimeRate}
+                        onChange={(e) => handleStaffDataChange("OvertimeRate", e.target.value)}
+                        error={!!staffErrors.OvertimeRate}
+                        helperText={staffErrors.OvertimeRate}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <TimelapseIcon />
+                            </InputAdornment>
+                          )
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
                 </Grid>
               </>
             )}
 
-            {/* Additional Notes (visible for all roles) */}
+            {/* Additional Notes */}
             <Grid item xs={12}>
               <TextField
                 label="Additional Notes"
@@ -701,8 +643,8 @@ export default function EditProfile() {
                 rows={3}
                 value={staffData.Notes}
                 onChange={(e) => handleStaffDataChange("Notes", e.target.value)}
-                error={!!apiErrors.Notes}
-                helperText={apiErrors.Notes ? apiErrors.Notes[0] : ""}
+                error={!!staffErrors.Notes}
+                helperText={staffErrors.Notes}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -727,7 +669,7 @@ export default function EditProfile() {
         </DialogActions>
       </Dialog>
 
-      {/* Success or Error Snackbar */}
+      {/* Snackbar for success or error messages */}
       <Snackbar
         open={snackOpen}
         autoHideDuration={6000}

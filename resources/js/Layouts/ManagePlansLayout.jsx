@@ -399,15 +399,25 @@ export default function ManagePlansModal({ onClose }) {
           </Box>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "flex-end", gap: 2, p: 3 }}>
-          <Button
-            variant="contained"
-            onClick={handleOpenSaveConfirm}
-            startIcon={<SaveIcon />}
-            sx={{ textTransform: "none" }}
-          >
-            {planForm.PlanID ? "Save Changes" : "Add Plan"}
-          </Button>
-        </DialogActions>
+        <Button
+          variant="contained"
+          onClick={handleOpenSaveConfirm}
+          disabled={
+            !planForm.PlanName.trim() ||
+            !planForm.Price ||
+            isNaN(planForm.Price) ||
+            Number(planForm.Price) <= 0 ||
+            !planForm.Duration ||
+            isNaN(planForm.Duration) ||
+            Number(planForm.Duration) <= 0 ||
+            !planForm.Features.trim()
+          }
+          startIcon={<SaveIcon />}
+          sx={{ textTransform: "none" }}
+        >
+          {planForm.PlanID ? "Save Changes" : "ADD PLAN"}
+        </Button>
+      </DialogActions>
       </Dialog>
       {/* Save Confirmation Dialog */}
       <Dialog
