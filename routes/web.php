@@ -130,6 +130,17 @@ Route::post('/owner/logout', [OwnerAuthController::class, 'logout'])->name('owne
 
 /*
 |--------------------------------------------------------------------------
+| Profile Update Routes
+|--------------------------------------------------------------------------
+*/
+// web.php (or api.php)
+Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
+Route::put('/profile', [ProfileController::class, 'update'])->name('profile.update');
+
+
+
+/*
+|--------------------------------------------------------------------------
 | PaymentController
 |--------------------------------------------------------------------------
 */
