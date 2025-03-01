@@ -688,46 +688,31 @@ public function expiringMembers(Request $request)
     {
         $data = $request->validate([
             'MemberID'      => 'required|exists:members,MemberID',
-            'PlanID'        => 'required|exists:membership_plans,PlanID',
+            'NewEndDate'    => 'required|date|after_or_equal:today', 
             'RenewalAmount' => 'required|numeric|min:0',
             'PaymentMethod' => 'nullable|string|max:50',
             'PaymentAmount' => 'nullable|numeric|min:0',
             'PaymentFor'    => 'nullable|string',
         ]);
     
-        // 1) Fetch Member and Plan with optimized eager loading
-        $member = Member::with('plan')->findOrFail($data['MemberID']);
-        $plan   = MembershipPlan::findOrFail($data['PlanID']);
+        // 1) Fetch the member
+        $member = Member::findOrFail($data['MemberID']);
     
-        // 2) Determine new membership end date
-        $currentEnd = $member->MembershipEndDate ? Carbon::parse($member->MembershipEndDate) : null;
-        $today = Carbon::today();
-        $durationDays = (int) $plan->Duration;
+        // 2) Update membership end date to the user-chosen date
+        $member->MembershipEndDate = $data['NewEndDate'];
+        $member->MemberStatusID    = 1; // e.g. "Active"
+        $member->save();
     
-        if ($currentEnd && $currentEnd->isFuture()) {
-            $newStartDate = $currentEnd->copy()->addDay();
-        } else {
-            $newStartDate = $today;
-        }
-    
-        $newEndDate = $newStartDate->copy()->addDays($durationDays - 1);
-    
-        // 3) Update Member's Membership Dates and Status
-        $member->update([
-            'MembershipStartDate' => $newStartDate->format('Y-m-d'),
-            'MembershipEndDate'   => $newEndDate->format('Y-m-d'),
-            'MemberStatusID'      => 1, // Set to Active
-        ]);
-    
-        // 4) Create the renewal record
+        // 3) Create a renewal record
+        //    (Note that we do not need PlanID if we’re just keeping the existing plan)
         $renewal = MembershipRenewal::create([
             'MemberID'      => $member->MemberID,
-            'PlanID'        => $plan->PlanID,
+            'PlanID'        => $member->PlanID,      // keep the same plan, if needed
             'RenewalAmount' => $data['RenewalAmount'],
             'RenewalDate'   => now(),
         ]);
     
-        // 5) Create an invoice for the renewal
+        // 4) Optionally create an invoice + line item
         $invoice = Invoice::create([
             'BranchID'     => $member->StartedBranchID,
             'MemberID'     => $member->MemberID,
@@ -739,17 +724,19 @@ public function expiringMembers(Request $request)
         InvoiceLineItem::create([
             'InvoiceID'   => $invoice->InvoiceID,
             'ItemType'    => 'Renewal',
-            'ItemID'      => $plan->PlanID,
-            'Description' => "Membership Renewal",
+            'ItemID'      => $member->PlanID, // or null, if no plan
+            'Description' => 'Manual Renewal',
             'Quantity'    => 1,
             'UnitPrice'   => $data['RenewalAmount'],
             'Subtotal'    => $data['RenewalAmount'],
         ]);
     
-        // 6) Process Payment (if provided)
+        // 5) Payment logic (if PaymentMethod & PaymentAmount are provided)
         $payment = null;
         if (!empty($data['PaymentMethod']) && !empty($data['PaymentAmount'])) {
-            $paymentFor = !empty($data['PaymentFor']) ? json_decode($data['PaymentFor'], true) : ["Membership Renewal"];
+            $paymentFor = !empty($data['PaymentFor'])
+                ? json_decode($data['PaymentFor'], true)
+                : ["Manual Membership Renewal"];
     
             $payment = Payment::create([
                 'MemberID'      => $member->MemberID,
@@ -767,17 +754,21 @@ public function expiringMembers(Request $request)
                 'AmountAllocated' => $payment->Amount,
             ]);
     
-            $invoice->update(['PaymentStatus' => $payment->Amount >= $data['RenewalAmount'] ? 'Paid' : 'Partially Paid']);
+            $invoice->update([
+                'PaymentStatus' => ($payment->Amount >= $data['RenewalAmount'])
+                    ? 'Paid'
+                    : 'Partially Paid',
+            ]);
         } else {
             $invoice->update(['PaymentStatus' => 'Unpaid']);
         }
     
-        // 7) Return the **updated** member details instantly to frontend
+        // 6) Return data
         return response()->json([
             'renewal' => $renewal,
             'invoice' => $invoice,
             'payment' => $payment,
-            'member'  => $member,  // ✅ This ensures frontend gets updated MembershipEndDate
+            'member'  => $member,
         ], 201);
     }
     

@@ -69,6 +69,13 @@ Route::middleware('auth:admin')->prefix('admin')->group(function () {
          ->name('admin.dashboard.metrics');
 });
 
+use App\Http\Controllers\AdminController;
+
+// If you only want Owners to create new Admins:
+Route::middleware('multiGuard:owner,admin')->group(function() {
+    Route::post('/admin', [AdminController::class, 'store'])->name('admin.store');
+});
+
 
 /*
 |--------------------------------------------------------------------------
@@ -454,7 +461,8 @@ Route::prefix('booking')->group(function() {
     Route::get('/booking/sessions/bookings', [BookingController::class, 'listSessionBookings'])
         ->middleware('multiGuard:owner,admin,staff');
 
-
+    Route::delete('/booking/{id}', [BookingController::class, 'destroyBooking']);
+    Route::delete('/booking/sessions/{id}', [BookingController::class, 'cancelSession']);
 
 
 use App\Http\Controllers\StaffController;

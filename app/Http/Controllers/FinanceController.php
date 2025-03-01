@@ -115,10 +115,12 @@ class FinanceController extends Controller
             'GCashSales'       => 'nullable|numeric|min:0',
             'BPISales'         => 'nullable|numeric|min:0',
             'BDOSales'         => 'nullable|numeric|min:0',
+    
             'WalkInCashSales'  => 'nullable|numeric|min:0',
             'WalkInGCashSales' => 'nullable|numeric|min:0',
             'WalkInBPISales'   => 'nullable|numeric|min:0',
             'WalkInBDOSales'   => 'nullable|numeric|min:0',
+    
             'PettyCash'        => 'nullable|numeric|min:0',
             'DepositedAmount'  => 'nullable|numeric|min:0',
             'Remarks'          => 'nullable|string',
@@ -126,10 +128,9 @@ class FinanceController extends Controller
     
         // 3) If 'Overall', set BranchID to null and skip the normal staff check
         if ($data['BusinessType'] === 'Overall') {
-            $data['BranchID'] = null; // We don't store a real numeric branch
+            $data['BranchID'] = null;
         } else {
-            // If not Overall, you can keep the logic that ensures PettyCash=0, etc.
-            // OR keep your existing code that sets PettyCash=0 for non-Overall
+            // If not Overall => zero out PettyCash/Deposited, if that's your logic
             $data['PettyCash']       = 0;
             $data['DepositedAmount'] = 0;
     
@@ -144,10 +145,10 @@ class FinanceController extends Controller
             }
         }
     
-        // 4) If "Overall", optionally carry over from yesterday
+        // 4) If "Overall", optionally carry over from yesterday's "Overall" record
         if ($data['BusinessType'] === 'Overall') {
-            $today      = \Carbon\Carbon::parse($data['Date']);
-            $yesterday  = (clone $today)->subDay();
+            $today     = \Carbon\Carbon::parse($data['Date']);
+            $yesterday = (clone $today)->subDay();
             $yesterdays = DailyCashFlow::where('BusinessType', 'Overall')
                 ->whereDate('Date', $yesterday)
                 ->first();
@@ -157,7 +158,7 @@ class FinanceController extends Controller
             }
         }
     
-        // 5) Compute total
+        // 5) Compute total from all columns
         $total = 0;
         $total += $data['CashSales']        ?? 0;
         $total += $data['GCashSales']       ?? 0;
@@ -169,8 +170,55 @@ class FinanceController extends Controller
         $total += $data['WalkInBDOSales']   ?? 0;
         $data['TotalSales'] = $total;
     
-        // 6) Create record
-        $flow = DailyCashFlow::create($data);
+        // 6) Upsert logic: check if row already exists for [Date + BranchID + BusinessType]
+        $existingQuery = DailyCashFlow::where('BusinessType', $data['BusinessType'])
+            ->whereDate('Date', $data['Date']);
+    
+        // If not 'Overall', also match exact BranchID
+        if ($data['BusinessType'] !== 'Overall') {
+            $existingQuery->where('BranchID', $data['BranchID']);
+        } else {
+            // 'Overall' => stored as null, so check for that
+            $existingQuery->whereNull('BranchID');
+        }
+    
+        $existing = $existingQuery->first();
+    
+        if ($existing) {
+            // We have a record for this day + branch + business => update/merge
+            // Add the new amounts to each column
+            $existing->CashSales        += $data['CashSales']        ?? 0;
+            $existing->GCashSales       += $data['GCashSales']       ?? 0;
+            $existing->BPISales         += $data['BPISales']         ?? 0;
+            $existing->BDOSales         += $data['BDOSales']         ?? 0;
+            $existing->WalkInCashSales  += $data['WalkInCashSales']  ?? 0;
+            $existing->WalkInGCashSales += $data['WalkInGCashSales'] ?? 0;
+            $existing->WalkInBPISales   += $data['WalkInBPISales']   ?? 0;
+            $existing->WalkInBDOSales   += $data['WalkInBDOSales']   ?? 0;
+            
+            if ($data['BusinessType'] === 'Overall') {
+                // Overwrite PettyCash, DepositedAmount if your logic says so, or add them
+                $existing->PettyCash       = $data['PettyCash']       ?? 0;
+                $existing->DepositedAmount = $data['DepositedAmount'] ?? 0;
+            }
+    
+            // Recompute total
+            $existing->TotalSales = 
+                ($existing->CashSales + $existing->GCashSales + $existing->BPISales + $existing->BDOSales) +
+                ($existing->WalkInCashSales + $existing->WalkInGCashSales + $existing->WalkInBPISales + $existing->WalkInBDOSales);
+    
+            // Append remarks if provided
+            if (!empty($data['Remarks'])) {
+                // Combine remarks
+                $existing->Remarks = trim($existing->Remarks . ' | ' . $data['Remarks']);
+            }
+            $existing->save();
+    
+            $flow = $existing;
+        } else {
+            // No existing => create new
+            $flow = DailyCashFlow::create($data);
+        }
     
         return response()->json([
             'success' => true,

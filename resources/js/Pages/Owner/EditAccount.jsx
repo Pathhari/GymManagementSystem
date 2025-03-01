@@ -20,6 +20,7 @@ import {
   InputAdornment,
   Snackbar
 } from "@mui/material";
+
 import AddIcon from "@mui/icons-material/Add";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
@@ -85,7 +86,7 @@ export default function EditProfile() {
   // ------------------ ADD / CREATE NEW STAFF, ADMIN, or OWNER ------------------
   const [isAddStaffOpen, setAddStaffOpen] = useState(false);
 
-  // Staff data state
+  // Staff/Admin data state
   const [staffData, setStaffData] = useState({
     FullName: "",
     Email: "",
@@ -105,13 +106,12 @@ export default function EditProfile() {
   // For branch selection
   const [branchOptions, setBranchOptions] = useState([]);
 
-  // Client-side validation errors for staff fields
+  // Client-side validation errors
   const [staffErrors, setStaffErrors] = useState({});
-
-  // Server-side error state (if needed)
+  // For any server 422 errors
   const [apiErrors, setApiErrors] = useState({});
 
-  // Snackbar for success messages
+  // Snackbar
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackMessage, setSnackMessage] = useState("");
 
@@ -141,7 +141,7 @@ export default function EditProfile() {
     loadBranches();
   }, []);
 
-  // Open the dialog for adding new staff
+  // Open the dialog
   const handleOpenAddStaff = () => {
     setStaffData({
       FullName: "",
@@ -163,7 +163,7 @@ export default function EditProfile() {
     setAddStaffOpen(true);
   };
 
-  // Handle changes to staff data fields
+  // Handler for field changes
   const handleStaffDataChange = (field, value) => {
     setStaffData((prev) => ({
       ...prev,
@@ -175,32 +175,30 @@ export default function EditProfile() {
     }));
   };
 
-  // Client-side validation for Add Staff form
+  // Client-side validation
   const validateStaffData = () => {
-    let errors = {};
+    const errors = {};
     if (!staffData.FullName.trim()) {
       errors.FullName = "Full Name is required.";
     }
     if (!staffData.Email.trim()) {
       errors.Email = "Email is required.";
     }
-    // If either password field is nonempty, they must match
     if (staffData.password.trim() || staffData.confirmPassword.trim()) {
       if (staffData.password.trim() !== staffData.confirmPassword.trim()) {
         errors.confirmPassword = "Passwords do not match.";
       }
     }
-    // For Staff and Admin, branch selection is required
+    // For staff or admin => branch required (if that's your logic)
     if ((staffData.Role === "Staff" || staffData.Role === "Admin") && !staffData.BranchID) {
       errors.BranchID = `Please select a branch for ${staffData.Role}.`;
     }
     return errors;
   };
 
-  // New: Validate that the Full Name is unique (via API)
+  // This is an optional check if you want to ensure unique names
   const checkDuplicateFullName = async (fullName) => {
     try {
-      // Assumes endpoint returns { exists: true/false }
       const res = await axios.get("/staff/exists", {
         params: { fullname: fullName.trim() }
       });
@@ -212,13 +210,13 @@ export default function EditProfile() {
   };
 
   const handleAddStaff = async () => {
-    // Run client-side validation first
+    // 1) Client-side validate
     const errors = validateStaffData();
     if (Object.keys(errors).length > 0) {
       setStaffErrors(errors);
       return;
     }
-    // Check if the full name already exists in the database
+    // 2) (Optionally) check duplicate FullName
     const isDuplicate = await checkDuplicateFullName(staffData.FullName);
     if (isDuplicate) {
       setStaffErrors((prev) => ({
@@ -229,7 +227,7 @@ export default function EditProfile() {
     }
     setStaffErrors({});
 
-    // Build payload
+    // 3) Build the payload
     const payload = {
       FullName: staffData.FullName.trim(),
       Email: staffData.Email.trim(),
@@ -239,30 +237,44 @@ export default function EditProfile() {
       password: staffData.password.trim() || null,
       password_confirmation: staffData.confirmPassword.trim() || null
     };
+
     if (staffData.Role === "Staff" || staffData.Role === "Admin") {
       payload.BranchID = staffData.BranchID;
       if (staffData.Role === "Staff") {
-        payload.DateHired = staffData.DateHired || null;
-        payload.DailyRate = staffData.DailyRate || null;
-        payload.HourlyRate = staffData.HourlyRate || null;
+        payload.DateHired    = staffData.DateHired || null;
+        payload.DailyRate    = staffData.DailyRate || null;
+        payload.HourlyRate   = staffData.HourlyRate || null;
         payload.OvertimeRate = staffData.OvertimeRate || null;
       }
     }
 
+    // 4) Decide endpoint
+    // If user picks "Admin" => call /admin
+    // Else => call /staff (including "Staff" or "Owner")
+    let endpoint = "/staff"; 
+    if (staffData.Role === "Admin") {
+      endpoint = "/admin"; 
+    }
+
+    // If you do want "Owner" to also go to /admin, you can do:
+    // if (staffData.Role === "Admin" || staffData.Role === "Owner") {
+    //   endpoint = "/admin";
+    // }
+
     try {
-      const res = await axios.post("/staff", payload);
+      const res = await axios.post(endpoint, payload);
       setSnackMessage(`New ${staffData.Role} created: ${res.data.FullName}`);
       setSnackOpen(true);
       setAddStaffOpen(false);
     } catch (err) {
-      console.error("Failed to create staff:", err);
+      console.error("Failed to create user:", err);
       if (err.response && err.response.status === 422) {
         const { errors } = err.response.data;
         if (errors) {
           setApiErrors(errors);
         }
       } else {
-        alert("Error creating staff. Check console for details.");
+        alert("Error creating user. Check console for details.");
       }
     }
   };
@@ -337,7 +349,7 @@ export default function EditProfile() {
         </Box>
       </Paper>
 
-      {/* CREATE STAFF SECTION */}
+      {/* CREATE STAFF / ADMIN / OWNER SECTION */}
       <Paper elevation={2} sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>
           Add New Staff / Admin / Owner
@@ -350,7 +362,7 @@ export default function EditProfile() {
         </Button>
       </Paper>
 
-      {/* ADD STAFF DIALOG */}
+      {/* ADD USER (STAFF/ADMIN) DIALOG */}
       <Dialog
         open={isAddStaffOpen}
         onClose={() => setAddStaffOpen(false)}
@@ -366,14 +378,19 @@ export default function EditProfile() {
         }}
       >
         <DialogTitle sx={{ p: 2 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Box
+            sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+          >
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <PersonAddIcon sx={{ fontSize: 32, color: "primary.main" }} />
               <Typography variant="h6" sx={{ fontWeight: "bold" }}>
                 Create {staffData.Role}
               </Typography>
             </Box>
-            <IconButton onClick={() => setAddStaffOpen(false)} sx={{ "&:hover": { color: "red" } }}>
+            <IconButton
+              onClick={() => setAddStaffOpen(false)}
+              sx={{ "&:hover": { color: "red" } }}
+            >
               <CloseIcon />
             </IconButton>
           </Box>
@@ -475,8 +492,6 @@ export default function EditProfile() {
                 fullWidth
                 value={staffData.Phone}
                 onChange={(e) => handleStaffDataChange("Phone", e.target.value)}
-                error={!!staffErrors.Phone}
-                helperText={staffErrors.Phone}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -524,10 +539,14 @@ export default function EditProfile() {
               </FormControl>
             </Grid>
 
-            {/* Branch Selection (if Role is not Owner) */}
-            {staffData.Role !== "Owner" && (
+            {/* Branch (Hidden if Role=Owner, or if you want to hide for Admin) */}
+            {(staffData.Role === "Staff" || staffData.Role === "Admin") && (
               <Grid item xs={12}>
-                <FormControl fullWidth variant="outlined" error={!!staffErrors.BranchID}>
+                <FormControl
+                  fullWidth
+                  variant="outlined"
+                  error={!!staffErrors.BranchID}
+                >
                   <InputLabel>Select Branch</InputLabel>
                   <Select
                     label="Select Branch"
@@ -554,7 +573,7 @@ export default function EditProfile() {
               </Grid>
             )}
 
-            {/* Fields for Staff role only */}
+            {/* Additional fields for Staff only */}
             {staffData.Role === "Staff" && (
               <>
                 <Grid item xs={12}>
@@ -564,8 +583,6 @@ export default function EditProfile() {
                     fullWidth
                     value={staffData.DateHired}
                     onChange={(e) => handleStaffDataChange("DateHired", e.target.value)}
-                    error={!!staffErrors.DateHired}
-                    helperText={staffErrors.DateHired}
                     InputLabelProps={{ shrink: true }}
                     InputProps={{
                       startAdornment: (
@@ -585,8 +602,6 @@ export default function EditProfile() {
                         fullWidth
                         value={staffData.DailyRate}
                         onChange={(e) => handleStaffDataChange("DailyRate", e.target.value)}
-                        error={!!staffErrors.DailyRate}
-                        helperText={staffErrors.DailyRate}
                         InputProps={{
                           startAdornment: <InputAdornment position="start">₱</InputAdornment>
                         }}
@@ -599,8 +614,6 @@ export default function EditProfile() {
                         fullWidth
                         value={staffData.HourlyRate}
                         onChange={(e) => handleStaffDataChange("HourlyRate", e.target.value)}
-                        error={!!staffErrors.HourlyRate}
-                        helperText={staffErrors.HourlyRate}
                         InputProps={{
                           startAdornment: (
                             <InputAdornment position="start">
@@ -617,8 +630,6 @@ export default function EditProfile() {
                         fullWidth
                         value={staffData.OvertimeRate}
                         onChange={(e) => handleStaffDataChange("OvertimeRate", e.target.value)}
-                        error={!!staffErrors.OvertimeRate}
-                        helperText={staffErrors.OvertimeRate}
                         InputProps={{
                           startAdornment: (
                             <InputAdornment position="start">
@@ -643,8 +654,6 @@ export default function EditProfile() {
                 rows={3}
                 value={staffData.Notes}
                 onChange={(e) => handleStaffDataChange("Notes", e.target.value)}
-                error={!!staffErrors.Notes}
-                helperText={staffErrors.Notes}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">

@@ -33,6 +33,9 @@ import {
   OutlinedInput,
   InputAdornment,
   Autocomplete,
+  MenuItem as MuiMenuItem,
+  Snackbar,
+  Alert
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 
@@ -74,7 +77,6 @@ import dayjs from "dayjs";
 import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
-
 import { styled } from "@mui/material/styles";
 
 // React Big Calendar
@@ -102,14 +104,16 @@ const BigCalendarWrapper = styled("div")(({ theme }) => ({
     color: theme.palette.text.primary,
   },
   ".rbc-off-range-bg": {
-    backgroundColor: theme.palette.mode === "dark" ? "#2b2b2b" : "#f0f0f0",
+    backgroundColor:
+      theme.palette.mode === "dark" ? "#2b2b2b" : "#f0f0f0",
     opacity: 0.9,
   },
   ".rbc-day-bg": {
     borderColor: theme.palette.divider,
   },
   ".rbc-today": {
-    backgroundColor: theme.palette.mode === "dark" ? "#424242" : "#e3f2fd",
+    backgroundColor:
+      theme.palette.mode === "dark" ? "#424242" : "#e3f2fd",
   },
   ".rbc-event": {
     backgroundColor: theme.palette.primary.main,
@@ -125,14 +129,12 @@ const BigCalendarWrapper = styled("div")(({ theme }) => ({
   },
 }));
 
-// Helper to format times
-const formatTime = (timeString) => {
+function formatTime(timeString) {
   if (!timeString) return "—";
   const timeObj = dayjs(timeString, "HH:mm:ss", true);
   return timeObj.isValid() ? timeObj.format("h:mm A") : "Invalid Time";
-};
+}
 
-// Merge booking/session data into the BigCalendar events
 function createCalendarEvents(bookings, sessions, sessionBookings) {
   const bookingEvents = bookings.map((b) => ({
     id: `booking-${b.BookingID}`,
@@ -143,8 +145,8 @@ function createCalendarEvents(bookings, sessions, sessionBookings) {
 
   const sessionEvents = sessions.map((s) => ({
     id: `session-${s.SessionID}`,
-    start: dayjs(s.StartTime, "YYYY-MM-DD HH:mm:ss").format("YYYY-MM-DDTHH:mm:ss"),
-    end: dayjs(s.EndTime, "YYYY-MM-DD HH:mm:ss").format("YYYY-MM-DDTHH:mm:ss"),
+    start: dayjs(s.StartTime).format("YYYY-MM-DDTHH:mm:ss"),
+    end: dayjs(s.EndTime).format("YYYY-MM-DDTHH:mm:ss"),
     title: `Session: ${s.SessionName}`,
     type: "session",
   }));
@@ -163,7 +165,7 @@ export default function BookingsSessions() {
   const theme = useTheme();
   const isSmall = useMediaQuery(theme.breakpoints.down("md"));
 
-  // ======= State Variables =======
+  // Core state
   const [bookings, setBookings] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [sessionBookings, setSessionBookings] = useState([]);
@@ -177,13 +179,16 @@ export default function BookingsSessions() {
     { value: "2", label: "Contnental Branch 2" },
   ]);
 
+  // Filters
   const [branchFilter, setBranchFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState(0);
+
+  // Export anchor
   const [exportAnchor, setExportAnchor] = useState(null);
   const openExport = Boolean(exportAnchor);
 
-  // Calendar events (Add / Edit)
+  // Calendar
   const [isAddCalendarEventOpen, setAddCalendarEventOpen] = useState(false);
   const [isEditEventOpen, setEditEventOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -195,7 +200,7 @@ export default function BookingsSessions() {
   const [editBookingModal, setEditBookingModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
 
-  // Confirmation dialog for create actions
+  // Confirmation
   const [openConfirmation, setOpenConfirmation] = useState(false);
   const [dialogType, setDialogType] = useState(""); // "booking" | "session" | "coach"
 
@@ -205,14 +210,16 @@ export default function BookingsSessions() {
   const [editSessionModal, setEditSessionModal] = useState(false);
   const [selectedSession, setSelectedSession] = useState(null);
 
-  // Book session dialog
+  // Book session
   const [isBookSessionOpen, setBookSessionOpen] = useState(false);
   const [sessionToBook, setSessionToBook] = useState(null);
   const [sessionBookingMemberID, setSessionBookingMemberID] = useState("");
   const [sessionBookingDate, setSessionBookingDate] = useState("");
   const [sessionBookingStatus, setSessionBookingStatus] = useState("Confirmed");
-  const [sessionBookingPaymentMethod, setSessionBookingPaymentMethod] = useState("Cash");
-  const [sessionBookingPaymentAmount, setSessionBookingPaymentAmount] = useState("");
+  const [sessionBookingPaymentMethod, setSessionBookingPaymentMethod] =
+    useState("Cash");
+  const [sessionBookingPaymentAmount, setSessionBookingPaymentAmount] =
+    useState("");
 
   // Coach dialogs
   const [isAddCoachOpen, setAddCoachOpen] = useState(false);
@@ -226,7 +233,7 @@ export default function BookingsSessions() {
     ContactInfo: "",
   });
 
-  // New Booking & Session fields
+  // New booking
   const [newBooking, setNewBooking] = useState({
     MemberID: "",
     FacilityID: "",
@@ -239,6 +246,7 @@ export default function BookingsSessions() {
   });
   const [selectedBranchForBooking, setSelectedBranchForBooking] = useState("");
 
+  // New session
   const [newSession, setNewSession] = useState({
     BranchID: "",
     SessionName: "",
@@ -251,19 +259,20 @@ export default function BookingsSessions() {
     Fee: "",
   });
 
-  // ======= Constants =======
+  // Status & Payment constants
   const STATUS_OPTIONS = ["Confirmed", "Pending", "Cancelled", "Completed"];
   const PAYMENT_METHODS = ["Cash", "GCash", "BPI", "BDO"];
 
-  // ======= New Realtime Validation States =======
-  // For Add Booking Dialog
+  // Real-time validation
   const isValidBooking = () => {
     return (
       newBooking.BookingDate.trim() !== "" &&
       newBooking.BookingTime.trim() !== "" &&
       newBooking.Duration.toString().trim() !== "" &&
       newBooking.PaymentAmount.toString().trim() !== "" &&
-      Number(newBooking.PaymentAmount) > 0
+      Number(newBooking.PaymentAmount) > 0 &&
+      newBooking.MemberID &&
+      newBooking.FacilityID
     );
   };
   const [isSubmitEnabledBooking, setIsSubmitEnabledBooking] = useState(false);
@@ -271,7 +280,6 @@ export default function BookingsSessions() {
     setIsSubmitEnabledBooking(isValidBooking());
   }, [selectedBranchForBooking, newBooking]);
 
-  // For Add Session Dialog
   const isValidSession = () => {
     return (
       newSession.SessionName.trim() !== "" &&
@@ -279,7 +287,9 @@ export default function BookingsSessions() {
       newSession.StartTime.trim() !== "" &&
       newSession.EndTime.trim() !== "" &&
       newSession.Capacity.toString().trim() !== "" &&
-      newSession.Location.trim() !== ""
+      newSession.Location.trim() !== "" &&
+      newSession.BranchID &&
+      newSession.CoachID
     );
   };
   const [isSubmitEnabledSession, setIsSubmitEnabledSession] = useState(false);
@@ -287,7 +297,6 @@ export default function BookingsSessions() {
     setIsSubmitEnabledSession(isValidSession());
   }, [newSession]);
 
-  // For Add Coach Dialog
   const isValidCoach = () => {
     return (
       newCoach.FullName.trim() !== "" &&
@@ -301,7 +310,17 @@ export default function BookingsSessions() {
     setIsSubmitEnabledCoach(isValidCoach());
   }, [newCoach]);
 
-  // ======= EFFECTS =======
+  // Snack / Alert
+  const [snackOpen, setSnackOpen] = useState(false);
+  const [snackMessage, setSnackMessage] = useState("");
+  const [snackSeverity, setSnackSeverity] = useState("info");
+  const showSnack = (message, severity = "info") => {
+    setSnackMessage(message);
+    setSnackSeverity(severity);
+    setSnackOpen(true);
+  };
+
+  // Fetch data
   useEffect(() => {
     fetchAllData();
   }, []);
@@ -349,19 +368,18 @@ export default function BookingsSessions() {
     }
   };
 
-  // ======= Utility Functions =======
+  // Format helpers
   const formatDate = (dateString) => {
     if (!dateString) return "—";
     return dayjs(dateString).format("MMM D, YYYY");
   };
-
   const formatDateTime = (dateString) => {
     if (!dateString) return "—";
-    const parsed = dayjs(dateString, "YYYY-MM-DD HH:mm:ss");
+    const parsed = dayjs(dateString);
     return parsed.isValid() ? parsed.format("MMM D, YYYY h:mm A") : "Invalid DateTime";
   };
 
-  // ======= FILTERING LOGIC =======
+  // Filtering
   const filteredBookings = bookings.filter((b) => {
     const branchMatches = branchFilter === "all" || Number(b.BranchID) === Number(branchFilter);
     const searchMatches = Object.values(b).some((val) =>
@@ -371,7 +389,8 @@ export default function BookingsSessions() {
   });
 
   const filteredSessions = sessions.filter((s) => {
-    const branchMatches = branchFilter === "all" || Number(s.BranchID) === Number(branchFilter);
+    const branchMatches =
+      branchFilter === "all" || Number(s.BranchID) === Number(branchFilter);
     const searchMatches = Object.values(s).some((val) =>
       String(val).toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -388,14 +407,13 @@ export default function BookingsSessions() {
     return event;
   });
 
-  // ======= Calendar Handlers =======
+  // Calendar
   const handleDateClick = (info) => {
     const clickedDate = new Date(info.dateStr);
     if (clickedDate < new Date()) return;
     setSelectedDate(clickedDate);
     setAddCalendarEventOpen(true);
   };
-
   const handleEventDrop = (info) => {
     const eventId = info.event.id;
     const newDateStr = info.event.start.toISOString();
@@ -403,8 +421,8 @@ export default function BookingsSessions() {
       prev.map((ev) => (ev.id === eventId ? { ...ev, date: newDateStr } : ev))
     );
   };
-
   const handleSaveCalendarEvent = (title, desc, start, end) => {
+    // example only
     const newEv = {
       id: Date.now().toString(),
       date: selectedDate?.toISOString().split("T")[0] || "2025-01-01",
@@ -414,7 +432,6 @@ export default function BookingsSessions() {
     setCalendarEvents((prev) => [...prev, newEv]);
     setAddCalendarEventOpen(false);
   };
-
   const handleEditEvent = (id) => {
     const found = calendarEvents.find((ev) => ev.id === id);
     if (found) {
@@ -422,11 +439,9 @@ export default function BookingsSessions() {
       setEditEventOpen(true);
     }
   };
-
   const handleDeleteEvent = (id) => {
     setCalendarEvents((prev) => prev.filter((ev) => ev.id !== id));
   };
-
   const handleSaveEditedEvent = () => {
     if (!selectedEvent) return;
     setCalendarEvents((prev) =>
@@ -435,7 +450,7 @@ export default function BookingsSessions() {
     setEditEventOpen(false);
   };
 
-  // ======= Booking Handlers =======
+  // Bookings
   const handleViewBooking = (bookingId) => {
     const found = bookings.find((b) => b.BookingID === bookingId);
     if (found) {
@@ -443,17 +458,17 @@ export default function BookingsSessions() {
       setViewBookingModal(true);
     }
   };
-
   const handleDeleteBooking = async (bookingId) => {
     try {
       await axios.delete(`/booking/${bookingId}`);
       setBookings((prev) => prev.filter((b) => b.BookingID !== bookingId));
       setCalendarEvents((prev) => prev.filter((ev) => ev.id !== `booking-${bookingId}`));
+      showSnack("Booking deleted successfully.", "success");
     } catch (err) {
       console.error("Failed to delete booking:", err);
+      showSnack("Error deleting booking. Check console.", "error");
     }
   };
-
   const handleEditBooking = (bookingId) => {
     const found = bookings.find((b) => b.BookingID === bookingId);
     if (found) {
@@ -461,7 +476,6 @@ export default function BookingsSessions() {
       setEditBookingModal(true);
     }
   };
-
   const handleCreateBooking = async () => {
     try {
       await axios.post("/booking", {
@@ -476,17 +490,18 @@ export default function BookingsSessions() {
       });
       setAddBookingOpen(false);
       fetchAllData();
+      showSnack("Booking created successfully!", "success");
     } catch (err) {
       console.error("Failed to create booking:", err);
+      showSnack("Error creating booking. Check console for details.", "error");
     }
   };
-
   const handleUpdateBooking = async () => {
     if (!selectedBooking) return;
     try {
       await axios.put(`/booking/${selectedBooking.BookingID}`, {
         MemberID: selectedBooking.MemberID,
-        FacilityID: selectedBooking.FacilityID,
+        FacilityID: selectedBooking.FacilityID, 
         BookingDate: selectedBooking.BookingDate,
         BookingTime: selectedBooking.BookingTime,
         Duration: selectedBooking.Duration,
@@ -495,12 +510,14 @@ export default function BookingsSessions() {
       });
       setEditBookingModal(false);
       fetchAllData();
+      showSnack("Booking updated!", "success");
     } catch (err) {
       console.error("Failed to update booking:", err);
+      showSnack("Error updating booking. Check console for details.", "error");
     }
   };
 
-  // ======= Session Handlers =======
+  // Sessions
   const handleViewSession = (sessionId) => {
     const found = sessions.find((s) => s.SessionID === sessionId);
     if (found) {
@@ -508,26 +525,18 @@ export default function BookingsSessions() {
       setViewSessionModal(true);
     }
   };
-
-  // Changed this function so that session deletion goes through the delete confirmation dialog.
-  // const handleCancelSession = async (sessionId) => {
-  //   try {
-  //     await axios.post(`/booking/sessions/${sessionId}/cancel`);
-  //     setSessions((prev) => prev.filter((s) => s.SessionID !== sessionId));
-  //     setCalendarEvents((prev) => prev.filter((ev) => ev.id !== `session-${sessionId}`));
-  //   } catch (err) {
-  //     console.error("Failed to cancel session:", err);
-  //   }
-  // };
-
   const handleEditSession = (sessionId) => {
     const found = sessions.find((s) => s.SessionID === sessionId);
     if (found) {
-      setSelectedSession(found);
+      setSelectedSession({
+        ...found,
+        // Convert Start/EndTime to "YYYY-MM-DD HH:mm:ss" for the DesktopDateTimePicker
+        StartTime: dayjs(found.StartTime).format("YYYY-MM-DD HH:mm:ss"),
+        EndTime: dayjs(found.EndTime).format("YYYY-MM-DD HH:mm:ss"),
+      });
       setEditSessionModal(true);
     }
   };
-
   const handleCreateSession = async () => {
     try {
       await axios.post("/booking/sessions", {
@@ -535,7 +544,7 @@ export default function BookingsSessions() {
         SessionName: newSession.SessionName,
         SessionType: newSession.SessionType,
         CoachID: newSession.CoachID,
-        StartTime: newSession.StartTime,
+        StartTime: newSession.StartTime, // "YYYY-MM-DD HH:mm:ss"
         EndTime: newSession.EndTime,
         Capacity: newSession.Capacity,
         Location: newSession.Location,
@@ -543,12 +552,12 @@ export default function BookingsSessions() {
       });
       setAddSessionOpen(false);
       fetchAllData();
+      showSnack("Session created!", "success");
     } catch (err) {
       console.error("Failed to create session:", err);
-      alert("There was an error creating the session (422). Check format or console for details.");
+      showSnack("Error creating session. Check console for details.", "error");
     }
   };
-
   const handleUpdateSession = async () => {
     if (!selectedSession) return;
     try {
@@ -557,58 +566,65 @@ export default function BookingsSessions() {
         BranchID: selectedSession.BranchID,
         SessionType: selectedSession.SessionType,
         CoachID: selectedSession.CoachID,
-        StartTime: selectedSession.StartTime,
+        StartTime: selectedSession.StartTime, // "YYYY-MM-DD HH:mm:ss"
         EndTime: selectedSession.EndTime,
         Capacity: selectedSession.Capacity,
         Location: selectedSession.Location,
         Fee: selectedSession.Fee,
-        Status: selectedSession.Status,
+        Status: selectedSession.Status || "Scheduled",
       });
       setEditSessionModal(false);
       fetchAllData();
+      showSnack("Session updated!", "success");
     } catch (err) {
       console.error("Failed to update session:", err);
+      showSnack("Error updating session. Check console for details.", "error");
     }
   };
 
-  // ======= Book Session Handlers =======
+  // Book Session
   const handleOpenBookSession = (sessionId) => {
     const found = sessions.find((s) => s.SessionID === sessionId);
     if (found) {
       setSessionToBook(found);
       setSessionBookingMemberID("");
-      // Set the booking date & time based on the session's StartTime if available,
-      // otherwise use the current date and time.
       setSessionBookingDate(
-        found.StartTime ? dayjs(found.StartTime).format("YYYY-MM-DD HH:mm") : dayjs().format("YYYY-MM-DD HH:mm")
+        found.StartTime
+          ? dayjs(found.StartTime).format("YYYY-MM-DD HH:mm")
+          : dayjs().format("YYYY-MM-DD HH:mm")
       );
       setSessionBookingStatus("Confirmed");
       setSessionBookingPaymentMethod("Cash");
-      // Pre-fill the payment amount from the session's fee if available.
-      setSessionBookingPaymentAmount(found.Fee ? found.Fee.toString() : "");
+      setSessionBookingPaymentAmount(found.Fee ? String(found.Fee) : "");
       setBookSessionOpen(true);
     }
   };
-
   const handleBookSessionConfirm = async () => {
     if (!sessionToBook) return;
     try {
       await axios.post("/booking/sessions/book", {
         SessionID: sessionToBook.SessionID,
         MemberID: sessionBookingMemberID,
-        BookingDate: sessionBookingDate,
+        BookingDate: dayjs(sessionBookingDate).format("YYYY-MM-DD"),
         Status: sessionBookingStatus,
         PaymentMethod: sessionBookingPaymentMethod,
         Amount: Number(sessionBookingPaymentAmount) || 0,
       });
       setBookSessionOpen(false);
       fetchAllData();
+      showSnack("Session booked successfully!", "success");
     } catch (err) {
       console.error("Failed to book the session:", err);
+      if (err.response && err.response.status === 422) {
+        // e.g. "Capacity reached" message from backend
+        showSnack(err.response.data.message || "Capacity reached!", "warning");
+      } else {
+        showSnack("Error booking session. Check console for details.", "error");
+      }
     }
   };
 
-  // ======= Coach Handlers =======
+  // Coaches
   const handleViewCoach = (coachId) => {
     const found = coaches.find((c) => c.CoachID === coachId);
     if (found) {
@@ -616,7 +632,6 @@ export default function BookingsSessions() {
       setViewCoachModal(true);
     }
   };
-
   const handleEditCoach = (coachId) => {
     const found = coaches.find((c) => c.CoachID === coachId);
     if (found) {
@@ -624,16 +639,16 @@ export default function BookingsSessions() {
       setEditCoachModal(true);
     }
   };
-
   const handleDeleteCoach = async (coachId) => {
     try {
       await axios.delete(`/booking/coaches/${coachId}`);
       setCoaches((prev) => prev.filter((c) => c.CoachID !== coachId));
+      showSnack("Coach deleted!", "success");
     } catch (err) {
       console.error("Failed to delete coach:", err);
+      showSnack("Error deleting coach. Check console.", "error");
     }
   };
-
   const handleCreateCoach = async () => {
     try {
       await axios.post("/booking/coaches", {
@@ -644,11 +659,12 @@ export default function BookingsSessions() {
       });
       setAddCoachOpen(false);
       fetchAllData();
+      showSnack("Coach created!", "success");
     } catch (err) {
       console.error("Failed to create coach:", err);
+      showSnack("Error creating coach. Check console.", "error");
     }
   };
-
   const handleUpdateCoach = async () => {
     if (!selectedCoach) return;
     try {
@@ -660,12 +676,14 @@ export default function BookingsSessions() {
       });
       setEditCoachModal(false);
       fetchAllData();
+      showSnack("Coach updated!", "success");
     } catch (err) {
       console.error("Failed to update coach:", err);
+      showSnack("Error updating coach. Check console.", "error");
     }
   };
 
-  // ======= Deletion Confirmation Dialog =======
+  // Delete Confirmation
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteType, setDeleteType] = useState("");
   const [deleteItemId, setDeleteItemId] = useState(null);
@@ -675,26 +693,27 @@ export default function BookingsSessions() {
     setDeleteItemId(id);
     setDeleteDialogOpen(true);
   };
-
   const handleConfirmDelete = async () => {
     try {
       if (deleteType === "booking") {
-        await axios.delete(`/booking/${deleteItemId}`);
-        setBookings((prev) => prev.filter((b) => b.BookingID !== deleteItemId));
+        await handleDeleteBooking(deleteItemId);
       } else if (deleteType === "session") {
         await axios.delete(`/booking/sessions/${deleteItemId}`);
         setSessions((prev) => prev.filter((s) => s.SessionID !== deleteItemId));
+        setCalendarEvents((prev) =>
+          prev.filter((ev) => ev.id !== `session-${deleteItemId}`)
+        );
+        showSnack("Session deleted!", "success");
       } else if (deleteType === "coach") {
-        await axios.delete(`/booking/coaches/${deleteItemId}`);
-        setCoaches((prev) => prev.filter((c) => c.CoachID !== deleteItemId));
+        await handleDeleteCoach(deleteItemId);
       }
-      setDeleteDialogOpen(false);
     } catch (err) {
       console.error("Failed to delete:", err);
     }
+    setDeleteDialogOpen(false);
   };
 
-  // ======= DataGrid Columns =======
+  // Columns
   const bookingColumns = [
     { field: "BookingID", headerName: "ID", width: 80 },
     { field: "Branch", headerName: "Branch", width: 180 },
@@ -739,7 +758,7 @@ export default function BookingsSessions() {
               <EditIcon fontSize="small" />
             </Button>
           </Tooltip>
-          <Tooltip title="Cancel">
+          <Tooltip title="Delete">
             <Button
               variant="contained"
               color="error"
@@ -807,7 +826,7 @@ export default function BookingsSessions() {
               <EventAvailableIcon fontSize="small" />
             </Button>
           </Tooltip>
-          <Tooltip title="Cancel">
+          <Tooltip title="Delete Session">
             <Button
               variant="contained"
               color="error"
@@ -872,12 +891,16 @@ export default function BookingsSessions() {
     activeTab === 0 ? bookingColumns : activeTab === 1 ? sessionColumns : coachesColumns;
 
   const rows =
-    activeTab === 0 ? filteredBookings : activeTab === 1 ? filteredSessions : coaches;
+    activeTab === 0
+      ? filteredBookings
+      : activeTab === 1
+      ? filteredSessions
+      : coaches;
 
   const getRowId = (row) =>
     activeTab === 0 ? row.BookingID : activeTab === 1 ? row.SessionID : row.CoachID;
 
-  // ======= Export Logic (CSV / PDF) =======
+  // Export
   const handleExportClick = (e) => setExportAnchor(e.currentTarget);
   const handleExportClose = () => setExportAnchor(null);
 
@@ -904,12 +927,11 @@ export default function BookingsSessions() {
 
   const handleExportPDF = () => {
     handleExportClose();
-  
     let title = "";
     let filename = "";
     let tableHeaders = [];
     let tableBody = [];
-  
+
     if (activeTab === 0) {
       title = "Facility Bookings Report";
       filename = "BookingsReport.pdf";
@@ -921,7 +943,7 @@ export default function BookingsSessions() {
         "Date",
         "Time",
         "Duration",
-        "Status"
+        "Status",
       ];
       tableBody = filteredBookings.map((b) => [
         b.BookingID || "N/A",
@@ -931,7 +953,7 @@ export default function BookingsSessions() {
         formatDate(b.BookingDate),
         b.BookingTime ? formatTime(b.BookingTime) : "—",
         b.Duration || "—",
-        b.Status || "—"
+        b.Status || "—",
       ]);
     } else if (activeTab === 1) {
       title = "Coach Sessions Report";
@@ -943,7 +965,7 @@ export default function BookingsSessions() {
         "Coach Name",
         "Start",
         "End",
-        "Capacity"
+        "Capacity",
       ];
       tableBody = filteredSessions.map((s) => [
         s.SessionID || "N/A",
@@ -952,7 +974,7 @@ export default function BookingsSessions() {
         s.CoachName || "—",
         formatDateTime(s.StartTime),
         formatDateTime(s.EndTime),
-        s.Capacity || "—"
+        s.Capacity || "—",
       ]);
     } else {
       title = "Coaches Report";
@@ -962,32 +984,31 @@ export default function BookingsSessions() {
         "Full Name",
         "Specialty",
         "Availability",
-        "Contact Info"
+        "Contact Info",
       ];
       tableBody = coaches.map((c) => [
         c.CoachID || "N/A",
         c.FullName || "—",
         c.Specialty || "—",
         c.Availability || "—",
-        c.ContactInfo || "—"
+        c.ContactInfo || "—",
       ]);
     }
-  
+
     if (tableBody.length === 0) {
       alert("No records to export.");
       return;
     }
-  
+
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "pt",
-      format: "A4"
+      format: "A4",
     });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const coverPageImg = "/imgs/coverpage2.png";
-  
-    // Draw cover page background and header text (only on the first page)
+
     doc.addImage(coverPageImg, "PNG", 0, 0, pageWidth, pageHeight);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(24);
@@ -995,10 +1016,9 @@ export default function BookingsSessions() {
     doc.text(title, pageWidth / 2, 100, { align: "center" });
     doc.setFontSize(14);
     doc.text("Generated on: " + new Date().toLocaleDateString(), pageWidth / 2, 130, {
-      align: "center"
+      align: "center",
     });
-  
-    // Draw the table starting at Y position 150 so the header isn’t overlapped.
+
     doc.autoTable({
       head: [tableHeaders],
       body: tableBody,
@@ -1008,28 +1028,28 @@ export default function BookingsSessions() {
         fillColor: "#050505",
         textColor: "#ffffff",
         fontStyle: "bold",
-        fontSize: 10
+        fontSize: 10,
       },
       bodyStyles: {
         textColor: "#333333",
-        fontSize: 10
+        fontSize: 10,
       },
       alternateRowStyles: {
-        fillColor: "#f0f4f7"
+        fillColor: "#f0f4f7",
       },
       styles: {
         overflow: "linebreak",
         cellPadding: 5,
         halign: "center",
-        valign: "middle"
+        valign: "middle",
       },
-      margin: { top: 50, left: 20, right: 20, bottom: 20 }
+      margin: { top: 50, left: 20, right: 20, bottom: 20 },
     });
-  
+
     doc.save(filename);
   };
-  
-  // ======= Event Pagination ======= 
+
+  // Calendar pagination (optional)
   const eventsPerPage = 6;
   const [eventPage, setEventPage] = useState(1);
   const indexOfLastEvent = eventPage * eventsPerPage;
@@ -1037,20 +1057,20 @@ export default function BookingsSessions() {
   const currentEvents = calendarEvents.slice(indexOfFirstEvent, indexOfLastEvent);
   const handleEventPageChange = (event, value) => setEventPage(value);
 
-  // ======= Calendar Style =======
   const calendarStyle = {
     height: 730,
     backgroundColor:
-      theme.palette.mode === "dark" ? theme.palette.background.default : "#fff",
+      theme.palette.mode === "dark"
+        ? theme.palette.background.default
+        : "#fff",
     color: theme.palette.text.primary,
     borderRadius: 4,
   };
 
-  // ======= RENDER =======
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Box sx={{ p: isSmall ? 2 : 4 }}>
-        {/* CALENDAR + EVENT LIST */}
+        {/* CALENDAR & EVENT LIST */}
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={12} md={8}>
             <Card sx={{ minHeight: 763 }}>
@@ -1081,8 +1101,6 @@ export default function BookingsSessions() {
               </CardContent>
             </Card>
           </Grid>
-
-          {/* EVENT LIST */}
           <Grid item xs={12} md={4}>
             <Card sx={{ minHeight: 763 }}>
               <CardHeader title="Event List" />
@@ -1128,7 +1146,7 @@ export default function BookingsSessions() {
           </Grid>
         </Grid>
 
-        {/* TABS / FILTERS / EXPORTS / ADD BUTTONS */}
+        {/* TABS */}
         <Box
           sx={{
             display: "flex",
@@ -1281,7 +1299,7 @@ export default function BookingsSessions() {
           </Box>
         </Paper>
 
-        {/* ======= ADD BOOKING DIALOG ======= */}
+        {/* ADD BOOKING DIALOG */}
         <Dialog
           open={isAddBookingOpen}
           onClose={() => setAddBookingOpen(false)}
@@ -1297,9 +1315,7 @@ export default function BookingsSessions() {
           }}
         >
           <DialogTitle sx={{ p: 2 }}>
-            <Box
-              sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-            >
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 <CalendarTodayIcon sx={{ fontSize: 32, color: "primary.main" }} />
                 <Typography variant="h6" sx={{ fontWeight: "bold" }}>
@@ -1341,7 +1357,9 @@ export default function BookingsSessions() {
                   <Select
                     name="FacilityID"
                     value={newBooking.FacilityID}
-                    onChange={(e) => setNewBooking({ ...newBooking, FacilityID: e.target.value })}
+                    onChange={(e) =>
+                      setNewBooking({ ...newBooking, FacilityID: e.target.value })
+                    }
                     startAdornment={
                       <InputAdornment position="start">
                         <FitnessCenterIcon />
@@ -1349,7 +1367,9 @@ export default function BookingsSessions() {
                     }
                   >
                     {(selectedBranchForBooking
-                      ? facilities.filter((f) => String(f.BranchID) === selectedBranchForBooking)
+                      ? facilities.filter(
+                          (f) => String(f.BranchID) === selectedBranchForBooking
+                        )
                       : facilities
                     ).map((f) => (
                       <MenuItem key={f.FacilityID} value={f.FacilityID}>
@@ -1363,9 +1383,15 @@ export default function BookingsSessions() {
                 <Autocomplete
                   options={members}
                   getOptionLabel={(option) => option.FullName || ""}
-                  value={members.find((m) => m.MemberID === newBooking.MemberID) || null}
+                  value={
+                    members.find((m) => m.MemberID === newBooking.MemberID) ||
+                    null
+                  }
                   onChange={(event, newValue) =>
-                    setNewBooking({ ...newBooking, MemberID: newValue ? newValue.MemberID : "" })
+                    setNewBooking({
+                      ...newBooking,
+                      MemberID: newValue ? newValue.MemberID : "",
+                    })
                   }
                   renderInput={(params) => (
                     <TextField
@@ -1385,53 +1411,52 @@ export default function BookingsSessions() {
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-  <TextField
-    label="Booking Date"
-    type="date"
-    fullWidth
-    required
-    value={newBooking.BookingDate || ""}
-    onChange={(e) =>
-      setNewBooking({ ...newBooking, BookingDate: e.target.value })
-    }
-    InputLabelProps={{ shrink: true }}
-    inputProps={{ min: dayjs().format("YYYY-MM-DD") }}
-    InputProps={{
-      startAdornment: (
-        <InputAdornment position="start">
-          <EventIcon />
-        </InputAdornment>
-      ),
-    }}
-  />
-</Grid>
-<Grid item xs={12} sm={6}>
-  <TextField
-    label="Booking Time"
-    type="time"
-    fullWidth
-    required
-    value={newBooking.BookingTime || ""}
-    onChange={(e) =>
-      setNewBooking({ ...newBooking, BookingTime: e.target.value })
-    }
-    InputLabelProps={{ shrink: true }}
-    inputProps={{
-      min:
-        newBooking.BookingDate === dayjs().format("YYYY-MM-DD")
-          ? dayjs().format("HH:mm")
-          : undefined,
-    }}
-    InputProps={{
-      startAdornment: (
-        <InputAdornment position="start">
-          <AccessTimeIcon />
-        </InputAdornment>
-      ),
-    }}
-  />
-</Grid>
-
+                <TextField
+                  label="Booking Date"
+                  type="date"
+                  fullWidth
+                  required
+                  value={newBooking.BookingDate || ""}
+                  onChange={(e) =>
+                    setNewBooking({ ...newBooking, BookingDate: e.target.value })
+                  }
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{ min: dayjs().format("YYYY-MM-DD") }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <EventIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Booking Time"
+                  type="time"
+                  fullWidth
+                  required
+                  value={newBooking.BookingTime || ""}
+                  onChange={(e) =>
+                    setNewBooking({ ...newBooking, BookingTime: e.target.value })
+                  }
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{
+                    min:
+                      newBooking.BookingDate === dayjs().format("YYYY-MM-DD")
+                        ? dayjs().format("HH:mm")
+                        : undefined,
+                  }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <AccessTimeIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
                   label="Duration (hrs)"
@@ -1439,7 +1464,9 @@ export default function BookingsSessions() {
                   fullWidth
                   required
                   value={newBooking.Duration || ""}
-                  onChange={(e) => setNewBooking({ ...newBooking, Duration: e.target.value })}
+                  onChange={(e) =>
+                    setNewBooking({ ...newBooking, Duration: e.target.value })
+                  }
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -1455,7 +1482,9 @@ export default function BookingsSessions() {
                   fullWidth
                   required
                   value={newBooking.Status || ""}
-                  onChange={(e) => setNewBooking({ ...newBooking, Status: e.target.value })}
+                  onChange={(e) =>
+                    setNewBooking({ ...newBooking, Status: e.target.value })
+                  }
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -1472,7 +1501,12 @@ export default function BookingsSessions() {
                   fullWidth
                   required
                   value={newBooking.PaymentAmount || ""}
-                  onChange={(e) => setNewBooking({ ...newBooking, PaymentAmount: e.target.value })}
+                  onChange={(e) =>
+                    setNewBooking({
+                      ...newBooking,
+                      PaymentAmount: e.target.value,
+                    })
+                  }
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -1500,7 +1534,7 @@ export default function BookingsSessions() {
           </DialogActions>
         </Dialog>
 
-        {/* ======= ADD SESSION DIALOG ======= */}
+        {/* ADD SESSION DIALOG */}
         <Dialog
           open={isAddSessionOpen}
           onClose={() => setAddSessionOpen(false)}
@@ -1513,7 +1547,10 @@ export default function BookingsSessions() {
                 <FitnessCenterIcon sx={{ verticalAlign: "middle", mr: 1 }} />
                 Add New Session
               </Typography>
-              <IconButton onClick={() => setAddSessionOpen(false)} sx={{ color: "inherit", "&:hover": { color: "red" } }}>
+              <IconButton
+                onClick={() => setAddSessionOpen(false)}
+                sx={{ color: "inherit", "&:hover": { color: "red" } }}
+              >
                 <CloseIcon />
               </IconButton>
             </Box>
@@ -1529,7 +1566,9 @@ export default function BookingsSessions() {
                       <Select
                         name="BranchID"
                         value={newSession.BranchID || ""}
-                        onChange={(e) => setNewSession({ ...newSession, BranchID: e.target.value })}
+                        onChange={(e) =>
+                          setNewSession({ ...newSession, BranchID: e.target.value })
+                        }
                         input={
                           <OutlinedInput
                             label="Branch"
@@ -1556,7 +1595,9 @@ export default function BookingsSessions() {
                       fullWidth
                       required
                       value={newSession.SessionName}
-                      onChange={(e) => setNewSession({ ...newSession, SessionName: e.target.value })}
+                      onChange={(e) =>
+                        setNewSession({ ...newSession, SessionName: e.target.value })
+                      }
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start">
@@ -1573,7 +1614,9 @@ export default function BookingsSessions() {
                       fullWidth
                       required
                       value={newSession.SessionType}
-                      onChange={(e) => setNewSession({ ...newSession, SessionType: e.target.value })}
+                      onChange={(e) =>
+                        setNewSession({ ...newSession, SessionType: e.target.value })
+                      }
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start">
@@ -1589,7 +1632,10 @@ export default function BookingsSessions() {
                       getOptionLabel={(option) => option.FullName || ""}
                       value={coaches.find((c) => c.CoachID === newSession.CoachID) || null}
                       onChange={(event, newValue) =>
-                        setNewSession({ ...newSession, CoachID: newValue ? newValue.CoachID : "" })
+                        setNewSession({
+                          ...newSession,
+                          CoachID: newValue ? newValue.CoachID : "",
+                        })
                       }
                       renderInput={(params) => (
                         <TextField
@@ -1614,12 +1660,15 @@ export default function BookingsSessions() {
                       value={newSession.StartTime ? dayjs(newSession.StartTime) : null}
                       onChange={(newValue) => {
                         if (newValue && newValue.isValid()) {
-                          setNewSession({ ...newSession, StartTime: newValue.format("YYYY-MM-DD HH:mm:ss") });
+                          setNewSession({
+                            ...newSession,
+                            StartTime: newValue.format("YYYY-MM-DD HH:mm:ss"),
+                          });
                         }
                       }}
                       format="YYYY-MM-DD HH:mm"
                       slotProps={{ textField: { fullWidth: true, required: true } }}
-                      minDateTime={dayjs()}  // Cannot pick a past start date/time
+                      minDateTime={dayjs()}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
@@ -1628,12 +1677,15 @@ export default function BookingsSessions() {
                       value={newSession.EndTime ? dayjs(newSession.EndTime) : null}
                       onChange={(newValue) => {
                         if (newValue && newValue.isValid()) {
-                          setNewSession({ ...newSession, EndTime: newValue.format("YYYY-MM-DD HH:mm:ss") });
+                          setNewSession({
+                            ...newSession,
+                            EndTime: newValue.format("YYYY-MM-DD HH:mm:ss"),
+                          });
                         }
                       }}
                       format="YYYY-MM-DD HH:mm"
                       slotProps={{ textField: { fullWidth: true, required: true } }}
-                      minDateTime={newSession.StartTime ? dayjs(newSession.StartTime) : dayjs()}  // End time must be after start time
+                      minDateTime={newSession.StartTime ? dayjs(newSession.StartTime) : dayjs()}
                     />
                   </Grid>
 
@@ -1645,7 +1697,9 @@ export default function BookingsSessions() {
                       fullWidth
                       required
                       value={newSession.Capacity}
-                      onChange={(e) => setNewSession({ ...newSession, Capacity: e.target.value })}
+                      onChange={(e) =>
+                        setNewSession({ ...newSession, Capacity: e.target.value })
+                      }
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start">
@@ -1662,7 +1716,9 @@ export default function BookingsSessions() {
                       fullWidth
                       required
                       value={newSession.Location}
-                      onChange={(e) => setNewSession({ ...newSession, Location: e.target.value })}
+                      onChange={(e) =>
+                        setNewSession({ ...newSession, Location: e.target.value })
+                      }
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start">
@@ -1679,7 +1735,9 @@ export default function BookingsSessions() {
                       type="number"
                       fullWidth
                       value={newSession.Fee}
-                      onChange={(e) => setNewSession({ ...newSession, Fee: e.target.value })}
+                      onChange={(e) =>
+                        setNewSession({ ...newSession, Fee: e.target.value })
+                      }
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start">
@@ -1732,14 +1790,19 @@ export default function BookingsSessions() {
           }}
         >
           <DialogTitle sx={{ p: 2 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Box
+              sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+            >
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 <EventIcon sx={{ fontSize: 32, color: "primary.main" }} />
                 <Typography variant="h6" sx={{ fontWeight: "bold" }}>
                   Booking Details
                 </Typography>
               </Box>
-              <IconButton onClick={() => setViewBookingModal(false)} sx={{ "&:hover": { color: theme.palette.error.main } }}>
+              <IconButton
+                onClick={() => setViewBookingModal(false)}
+                sx={{ "&:hover": { color: theme.palette.error.main } }}
+              >
                 <CloseIcon />
               </IconButton>
             </Box>
@@ -1855,7 +1918,10 @@ export default function BookingsSessions() {
                   Edit Booking
                 </Typography>
               </Box>
-              <IconButton onClick={() => setEditBookingModal(false)} sx={{ "&:hover": { color: theme.palette.error.main } }}>
+              <IconButton
+                onClick={() => setEditBookingModal(false)}
+                sx={{ "&:hover": { color: theme.palette.error.main } }}
+              >
                 <CloseIcon />
               </IconButton>
             </Box>
@@ -1866,7 +1932,9 @@ export default function BookingsSessions() {
                 <Autocomplete
                   options={members}
                   getOptionLabel={(option) => option.FullName || ""}
-                  value={members.find((m) => m.MemberID === selectedBooking.MemberID) || null}
+                  value={
+                    members.find((m) => m.MemberID === selectedBooking.MemberID) || null
+                  }
                   onChange={(e, val) => {
                     if (val) {
                       setSelectedBooking((prev) => ({
@@ -1876,14 +1944,18 @@ export default function BookingsSessions() {
                       }));
                     }
                   }}
-                  renderInput={(params) => <TextField {...params} label="Member" size="small" fullWidth />}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Member" size="small" fullWidth />
+                  )}
                 />
                 <TextField
                   label="Facility Name"
                   size="small"
                   fullWidth
                   value={selectedBooking.FacilityName || ""}
-                  onChange={(e) => setSelectedBooking({ ...selectedBooking, FacilityName: e.target.value })}
+                  onChange={(e) =>
+                    setSelectedBooking({ ...selectedBooking, FacilityName: e.target.value })
+                  }
                 />
                 <DesktopDateTimePicker
                   label="Booking Date & Time"
@@ -1896,18 +1968,28 @@ export default function BookingsSessions() {
                     if (newVal && newVal.isValid()) {
                       const formatted = newVal.format("YYYY-MM-DD HH:mm:ss");
                       const [date, time] = formatted.split(" ");
-                      setSelectedBooking({ ...selectedBooking, BookingDate: date, BookingTime: time });
+                      setSelectedBooking({
+                        ...selectedBooking,
+                        BookingDate: date,
+                        BookingTime: time,
+                      });
                     }
                   }}
                   format="YYYY-MM-DD HH:mm"
-                  slotProps={{ textField: (params) => <TextField {...params} size="small" fullWidth /> }}
+                  slotProps={{
+                    textField: (params) => (
+                      <TextField {...params} size="small" fullWidth />
+                    ),
+                  }}
                 />
                 <TextField
                   label="Duration"
                   size="small"
                   fullWidth
                   value={selectedBooking.Duration || ""}
-                  onChange={(e) => setSelectedBooking({ ...selectedBooking, Duration: e.target.value })}
+                  onChange={(e) =>
+                    setSelectedBooking({ ...selectedBooking, Duration: e.target.value })
+                  }
                 />
                 <FormControl fullWidth size="small">
                   <InputLabel>Status</InputLabel>
@@ -1929,13 +2011,18 @@ export default function BookingsSessions() {
             )}
           </DialogContent>
           <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
-            <Button variant="contained" color="primary" onClick={handleUpdateBooking} sx={{ textTransform: "none" }}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleUpdateBooking}
+              sx={{ textTransform: "none" }}
+            >
               <SaveIcon sx={{ mr: 1 }} /> Save Changes
             </Button>
           </DialogActions>
         </Dialog>
 
-        {/* =================== EDIT SESSION DIALOG =================== */}
+        {/* EDIT SESSION DIALOG */}
         <Dialog
           open={editSessionModal}
           onClose={() => setEditSessionModal(false)}
@@ -1950,18 +2037,17 @@ export default function BookingsSessions() {
             },
           }}
         >
-          <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: 2 }}>
-            {/* Left Section - Title & Icon */}
+          <DialogTitle
+            sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: 2 }}
+          >
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <EditIcon sx={{ fontSize: 32, color: "primary.main" }} />
               <Typography variant="h6" sx={{ fontWeight: "bold" }}>
                 Edit Session
               </Typography>
             </Box>
-
-            {/* Right Section - Close Button */}
-            <IconButton 
-              onClick={() => setEditSessionModal(false)} 
+            <IconButton
+              onClick={() => setEditSessionModal(false)}
               sx={{
                 color: "gray",
                 "&:hover": { color: "red" },
@@ -1978,7 +2064,9 @@ export default function BookingsSessions() {
                     label="Branch"
                     fullWidth
                     value={selectedSession.Branch || ""}
-                    onChange={(e) => setSelectedSession({ ...selectedSession, Branch: e.target.value })}
+                    onChange={(e) =>
+                      setSelectedSession({ ...selectedSession, Branch: e.target.value })
+                    }
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -1993,7 +2081,12 @@ export default function BookingsSessions() {
                     label="Session Name"
                     fullWidth
                     value={selectedSession.SessionName || ""}
-                    onChange={(e) => setSelectedSession({ ...selectedSession, SessionName: e.target.value })}
+                    onChange={(e) =>
+                      setSelectedSession({
+                        ...selectedSession,
+                        SessionName: e.target.value,
+                      })
+                    }
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -2008,7 +2101,12 @@ export default function BookingsSessions() {
                     label="Session Type"
                     fullWidth
                     value={selectedSession.SessionType || ""}
-                    onChange={(e) => setSelectedSession({ ...selectedSession, SessionType: e.target.value })}
+                    onChange={(e) =>
+                      setSelectedSession({
+                        ...selectedSession,
+                        SessionType: e.target.value,
+                      })
+                    }
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -2022,7 +2120,10 @@ export default function BookingsSessions() {
                   <Autocomplete
                     options={coaches}
                     getOptionLabel={(option) => option.FullName || ""}
-                    value={coaches.find((c) => c.CoachID === selectedSession.CoachID) || null}
+                    value={
+                      coaches.find((c) => c.CoachID === selectedSession.CoachID) ||
+                      null
+                    }
                     onChange={(event, newValue) => {
                       if (newValue) {
                         setSelectedSession({
@@ -2055,10 +2156,17 @@ export default function BookingsSessions() {
                 <Grid item xs={12} sm={6}>
                   <DesktopDateTimePicker
                     label="Start Date & Time"
-                    value={selectedSession.StartTime ? dayjs(selectedSession.StartTime) : null}
+                    value={
+                      selectedSession.StartTime
+                        ? dayjs(selectedSession.StartTime, "YYYY-MM-DD HH:mm:ss")
+                        : null
+                    }
                     onChange={(newVal) => {
                       if (newVal && newVal.isValid()) {
-                        setSelectedSession({ ...selectedSession, StartTime: newVal.format("YYYY-MM-DD HH:mm:ss") });
+                        setSelectedSession({
+                          ...selectedSession,
+                          StartTime: newVal.format("YYYY-MM-DD HH:mm:ss"),
+                        });
                       }
                     }}
                     format="YYYY-MM-DD HH:mm"
@@ -2082,10 +2190,17 @@ export default function BookingsSessions() {
                 <Grid item xs={12} sm={6}>
                   <DesktopDateTimePicker
                     label="End Date & Time"
-                    value={selectedSession.EndTime ? dayjs(selectedSession.EndTime) : null}
+                    value={
+                      selectedSession.EndTime
+                        ? dayjs(selectedSession.EndTime, "YYYY-MM-DD HH:mm:ss")
+                        : null
+                    }
                     onChange={(newVal) => {
                       if (newVal && newVal.isValid()) {
-                        setSelectedSession({ ...selectedSession, EndTime: newVal.format("YYYY-MM-DD HH:mm:ss") });
+                        setSelectedSession({
+                          ...selectedSession,
+                          EndTime: newVal.format("YYYY-MM-DD HH:mm:ss"),
+                        });
                       }
                     }}
                     format="YYYY-MM-DD HH:mm"
@@ -2110,8 +2225,14 @@ export default function BookingsSessions() {
                   <TextField
                     label="Capacity"
                     fullWidth
+                    type="number"
                     value={selectedSession.Capacity || ""}
-                    onChange={(e) => setSelectedSession({ ...selectedSession, Capacity: e.target.value })}
+                    onChange={(e) =>
+                      setSelectedSession({
+                        ...selectedSession,
+                        Capacity: e.target.value,
+                      })
+                    }
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -2126,7 +2247,12 @@ export default function BookingsSessions() {
                     label="Location"
                     fullWidth
                     value={selectedSession.Location || ""}
-                    onChange={(e) => setSelectedSession({ ...selectedSession, Location: e.target.value })}
+                    onChange={(e) =>
+                      setSelectedSession({
+                        ...selectedSession,
+                        Location: e.target.value,
+                      })
+                    }
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -2142,7 +2268,9 @@ export default function BookingsSessions() {
                     fullWidth
                     type="number"
                     value={selectedSession.Fee || ""}
-                    onChange={(e) => setSelectedSession({ ...selectedSession, Fee: e.target.value })}
+                    onChange={(e) =>
+                      setSelectedSession({ ...selectedSession, Fee: e.target.value })
+                    }
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -2156,13 +2284,18 @@ export default function BookingsSessions() {
             )}
           </DialogContent>
           <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
-            <Button variant="contained" color="primary" onClick={handleUpdateSession} sx={{ textTransform: "none" }}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleUpdateSession}
+              sx={{ textTransform: "none" }}
+            >
               <SaveIcon sx={{ mr: 1 }} /> Save Changes
             </Button>
           </DialogActions>
         </Dialog>
 
-        {/* =================== VIEW SESSION DIALOG (Wider) =================== */}
+        {/* VIEW SESSION DIALOG */}
         <Dialog
           open={viewSessionModal}
           onClose={() => setViewSessionModal(false)}
@@ -2209,6 +2342,7 @@ export default function BookingsSessions() {
                           <StoreIcon />
                         </InputAdornment>
                       ),
+                      readOnly: true,
                     }}
                   />
                 </Grid>
@@ -2223,6 +2357,7 @@ export default function BookingsSessions() {
                           <FitnessCenterIcon />
                         </InputAdornment>
                       ),
+                      readOnly: true,
                     }}
                   />
                 </Grid>
@@ -2237,6 +2372,7 @@ export default function BookingsSessions() {
                           <CategoryIcon />
                         </InputAdornment>
                       ),
+                      readOnly: true,
                     }}
                   />
                 </Grid>
@@ -2251,6 +2387,7 @@ export default function BookingsSessions() {
                           <PersonIcon />
                         </InputAdornment>
                       ),
+                      readOnly: true,
                     }}
                   />
                 </Grid>
@@ -2265,6 +2402,7 @@ export default function BookingsSessions() {
                           <EventIcon />
                         </InputAdornment>
                       ),
+                      readOnly: true,
                     }}
                   />
                 </Grid>
@@ -2279,6 +2417,7 @@ export default function BookingsSessions() {
                           <EventIcon />
                         </InputAdornment>
                       ),
+                      readOnly: true,
                     }}
                   />
                 </Grid>
@@ -2293,6 +2432,7 @@ export default function BookingsSessions() {
                           <GroupIcon />
                         </InputAdornment>
                       ),
+                      readOnly: true,
                     }}
                   />
                 </Grid>
@@ -2307,6 +2447,7 @@ export default function BookingsSessions() {
                           <PeopleIcon />
                         </InputAdornment>
                       ),
+                      readOnly: true,
                     }}
                   />
                 </Grid>
@@ -2321,6 +2462,7 @@ export default function BookingsSessions() {
                           <LocationOnIcon />
                         </InputAdornment>
                       ),
+                      readOnly: true,
                     }}
                   />
                 </Grid>
@@ -2335,21 +2477,7 @@ export default function BookingsSessions() {
                           <MonetizationOnIcon />
                         </InputAdornment>
                       ),
-                    }}
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    label="Status"
-                    fullWidth
-                    value={selectedSession.Status || ""}
-                    disabled
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <InfoIcon />
-                        </InputAdornment>
-                      ),
+                      readOnly: true,
                     }}
                   />
                 </Grid>
@@ -2358,7 +2486,7 @@ export default function BookingsSessions() {
           </DialogContent>
         </Dialog>
 
-        {/* =================== BOOK SESSION DIALOG (Fixed Spacing & Size) =================== */}
+        {/* BOOK SESSION DIALOG */}
         <Dialog
           open={isBookSessionOpen}
           onClose={() => setBookSessionOpen(false)}
@@ -2373,9 +2501,10 @@ export default function BookingsSessions() {
             },
           }}
         >
-          {/* Title with Close Button */}
           <DialogTitle sx={{ p: 2 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Box
+              sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+            >
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 <EventAvailableIcon sx={{ fontSize: 32, color: "primary.main" }} />
                 <Typography variant="h6" sx={{ fontWeight: "bold" }}>
@@ -2388,23 +2517,22 @@ export default function BookingsSessions() {
             </Box>
           </DialogTitle>
 
-          {/* Content Section */}
           <DialogContent dividers sx={{ p: 3 }}>
             {sessionToBook && (
               <Grid container spacing={2}>
-                {/* Session Name */}
                 <Grid item xs={12}>
                   <Typography>
                     <strong>Session:</strong> {sessionToBook.SessionName}
                   </Typography>
                 </Grid>
-
-                {/* Select Member */}
                 <Grid item xs={12}>
                   <Autocomplete
                     options={members}
                     getOptionLabel={(option) => option.FullName || ""}
-                    value={members.find((m) => m.MemberID === sessionBookingMemberID) || null}
+                    value={
+                      members.find((m) => m.MemberID === sessionBookingMemberID) ||
+                      null
+                    }
                     onChange={(event, newValue) =>
                       setSessionBookingMemberID(newValue ? newValue.MemberID : "")
                     }
@@ -2413,8 +2541,6 @@ export default function BookingsSessions() {
                     )}
                   />
                 </Grid>
-
-                {/* Booking Date & Time */}
                 <Grid item xs={12} sm={6}>
                   <DesktopDateTimePicker
                     label="Booking Date & Time"
@@ -2426,14 +2552,16 @@ export default function BookingsSessions() {
                         <TextField
                           {...params}
                           fullWidth
-                          value={sessionBookingDate ? formatDateTime(sessionBookingDate) : "—"}
+                          value={
+                            sessionBookingDate
+                              ? formatDateTime(sessionBookingDate)
+                              : "—"
+                          }
                         />
                       ),
                     }}
                   />
                 </Grid>
-
-                {/* Select Booking Status */}
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
                     <InputLabel>Booking Status</InputLabel>
@@ -2449,8 +2577,6 @@ export default function BookingsSessions() {
                     </Select>
                   </FormControl>
                 </Grid>
-
-                {/* Select Payment Method */}
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
                     <InputLabel>Payment Method</InputLabel>
@@ -2466,8 +2592,6 @@ export default function BookingsSessions() {
                     </Select>
                   </FormControl>
                 </Grid>
-
-                {/* Payment Amount */}
                 <Grid item xs={12} sm={6}>
                   <TextField
                     label="Payment Amount (₱)"
@@ -2480,8 +2604,6 @@ export default function BookingsSessions() {
               </Grid>
             )}
           </DialogContent>
-
-          {/* Dialog Actions */}
           <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
             <Button
               variant="contained"
@@ -2629,7 +2751,10 @@ export default function BookingsSessions() {
                   Coach Details
                 </Typography>
               </Box>
-              <IconButton onClick={() => setViewCoachModal(false)} sx={{ "&:hover": { color: theme.palette.error.main } }}>
+              <IconButton
+                onClick={() => setViewCoachModal(false)}
+                sx={{ "&:hover": { color: theme.palette.error.main } }}
+              >
                 <CloseIcon />
               </IconButton>
             </Box>
@@ -2715,7 +2840,10 @@ export default function BookingsSessions() {
                   Edit Coach
                 </Typography>
               </Box>
-              <IconButton onClick={() => setEditCoachModal(false)} sx={{ "&:hover": { color: theme.palette.error.main } }}>
+              <IconButton
+                onClick={() => setEditCoachModal(false)}
+                sx={{ "&:hover": { color: theme.palette.error.main } }}
+              >
                 <CloseIcon />
               </IconButton>
             </Box>
@@ -2729,7 +2857,9 @@ export default function BookingsSessions() {
                     label="Full Name"
                     size="small"
                     value={selectedCoach.FullName || ""}
-                    onChange={(e) => setSelectedCoach({ ...selectedCoach, FullName: e.target.value })}
+                    onChange={(e) =>
+                      setSelectedCoach({ ...selectedCoach, FullName: e.target.value })
+                    }
                   />
                 </Grid>
                 <Grid item xs={12}>
@@ -2738,7 +2868,9 @@ export default function BookingsSessions() {
                     label="Specialty"
                     size="small"
                     value={selectedCoach.Specialty || ""}
-                    onChange={(e) => setSelectedCoach({ ...selectedCoach, Specialty: e.target.value })}
+                    onChange={(e) =>
+                      setSelectedCoach({ ...selectedCoach, Specialty: e.target.value })
+                    }
                   />
                 </Grid>
                 <Grid item xs={12}>
@@ -2747,7 +2879,9 @@ export default function BookingsSessions() {
                     label="Availability"
                     size="small"
                     value={selectedCoach.Availability || ""}
-                    onChange={(e) => setSelectedCoach({ ...selectedCoach, Availability: e.target.value })}
+                    onChange={(e) =>
+                      setSelectedCoach({ ...selectedCoach, Availability: e.target.value })
+                    }
                   />
                 </Grid>
                 <Grid item xs={12}>
@@ -2756,14 +2890,21 @@ export default function BookingsSessions() {
                     label="Contact Info"
                     size="small"
                     value={selectedCoach.ContactInfo || ""}
-                    onChange={(e) => setSelectedCoach({ ...selectedCoach, ContactInfo: e.target.value })}
+                    onChange={(e) =>
+                      setSelectedCoach({ ...selectedCoach, ContactInfo: e.target.value })
+                    }
                   />
                 </Grid>
               </Grid>
             )}
           </DialogContent>
           <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
-            <Button variant="contained" color="primary" onClick={handleUpdateCoach} sx={{ textTransform: "none" }}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleUpdateCoach}
+              sx={{ textTransform: "none" }}
+            >
               <SaveIcon sx={{ mr: 1 }} /> Save Changes
             </Button>
           </DialogActions>
@@ -2784,19 +2925,25 @@ export default function BookingsSessions() {
                   label="Title"
                   size="small"
                   value={selectedEvent.title}
-                  onChange={(e) => setSelectedEvent({ ...selectedEvent, title: e.target.value })}
+                  onChange={(e) =>
+                    setSelectedEvent({ ...selectedEvent, title: e.target.value })
+                  }
                 />
                 <TextField
                   label="Date (YYYY-MM-DD)"
                   size="small"
                   value={selectedEvent.date}
-                  onChange={(e) => setSelectedEvent({ ...selectedEvent, date: e.target.value })}
+                  onChange={(e) =>
+                    setSelectedEvent({ ...selectedEvent, date: e.target.value })
+                  }
                 />
                 <TextField
                   label="Description"
                   size="small"
                   value={selectedEvent.description || ""}
-                  onChange={(e) => setSelectedEvent({ ...selectedEvent, description: e.target.value })}
+                  onChange={(e) =>
+                    setSelectedEvent({ ...selectedEvent, description: e.target.value })
+                  }
                 />
               </Box>
             )}
@@ -2837,7 +2984,7 @@ export default function BookingsSessions() {
           </DialogActions>
         </Dialog>
 
-        {/* ======= CONFIRMATION DIALOG FOR ADD ACTIONS ======= */}
+        {/* CONFIRMATION DIALOG FOR ADD */}
         <Dialog
           open={openConfirmation}
           onClose={() => setOpenConfirmation(false)}
@@ -2863,7 +3010,11 @@ export default function BookingsSessions() {
             </Typography>
           </DialogContent>
           <DialogActions sx={{ justifyContent: "center", gap: 2, py: 2 }}>
-            <Button onClick={() => setOpenConfirmation(false)} sx={{ textTransform: "none" }} style={{ color: "red" }}>
+            <Button
+              onClick={() => setOpenConfirmation(false)}
+              sx={{ textTransform: "none" }}
+              style={{ color: "red" }}
+            >
               Cancel
             </Button>
             <Button
@@ -2885,6 +3036,17 @@ export default function BookingsSessions() {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* SNACKBAR MESSAGES */}
+        <Snackbar
+          open={snackOpen}
+          autoHideDuration={3000}
+          onClose={() => setSnackOpen(false)}
+        >
+          <Alert severity={snackSeverity} onClose={() => setSnackOpen(false)}>
+            {snackMessage}
+          </Alert>
+        </Snackbar>
       </Box>
     </LocalizationProvider>
   );

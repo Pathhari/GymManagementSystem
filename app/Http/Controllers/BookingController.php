@@ -259,29 +259,28 @@ class BookingController extends Controller
             'BranchID'     => 'required|integer|exists:branches,BranchID',
             'SessionType'  => 'required|string|max:50',
             'CoachID'      => 'required|exists:coaches,CoachID',
-            'StartTime'    => 'required|date_format:Y-m-d\TH:i',
-            'EndTime'      => 'nullable|date_format:Y-m-d\TH:i|after:StartTime',
+            // Now using "Y-m-d H:i:s" => from the front end we pass that exact format
+            'StartTime'    => 'required|date_format:Y-m-d H:i:s',
+            'EndTime'      => 'nullable|date_format:Y-m-d H:i:s|after:StartTime',
             'Capacity'     => 'nullable|integer|min:1',
             'Location'     => 'nullable|string|max:255',
             'Fee'          => 'nullable|numeric|min:0',
             'Status'       => 'nullable|string|max:50',
         ]);
-
+    
         $session = CoachingSession::findOrFail($id);
         $session->update($data);
-
+    
         return response()->json(['message' => 'Session updated successfully.']);
     }
+    
 
-    /**
-     * Cancel a Coaching Session
-     */
     public function cancelSession($id)
     {
         $session = CoachingSession::findOrFail($id);
-        $session->delete();  
+        $session->delete(); // or set Status="Cancelled"
     
-        return response()->json(['message' => 'Session successfully deleted (cancelled).']);
+        return response()->json(['message' => 'Session successfully deleted.']);
     }
     
 
@@ -295,23 +294,32 @@ class BookingController extends Controller
             'MemberID'      => 'required|exists:members,MemberID',
             'BookingDate'   => 'required|date',
             'Status'        => 'nullable|string|max:50',
-
-            // Payment fields
+    
             'PaymentMethod' => 'required|string|max:50',
             'Amount'        => 'required|numeric|min:0',
         ]);
-
+    
         return DB::transaction(function () use ($data) {
-            // 1) We might want to increment Participants for the session
             $session = CoachingSession::find($data['SessionID']);
-            if ($session) {
-                $session->Participants = ($session->Participants ?? 0) + 1;
-                $session->save();
+            if (!$session) {
+                return response()->json(['message' => 'Session not found.'], 404);
             }
-
-            // 2) Create Payment record (DailyCashFlow observer)
+    
+            // 1) Check capacity
+            if ($session->Participants >= $session->Capacity) {
+                return response()->json(
+                    ['message' => 'Cannot book. Session capacity reached.'],
+                    422 // Unprocessable
+                );
+            }
+    
+            // 2) Increment participants
+            $session->Participants = ($session->Participants ?? 0) + 1;
+            $session->save();
+    
+            // 3) Create Payment
             $payment = \App\Models\Payment::create([
-                'BranchID'      => $session ? $session->BranchID : null,
+                'BranchID'      => $session->BranchID,
                 'MemberID'      => $data['MemberID'],
                 'PaymentMethod' => $data['PaymentMethod'],
                 'Amount'        => $data['Amount'],
@@ -319,16 +327,16 @@ class BookingController extends Controller
                 'Status'        => 'Paid',
                 'PaymentFor'    => ['CoachingSessionBooking'],
             ]);
-
-            // 3) Create SessionBooking referencing Payment (if you want PaymentID stored too)
+    
+            // 4) Create the actual SessionBooking
             $sb = SessionBooking::create([
-                'SessionID'   => $data['SessionID'],
+                'SessionID'   => $session->SessionID,
                 'MemberID'    => $data['MemberID'],
                 'BookingDate' => $data['BookingDate'],
-                'PaymentID'   => $payment->PaymentID, // store it if you have a PaymentID column
+                'PaymentID'   => $payment->PaymentID,
                 'Status'      => $data['Status'] ?? 'Confirmed',
             ]);
-
+    
             return response()->json([
                 'message' => 'Session booked successfully, payment recorded.',
                 'session_booking' => $sb,
@@ -463,5 +471,16 @@ class BookingController extends Controller
     
         return response()->json($results, 200);
     }
+
+    public function destroyBooking($id)
+{
+    $booking = Booking::findOrFail($id);
+    $booking->payment()->delete();
+
+    $booking->delete();
+
+    return response()->json(['message' => 'Booking deleted successfully.']);
+}
+
     
 }

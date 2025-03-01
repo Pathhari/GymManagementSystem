@@ -81,11 +81,18 @@ export default function ManagePlansModal({ onClose }) {
       .includes(searchTerm.toLowerCase())
   );
 
-  // Open add/edit dialog
+  // Open add/edit dialog (make sure fields have safe defaults)
   const openPlanDialog = (plan = null) => {
     if (plan) {
-      setPlanForm({ ...plan });
+      setPlanForm({
+        PlanID: plan.PlanID ?? null,
+        PlanName: plan.PlanName ?? "",
+        Price: plan.Price ?? 0,
+        Duration: plan.Duration ?? "",
+        Features: plan.Features ?? "",
+      });
     } else {
+      // Creating a brand-new plan
       setPlanForm({
         PlanID: null,
         PlanName: "",
@@ -106,7 +113,7 @@ export default function ManagePlansModal({ onClose }) {
   const handleFormChange = (e) => {
     const { name, value } = e.target;
     setPlanForm((prev) => ({ ...prev, [name]: value }));
-    // Remove error for the field as the user types
+    // Remove error for that field as the user types
     setFormErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
@@ -252,12 +259,10 @@ export default function ManagePlansModal({ onClose }) {
         }}
       >
         <Typography variant="h5">
-          <PersonIcon sx={{verticalalign: "middle", mr: 1}} />
-          Manage Membership Plans</Typography>
-        <IconButton
-          onClick={onClose}
-          sx={{ "&:hover": { color: "red" } }}
-        >
+          <PersonIcon sx={{ verticalAlign: "middle", mr: 1 }} />
+          Manage Membership Plans
+        </Typography>
+        <IconButton onClick={onClose} sx={{ "&:hover": { color: "red" } }}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>
@@ -303,7 +308,12 @@ export default function ManagePlansModal({ onClose }) {
         </Paper>
       </DialogContent>
       {/* Add/Edit Plan Dialog */}
-      <Dialog open={isPlanDialogOpen} onClose={closePlanDialog} fullWidth maxWidth="sm">
+      <Dialog
+        open={isPlanDialogOpen}
+        onClose={closePlanDialog}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>
           <Box display="flex" justifyContent="space-between" alignItems="center">
             <Typography variant="h5">
@@ -399,25 +409,25 @@ export default function ManagePlansModal({ onClose }) {
           </Box>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "flex-end", gap: 2, p: 3 }}>
-        <Button
-          variant="contained"
-          onClick={handleOpenSaveConfirm}
-          disabled={
-            !planForm.PlanName.trim() ||
-            !planForm.Price ||
-            isNaN(planForm.Price) ||
-            Number(planForm.Price) <= 0 ||
-            !planForm.Duration ||
-            isNaN(planForm.Duration) ||
-            Number(planForm.Duration) <= 0 ||
-            !planForm.Features.trim()
-          }
-          startIcon={<SaveIcon />}
-          sx={{ textTransform: "none" }}
-        >
-          {planForm.PlanID ? "Save Changes" : "ADD PLAN"}
-        </Button>
-      </DialogActions>
+          <Button
+            variant="contained"
+            onClick={handleOpenSaveConfirm}
+            disabled={
+              !planForm.PlanName.trim() ||
+              !planForm.Price ||
+              isNaN(planForm.Price) ||
+              Number(planForm.Price) <= 0 ||
+              !planForm.Duration ||
+              isNaN(planForm.Duration) ||
+              Number(planForm.Duration) <= 0 ||
+              !planForm.Features.trim()
+            }
+            startIcon={<SaveIcon />}
+            sx={{ textTransform: "none" }}
+          >
+            {planForm.PlanID ? "Save Changes" : "ADD PLAN"}
+          </Button>
+        </DialogActions>
       </Dialog>
       {/* Save Confirmation Dialog */}
       <Dialog
@@ -433,9 +443,7 @@ export default function ManagePlansModal({ onClose }) {
           Confirm Save
         </DialogTitle>
         <DialogContent dividers>
-          <Typography>
-            Are you sure you want to save this plan?
-          </Typography>
+          <Typography>Are you sure you want to save this plan?</Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSaveConfirmOpen(false)}>Cancel</Button>

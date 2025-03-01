@@ -6,12 +6,12 @@ use Inertia\Inertia;
 use Illuminate\Http\Request;
 use App\Models\Payment;
 use App\Models\Member;
-use App\Models\Expense; // Make sure you have this model
+use App\Models\Expense;
 
 class OwnerDashboardController extends Controller
 {
     /**
-     * Render the dashboard layout.
+     * Render the main Owner (Super Admin) Dashboard via Inertia.
      */
     public function index()
     {
@@ -24,13 +24,13 @@ class OwnerDashboardController extends Controller
     }
 
     /**
-     * Return key metrics and notifications for the dashboard.
+     * Return key metrics and notifications for the Owner Dashboard.
      *
-     * Query parameters:
-     * - period (daily, weekly, monthly, yearly)
+     * Supports query parameters:
+     * - period   (daily, weekly, monthly, yearly)
      * - dateFrom (YYYY-MM-DD)
-     * - dateTo (YYYY-MM-DD)
-     * - branch (branch ID or 'all')
+     * - dateTo   (YYYY-MM-DD)
+     * - branch   (branch ID or 'all')
      */
     public function metrics(Request $request)
     {
@@ -39,40 +39,47 @@ class OwnerDashboardController extends Controller
         $dateTo   = $request->query('dateTo');
         $branch   = $request->query('branch', 'all');
 
-        // Build query for completed payments to calculate total revenue
-        $paymentsQuery = Payment::where('Status', 'Completed');
+        // 1) Build query for payments that are 'Completed' or 'Paid',
+        //    ensuring we include facility/coaching/membership payments.
+        $paymentsQuery = Payment::whereIn('Status', ['Completed','Paid']);
+
+        // If branch != 'all', limit by BranchID
         if ($branch !== 'all') {
             $paymentsQuery->where('BranchID', $branch);
         }
-        if ($dateFrom) {
+
+        // If dateFrom/dateTo set => filter by PaymentDate
+        if (!empty($dateFrom)) {
             $paymentsQuery->whereDate('PaymentDate', '>=', $dateFrom);
         }
-        if ($dateTo) {
+        if (!empty($dateTo)) {
             $paymentsQuery->whereDate('PaymentDate', '<=', $dateTo);
         }
+
+        // Sum all amounts => totalRevenue
         $totalRevenue = $paymentsQuery->sum('Amount');
 
-        // Calculate total expenses based on Expense model
+        // 2) Calculate total expenses
         $expensesQuery = Expense::query();
         if ($branch !== 'all') {
             $expensesQuery->where('BranchID', $branch);
         }
-        if ($dateFrom) {
+        if (!empty($dateFrom)) {
             $expensesQuery->whereDate('ExpenseDate', '>=', $dateFrom);
         }
-        if ($dateTo) {
+        if (!empty($dateTo)) {
             $expensesQuery->whereDate('ExpenseDate', '<=', $dateTo);
         }
         $totalExpenses = $expensesQuery->sum('Amount');
 
-        // For demonstration, use the Member count for totalEmailsSent and totalClients.
+        // 3) Example metrics: # of members, # of "emails sent," etc.
         $totalEmailsSent = Member::count();
-        $totalClients    = Member::count();
+        $totalClients    = Member::count(); // or some other logic
 
-        // Dummy traffic value – replace with real logic if needed.
+        // 4) Dummy traffic
         $trafficReceived = 1000;
 
-        // Dummy notifications; replace with dynamic notifications if available.
+        // 5) Dummy notifications
         $notifications = [
             ['message' => 'New transaction completed: TXN001'],
             ['message' => 'Revenue milestone reached: $500,000'],
