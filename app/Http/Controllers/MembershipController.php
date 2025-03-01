@@ -235,7 +235,7 @@ class MembershipController extends Controller
         }
 
         // Suppose ID=5 is "New Member (Lock-In)"
-        $data['MemberStatusID']      = 5;
+        $data['MemberStatusID']      = 1;
         $startDate                   = Carbon::today();
         $data['MembershipStartDate'] = $startDate->format('Y-m-d');
 
