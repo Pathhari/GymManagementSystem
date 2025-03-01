@@ -32,16 +32,16 @@ class MemberSeeder extends Seeder
             $membershipEnd        = $record['MEMBERSHIP END'] ?? '';
             $paymentStatus        = $record['PAYMENT STATUS'] ?? '';
             $lastPaymentDate      = $record['LAST PAYMENT DATE'] ?? '';
-            $lockInEndDate        = $record['LOCK-IN END DATE'] ?? '';
-            $membershipStatusRaw = trim($record['MEMBERSHIP STATUS ']) ?? 'ACTIVE';
-            $memberStatusID = $this->getOrCreateMemberStatus($membershipStatusRaw);           
+            $lockInEndDateRaw     = $record['LOCK-IN END DATE'] ?? '';
+            $membershipStatusRaw  = trim($record['MEMBERSHIP STATUS']) ?? 'ACTIVE';
             $cardsValue           = $record['CARDS'] ?? '';
             $freeSessionRaw       = $record['2 FREE SESSION'] ?? '0';
             $notesCsv             = $record['NOTES'] ?? '';
 
             // Parse dates
-            $startDate = $this->parseDate($membershipStart);
-            $endDate   = $this->parseDate($membershipEnd);
+            $startDate   = $this->parseDate($membershipStart);
+            $endDate     = $this->parseDate($membershipEnd);
+            $lockInEndDt = $this->parseDate($lockInEndDateRaw);
 
             // Parse CARDS column → boolean
             $membershipCardIssued = $this->parseCardIssued($cardsValue);
@@ -50,19 +50,20 @@ class MemberSeeder extends Seeder
             $freeSessions = $this->parseFreeSessions($freeSessionRaw);
 
             // Combine payment info into the final Notes
-            // (You can add Lock-In End Date or any other fields as needed)
             $notes = "Payment Status: {$paymentStatus}, Last Payment Date: {$lastPaymentDate}, "
-                   . "Lock-In End Date: {$lockInEndDate}, Additional Notes: {$notesCsv}";
+                   . "Lock-In End Date: {$lockInEndDateRaw}, Additional Notes: {$notesCsv}";
 
             // Determine or create plan based on RATE
             $plan = $this->getOrCreatePlan($rawRate);
 
-            // Find/create membership status
-            $memberStatusID = $this->getOrCreateMemberStatus($membershipStatusRaw);
+            // Decide the final MemberStatusID
+            // 1) If membershipStatusRaw == 'ACTIVE', check lockInEndDt
+            // 2) else do the normal lookup/creation
+            $memberStatusID = $this->decideMemberStatus($membershipStatusRaw, $lockInEndDt);
 
             // Insert into members table
             Member::create([
-                'StartedBranchID'       => 1,
+                'StartedBranchID'       => 1, // or parse from CSV if needed
                 'FullName'              => $fullName,
                 'Email'                 => $email,
                 'Phone'                 => $phone,
@@ -76,6 +77,33 @@ class MemberSeeder extends Seeder
                 'Notes'                 => $notes,
             ]);
         }
+    }
+
+    /**
+     * Decide the final MemberStatusID based on CSV "MEMBERSHIP STATUS" column
+     * and "LOCK-IN END DATE".
+     */
+    private function decideMemberStatus($statusRaw, $lockInEndDt)
+    {
+        $trimmedStatus = strtolower(trim($statusRaw));
+
+        // If it's "active"
+        if ($trimmedStatus === 'active') {
+            // If lockInEndDt is present and is in the future => NEW MEMBER (ID=6)
+            if (!empty($lockInEndDt)) {
+                $lockInEnd = Carbon::parse($lockInEndDt);
+                // If this lockInEnd is still after "today", we treat it as "NEW MEMBER"
+                if ($lockInEnd->isFuture()) {
+                    return 6; // "NEW MEMBER" ID
+                }
+            }
+            // Otherwise => normal "ACTIVE" => ID=1
+            return 1;
+        }
+
+        // Else we do the normal approach => use getOrCreateMemberStatus
+        // (e.g. if the CSV says "FROZEN", "EXPIRED", etc.)
+        return $this->getOrCreateMemberStatus($trimmedStatus);
     }
 
     private function parseDate($dateString)
@@ -102,34 +130,36 @@ class MemberSeeder extends Seeder
     }
 
     /**
-     * Create or retrieve a membership plan based on RATE:
-     * - "FREE" → Free Plan (price=0)
-     * - "1599" → Discounted Plan
-     * - "1999" → Regular Plan
-     * Otherwise → "Imported Plan {rate}"
+     * Create or retrieve a membership plan based on the RATE column:
+     * - "FREE" => price=0, plan name "Free Plan"
+     * - "1599" => price=1599 => "Discounted Plan"
+     * - "1999" => price=1999 => "Regular Plan"
+     * - Otherwise => "Plan {rate}"
      */
     private function getOrCreatePlan($rateValue)
     {
-        if (strtoupper(trim($rateValue)) === 'FREE') {
-            $price    = 0;
+        $rateTrimmed = strtoupper(trim($rateValue));
+        if ($rateTrimmed === 'FREE') {
+            $price = 0;
             $planName = 'Free Plan';
         } else {
+            // Convert to float
             $price = (float) $rateValue;
             if ($price === 1599.0) {
                 $planName = 'Discounted Plan';
             } elseif ($price === 1999.0) {
                 $planName = 'Regular Plan';
             } else {
-                $planName = 'Imported Plan ' . $rateValue;
+                $planName = 'Plan ' . $rateValue;
             }
         }
 
-        // Example: 90-day lock-in, monthly billing
+        // For example: 30-day membership, 3-month lockIn
         return MembershipPlan::firstOrCreate(
             ['Price' => $price],
             [
                 'PlanName'     => $planName,
-                'Duration'     => 90,
+                'Duration'     => 30,
                 'LockInMonths' => 3,
                 'BillingMode'  => 'monthly',
             ]
@@ -137,27 +167,23 @@ class MemberSeeder extends Seeder
     }
 
     /**
-     * Find or create the membership status. If the CSV has an exact match
-     * for 'ACTIVE', 'FROZEN', 'ON-HOLD', 'TERMINATED', or 'EXPIRED', it reuses
-     * that. Otherwise, it creates a new row.
+     * Attempt to find a matching status by name (case-insensitive).
+     * If not found, create it. Return the MemberStatusID.
      */
     private function getOrCreateMemberStatus($statusName)
     {
-        // If empty, default to ACTIVE
         if (empty($statusName)) {
-            return 1;
+            return 1; // default to ACTIVE if empty
         }
-        // Trim and convert to lowercase for comparison
-        $status = strtolower(trim($statusName));
-        
-        // Use a case-insensitive query
-        $existing = MemberStatus::whereRaw('LOWER(StatusName) = ?', [$status])->first();
+
+        // e.g. 'frozen', 'expired', 'on-hold'
+        $existing = MemberStatus::whereRaw('LOWER(StatusName) = ?', [$statusName])->first();
         if ($existing) {
             return $existing->MemberStatusID;
         }
-        // If not found, create new with uppercase (or your desired format)
-        $newStatus = MemberStatus::create(['StatusName' => strtoupper($status)]);
+
+        // create a new row with that name (uppercase or your preferred format)
+        $newStatus = MemberStatus::create(['StatusName' => strtoupper($statusName)]);
         return $newStatus->MemberStatusID;
     }
-    
 }

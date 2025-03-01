@@ -14,24 +14,20 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
-  Avatar,
+  InputAdornment,
   Checkbox,
   FormControlLabel,
-  Radio,
-  RadioGroup,
   Select,
   InputLabel,
   FormControl,
   FormHelperText,
-  InputAdornment,
-  OutlinedInput,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import CloseIcon from "@mui/icons-material/Close";
 import FileUploadIcon from "@mui/icons-material/FileUpload";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
-import { Cancel, Save } from "@mui/icons-material";
+import { Save } from "@mui/icons-material";
 import PersonIcon from "@mui/icons-material/Person";
 import EmailIcon from "@mui/icons-material/Email";
 import PhoneIcon from "@mui/icons-material/Phone";
@@ -43,27 +39,36 @@ import PaymentIcon from "@mui/icons-material/Payment";
 import StickyNote2Icon from "@mui/icons-material/StickyNote2";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 
+/**
+ * This component does the following:
+ * 1. Lets user pick a Plan.
+ * 2. Lets user choose "Months to Pay" (e.g. 1, 2, 3, etc.).
+ * 3. Auto-computes membershipTotal = planPrice * monthsToPay.
+ * 4. Allows multiple (split) payment rows, each with PaymentMethod & PaymentAmount.
+ * 5. If user chooses >=3 months, they become Active upon full payment (back-end logic).
+ */
 export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   const theme = useTheme();
   const webcamRef = useRef(null);
 
-  // Membership fields
-  const [membershipType, setMembershipType] = useState("regular");
+  // Member info
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [selectedPlanID, setSelectedPlanID] = useState("");
+  const [monthsToPay, setMonthsToPay] = useState(1);
   const [membershipCardNumber, setMembershipCardNumber] = useState("");
   const [membershipCardIssued, setMembershipCardIssued] = useState(false);
   const [freeSessions, setFreeSessions] = useState("");
   const [branch, setBranch] = useState("");
   const [notes, setNotes] = useState("");
 
-  // Payment fields
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [paymentAmount, setPaymentAmount] = useState("");
+  // Payment splits
+  const [payments, setPayments] = useState([
+    { PaymentMethod: "", PaymentAmount: "" },
+  ]);
 
-  // Photo states
+  // Photo
   const [photoFile, setPhotoFile] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
 
@@ -71,15 +76,19 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   const [plans, setPlans] = useState([]);
   const [branches, setBranches] = useState([]);
 
-  // Webcam
-  const [openWebcam, setOpenWebcam] = useState(false);
+  // Computed membership total
+  const [membershipTotal, setMembershipTotal] = useState(0);
 
-  // Confirmation dialog
+  // Dialog states
+  const [openWebcam, setOpenWebcam] = useState(false);
   const [openConfirmation, setOpenConfirmation] = useState(false);
 
-  // Form errors (UI validation)
+  // Validation errors
   const [errors, setErrors] = useState({});
 
+  // ────────────────────────────────────────────────────────────────
+  // Fetch Plans & Branches on mount
+  // ────────────────────────────────────────────────────────────────
   useEffect(() => {
     axios
       .get("/membership/plans")
@@ -94,20 +103,48 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
       .catch((err) => console.error("Error fetching branches:", err));
   }, []);
 
+  // ────────────────────────────────────────────────────────────────
+  // Whenever Plan or MonthsToPay changes, recompute membershipTotal
+  // ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    // Auto-fetch the price when the user selects a plan
-    if (selectedPlanID) {
-      const selectedPlan = plans.find((plan) => plan.PlanID === selectedPlanID);
-      if (selectedPlan) {
-        setPaymentAmount(selectedPlan.Price); // Automatically set price
-      }
-    }
-  }, [selectedPlanID, plans]);
+    const selectedPlan = plans.find((p) => p.PlanID === selectedPlanID);
+    const planPrice = selectedPlan?.Price ? Number(selectedPlan.Price) : 0;
+    const months = Number(monthsToPay) || 1;
+    const total = planPrice * months;
+    setMembershipTotal(total);
 
-  // Basic validations
+    // Optionally, set the first payment row to match the new total
+    if (total > 0) {
+      setPayments([{ PaymentMethod: "", PaymentAmount: total }]);
+    } else {
+      setPayments([{ PaymentMethod: "", PaymentAmount: "" }]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlanID, monthsToPay]);
+
+  // ────────────────────────────────────────────────────────────────
+  // Autogenerate next card number
+  // ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    axios
+      .get("/membership/latest-card-number")
+      .then((res) => {
+        const latest = res.data.latestCardNumber || "CARD-0000";
+        const [prefix, numString] = latest.split("-");
+        const next = String(parseInt(numString, 10) + 1).padStart(4, "0");
+        setMembershipCardNumber(`${prefix}-${next}`);
+      })
+      .catch((err) => console.error("Error fetching latest card number:", err));
+  }, []);
+
+  // ────────────────────────────────────────────────────────────────
+  // Validations
+  // ────────────────────────────────────────────────────────────────
   const validateEmail = (str) =>
     /^[^\d][\w.-]+@[a-zA-Z]+\.[a-zA-Z]+$/.test(str);
+
   const validatePhoneNumber = (str) => {
+    // e.g. +639xx... or 09xx...
     const phRegex = /^(\+63|0)9\d{9}$/;
     return phRegex.test(str);
   };
@@ -115,39 +152,115 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   const validateForm = () => {
     const newErrors = {};
 
+    // Basic required fields
     if (!fullName.trim()) {
       newErrors.FullName = ["Full Name is required"];
     } else if (/\d/.test(fullName)) {
       newErrors.FullName = ["Full Name cannot contain numbers"];
     }
-    if (!email.trim()) newErrors.Email = ["Email is required"];
-    else if (!validateEmail(email)) newErrors.Email = ["Invalid email format"];
 
-    if (!phoneNumber.trim())
+    if (!email.trim()) {
+      newErrors.Email = ["Email is required"];
+    } else if (!validateEmail(email)) {
+      newErrors.Email = ["Invalid email format"];
+    }
+
+    if (!phoneNumber.trim()) {
       newErrors.Phone = ["Phone Number is required"];
-    else if (!validatePhoneNumber(phoneNumber))
+    } else if (!validatePhoneNumber(phoneNumber)) {
       newErrors.Phone = ["Must be 09xxxxxxxxx or +639xxxxxxxxx"];
+    }
 
-    if (!selectedPlanID) newErrors.PlanID = ["Plan is required"];
-    if (!membershipCardNumber.trim())
+    if (!selectedPlanID) {
+      newErrors.PlanID = ["Plan is required"];
+    }
+    if (!branch) {
+      newErrors.BranchID = ["Branch is required"];
+    }
+    if (!membershipCardNumber.trim()) {
       newErrors.MembershipCardNumber = ["Membership Card Number is required"];
-    if (freeSessions === "")
+    }
+    if (freeSessions === "") {
       newErrors.FreeSessions = ["Free Sessions is required"];
-    if (!branch) newErrors.BranchID = ["Branch is required"];
+    }
+    if (!notes.trim()) {
+      newErrors.Notes = ["Notes are required"];
+    }
 
-    // New validations for fields now required
-    if (!notes.trim()) newErrors.Notes = ["Notes are required"];
-    if (!paymentMethod) newErrors.PaymentMethod = ["Payment Method is required"];
-    if (!paymentAmount || isNaN(paymentAmount) || Number(paymentAmount) <= 0)
-      newErrors.PaymentAmount = ["Payment Amount must be a positive number"];
-    if (!photoFile && !capturedImage)
+    // monthsToPay check (must be >=1)
+    if (isNaN(monthsToPay) || Number(monthsToPay) < 1) {
+      newErrors.MonthsToPay = ["Months to Pay must be at least 1"];
+    }
+
+    // Photo
+    if (!photoFile && !capturedImage) {
       newErrors.PhotoFile = ["A photo is required"];
+    }
+
+    // At least one payment row
+    if (!payments.length) {
+      newErrors.Payments = ["At least one payment row is required"];
+    } else {
+      payments.forEach((payment, index) => {
+        if (!payment.PaymentMethod) {
+          newErrors[`Payments_${index}_PaymentMethod`] = [
+            "Payment Method is required",
+          ];
+        }
+        if (
+          !payment.PaymentAmount ||
+          isNaN(payment.PaymentAmount) ||
+          Number(payment.PaymentAmount) <= 0
+        ) {
+          newErrors[`Payments_${index}_PaymentAmount`] = [
+            "Must be a positive number",
+          ];
+        }
+      });
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // Convert base64 from webcam to a File
+  // ────────────────────────────────────────────────────────────────
+  // Split Payment Handlers
+  // ────────────────────────────────────────────────────────────────
+  const handleAddPaymentRow = () => {
+    setPayments((prev) => [...prev, { PaymentMethod: "", PaymentAmount: "" }]);
+  };
+
+  const handleRemovePaymentRow = (index) => {
+    setPayments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePaymentChange = (index, field, value) => {
+    setPayments((prev) =>
+      prev.map((p, i) => (i === index ? { ...p, [field]: value } : p))
+    );
+  };
+
+  // ────────────────────────────────────────────────────────────────
+  // Photo Handlers
+  // ────────────────────────────────────────────────────────────────
+  const handleOpenWebcam = () => setOpenWebcam(true);
+  const handleCloseWebcam = () => setOpenWebcam(false);
+
+  const captureImage = useCallback(() => {
+    if (webcamRef.current) {
+      const imageSrc = webcamRef.current.getScreenshot();
+      setCapturedImage(imageSrc);
+      setOpenWebcam(false);
+    }
+  }, []);
+
+  const handleBiometricUpload = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setPhotoFile(e.target.files[0]);
+      setCapturedImage(null); // override webcam capture
+    }
+  };
+
   function dataURLToFile(dataURL, filename) {
     const arr = dataURL.split(",");
     const mime = arr[0].match(/:(.*?);/)[1];
@@ -160,28 +273,8 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     return new File([u8arr], filename, { type: mime });
   }
 
-  // Webcam handlers
-  const handleOpenWebcam = () => setOpenWebcam(true);
-  const handleCloseWebcam = () => setOpenWebcam(false);
-
-  const captureImage = useCallback(() => {
-    if (webcamRef.current) {
-      const imageSrc = webcamRef.current.getScreenshot();
-      setCapturedImage(imageSrc);
-      setOpenWebcam(false);
-    }
-  }, []);
-
-  // Photo upload
-  const handleBiometricUpload = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setPhotoFile(e.target.files[0]);
-      setCapturedImage(null);
-    }
-  };
-
   // ────────────────────────────────────────────────────────────────
-  // On Submit: Validate & Open Confirmation dialog
+  // Submit + Confirmation
   // ────────────────────────────────────────────────────────────────
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -189,28 +282,29 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     setOpenConfirmation(true);
   };
 
-  // If user confirms, do final request
   const handleConfirmYes = async () => {
+    // Build FormData
     const formData = new FormData();
     formData.append("FullName", fullName);
     formData.append("Email", email);
     formData.append("Phone", phoneNumber);
+
     formData.append("PlanID", selectedPlanID);
+    formData.append("MonthsToPayUpfront", monthsToPay);
+
     formData.append("MembershipCardNumber", membershipCardNumber);
     formData.append("MembershipCardIssued", membershipCardIssued ? 1 : 0);
     formData.append("FreeSessions", freeSessions);
     formData.append("Notes", notes);
     formData.append("BranchID", branch);
 
-    // Payment fields
-    formData.append("PaymentMethod", paymentMethod);
-    formData.append("PaymentAmount", paymentAmount);
+    // Payment array => JSON
+    formData.append("Payments", JSON.stringify(payments));
 
-    // PaymentFor => "New Membership"
-    const paymentFor = ["New Membership"];
-    formData.append("PaymentFor", JSON.stringify(paymentFor));
+    // If you want to pass membershipTotal explicitly, you can:
+    formData.append("MembershipTotal", membershipTotal);
 
-    // Photo file or captured
+    // Photo
     if (photoFile) {
       formData.append("PhotoFile", photoFile);
     } else if (capturedImage) {
@@ -218,26 +312,23 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
       formData.append("PhotoFile", fileFromWebcam);
     }
 
-    let url = "/membership/members";
-    if (membershipType === "lockin") {
-      url = "/membership/storeLockInMembership";
-    }
-
     try {
-      const response = await axios.post(url, formData, {
+      const response = await axios.post("/membership/members", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      if (onMemberCreated) onMemberCreated(response.data);
+      if (onMemberCreated) {
+        onMemberCreated(response.data);
+      }
       setOpenConfirmation(false);
       onClose();
     } catch (error) {
       console.error("Error creating member:", error);
       if (error.response?.status === 422) {
-        setOpenConfirmation(false);
         setErrors(error.response.data.errors || {});
       } else {
         alert("Error creating member. Check console logs.");
       }
+      setOpenConfirmation(false);
     }
   };
 
@@ -245,21 +336,12 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     setOpenConfirmation(false);
   };
 
-  // Fetch latest card number
-  axios
-    .get("/membership/latest-card-number")
-    .then((res) => {
-      const latestCardNumber = res.data.latestCardNumber || "CARD-0000";
-      const nextNumber = String(
-        parseInt(latestCardNumber.split("-")[1]) + 1
-      ).padStart(4, "0");
-      setMembershipCardNumber(`CARD-${nextNumber}`);
-    })
-    .catch((err) => console.error("Error fetching latest card number:", err));
-
+  // ────────────────────────────────────────────────────────────────
+  // UI Rendering
+  // ────────────────────────────────────────────────────────────────
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="lg">
-      {/* DIALOG TITLE */}
+      {/* Title */}
       <DialogTitle>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h5">
@@ -268,43 +350,17 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
           </Typography>
           <IconButton
             onClick={onClose}
-            sx={{
-              color: "inherit",
-              "&:hover": { color: "red" },
-            }}
+            sx={{ "&:hover": { color: "red" } }}
           >
             <CloseIcon />
           </IconButton>
         </Box>
       </DialogTitle>
 
-      {/* DIALOG CONTENT */}
       <DialogContent dividers>
         <Box sx={{ p: 2 }}>
           <Divider sx={{ mb: 3 }} />
 
-          {/* Membership Type Radio */}
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle1">Membership Type:</Typography>
-            <RadioGroup
-              row
-              value={membershipType}
-              onChange={(e) => setMembershipType(e.target.value)}
-            >
-              <FormControlLabel
-                value="regular"
-                control={<Radio />}
-                label="Regular"
-              />
-              <FormControlLabel
-                value="lockin"
-                control={<Radio />}
-                label="Lock-In"
-              />
-            </RadioGroup>
-          </Box>
-
-          {/* MAIN FORM */}
           <form onSubmit={handleSubmit}>
             <Grid container spacing={3}>
               {/* LEFT SIDE */}
@@ -317,6 +373,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                 <Typography variant="subtitle1" sx={{ mb: 2 }}>
                   Personal & Membership Details
                 </Typography>
+
                 <Grid container spacing={2}>
                   {/* Full Name */}
                   <Grid item xs={12}>
@@ -338,6 +395,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
+
                   {/* Email */}
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -359,6 +417,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
+
                   {/* Phone */}
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -379,6 +438,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
+
                   {/* Plan */}
                   <Grid item xs={12}>
                     <TextField
@@ -409,6 +469,42 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       ))}
                     </TextField>
                   </Grid>
+
+                  {/* Months to Pay */}
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Months to Pay"
+                      variant="outlined"
+                      type="number"
+                      fullWidth
+                      required
+                      value={monthsToPay}
+                      onChange={(e) => setMonthsToPay(e.target.value)}
+                      error={!!errors.MonthsToPay}
+                      helperText={
+                        errors.MonthsToPay?.[0] ||
+                        "Paying 3+ months means you'll become 'Active' once fully paid."
+                      }
+                      inputProps={{ min: 1 }}
+                    />
+                  </Grid>
+
+                  {/* Computed membership total (read-only) */}
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Total Membership Cost"
+                      variant="outlined"
+                      fullWidth
+                      value={membershipTotal}
+                      InputProps={{
+                        readOnly: true,
+                        startAdornment: (
+                          <InputAdornment position="start">₱</InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Grid>
+
                   {/* Membership Card Number */}
                   <Grid item xs={12}>
                     <TextField
@@ -417,6 +513,8 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       fullWidth
                       required
                       value={membershipCardNumber}
+                      error={!!errors.MembershipCardNumber}
+                      helperText={errors.MembershipCardNumber?.[0]}
                       InputProps={{
                         readOnly: true,
                         startAdornment: (
@@ -427,20 +525,20 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
+
                   {/* Card Issued? */}
                   <Grid item xs={12}>
                     <FormControlLabel
                       control={
                         <Checkbox
                           checked={membershipCardIssued}
-                          onChange={(e) =>
-                            setMembershipCardIssued(e.target.checked)
-                          }
+                          onChange={(e) => setMembershipCardIssued(e.target.checked)}
                         />
                       }
                       label="Membership Card Issued?"
                     />
                   </Grid>
+
                   {/* Free Sessions */}
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -463,6 +561,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
+
                   {/* Branch */}
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -493,6 +592,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                   </Grid>
                 </Grid>
               </Grid>
+
               {/* RIGHT SIDE */}
               <Grid
                 item
@@ -503,15 +603,16 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                 <Typography variant="subtitle1" sx={{ mb: 2 }}>
                   Photo & Additional Info
                 </Typography>
+
                 <Grid container spacing={2}>
                   {/* Photo Upload & Webcam */}
                   <Grid item xs={12}>
                     <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
                       <Button
-                        sx={{ bgcolor: "#ffffff", color: "black" }}
                         variant="contained"
                         component="label"
                         startIcon={<FileUploadIcon />}
+                        sx={{ bgcolor: "#fff", color: "#000" }}
                       >
                         Upload Biometrics
                         <input
@@ -541,6 +642,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       </Typography>
                     )}
                   </Grid>
+
                   {/* Notes */}
                   <Grid item xs={12}>
                     <TextField
@@ -563,121 +665,129 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
-                  {/* Payment & Image Preview */}
+
+                  {/* Payment (Split) */}
                   <Grid item xs={12}>
-                    <Grid container spacing={2} alignItems="center">
-                      {capturedImage && (
-                        <Grid item xs={12} sm={4} display="flex" justifyContent="center">
-                          <Box
-                            component="img"
-                            src={capturedImage}
-                            alt="Captured"
-                            sx={{
-                              width: 150,
-                              height: 150,
-                              border: "1px solid #ccc",
-                              borderRadius: 2,
-                              objectFit: "cover",
-                            }}
-                          />
-                        </Grid>
-                      )}
-                      <Grid item xs={12} sm={capturedImage ? 8 : 12}>
-                        <Grid container spacing={2}>
-                        <Grid item xs={12}>
-                      <FormControl fullWidth variant="outlined" required error={!!errors.PaymentMethod}>
-                        <InputLabel id="payment-method-label">Payment Method</InputLabel>
-                        <Select
-                          labelId="payment-method-label"
-                          value={paymentMethod}
-                          onChange={(e) => setPaymentMethod(e.target.value)}
-                          label="Payment Method"
-                          startAdornment={
-                            <InputAdornment position="start">
-                              <PaymentIcon />
-                            </InputAdornment>
-                          }
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Payments (Split Allowed)
+                    </Typography>
+
+                    {/* If captured via webcam, show preview */}
+                    {capturedImage && (
+                      <Box
+                        component="img"
+                        src={capturedImage}
+                        alt="Captured"
+                        sx={{
+                          width: 150,
+                          height: 150,
+                          border: "1px solid #ccc",
+                          borderRadius: 2,
+                          objectFit: "cover",
+                          mb: 2,
+                        }}
+                      />
+                    )}
+
+                    {/* Payment Rows */}
+                    {payments.map((payment, index) => (
+                      <Box
+                        key={index}
+                        sx={{
+                          display: "flex",
+                          gap: 2,
+                          mb: 1,
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          backgroundColor: "#f9f9f9",
+                          p: 1,
+                          borderRadius: 1,
+                        }}
+                      >
+                        <FormControl
+                          sx={{ minWidth: 120 }}
+                          error={!!errors[`Payments_${index}_PaymentMethod`]}
                         >
-                          <MenuItem value="">-- Select --</MenuItem>
-                          <MenuItem value="Cash">Cash</MenuItem>
-                          <MenuItem value="BDO">BDO</MenuItem>
-                          <MenuItem value="BPI">BPI</MenuItem>
-                          <MenuItem value="GCash">GCash</MenuItem>
-                        </Select>
-                        {errors.PaymentMethod && (
-                          <FormHelperText>{errors.PaymentMethod[0]}</FormHelperText>
+                          <InputLabel>Method</InputLabel>
+                          <Select
+                            label="Method"
+                            value={payment.PaymentMethod}
+                            onChange={(e) =>
+                              handlePaymentChange(index, "PaymentMethod", e.target.value)
+                            }
+                            startAdornment={
+                              <InputAdornment position="start">
+                                <PaymentIcon />
+                              </InputAdornment>
+                            }
+                          >
+                            <MenuItem value="">-- Select --</MenuItem>
+                            <MenuItem value="Cash">Cash</MenuItem>
+                            <MenuItem value="BDO">BDO</MenuItem>
+                            <MenuItem value="BPI">BPI</MenuItem>
+                            <MenuItem value="GCash">GCash</MenuItem>
+                          </Select>
+                          {errors[`Payments_${index}_PaymentMethod`] && (
+                            <FormHelperText>
+                              {errors[`Payments_${index}_PaymentMethod`][0]}
+                            </FormHelperText>
+                          )}
+                        </FormControl>
+
+                        <TextField
+                          label="Amount"
+                          type="number"
+                          value={payment.PaymentAmount}
+                          onChange={(e) =>
+                            handlePaymentChange(index, "PaymentAmount", e.target.value)
+                          }
+                          error={!!errors[`Payments_${index}_PaymentAmount`]}
+                          helperText={errors[`Payments_${index}_PaymentAmount`]?.[0]}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">₱</InputAdornment>
+                            ),
+                          }}
+                          sx={{ width: 150 }}
+                        />
+
+                        {/* Remove row if we have more than 1 payment */}
+                        {payments.length > 1 && (
+                          <IconButton
+                            onClick={() => handleRemovePaymentRow(index)}
+                            color="error"
+                          >
+                            <CloseIcon />
+                          </IconButton>
                         )}
-                      </FormControl>
+                      </Box>
+                    ))}
 
-
-                          </Grid>
-                          <Grid item xs={12}>
-                            <TextField
-                              label="Payment Amount"
-                              type="number"
-                              fullWidth
-                              variant="outlined"
-                              required
-                              value={paymentAmount}
-                              onChange={(e) => setPaymentAmount(e.target.value)}
-                              error={!!errors.PaymentAmount}
-                              helperText={errors.PaymentAmount?.[0]}
-                              InputProps={{
-                                readOnly: true,
-                                startAdornment: (
-                                  <InputAdornment position="start">
-                                    <Typography variant="h6">₱</Typography>
-                                  </InputAdornment>
-                                ),
-                              }}
-                            />
-                          </Grid>
-                        </Grid>
-                      </Grid>
-                    </Grid>
+                    <Button variant="outlined" onClick={handleAddPaymentRow} sx={{ mt: 1 }}>
+                      Add Payment
+                    </Button>
+                    {errors.Payments && (
+                      <Typography variant="caption" color="error" display="block" sx={{ mt: 1 }}>
+                        {errors.Payments[0]}
+                      </Typography>
+                    )}
                   </Grid>
                 </Grid>
               </Grid>
             </Grid>
 
-            <Box
-            sx={{
-              mt: 4,
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 2,
-            }}
-          >
-            <Button
-              variant="contained"
-              color="primary"
-              type="submit"
-              
-              disabled={
-                !fullName.trim() ||
-                /\d/.test(fullName) ||
-                !email.trim() ||
-                !validateEmail(email) ||
-                !phoneNumber.trim() ||
-                !validatePhoneNumber(phoneNumber) ||
-                !selectedPlanID ||
-                !membershipCardNumber.trim() ||
-                freeSessions === "" ||
-                !branch ||
-                !notes.trim() ||
-                !paymentMethod ||
-                !paymentAmount ||
-                isNaN(paymentAmount) ||
-                Number(paymentAmount) <= 0 ||
-                (!photoFile && !capturedImage)
-              }
-              sx={{ textTransform: "none" }}
-            >
-              <Save sx={{ mr: 1 }} />
-              Submit Registration
-            </Button>
-          </Box>
-
+            {/* Submit Button */}
+            <Box sx={{ mt: 4, display: "flex", justifyContent: "flex-end", gap: 2 }}>
+              <Button
+                variant="contained"
+                color="primary"
+                type="submit"
+                sx={{ textTransform: "none" }}
+              >
+                <Save sx={{ mr: 1 }} />
+                Submit Registration
+              </Button>
+            </Box>
           </form>
 
           {/* Webcam Dialog */}

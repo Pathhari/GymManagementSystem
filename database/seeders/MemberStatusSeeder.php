@@ -39,5 +39,10 @@ class MemberStatusSeeder extends Seeder
             'MemberStatusID' => 5,
             'StatusName'     => 'EXPIRED'
         ]);
+
+        MemberStatus::create([
+            'MemberStatusID' => 6,
+            'StatusName'     => 'NEW MEMBER'
+        ]);
     }
 }

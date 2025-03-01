@@ -177,14 +177,117 @@ export default function MembershipManagement() {
   const [isAddRenewalOpen, setAddRenewalOpen] = useState(false);
   const [newRenewal, setNewRenewal] = useState({
     MemberID: "",
-    NewEndDate: "",     // date string (YYYY-MM-DD)
+    NewEndDate: "",
     RenewalAmount: 0,
-    PaymentMethod: "",
-    PaymentAmount: 0,
     PaymentFor: '["Membership Renewal"]',
   });
+
+  const [renewalPayments, setRenewalPayments] = useState([
+    { PaymentMethod: "", PaymentAmount: "" },
+  ]);
   
-  
+    // ─────────────────────────────────────────────────────────
+  // HELPER: Get the member object from membershipRecords
+  // ─────────────────────────────────────────────────────────
+  function getMemberByID(memberID) {
+    return membershipRecords.find((m) => m.MemberID === memberID);
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // HELPER: Decide the "start date" for renewal based on status
+  // ─────────────────────────────────────────────────────────
+  function getRenewalStartDate(member) {
+    if (!member) return new Date(); // fallback
+
+    // Suppose 4/5 are "Terminated" / "Expired"
+    // If so => start from "today"
+    // else => start from their existing MembershipEndDate
+    if (member.MemberStatusID === 4 || member.MemberStatusID === 5) {
+      return new Date(); // "today"
+    } else {
+      if (!member.MembershipEndDate) return new Date(); // fallback
+      return new Date(member.MembershipEndDate);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // HELPER: Get plan price from the member's PlanID
+  // ─────────────────────────────────────────────────────────
+  function getPlanPriceForMember(member) {
+    if (!member || !member.PlanID) return 0;
+    const plan = plans.find((p) => p.PlanID === member.PlanID);
+    return plan?.Price || 0;
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // HELPER: Simple "monthsBetweenDates(start, end)" integer
+  // ─────────────────────────────────────────────────────────
+  function monthsBetweenDates(start, end) {
+    if (end <= start) return 0; // or 1, if you want a minimum
+
+    const yearDiff = end.getFullYear() - start.getFullYear();
+    let monthDiff = end.getMonth() - start.getMonth();
+    let totalMonths = yearDiff * 12 + monthDiff;
+
+    // Optional partial-month logic if you want:
+    // if (end.getDate() < start.getDate()) totalMonths -= 1;
+
+    if (totalMonths < 0) totalMonths = 0;
+    return totalMonths;
+  }
+
+    // ─────────────────────────────────────────────────────────────────
+  // (A) Handle user clicks "Renew" => open the Add Renewal dialog
+  // ─────────────────────────────────────────────────────────────────
+  function handleOpenRenewalDialog(memberRow) {
+    // We'll store the member's ID plus default values
+    setNewRenewal({
+      MemberID: memberRow.MemberID,
+      NewEndDate: "", // let user pick
+      RenewalAmount: 0,
+      PaymentFor: '["Membership Renewal"]',
+    });
+    setRenewalPayments([{ PaymentMethod: "", PaymentAmount: "" }]);
+
+    setValidationErrors({});
+    setAddRenewalOpen(true);
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // (B) Auto-calc RenewalAmount whenever the user picks NewEndDate 
+  //     or changes the Member (the "start date" depends on status)
+  // ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    // We need a real member object:
+    const member = getMemberByID(newRenewal.MemberID);
+    if (!member) return; // no valid member => skip
+    if (!newRenewal.NewEndDate) return; // user hasn't chosen end date => skip
+
+    // 1) parse the chosen end date
+    const dtChosen = new Date(newRenewal.NewEndDate);
+    if (isNaN(dtChosen.getTime())) return;
+
+    // 2) decide the "start date" => membership end date or today
+    const dtStart = getRenewalStartDate(member);
+
+    // 3) compute difference in months
+    const diffMonths = monthsBetweenDates(dtStart, dtChosen);
+
+    // 4) multiply by the plan's monthly price
+    const monthlyPrice = getPlanPriceForMember(member);
+    const total = diffMonths * monthlyPrice;
+
+    // If your business rule is: 
+    //   - if the difference is 0, maybe force 1
+    // e.g. 
+    // if (diffMonths <= 0) total = monthlyPrice;
+    // or do nothing if you want 0 => 0
+
+    setNewRenewal((prev) => ({
+      ...prev,
+      RenewalAmount: total,
+    }));
+  }, [newRenewal.MemberID, newRenewal.NewEndDate]);
 
   // LOGS
   const [selectedLog, setSelectedLog] = useState(null);
@@ -339,6 +442,9 @@ export default function MembershipManagement() {
     arr.filter((item) =>
       Object.values(item).some((val) => String(val).toLowerCase().includes(searchTerm))
     );
+
+    // Right near your other filter states:
+    const [filterByStatusID, setFilterByStatusID] = useState(null);
 
   // --------------- MEMBERSHIP HANDLERS ---------------
   const handleViewMembership = (row) => {
@@ -654,36 +760,54 @@ export default function MembershipManagement() {
   }, [newRenewal.PlanID, plans]);
 
   async function handleAddRenewal() {
-    // Example validation
     let errors = {};
+
     if (!newRenewal.NewEndDate) {
       errors.NewEndDate = "Please select the new membership end date.";
     }
     if (!newRenewal.RenewalAmount || Number(newRenewal.RenewalAmount) <= 0) {
       errors.RenewalAmount = "Please enter a valid renewal amount.";
     }
-    if (!newRenewal.PaymentMethod) {
-      errors.PaymentMethod = "Please select a payment method.";
+
+    // Check that we have at least one payment row
+    if (!renewalPayments.length) {
+      errors.Payments = "At least one payment row is required.";
+    } else {
+      renewalPayments.forEach((p, idx) => {
+        if (!p.PaymentMethod) {
+          errors[`Payments.${idx}.PaymentMethod`] = "Method is required.";
+        }
+        if (!p.PaymentAmount || Number(p.PaymentAmount) <= 0) {
+          errors[`Payments.${idx}.PaymentAmount`] = "Must be > 0";
+        }
+      });
     }
-    if (!newRenewal.PaymentAmount || Number(newRenewal.PaymentAmount) <= 0) {
-      errors.PaymentAmount = "Please enter a valid payment amount.";
+
+    // (Optional) If you want totalPaid >= RenewalAmount
+    const totalPaid = renewalPayments.reduce(
+      (sum, p) => sum + Number(p.PaymentAmount || 0),
+      0
+    );
+    if (totalPaid < newRenewal.RenewalAmount) {
+      errors.totalPaid = "The sum of payments is less than the renewal amount.";
     }
-  
+
+    // If any errors exist
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
       return;
     }
-  
+
     try {
+      // Build the request body
       const body = {
         MemberID:      newRenewal.MemberID,
         NewEndDate:    newRenewal.NewEndDate,
         RenewalAmount: Number(newRenewal.RenewalAmount),
-        PaymentMethod: newRenewal.PaymentMethod,
-        PaymentAmount: Number(newRenewal.PaymentAmount),
         PaymentFor:    newRenewal.PaymentFor,
+        Payments:      renewalPayments,
       };
-  
+
       const res = await axios.post("/membership/renewals", body);
       const { renewal, member } = res.data;
       
@@ -692,16 +816,15 @@ export default function MembershipManagement() {
       setMembershipRecords((prev) =>
         prev.map((m) => (m.MemberID === member.MemberID ? member : m))
       );
-  
+
       // reset & close
       setNewRenewal({
         MemberID: "",
         NewEndDate: "",
         RenewalAmount: 0,
-        PaymentMethod: "",
-        PaymentAmount: 0,
         PaymentFor: '["Membership Renewal"]',
       });
+      setRenewalPayments([{ PaymentMethod: "", PaymentAmount: "" }]);
       setValidationErrors({});
       setAddRenewalOpen(false);
       showSuccessMessage("Renewal created successfully!");
@@ -710,7 +833,6 @@ export default function MembershipManagement() {
       alert("Create error. Check console for details.");
     }
   }
-  
 
   const validateWalkIn = () => {
     let errors = {};
@@ -766,6 +888,12 @@ export default function MembershipManagement() {
   // METRICS
   const totalMembers = membershipRecords.length;
   // FIX: Make sure "Expired" is matched in lowercase
+  // For example, if you know the status IDs:
+  const activeCount = membershipRecords.filter(m => m.MemberStatusID === 1).length;
+  const frozenCount = membershipRecords.filter(m => m.MemberStatusID === 2).length;
+  const onHoldCount = membershipRecords.filter(m => m.MemberStatusID === 3).length;
+  const terminatedCount = membershipRecords.filter(m => m.MemberStatusID === 4).length;
+  const newCount = membershipRecords.filter(m => m.MemberStatusID === 6).length;
   const expiredMemberships = membershipRecords.filter((m) => {
     if (!m?.MemberStatusID) return false;
     return getStatusNameByID(m.MemberStatusID)?.toLowerCase() === "expired";
@@ -1186,6 +1314,10 @@ export default function MembershipManagement() {
         });
       }
 
+      if (filterByStatusID != null) {
+        data = data.filter((m) => m.MemberStatusID === filterByStatusID);
+      }
+
       return applyBranchAndSearch(data);
     }
 
@@ -1590,6 +1722,134 @@ export default function MembershipManagement() {
           </Card>
         </Grid>
       </Grid>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+    {/* 1) Active */}
+    <Grid item xs={12} sm={6} md={3}>
+      <Card
+        onClick={() => {
+          setActiveTab(0);   // ensure we’re on Memberships tab
+          setFilterByStatusID((prev) => (prev === 1 ? null : 1));
+        }}
+        sx={{
+          cursor: "pointer",
+          p: 1.5,
+          display: "flex",
+          alignItems: "center",
+          boxShadow: 2,
+          // highlight if currently filtering by 1
+          ...(filterByStatusID === 1 && { border: "2px solid blue" }),
+        }}
+      >
+        <CardContent>
+          <Typography variant="body2">Active</Typography>
+          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+            {activeCount}
+          </Typography>
+        </CardContent>
+      </Card>
+    </Grid>
+
+    {/* 2) Frozen */}
+    <Grid item xs={12} sm={6} md={3}>
+      <Card
+        onClick={() => {
+          setActiveTab(0);
+          setFilterByStatusID((prev) => (prev === 2 ? null : 2));
+        }}
+        sx={{
+          cursor: "pointer",
+          p: 1.5,
+          display: "flex",
+          alignItems: "center",
+          boxShadow: 2,
+          ...(filterByStatusID === 2 && { border: "2px solid blue" }),
+        }}
+      >
+        <CardContent>
+          <Typography variant="body2">Frozen</Typography>
+          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+            {frozenCount}
+          </Typography>
+        </CardContent>
+      </Card>
+    </Grid>
+
+    {/* 3) On Hold (if you have a status=3 for on-hold) */}
+    <Grid item xs={12} sm={6} md={3}>
+      <Card
+        onClick={() => {
+          setActiveTab(0);
+          setFilterByStatusID((prev) => (prev === 3 ? null : 3));
+        }}
+        sx={{
+          cursor: "pointer",
+          p: 1.5,
+          display: "flex",
+          alignItems: "center",
+          boxShadow: 2,
+          ...(filterByStatusID === 3 && { border: "2px solid blue" }),
+        }}
+      >
+        <CardContent>
+          <Typography variant="body2">On Hold</Typography>
+          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+            {onHoldCount}
+          </Typography>
+        </CardContent>
+      </Card>
+    </Grid>
+
+    {/* 4) Terminated (status=4) */}
+    <Grid item xs={12} sm={6} md={3}>
+      <Card
+        onClick={() => {
+          setActiveTab(0);
+          setFilterByStatusID((prev) => (prev === 4 ? null : 4));
+        }}
+        sx={{
+          cursor: "pointer",
+          p: 1.5,
+          display: "flex",
+          alignItems: "center",
+          boxShadow: 2,
+          ...(filterByStatusID === 4 && { border: "2px solid blue" }),
+        }}
+      >
+        <CardContent>
+          <Typography variant="body2">Terminated</Typography>
+          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+            {terminatedCount}
+          </Typography>
+        </CardContent>
+      </Card>
+    </Grid>
+
+    {/* 5) New Member (status=6) */}
+    <Grid item xs={12} sm={6} md={3}>
+      <Card
+        onClick={() => {
+          setActiveTab(0);
+          setFilterByStatusID((prev) => (prev === 6 ? null : 6));
+        }}
+        sx={{
+          cursor: "pointer",
+          p: 1.5,
+          display: "flex",
+          alignItems: "center",
+          boxShadow: 2,
+          ...(filterByStatusID === 6 && { border: "2px solid blue" }),
+        }}
+      >
+        <CardContent>
+          <Typography variant="body2">New Members</Typography>
+          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+            {newCount}
+          </Typography>
+        </CardContent>
+      </Card>
+    </Grid>
+  </Grid>
+
 
       {/* Tabs */}
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
@@ -3358,194 +3618,238 @@ export default function MembershipManagement() {
 
 
       {/* ADD Renewal Dialog (Manual End Date) */}
-<Dialog
-  open={isAddRenewalOpen}
-  onClose={() => setAddRenewalOpen(false)}
-  fullWidth
-  maxWidth="sm"
-  sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3, overflow: "hidden" } }}
->
-  <DialogTitle sx={{ p: 2 }}>
-    <Box display="flex" justifyContent="space-between" alignItems="center">
-      <Box display="flex" alignItems="center" gap={1}>
-        <AutorenewIcon sx={{ fontSize: 32, color: "primary.main" }} />
-        <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-          Add New Renewal
-        </Typography>
-      </Box>
-      <IconButton
-        onClick={() => setAddRenewalOpen(false)}
-        sx={{ "&:hover": { color: theme.palette.error.main } }}
+      <Dialog
+        open={isAddRenewalOpen}
+        onClose={() => setAddRenewalOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3, overflow: "hidden" } }}
       >
-        <CloseIcon />
-      </IconButton>
-    </Box>
-  </DialogTitle>
+        <DialogTitle sx={{ p: 2 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" alignItems="center" gap={1}>
+              <AutorenewIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Add New Renewal
+              </Typography>
+            </Box>
+            <IconButton
+              onClick={() => setAddRenewalOpen(false)}
+              sx={{ "&:hover": { color: "red" } }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
 
-  <DialogContent dividers>
-    {/* (A) Member Name */}
-    <TextField
-      label="Member Name"
-      fullWidth
-      variant="outlined"
-      margin="normal"
-      value={
-        membershipRecords.find(m => m.MemberID === newRenewal.MemberID)?.FullName
-        || "Unknown Member"
-      }
-      InputProps={{
-        readOnly: true,
-        startAdornment: (
-          <InputAdornment position="start">
-            <PersonIcon />
-          </InputAdornment>
-        ),
-      }}
-    />
+        <DialogContent dividers>
+          {/* (A) Member Name */}
+          <TextField
+            label="Member Name"
+            fullWidth
+            variant="outlined"
+            margin="normal"
+            value={
+              membershipRecords.find((m) => m.MemberID === newRenewal.MemberID)?.FullName
+              || "Unknown Member"
+            }
+            InputProps={{
+              readOnly: true,
+              startAdornment: (
+                <InputAdornment position="start">
+                  <PersonIcon />
+                </InputAdornment>
+              ),
+            }}
+          />
 
-    {/* (B) New Membership End Date (user picks) */}
-    <TextField
-      label="New Membership End Date"
-      name="NewEndDate"
-      type="date"
-      fullWidth
-      margin="normal"
-      variant="outlined"
-      value={newRenewal.NewEndDate}
-      onChange={(e) =>
-        setNewRenewal((prev) => ({ ...prev, NewEndDate: e.target.value }))
-      }
-      InputLabelProps={{ shrink: true }}
-      error={!!validationErrors.NewEndDate}
-      helperText={validationErrors.NewEndDate}
-      InputProps={{
-        startAdornment: (
-          <InputAdornment position="start">
-            <EventIcon />
-          </InputAdornment>
-        ),
-      }}
-    />
+          {/* (B) New Membership End Date */}
+          <TextField
+            label="New Membership End Date"
+            name="NewEndDate"
+            type="date"
+            fullWidth
+            margin="normal"
+            variant="outlined"
+            value={newRenewal.NewEndDate}
+            onChange={(e) =>
+              setNewRenewal((prev) => ({ ...prev, NewEndDate: e.target.value }))
+            }
+            InputLabelProps={{ shrink: true }}
+            error={!!validationErrors.NewEndDate}
+            helperText={validationErrors.NewEndDate}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <EventIcon />
+                </InputAdornment>
+              ),
+            }}
+          />
 
-    {/* (C) Renewal Amount */}
-        <TextField
-      label="Renewal Amount"
-      name="RenewalAmount"
-      type="number"
-      fullWidth
-      margin="dense"
-      value={newRenewal.RenewalAmount}
-      onChange={(e) => {
-        const newVal = e.target.value;
-        setNewRenewal((prev) => ({
-          ...prev,
-          RenewalAmount: newVal,
-          // Automatically copy into PaymentAmount:
-          PaymentAmount: newVal,
-        }));
-      }}
-      variant="outlined"
-      error={!!validationErrors.RenewalAmount}
-      helperText={validationErrors.RenewalAmount}
-      InputProps={{
-        startAdornment: (
-          <InputAdornment position="start">
-            <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
-          </InputAdornment>
-        ),
-      }}
-    />
-    
-    {/* (D) Payment Method */}
-    <FormControl
-      fullWidth
-      margin="dense"
-      variant="outlined"
-      error={!!validationErrors.PaymentMethod}
-    >
-      <InputLabel>Payment Method</InputLabel>
-      <Select
-        name="PaymentMethod"
-        label="Payment Method"
-        value={newRenewal.PaymentMethod}
-        onChange={(e) =>
-          setNewRenewal((prev) => ({ ...prev, PaymentMethod: e.target.value }))
-        }
-        startAdornment={
-          <InputAdornment position="start">
-            <PaymentIcon />
-          </InputAdornment>
-        }
-      >
-        <MenuItem value="">
-          <em>-- Select Method --</em>
-        </MenuItem>
-        <MenuItem value="Cash">Cash</MenuItem>
-        <MenuItem value="BDO">BDO</MenuItem>
-        <MenuItem value="BPI">BPI</MenuItem>
-        <MenuItem value="GCash">GCash</MenuItem>
-      </Select>
-      {validationErrors.PaymentMethod && (
-        <Typography color="error" variant="caption">
-          {validationErrors.PaymentMethod}
-        </Typography>
-      )}
-    </FormControl>
+          {/* Renewal Amount (auto-filled by the useEffect) */}
+          <TextField
+            label="Renewal Amount"
+            name="RenewalAmount"
+            type="number"
+            fullWidth
+            margin="dense"
+            value={newRenewal.RenewalAmount}
+            onChange={(e) =>
+              setNewRenewal((prev) => ({
+                ...prev,
+                RenewalAmount: e.target.value,
+              }))
+            }
+            variant="outlined"
+            error={!!validationErrors.RenewalAmount}
+            helperText={validationErrors.RenewalAmount}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
+                </InputAdornment>
+              ),
+            }}
+          />
 
-    {/* (E) Payment Amount */}
-    <TextField
-      label="Payment Amount"
-      name="PaymentAmount"
-      type="number"
-      fullWidth
-      margin="dense"
-      value={newRenewal.PaymentAmount}
-      onChange={(e) =>
-        setNewRenewal((prev) => ({ ...prev, PaymentAmount: e.target.value }))
-      }
-      variant="outlined"
-      error={!!validationErrors.PaymentAmount}
-      helperText={validationErrors.PaymentAmount}
-      InputProps={{
-        startAdornment: (
-          <InputAdornment position="start">
-            <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
-          </InputAdornment>
-        ),
-      }}
-    />
+          {/* Payment Splits */}
+          <Typography variant="subtitle2" sx={{ mt: 2 }}>
+            Payments (Split Allowed)
+          </Typography>
+          {renewalPayments.map((payment, index) => (
+            <Box
+              key={index}
+              sx={{
+                display: "flex",
+                gap: 2,
+                mb: 1,
+                mt: 1,
+                flexWrap: "wrap",
+                alignItems: "center",
+                backgroundColor: "#f9f9f9",
+                p: 1,
+                borderRadius: 1,
+              }}
+            >
+              <FormControl
+                sx={{ minWidth: 120 }}
+                error={!!validationErrors[`Payments.${index}.PaymentMethod`]}
+              >
+                <InputLabel>Method</InputLabel>
+                <Select
+                  label="Method"
+                  value={payment.PaymentMethod}
+                  onChange={(e) =>
+                    setRenewalPayments((prev) =>
+                      prev.map((p, i) =>
+                        i === index ? { ...p, PaymentMethod: e.target.value } : p
+                      )
+                    )
+                  }
+                  startAdornment={
+                    <InputAdornment position="start">
+                      <PaymentIcon />
+                    </InputAdornment>
+                  }
+                >
+                  <MenuItem value="">-- Select --</MenuItem>
+                  <MenuItem value="Cash">Cash</MenuItem>
+                  <MenuItem value="BDO">BDO</MenuItem>
+                  <MenuItem value="BPI">BPI</MenuItem>
+                  <MenuItem value="GCash">GCash</MenuItem>
+                </Select>
+                {validationErrors[`Payments.${index}.PaymentMethod`] && (
+                  <FormHelperText>
+                    {validationErrors[`Payments.${index}.PaymentMethod`]}
+                  </FormHelperText>
+                )}
+              </FormControl>
 
-    {/* (F) Payment For (read-only or hidden) */}
-    <TextField
-      label="Payment For"
-      name="PaymentFor"
-      fullWidth
-      margin="dense"
-      value={newRenewal.PaymentFor.replace(/^\["|"\]$/g, "")}
-      variant="outlined"
-      disabled
-      InputProps={{
-        startAdornment: (
-          <InputAdornment position="start">
-            <DescriptionIcon />
-          </InputAdornment>
-        ),
-      }}
-    />
-  </DialogContent>
+              <TextField
+                label="Amount"
+                type="number"
+                value={payment.PaymentAmount}
+                onChange={(e) =>
+                  setRenewalPayments((prev) =>
+                    prev.map((p, i) =>
+                      i === index
+                        ? { ...p, PaymentAmount: e.target.value }
+                        : p
+                    )
+                  )
+                }
+                error={!!validationErrors[`Payments.${index}.PaymentAmount`]}
+                helperText={validationErrors[`Payments.${index}.PaymentAmount`]}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">₱</InputAdornment>
+                  ),
+                }}
+                sx={{ width: 150 }}
+              />
 
-  {/* (G) Actions */}
-  <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
-    <Button
-      variant="contained"
-      onClick={handleAddRenewal}
-      sx={{ px: 4, py: 1, textTransform: "none" }}
-      startIcon={<SaveIcon />}
-    >
-      SAVE RENEWAL
-    </Button>
-  </DialogActions>
-</Dialog>
+              {renewalPayments.length > 1 && (
+                <IconButton
+                  onClick={() =>
+                    setRenewalPayments((prev) => prev.filter((_, i) => i !== index))
+                  }
+                  color="error"
+                >
+                  <CloseIcon />
+                </IconButton>
+              )}
+            </Box>
+          ))}
+
+          <Button
+            variant="outlined"
+            onClick={() =>
+              setRenewalPayments((prev) => [...prev, { PaymentMethod: "", PaymentAmount: "" }])
+            }
+            sx={{ mt: 1 }}
+          >
+            Add Payment
+          </Button>
+
+          {/* PaymentFor (read-only) */}
+          <TextField
+            label="Payment For"
+            name="PaymentFor"
+            fullWidth
+            margin="dense"
+            value={newRenewal.PaymentFor.replace(/^\["|"\]$/g, "")}
+            variant="outlined"
+            disabled
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <DescriptionIcon />
+                </InputAdornment>
+              ),
+            }}
+            sx={{ mt: 2 }}
+          />
+
+          {/* Show sum-of-payments error if any */}
+          {validationErrors.totalPaid && (
+            <Typography color="error" sx={{ mt: 1 }}>
+              {validationErrors.totalPaid}
+            </Typography>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+          <Button
+            variant="contained"
+            onClick={handleAddRenewal}
+            sx={{ px: 4, py: 1, textTransform: "none" }}
+            startIcon={<SaveIcon />}
+          >
+            SAVE RENEWAL
+          </Button>
+        </DialogActions>
+      </Dialog>
 
 
      {/* EDIT Renewal */}

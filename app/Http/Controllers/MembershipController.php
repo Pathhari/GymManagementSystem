@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use App\Models\Member;
 use App\Models\MembershipPlan;
 use App\Models\MembershipRenewal;
@@ -24,77 +25,57 @@ class MembershipController extends Controller
      * ------------------------------------------------------------------ */
 
     /**
-     * Return JSON with members (and optionally walkIns, renewals, etc. if needed).
+     * Return JSON with members (and optionally walkIns, renewals, etc.).
      * GET /membership/members
      */
     public function apiIndex()
-{
-    $staff = auth('staff')->user();
+    {
+        $staff = auth('staff')->user();
 
-    if ($staff) {
-        // All BranchIDs from staff pivot
-        $branchIDs = $staff->branches->pluck('BranchID');
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID');
 
-        // 1) Members
-        $members = Member::whereIn('StartedBranchID', $branchIDs)
-            ->orderBy('MemberID','desc')
-            ->get();
+            // Filter members by those branches
+            $members = Member::whereIn('StartedBranchID', $branchIDs)
+                ->orderBy('MemberID','desc')
+                ->get();
 
-        // 2) Freezes
-        $freezes = MembershipFreeze::whereHas('member', function ($q) use ($branchIDs) {
-            $q->whereIn('StartedBranchID', $branchIDs);
-        })
-        ->orderBy('FreezeID','desc')
-        ->get();
+            // Similarly for Freezes, Renewals, Walk-Ins, etc.
+            $freezes = MembershipFreeze::whereHas('member', function ($q) use ($branchIDs) {
+                $q->whereIn('StartedBranchID', $branchIDs);
+            })->orderBy('FreezeID','desc')->get();
 
-        // 3) Renewals
-        $renewals = MembershipRenewal::whereIn('MemberID', function ($sub) use ($branchIDs) {
-            $sub->select('MemberID')
-                ->from('members')
-                ->whereIn('StartedBranchID', $branchIDs);
-        })
-        ->orderBy('RenewalID','desc')
-        ->get();
+            $renewals = MembershipRenewal::whereIn('MemberID', function ($sub) use ($branchIDs) {
+                $sub->select('MemberID')
+                    ->from('members')
+                    ->whereIn('StartedBranchID', $branchIDs);
+            })->orderBy('RenewalID','desc')->get();
 
-        // 4) Walk-Ins example, if each has BranchID directly:
-        $walkIns = WalkIn::whereIn('BranchID', $branchIDs)
-            ->orderBy('WalkInID','desc')
-            ->get();
+            $walkIns = WalkIn::whereIn('BranchID', $branchIDs)
+                ->orderBy('WalkInID','desc')
+                ->get();
+        } else {
+            // Admin or Owner => see all
+            $members  = Member::orderBy('MemberID','desc')->get();
+            $freezes  = MembershipFreeze::orderBy('FreezeID','desc')->get();
+            $renewals = MembershipRenewal::orderBy('RenewalID','desc')->get();
+            $walkIns  = WalkIn::orderBy('WalkInID','desc')->get();
+        }
 
-        // OR if `walk_ins` references a MemberID:
-        /*
-        $walkIns = WalkIn::whereHas('member', function($q) use($branchIDs) {
-            $q->whereIn('StartedBranchID', $branchIDs);
-        })->orderBy('WalkInID','desc')
-          ->get();
-        */
-
-        // 5) Logs example, if each log references a MemberID
-        //$logs = SystemLog::whereHas('member', function($q) use ($branchIDs) {
-         //   $q->whereIn('StartedBranchID', $branchIDs);})
-        //->orderBy('LogID','desc')
-        //->get();
-
-    } else {
-        // Admin or Owner => sees all
-        $members  = Member::orderBy('MemberID','desc')->get();
-        $freezes  = MembershipFreeze::orderBy('FreezeID','desc')->get();
-        $renewals = MembershipRenewal::orderBy('RenewalID','desc')->get();
-        $walkIns  = WalkIn::orderBy('WalkInID','desc')->get();
+        return response()->json([
+            'members'  => $members,
+            'walkIns'  => $walkIns,
+            'renewals' => $renewals,
+            'freezes'  => $freezes,
+        ]);
     }
 
-    return response()->json([
-        'members'  => $members,
-        'walkIns'  => $walkIns,
-        'renewals' => $renewals,
-        'freezes'  => $freezes,
-    ]);
-}  
-         // ** New: Search by name **
+    /**
+     * Simple search by name (GET /membership/search-members?q=)
+     */
     public function apiSearchMembers(Request $request)
     {
         $q = $request->query('q', '');
-        // E.g. "starts with" filter:
         $members = Member::where('FullName', 'like', $q . '%')
                     ->orderBy('FullName')
                     ->limit(30)
@@ -102,109 +83,247 @@ class MembershipController extends Controller
         
         return response()->json($members);
     }
-      /**
-     * Create a new member via Axios JSON.
-     * POST /membership/members
+
+    /**
+     * Create a new member (POST /membership/members).
      */
-    public function apiStoreMember(Request $request)
-    {
-        $data = $request->validate([
-            'BranchID'             => 'nullable|exists:branches,BranchID',
-            'FullName'             => 'required|string|max:255',
-            'Email'                => 'required|email|unique:members,Email',
-            'Phone'                => 'nullable|string|max:50',
-            'PlanID'               => 'nullable|exists:membership_plans,PlanID',
-            'MembershipCardNumber' => 'nullable|unique:members,MembershipCardNumber',
-            'MembershipCardIssued' => 'boolean',
-            'MemberStatusID'       => 'nullable|exists:member_statuses,MemberStatusID',
-            'MembershipStartDate'  => 'nullable|date',
-            'MembershipEndDate'    => 'nullable|date|after_or_equal:MembershipStartDate',
-            'Biometrics'           => 'nullable|string',
-            'FreeSessions'         => 'nullable|integer',
-            'Notes'                => 'nullable|string',
-            'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048',
 
-            // Payment
-            'PaymentMethod'        => 'nullable|string|max:50',
-            'PaymentAmount'        => 'nullable|numeric|min:0',
-            // We'll store PaymentFor as JSON array => validated as string
-            'PaymentFor'           => 'nullable|string',
-        ]);
+     public function apiStoreMember(Request $request)
+     {
 
-        // If staff => override BranchID
-        $staff = auth('staff')->user();
-        if ($staff) {
-            $data['StartedBranchID'] = $staff->BranchID;
-        } else {
-            $data['StartedBranchID'] = $data['BranchID'] ?? null;
-        }
-
-        // Handle photo upload
-        if ($request->hasFile('PhotoFile')) {
-            $filename = 'member_' . time() . '.' . $request->file('PhotoFile')->extension();
-            $photoPath = $request->file('PhotoFile')->storeAs('member_photos', $filename, 'public');
-            $data['PhotoPath'] = $photoPath;
-        }
-
-        // Default new members to Active if not specified
-        $data['MemberStatusID'] = $data['MemberStatusID'] ?? 1;
-
-        // 1) Create the member
-        $member = Member::create($data);
-
-        // 2) If PaymentMethod & PaymentAmount => create Payment
-        if (!empty($data['PaymentMethod']) && !empty($data['PaymentAmount'])) {
-            // decode PaymentFor if provided
-            $paymentFor = null;
-            if (!empty($data['PaymentFor'])) {
-                // e.g. user passed '["New Membership"]'
-                $paymentFor = json_decode($data['PaymentFor'], true);
-            } else {
-                // If you want a default, set it here:
-                $paymentFor = ["New Membership"];
-            }
-
-            Payment::create([
-                'MemberID'      => $member->MemberID,
-                'BranchID'      => $member->StartedBranchID,  // <-- Add this line
-                'PaymentMethod' => $data['PaymentMethod'],
-                'Amount'        => $data['PaymentAmount'],
-                'PaymentDate'   => now(),
-                'PaymentFor'    => $paymentFor,  // Store as array
-                'Status'        => 'Completed',
+        if ($request->has('Payments')) {
+            $request->merge([
+                'Payments' => json_decode($request->input('Payments'), true),
             ]);
         }
 
-        // 3) If a PlanID is given, auto-calc membership date
-        if (!empty($data['PlanID'])) {
-            $plan = MembershipPlan::find($data['PlanID']);
-            if ($plan) {
-                $durationDays = (int) $plan->Duration;
-                $startDate = $member->MembershipStartDate 
-                    ? Carbon::parse($member->MembershipStartDate)
-                    : Carbon::today();
-    
-                $endDate = $startDate->copy()->addDays($durationDays - 1);
-                $member->MembershipStartDate = $startDate->format('Y-m-d');
-                $member->MembershipEndDate   = $endDate->format('Y-m-d');
-                $member->save();
-            }
+         $data = $request->validate([
+             'BranchID'             => 'nullable|exists:branches,BranchID',
+             'FullName'             => 'required|string|max:255',
+             'Email'                => 'required|email|unique:members,Email',
+             'Phone'                => 'nullable|string|max:50',
+             'PlanID'               => 'nullable|exists:membership_plans,PlanID',
+             'MembershipCardNumber' => 'nullable|unique:members,MembershipCardNumber',
+             'MembershipCardIssued' => 'boolean',
+             'MemberStatusID'       => 'nullable|exists:member_statuses,MemberStatusID',
+             'MembershipStartDate'  => 'nullable|date',
+             'MembershipEndDate'    => 'nullable|date|after_or_equal:MembershipStartDate',
+             'Biometrics'           => 'nullable|string',
+             'FreeSessions'         => 'nullable|integer',
+             'Notes'                => 'nullable|string',
+             'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048',
+     
+             // Payment & multi-month
+             'Payments'                      => 'array', // array of partial payments
+             'Payments.*.PaymentMethod'      => 'string|max:50',
+             'Payments.*.PaymentAmount'      => 'numeric|min:0',
+             'MonthsToPayUpfront'           => 'nullable|integer|min:1', // e.g. 3 or 6
+         ]);
+     
+         // If staff => override BranchID
+         $staff = auth('staff')->user();
+         if ($staff) {
+             $data['StartedBranchID'] = $staff->BranchID;
+         } else {
+             $data['StartedBranchID'] = $data['BranchID'] ?? null;
+         }
+     
+         // Handle photo upload
+         if ($request->hasFile('PhotoFile')) {
+             $filename = 'member_' . time() . '.' . $request->file('PhotoFile')->extension();
+             $photoPath = $request->file('PhotoFile')->storeAs('member_photos', $filename, 'public');
+             $data['PhotoPath'] = $photoPath;
+         }
+     
+         // Default to "NEW MEMBER" (ID=6) if no status given
+         $data['MemberStatusID'] = $data['MemberStatusID'] ?? 6;
+     
+         DB::beginTransaction();
+         try {
+             // 1) Create the Member
+             $member = Member::create($data);
+     
+             // 2) If a Plan is selected => create membership invoice
+             $monthsUpfront = $data['MonthsToPayUpfront'] ?? 1;
+             $invoice = null; // We'll store the newly created invoice here if it applies
+     
+             if (!empty($data['PlanID'])) {
+                 $plan = MembershipPlan::find($data['PlanID']);
+                 if ($plan) {
+                     // If no start date, default to today
+                     $startDate = !empty($data['MembershipStartDate'])
+                         ? Carbon::parse($data['MembershipStartDate'])
+                         : Carbon::today();
+     
+                     $member->MembershipStartDate = $startDate->format('Y-m-d');
+     
+                     if ($monthsUpfront > 1) {
+                         // MULTI-MONTH: create one invoice for all months
+                         $nextCycleDate = $startDate->copy();
+                         for ($i = 1; $i <= $monthsUpfront; $i++) {
+                             $nextCycleDate = $this->calculateNextMonthBillingDay($nextCycleDate);
+                         }
+                         $member->MembershipEndDate = $nextCycleDate->format('Y-m-d');
+                         $member->save();
+     
+                         // Create single invoice for the entire multi-month charge
+                         $invoice = Invoice::create([
+                             'BranchID'     => $member->StartedBranchID,
+                             'MemberID'     => $member->MemberID,
+                             'InvoiceDate'  => now(),
+                             'DueDate'      => now(), // or pick a date
+                             'InvoiceTotal' => 0,
+                         ]);
+                         $lineSubtotal = $plan->Price * $monthsUpfront;
+                         InvoiceLineItem::create([
+                             'InvoiceID'   => $invoice->InvoiceID,
+                             'ItemType'    => 'Membership',
+                             'ItemID'      => $plan->PlanID,
+                             'Description' => "Prepaid for {$monthsUpfront} months",
+                             'Quantity'    => $monthsUpfront,
+                             'UnitPrice'   => $plan->Price,
+                             'Subtotal'    => $lineSubtotal,
+                         ]);
+                         $invoice->InvoiceTotal = $lineSubtotal;
+                         $invoice->save();
+     
+                     } else {
+                         // SINGLE-MONTH SCENARIO
+                         $endDate = $this->calculateNextMonthBillingDay($startDate);
+                         $member->MembershipEndDate = $endDate->format('Y-m-d');
+                         $member->save();
+     
+                         $invoice = Invoice::create([
+                             'BranchID'     => $member->StartedBranchID,
+                             'MemberID'     => $member->MemberID,
+                             'InvoiceDate'  => now(),
+                             'DueDate'      => $endDate,  // or now() if you want immediate
+                             'InvoiceTotal' => 0,
+                         ]);
+                         InvoiceLineItem::create([
+                             'InvoiceID'   => $invoice->InvoiceID,
+                             'ItemType'    => 'Membership',
+                             'ItemID'      => $plan->PlanID,
+                             'Description' => 'Monthly Membership',
+                             'Quantity'    => 1,
+                             'UnitPrice'   => $plan->Price,
+                             'Subtotal'    => $plan->Price,
+                         ]);
+                         $invoice->InvoiceTotal = $plan->Price;
+                         $invoice->save();
+                     }
+                 }
+             }
+     
+             // 3) Process payments array (split payments)
+             $paymentsData = $data['Payments'] ?? [];
+             $allocatedSoFar = 0;
+             $invoiceTotal = $invoice ? $invoice->InvoiceTotal : 0;
+     
+             foreach ($paymentsData as $payItem) {
+                 // Create Payment record
+                 $payment = Payment::create([
+                     'MemberID'      => $member->MemberID,
+                     'BranchID'      => $member->StartedBranchID,
+                     'PaymentMethod' => $payItem['PaymentMethod'] ?? '',
+                     'Amount'        => $payItem['PaymentAmount'] ?? 0,
+                     'PaymentDate'   => now(),
+                     'PaymentFor'    => ['New Membership'],
+                     'Status'        => 'Completed',
+                 ]);
+     
+                 // If we have an invoice, allocate the payment
+                 if ($invoice) {
+                     $allocatedSoFar += $payItem['PaymentAmount'];
+                     PaymentInvoice::create([
+                         'PaymentID'       => $payment->PaymentID,
+                         'InvoiceID'       => $invoice->InvoiceID,
+                         'AmountAllocated' => $payItem['PaymentAmount'],
+                     ]);
+                 }
+             }
+     
+             // Update invoice PaymentStatus, if we have an invoice
+             if ($invoice) {
+                 if ($allocatedSoFar >= $invoiceTotal) {
+                     $invoice->PaymentStatus = 'Paid';
+                 } elseif ($allocatedSoFar > 0) {
+                     $invoice->PaymentStatus = 'Partially Paid';
+                 } else {
+                     $invoice->PaymentStatus = 'Unpaid'; // or whatever you prefer
+                 }
+                 $invoice->save();
+             }
+     
+             // 4) If they've paid at least 3 months and the invoice is fully paid => "ACTIVE"
+             //
+             // Otherwise, remain "NEW MEMBER" (ID=6).
+             // So the logic is:
+             //   - If monthsUpfront >= 3 (i.e. 3 or more months lock-in)
+             //   - AND $invoice->PaymentStatus === 'Paid'
+             // then MemberStatusID = 1.
+             if ($invoice && $monthsUpfront >= 3 && $invoice->PaymentStatus === 'Paid') {
+                 $member->MemberStatusID = 1; // 1 = ACTIVE
+                 $member->save();
+             }
+     
+             DB::commit();
+     
+             return response()->json(['member' => $member], 201);
+     
+         } catch (\Exception $e) {
+             DB::rollBack();
+             return response()->json(['error' => $e->getMessage()], 500);
+         }
+     }
+     
+     /**
+      * This helper function chooses day 15 or 30 in the next month,
+      * falling back to the last day if next month has fewer days.
+      */
+     private function calculateNextMonthBillingDay(Carbon $referenceDate)
+     {
+         $nextMonth = $referenceDate->copy()->addMonthNoOverflow();
+         $daysInNextMonth = $nextMonth->daysInMonth;
+         $dayOfMonth = (int) $referenceDate->format('d');
+     
+         if ($dayOfMonth <= 15) {
+             $candidateDay = 15;
+             if ($daysInNextMonth < 15) {
+                 $candidateDay = $daysInNextMonth;
+             }
+         } else {
+             $candidateDay = 30;
+             if ($daysInNextMonth < 30) {
+                 $candidateDay = $daysInNextMonth;
+             }
+         }
+     
+         return Carbon::create($nextMonth->year, $nextMonth->month, $candidateDay, 0, 0, 0);
+     }
+     
+
+    /**
+     * Update an existing member (PUT /membership/members/{id}).
+     */
+    public function apiUpdateMember(Request $request, $id)
+    {
+        \Log::info('Message here');
+        $member = Member::findOrFail($id);
+
+        // Staff => block updating cross‐branch
+        $staff = auth('staff')->user();
+        if ($staff && $member->StartedBranchID != $staff->BranchID) {
+            abort(403, 'Cannot update member from another branch.');
         }
 
-        return response()->json([
-            'member' => $member
-        ], 201); 
-    }
-
-    public function storeLockInMembership(Request $request)
-    {
         $data = $request->validate([
             'BranchID'             => 'nullable|exists:branches,BranchID',
-            'FullName'             => 'required|string|max:255',
-            'Email'                => 'required|email|unique:members,Email',
+            'FullName'             => 'nullable|string|max:255',
+            'Email'                => 'nullable|email|unique:members,Email,' . $member->MemberID . ',MemberID',
             'Phone'                => 'nullable|string|max:50',
             'PlanID'               => 'nullable|exists:membership_plans,PlanID',
-            'MembershipCardNumber' => 'nullable|unique:members,MembershipCardNumber',
+            'MembershipCardNumber' => 'nullable|unique:members,MembershipCardNumber,' . $member->MemberID . ',MemberID',
             'MembershipCardIssued' => 'boolean',
             'MemberStatusID'       => 'nullable|exists:member_statuses,MemberStatusID',
             'MembershipStartDate'  => 'nullable|date',
@@ -213,20 +332,17 @@ class MembershipController extends Controller
             'FreeSessions'         => 'nullable|integer',
             'Notes'                => 'nullable|string',
             'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048',
-
-            // Payment
             'PaymentMethod'        => 'nullable|string|max:50',
             'PaymentAmount'        => 'nullable|numeric|min:0',
-            'PaymentFor'           => 'nullable|string',
         ]);
 
-        $staff = auth('staff')->user();
-        if ($staff) {
-            $data['StartedBranchID'] = $staff->BranchID;
+        // If staff => must remain same branch
+        if ($staff && isset($data['BranchID']) && $data['BranchID'] != $member->StartedBranchID) {
+            abort(403, 'Staff cannot assign a different branch.');
         } else {
-            $data['StartedBranchID'] = $data['BranchID'] ?? null; 
+            $data['StartedBranchID'] = $data['BranchID'] ?? $member->StartedBranchID;
         }
-        
+
         // Handle photo upload if provided
         if ($request->hasFile('PhotoFile')) {
             $filename = 'member_' . time() . '.' . $request->file('PhotoFile')->extension();
@@ -234,160 +350,18 @@ class MembershipController extends Controller
             $data['PhotoPath'] = $photoPath;
         }
 
-        // Suppose ID=5 is "New Member (Lock-In)"
-        $data['MemberStatusID']      = 1;
-        $startDate                   = Carbon::today();
-        $data['MembershipStartDate'] = $startDate->format('Y-m-d');
-
-        // 1) Create the member
-        $member = Member::create($data);
-
-        // 2) Payment creation
-        if (!empty($data['PaymentMethod']) && !empty($data['PaymentAmount'])) {
-            $paymentFor = null;
-            if (!empty($data['PaymentFor'])) {
-                $paymentFor = json_decode($data['PaymentFor'], true);
-            } else {
-                $paymentFor = ["New Lock-In"]; 
-            }
-
-            Payment::create([
-                'MemberID'      => $member->MemberID,
-                'BranchID'      => $member->StartedBranchID,  // <-- Add this line
-                'PaymentMethod' => $data['PaymentMethod'],
-                'Amount'        => $data['PaymentAmount'],
-                'PaymentDate'   => now(),
-                'PaymentFor'    => $paymentFor,
-                'Status'        => 'Completed',
-            ]);
-        }
-
-        // 3) Retrieve the plan (with LockInMonths, Price, etc.)
-        $plan = MembershipPlan::findOrFail($request->PlanID);
-        $lockInMonths = $plan->LockInMonths ?? 3;
-
-        // End date = start date + lockInMonths months - 1 day
-        $lockInEnd = $startDate->copy()->addMonths($lockInMonths)->subDay();
-        $member->MembershipEndDate = $lockInEnd->format('Y-m-d');
-        $member->save();
-
-        // 4) Figure out billing day (15 or 30)
-        $dayOfMonth = (int) $startDate->format('d');
-        $billingDay = ($dayOfMonth <= 15) ? 15 : 30;
-
-        // 5) Create monthly invoices
-        $currentDate = $startDate->copy();
-        for ($i = 1; $i <= $lockInMonths; $i++) {
-            $dueDate = $this->getInvoiceDueDate($currentDate, $billingDay);
-
-            $invoice = Invoice::create([
-                'BranchID'     => $member->StartedBranchID,
-                'MemberID'     => $member->MemberID,
-                'InvoiceDate'  => $currentDate,
-                'DueDate'      => $dueDate,
-                'InvoiceTotal' => 0,
-            ]);
-
-            // If plan->Price is total for entire lock-in, do (Price / lockInMonths).
-            $monthlyFee = $plan->Price;
-
-            InvoiceLineItem::create([
-                'InvoiceID'   => $invoice->InvoiceID,
-                'ItemType'    => 'Membership',
-                'ItemID'      => $plan->PlanID,
-                'Description' => "Lock-In Month #{$i}",
-                'Quantity'    => 1,
-                'UnitPrice'   => $monthlyFee,
-                'Subtotal'    => $monthlyFee,
-            ]);
-
-            $invoice->load('lineItems');
-            $invoice->InvoiceTotal = $invoice->lineItems->sum('Subtotal');
-            $invoice->save();
-
-            $currentDate->addMonthNoOverflow();
-        }
-
-        return response()->json([
-            'message' => 'Lock-in membership created with monthly invoices!',
-            'member'  => $member,
-        ], 201);
+        $member->update($data);
+        return response()->json($member, 200);
     }
-
-    private function getInvoiceDueDate(Carbon $referenceDate, int $billingDay): Carbon
-    {
-        $year  = $referenceDate->year;
-        $month = $referenceDate->month;
-
-        $candidate = Carbon::create($year, $month, $billingDay, 0, 0, 0);
-        if ($candidate->lessThan($referenceDate)) {
-            $candidate->addMonthNoOverflow();
-        }
-        return $candidate;
-    }
-
 
     /**
-     * Update an existing member via Axios JSON.
-     * PUT /membership/members/{id}
-     */
-    public function apiUpdateMember(Request $request, $id)
-{
-    \Log::info('Message here');
-    $member = Member::findOrFail($id);
-
-    // Staff => block updating cross‐branch
-    $staff = auth('staff')->user();
-    if ($staff && $member->StartedBranchID != $staff->BranchID) {
-        abort(403, 'Cannot update member from another branch.');
-    }
-
-    $data = $request->validate([
-        'BranchID'             => 'nullable|exists:branches,BranchID',
-        'FullName'             => 'nullable|string|max:255',
-        'Email'                => 'nullable|email|unique:members,Email,' . $member->MemberID . ',MemberID',
-        'Phone'                => 'nullable|string|max:50',
-        'PlanID'               => 'nullable|exists:membership_plans,PlanID',
-        'MembershipCardNumber' => 'nullable|unique:members,MembershipCardNumber,' . $member->MemberID . ',MemberID',
-        'MembershipCardIssued' => 'boolean',
-        'MemberStatusID'       => 'nullable|exists:member_statuses,MemberStatusID',
-        'MembershipStartDate'  => 'nullable|date',
-        'MembershipEndDate'    => 'nullable|date|after_or_equal:MembershipStartDate',
-        'Biometrics'           => 'nullable|string',
-        'FreeSessions'         => 'nullable|integer',
-        'Notes'                => 'nullable|string',
-        'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048',
-        'PaymentMethod' => 'nullable|string|max:50',
-        'PaymentAmount' => 'nullable|numeric|min:0',
-    ]);
-
-    // If staff => branch must remain the same
-    if ($staff && isset($data['BranchID']) && $data['BranchID'] != $member->StartedBranchID) {
-        abort(403, 'Staff cannot assign a different branch.');
-    } else {
-        $data['StartedBranchID'] = $data['BranchID'] ?? $member->StartedBranchID;
-    }
-
-    // Handle photo upload if provided
-    if ($request->hasFile('PhotoFile')) {
-        $filename = 'member_' . time() . '.' . $request->file('PhotoFile')->extension();
-        $photoPath = $request->file('PhotoFile')->storeAs('member_photos', $filename, 'public');
-        $data['PhotoPath'] = $photoPath;
-    }
-
-    $member->update($data);
-    return response()->json($member, 200);
-}
-
-    /**
-     * Delete a member via Axios JSON.
-     * DELETE /membership/members/{id}
+     * Delete a member (DELETE /membership/members/{id}).
      */
     public function apiDestroyMember($id)
     {
         $member = Member::findOrFail($id);
 
-        // If staff => block
+        // If staff => block cross-branch
         $staff = auth('staff')->user();
         if ($staff && $member->StartedBranchID != $staff->BranchID) {
             abort(403, 'Cannot delete member from another branch.');
@@ -397,213 +371,50 @@ class MembershipController extends Controller
         return response()->json(['message' => 'Member deleted.'], 200);
     }
 
+    /**
+     * Just an example if you want membership statuses in the front-end
+     */
     public function indexMemberStatuses()
     {
-        // Adjust model & table name as needed (if your model is MemberStatus).
         $statuses = \App\Models\MemberStatus::orderBy('MemberStatusID')->get();
         return response()->json($statuses, 200);
     }
 
-
-
-
-    public function importLockInMember(Request $request)
+        /**
+     * Return members whose membership ends within the next X days.
+     * GET /membership/expiring?days=7
+     */
+    public function expiringMembers(Request $request)
     {
-        // 1) Validate input
-        $data = $request->validate([
-            'BranchID'             => 'nullable|exists:branches,BranchID',
-            'FullName'             => 'required|string|max:255',
-            'Email'                => 'required|email|unique:members,Email,' . $member->MemberID . ',MemberID',
-            'Phone'                => 'nullable|string|max:50',
-            'PlanID'               => 'nullable|exists:membership_plans,PlanID',
-            'MembershipCardNumber' => 'nullable|unique:members,MembershipCardNumber,' . $member->MemberID . ',MemberID',
-            'MembershipCardIssued' => 'boolean',
-            'MemberStatusID'       => 'required|exists:member_statuses,MemberStatusID',
-            'MembershipStartDate'  => 'nullable|date',
-            'MembershipEndDate'    => 'nullable|date|after_or_equal:MembershipStartDate',
-            'Biometrics'           => 'nullable|string',
-            'FreeSessions'         => 'nullable|integer',
-            'Notes'                => 'nullable|string',
-            'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048',
-            // Lock-in range:
-            'LockInStart'          => 'required|date',
-            'LockInEnd'            => 'required|date|after_or_equal:LockInStart',
-        ]);
-    
-        // 2) If staff => assign branch
+        // 1) Determine how many days in the future
+        $days = (int) $request->query('days', 7);
+
+        // 2) Calculate the date cutoff (today + X days)
+        $today = Carbon::today();
+        $cutoff = $today->copy()->addDays($days);
+
+        // 3) Branch filtering if staff is logged in
         $staff = auth('staff')->user();
         if ($staff) {
-            $data['StartedBranchID'] = $staff->BranchID;
-        }
-    
-        // Handle photo upload if provided
-        $photoPath = null;
-        if ($request->hasFile('PhotoFile')) {
-            $filename = 'member_' . time() . '.' . $request->file('PhotoFile')->extension();
-            $photoPath = $request->file('PhotoFile')->storeAs('member_photos', $filename, 'public');
-        }
-    
-        // We'll treat them as "New Member (Lock-In)" => ID=5
-        $data['MemberStatusID']      = 5;
-        $data['MembershipStartDate'] = $data['LockInStart'];
-        $data['MembershipEndDate']   = $data['LockInEnd'];
-    
-        // 3) Create the member
-        $member = Member::create([
-            'FullName'            => $data['FullName'],
-            'Email'               => $data['Email'],
-            'Phone'               => $data['Phone'] ?? null,
-            'PlanID'              => $data['PlanID'],
-            'StartedBranchID'     => $data['StartedBranchID'] ?? null,
-            'MembershipCardNumber'=> $data['MembershipCardNumber'] ?? null,
-            'MembershipCardIssued'=> $data['MembershipCardIssued'] ?? false,
-            'MemberStatusID'      => 5,
-            'MembershipStartDate' => $data['LockInStart'],
-            'MembershipEndDate'   => $data['LockInEnd'],
-            'Biometrics'          => $data['Biometrics'] ?? null,
-            'FreeSessions'        => $data['FreeSessions'] ?? null,
-            'Notes'               => $data['Notes'] ?? null,
-            'PhotoPath'           => $photoPath,
-        ]);
-    
-        // 4) Generate only future invoices from "today" onward
-        return $this->generateRemainingLockInInvoices($member, $data['PlanID']);
-    }
-
-/**
- * This helper only creates invoices from "today" to the lock-in end date,
- * skipping months already passed if LockInStart was in the past.
- */
-private function generateRemainingLockInInvoices(Member $member, $planID)
-{
-    $plan = MembershipPlan::findOrFail($planID);
-
-    // For simplicity, treat plan->Price as a monthly fee.
-    // If it's total for the entire lock-in, you'd need to 
-    // divide by total months, or do partial logic yourself.
-    $monthlyFee = $plan->Price;
-
-    // Pull the lock-in range from member's dates
-    $lockInStart = Carbon::parse($member->MembershipStartDate);
-    $lockInEnd   = Carbon::parse($member->MembershipEndDate);
-
-    $today = Carbon::today();
-
-    // If the entire lock-in ends before or on today, no future invoices needed
-    if ($lockInEnd->isBefore($today) || $lockInEnd->isSameDay($today)) {
-        return response()->json([
-            'message' => 'Member imported. Lock-in ends today/past, so no new invoices created.',
-            'member'  => $member,
-        ], 201);
-    }
-
-    // We'll start generating invoices from whichever is later: "today" or "LockInStart"
-    $currentDate = ($lockInStart->isFuture() && $lockInStart->greaterThan($today))
-        ? $lockInStart->copy()
-        : $today->copy();
-
-    // Decide billing day: if day <= 15 => 15, else => 30
-    $dayOfMonth = (int) $currentDate->format('d');
-    $billingDay = ($dayOfMonth <= 15) ? 15 : 30;
-
-    $invoicesCreated = [];
-
-    // Keep looping monthly until we pass LockInEnd
-    while ($currentDate->isBefore($lockInEnd)) {
-        $dueDate = $this->getInvoiceDueDate($currentDate, $billingDay);
-
-        // If the chosen due date is beyond the entire lock-in, you can skip or create partial
-        if ($dueDate->isAfter($lockInEnd)) {
-            // Stop or handle partial month logic
-            break;
+            // If staff => filter for members in staff's branch(es)
+            $branchIDs = $staff->branches->pluck('BranchID');
+            $members = Member::whereIn('StartedBranchID', $branchIDs)
+                ->whereNotNull('MembershipEndDate')
+                ->whereDate('MembershipEndDate', '>=', $today)   // ends in the future (or today)
+                ->whereDate('MembershipEndDate', '<=', $cutoff)  // ends on/before cutoff
+                ->orderBy('MembershipEndDate', 'asc')
+                ->get();
+        } else {
+            // Admin or Owner => no branch restriction
+            $members = Member::whereNotNull('MembershipEndDate')
+                ->whereDate('MembershipEndDate', '>=', $today)
+                ->whereDate('MembershipEndDate', '<=', $cutoff)
+                ->orderBy('MembershipEndDate', 'asc')
+                ->get();
         }
 
-        // Create the invoice
-        $invoice = Invoice::create([
-            'BranchID'     => $member->StartedBranchID,
-            'MemberID'     => $member->MemberID,
-            'InvoiceDate'  => $currentDate,
-            'DueDate'      => $dueDate,
-            'InvoiceTotal' => 0,
-        ]);
-
-        // Add a line item for the monthly fee
-        InvoiceLineItem::create([
-            'InvoiceID'   => $invoice->InvoiceID,
-            'ItemType'    => 'Membership',
-            'ItemID'      => $planID,
-            'Description' => "Lock-In (imported) Monthly Fee",
-            'Quantity'    => 1,
-            'UnitPrice'   => $monthlyFee,
-            'Subtotal'    => $monthlyFee,
-        ]);
-
-        // Recalc invoice total
-        $invoice->InvoiceTotal = $invoice->lineitems->sum('Subtotal');
-        $invoice->save();
-
-        $invoicesCreated[] = $invoice->InvoiceID;
-
-        // Move forward 1 month
-        $currentDate->addMonthNoOverflow();
+        return response()->json($members);
     }
-
-    return response()->json([
-        'message'  => 'Past lock-in member imported. Future invoices created if needed.',
-        'member'   => $member,
-        'invoices' => $invoicesCreated,
-    ], 201);
-}
-
-    /**
-     * Example of how you might automatically update the member status 
-     * after lock-in ends or if they renew to a normal plan, etc.
-     */
-    public function checkLockInStatus($memberId)
-    {
-        $member = Member::findOrFail($memberId);
-        // If membership ended or no longer locked in, set to active:
-        if (Carbon::parse($member->MembershipEndDate)->isPast()) {
-            $member->MemberStatusID = 1; // 1 = Active
-            $member->save();
-        }
-    }
-
-    /**
- * Return members whose membership ends within the next X days.
- * GET /membership/expiring?days=7
- */
-public function expiringMembers(Request $request)
-{
-    // 1) Determine how many days in the future
-    $days = (int) $request->query('days', 7);
-
-    // 2) Calculate the date cutoff (today + X days)
-    $today = Carbon::today();
-    $cutoff = $today->copy()->addDays($days);
-
-    // 3) Branch filtering if staff is logged in
-    $staff = auth('staff')->user();
-    if ($staff) {
-        // If staff => filter for members in staff's branch(es)
-        $branchIDs = $staff->branches->pluck('BranchID');
-        $members = Member::whereIn('StartedBranchID', $branchIDs)
-            ->whereNotNull('MembershipEndDate')
-            ->whereDate('MembershipEndDate', '>=', $today)   // ends in the future (or today)
-            ->whereDate('MembershipEndDate', '<=', $cutoff)  // ends on/before cutoff
-            ->orderBy('MembershipEndDate', 'asc')
-            ->get();
-    } else {
-        // Admin or Owner => no branch restriction
-        $members = Member::whereNotNull('MembershipEndDate')
-            ->whereDate('MembershipEndDate', '>=', $today)
-            ->whereDate('MembershipEndDate', '<=', $cutoff)
-            ->orderBy('MembershipEndDate', 'asc')
-            ->get();
-    }
-
-    return response()->json($members);
-}
 
 
     /* ------------------------------------------------------------------
@@ -687,14 +498,15 @@ public function expiringMembers(Request $request)
     public function storeRenewal(Request $request)
     {
         $data = $request->validate([
-            'MemberID'      => 'required|exists:members,MemberID',
-            'NewEndDate'    => 'required|date|after_or_equal:today', 
-            'RenewalAmount' => 'required|numeric|min:0',
-            'PaymentMethod' => 'nullable|string|max:50',
-            'PaymentAmount' => 'nullable|numeric|min:0',
-            'PaymentFor'    => 'nullable|string',
+            'MemberID'           => 'required|exists:members,MemberID',
+            'NewEndDate'         => 'required|date|after_or_equal:today', 
+            'RenewalAmount'      => 'required|numeric|min:0',
+            'Payments'           => 'array',
+            'Payments.*.PaymentMethod' => 'string|max:50',
+            'Payments.*.PaymentAmount' => 'numeric|min:0',
+            'PaymentFor'         => 'nullable|string',
         ]);
-    
+
         // 1) Fetch the member
         $member = Member::findOrFail($data['MemberID']);
     
@@ -731,37 +543,57 @@ public function expiringMembers(Request $request)
             'Subtotal'    => $data['RenewalAmount'],
         ]);
     
-        // 5) Payment logic (if PaymentMethod & PaymentAmount are provided)
-        $payment = null;
-        if (!empty($data['PaymentMethod']) && !empty($data['PaymentAmount'])) {
-            $paymentFor = !empty($data['PaymentFor'])
-                ? json_decode($data['PaymentFor'], true)
-                : ["Manual Membership Renewal"];
-    
-            $payment = Payment::create([
-                'MemberID'      => $member->MemberID,
-                'BranchID'      => $member->StartedBranchID,
-                'PaymentMethod' => $data['PaymentMethod'],
-                'Amount'        => $data['PaymentAmount'],
-                'PaymentDate'   => now(),
-                'PaymentFor'    => $paymentFor,
-                'Status'        => 'Completed',
-            ]);
-    
-            PaymentInvoice::create([
-                'PaymentID'       => $payment->PaymentID,
-                'InvoiceID'       => $invoice->InvoiceID,
-                'AmountAllocated' => $payment->Amount,
-            ]);
-    
-            $invoice->update([
-                'PaymentStatus' => ($payment->Amount >= $data['RenewalAmount'])
-                    ? 'Paid'
-                    : 'Partially Paid',
-            ]);
-        } else {
-            $invoice->update(['PaymentStatus' => 'Unpaid']);
+// 5) Payment logic using the 'Payments' array
+$paymentsData = $data['Payments'] ?? [];
+$payment = null;  // optional if you want to store the last Payment created
+
+if (!empty($paymentsData)) {
+    $allocatedSoFar = 0;
+
+    foreach ($paymentsData as $payItem) {
+        if (empty($payItem['PaymentMethod']) || empty($payItem['PaymentAmount'])) {
+            // skip or handle the error
+            continue;
         }
+
+        // Create the Payment
+        $paymentFor = !empty($data['PaymentFor'])
+            ? json_decode($data['PaymentFor'], true)
+            : ["Manual Membership Renewal"];
+
+        $payment = Payment::create([
+            'MemberID'      => $member->MemberID,
+            'BranchID'      => $member->StartedBranchID,
+            'PaymentMethod' => $payItem['PaymentMethod'],
+            'Amount'        => $payItem['PaymentAmount'],
+            'PaymentDate'   => now(),
+            'PaymentFor'    => $paymentFor,
+            'Status'        => 'Completed',
+        ]);
+
+        // Allocate to invoice
+        PaymentInvoice::create([
+            'PaymentID'       => $payment->PaymentID,
+            'InvoiceID'       => $invoice->InvoiceID,
+            'AmountAllocated' => $payItem['PaymentAmount'],
+        ]);
+
+        $allocatedSoFar += $payItem['PaymentAmount'];
+    }
+
+    // Mark invoice PaymentStatus
+    if ($allocatedSoFar >= $data['RenewalAmount']) {
+        $invoice->update(['PaymentStatus' => 'Paid']);
+    } elseif ($allocatedSoFar > 0) {
+        $invoice->update(['PaymentStatus' => 'Partially Paid']);
+    } else {
+        $invoice->update(['PaymentStatus' => 'Unpaid']);
+    }
+
+} else {
+    // No payments => invoice is Unpaid
+    $invoice->update(['PaymentStatus' => 'Unpaid']);
+}
     
         // 6) Return data
         return response()->json([
