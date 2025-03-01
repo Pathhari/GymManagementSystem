@@ -76,6 +76,9 @@ import AddNewMemberLayout from "../../Layouts/AddNewMemberLayout";
 import ManagePlansLayout from "../../Layouts/ManagePlansLayout";
 
 export default function MembershipManagement() {
+
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate]   = useState("");
   // Core records
   const [membershipRecords, setMembershipRecords] = useState([]);
   const [walkInRecords, setWalkInRecords] = useState([]);
@@ -157,6 +160,20 @@ export default function MembershipManagement() {
       Notes: "",
     });
   };
+
+  const [membershipSubTab, setMembershipSubTab] = useState(0);
+
+  // An array that labels your sub‐tabs:
+  const membershipFilters = [
+    { label: "All" },           // subTab=0 => show all
+    { label: "Expired" },       // subTab=1
+    { label: "Expiring Soon" }, // subTab=2
+    { label: "Active" },        // subTab=3 (StatusID=1)
+    { label: "Frozen" },        // subTab=4 (StatusID=2)
+    { label: "On Hold" },       // subTab=5 (StatusID=3)
+    { label: "Terminated" },    // subTab=6 (StatusID=4)
+    { label: "New" },           // subTab=7 (StatusID=6)
+  ];
 
   // FREEZE CRUD
   const [selectedFreeze, setSelectedFreeze] = useState(null);
@@ -1279,7 +1296,33 @@ export default function MembershipManagement() {
     },
   ];
 
-  // Modified getFilteredData for memberships to support expiring soon & expired filters
+   // Helper function to filter an array by date range
+   function filterByDateRange(recordsArray, getDateField) {
+    if (!startDate && !endDate) return recordsArray; // no filter
+    const start = startDate ? new Date(startDate) : null;
+    const end   = endDate   ? new Date(endDate)   : null;
+
+    return recordsArray.filter((rec) => {
+      const dateValue = getDateField(rec);
+      if (!dateValue) return false; // or true if you prefer to keep records w/o date
+      const recDate = new Date(dateValue);
+
+      // if start & end exist:
+      if (start && end) {
+        return recDate >= start && recDate <= end;
+      }
+      // if only start
+      if (start && !end) {
+        return recDate >= start;
+      }
+      // if only end
+      if (!start && end) {
+        return recDate <= end;
+      }
+      return true;
+    });
+  }
+
   function getFilteredData() {
     const applyBranchAndSearch = (arr) =>
       arr.filter((item) => {
@@ -1290,42 +1333,74 @@ export default function MembershipManagement() {
         );
         return branchMatches && searchMatches;
       });
-      
+  
     if (activeTab === 0) {
-      let data = membershipRecords;
-
-      // Expiring Soon filter
-      if (filterExpiring) {
-        const today = new Date();
-        const next7 = new Date();
-        next7.setDate(today.getDate() + 7);
-        data = data.filter((m) => {
-          if (!m?.MembershipEndDate) return false;
-          const endDate = new Date(m.MembershipEndDate);
-          return endDate > today && endDate <= next7;
-        });
+      // MEMBERSHIP TAB
+      let data = membershipRecords.slice(); // shallow copy for safety
+  
+      // ─────────────────────────────────────────────────────────────────
+      // (a) Apply sub-tab filters (Expired, Expiring Soon, etc.)
+      // ─────────────────────────────────────────────────────────────────
+      switch (membershipSubTab) {
+        case 1: // "Expired"
+          data = data.filter(
+            (m) => getStatusNameByID(m.MemberStatusID)?.toLowerCase() === "expired"
+          );
+          break;
+        case 2: { // "Expiring Soon"
+          const today = new Date();
+          const next7 = new Date();
+          next7.setDate(today.getDate() + 7);
+          data = data.filter((m) => {
+            if (!m.MembershipEndDate) return false;
+            const endDate = new Date(m.MembershipEndDate);
+            return endDate > today && endDate <= next7;
+          });
+          break;
+        }
+        case 3: // "Active" => StatusID = 1
+          data = data.filter((m) => m.MemberStatusID === 1);
+          break;
+        case 4: // "Frozen" => StatusID = 2
+          data = data.filter((m) => m.MemberStatusID === 2);
+          break;
+        case 5: // "On Hold" => StatusID = 3
+          data = data.filter((m) => m.MemberStatusID === 3);
+          break;
+        case 6: // "Terminated" => StatusID = 4
+          data = data.filter((m) => m.MemberStatusID === 4);
+          break;
+        case 7: // "New" => StatusID = 6
+          data = data.filter((m) => m.MemberStatusID === 6);
+          break;
+        // case 0 => "All" => do nothing
+        default:
+          break;
       }
-
-      // Expired filter (case-insensitive check)
-      if (filterExpired) {
-        data = data.filter((m) => {
-          const statusName = getStatusNameByID(m.MemberStatusID);
-          return statusName?.toLowerCase() === "expired";
-        });
-      }
-
-      if (filterByStatusID != null) {
-        data = data.filter((m) => m.MemberStatusID === filterByStatusID);
-      }
-
-      return applyBranchAndSearch(data);
+  
+      // ─────────────────────────────────────────────────────────────────
+      // (b) Apply Branch & Search filters
+      // ─────────────────────────────────────────────────────────────────
+      data = applyBranchAndSearch(data);
+  
+      // ─────────────────────────────────────────────────────────────────
+      // (c) Apply Date Range filter => MEMBERSHIP START DATE
+      // ─────────────────────────────────────────────────────────────────
+      data = filterByDateRange(data, (m) => m.MembershipStartDate);
+  
+      return data;
     }
-
+  
+    // WAlK-INS, RENEWALS, FREEZE, ETC.
+    // ... your usual code ...
     if (activeTab === 1) return applySearchFilter(walkInRecords);
     if (activeTab === 2) return applySearchFilter(renewalRecords);
-    if (activeTab === 3) return applyBranchAndSearch(freezeRecords); 
+    if (activeTab === 3) return applyBranchAndSearch(freezeRecords);
     return applySearchFilter(activityLogs);
   }
+  
+  
+  
 
   const rows = getFilteredData();
   let columns = [];
@@ -1722,137 +1797,9 @@ export default function MembershipManagement() {
           </Card>
         </Grid>
       </Grid>
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-    {/* 1) Active */}
-    <Grid item xs={12} sm={6} md={3}>
-      <Card
-        onClick={() => {
-          setActiveTab(0);   // ensure we’re on Memberships tab
-          setFilterByStatusID((prev) => (prev === 1 ? null : 1));
-        }}
-        sx={{
-          cursor: "pointer",
-          p: 1.5,
-          display: "flex",
-          alignItems: "center",
-          boxShadow: 2,
-          // highlight if currently filtering by 1
-          ...(filterByStatusID === 1 && { border: "2px solid blue" }),
-        }}
-      >
-        <CardContent>
-          <Typography variant="body2">Active</Typography>
-          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-            {activeCount}
-          </Typography>
-        </CardContent>
-      </Card>
-    </Grid>
-
-    {/* 2) Frozen */}
-    <Grid item xs={12} sm={6} md={3}>
-      <Card
-        onClick={() => {
-          setActiveTab(0);
-          setFilterByStatusID((prev) => (prev === 2 ? null : 2));
-        }}
-        sx={{
-          cursor: "pointer",
-          p: 1.5,
-          display: "flex",
-          alignItems: "center",
-          boxShadow: 2,
-          ...(filterByStatusID === 2 && { border: "2px solid blue" }),
-        }}
-      >
-        <CardContent>
-          <Typography variant="body2">Frozen</Typography>
-          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-            {frozenCount}
-          </Typography>
-        </CardContent>
-      </Card>
-    </Grid>
-
-    {/* 3) On Hold (if you have a status=3 for on-hold) */}
-    <Grid item xs={12} sm={6} md={3}>
-      <Card
-        onClick={() => {
-          setActiveTab(0);
-          setFilterByStatusID((prev) => (prev === 3 ? null : 3));
-        }}
-        sx={{
-          cursor: "pointer",
-          p: 1.5,
-          display: "flex",
-          alignItems: "center",
-          boxShadow: 2,
-          ...(filterByStatusID === 3 && { border: "2px solid blue" }),
-        }}
-      >
-        <CardContent>
-          <Typography variant="body2">On Hold</Typography>
-          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-            {onHoldCount}
-          </Typography>
-        </CardContent>
-      </Card>
-    </Grid>
-
-    {/* 4) Terminated (status=4) */}
-    <Grid item xs={12} sm={6} md={3}>
-      <Card
-        onClick={() => {
-          setActiveTab(0);
-          setFilterByStatusID((prev) => (prev === 4 ? null : 4));
-        }}
-        sx={{
-          cursor: "pointer",
-          p: 1.5,
-          display: "flex",
-          alignItems: "center",
-          boxShadow: 2,
-          ...(filterByStatusID === 4 && { border: "2px solid blue" }),
-        }}
-      >
-        <CardContent>
-          <Typography variant="body2">Terminated</Typography>
-          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-            {terminatedCount}
-          </Typography>
-        </CardContent>
-      </Card>
-    </Grid>
-
-    {/* 5) New Member (status=6) */}
-    <Grid item xs={12} sm={6} md={3}>
-      <Card
-        onClick={() => {
-          setActiveTab(0);
-          setFilterByStatusID((prev) => (prev === 6 ? null : 6));
-        }}
-        sx={{
-          cursor: "pointer",
-          p: 1.5,
-          display: "flex",
-          alignItems: "center",
-          boxShadow: 2,
-          ...(filterByStatusID === 6 && { border: "2px solid blue" }),
-        }}
-      >
-        <CardContent>
-          <Typography variant="body2">New Members</Typography>
-          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-            {newCount}
-          </Typography>
-        </CardContent>
-      </Card>
-    </Grid>
-  </Grid>
-
 
       {/* Tabs */}
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
         <Typography variant="h4">Membership Management</Typography>
         <Tabs value={activeTab} onChange={handleTabChange}>
           <Tab icon={<PeopleIcon />} label="Memberships" />
@@ -1861,6 +1808,21 @@ export default function MembershipManagement() {
           <Tab icon={<AcUnitIcon />} label="Freezes" />
         </Tabs>
       </Box>
+
+      {/* Sub‐Tabs: only if on Memberships */}
+      {activeTab === 0 && (
+        <Tabs
+          value={membershipSubTab}
+          onChange={(e, newValue) => setMembershipSubTab(newValue)}
+          textColor="primary"
+          indicatorColor="primary"
+          sx={{ mb: 2 }}
+        >
+          {membershipFilters.map((f, idx) => (
+            <Tab key={idx} label={f.label} />
+          ))}
+        </Tabs>
+      )}
 
       <Paper elevation={2} sx={{ p: 2 }}>
         {/* Toolbar Container */}
@@ -1894,6 +1856,28 @@ export default function MembershipManagement() {
                 sx={{ maxWidth: 350 }}
               />
             </Grid>
+                
+            <Grid item>
+              <TextField
+                label="Start Date"
+                type="date"
+                size="small"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ mr: 1 }}
+              />
+              <TextField
+                label="End Date"
+                type="date"
+                size="small"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+
+
             <Grid item sx={{ ml: "auto", display: "flex", gap: 1 }}>
               <Button
                 variant="outlined"
