@@ -11,7 +11,7 @@ class InvoiceController extends Controller
     public function index()
     {
         // Eager-load relationships if needed
-        $invoices = Invoice::with(['member', 'branch', 'promotion'])->get();
+        $invoices = Invoice::with(['member', 'monthlyClient', 'branch', 'promotion'])->get();
         // Return JSON so your React front end can map it
         return response()->json($invoices);
     }

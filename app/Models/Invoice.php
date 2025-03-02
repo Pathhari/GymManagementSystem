@@ -12,6 +12,7 @@ class Invoice extends Model
     protected $fillable = [
         'BranchID',
         'MemberID',
+        'MonthlyClientID',
         'PromotionID',
         'InvoiceDate',
         'DueDate',
@@ -48,5 +49,10 @@ class Invoice extends Model
         return $this->belongsToMany(Payment::class, 'PaymentInvoices', 'InvoiceID', 'PaymentID')
                     ->withPivot('AmountAllocated')
                     ->withTimestamps();
+    }
+
+    public function monthlyClient()
+    {
+        return $this->belongsTo(MonthlyClient::class, 'MonthlyClientID');
     }
 }

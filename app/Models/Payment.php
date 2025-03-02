@@ -15,6 +15,7 @@ class Payment extends Model
         'WalkInName',
         'BookingRef',
         'SessionRef',
+        'MonthlyClientID',
         'PaymentFor',      
         'PaymentMethod',
         'Amount',
@@ -44,4 +45,10 @@ class Payment extends Model
                     ->withPivot('AmountAllocated')
                     ->withTimestamps();
     }
+
+    public function monthlyClient()
+    {
+        return $this->belongsTo(MonthlyClient::class, 'MonthlyClientID');
+    }
+
 }

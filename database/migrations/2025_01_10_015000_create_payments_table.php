@@ -17,20 +17,21 @@ return new class extends Migration
             $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->unsignedBigInteger('MemberID')->nullable();
             $table->string('WalkInName')->nullable();    // for walk-in clients
-            $table->string('BookingRef')->nullable();    // if referencing a booking
-            $table->string('SessionRef')->nullable();    // if referencing a session 
+            $table->string('BookingRef')->nullable();     // if referencing a booking
+            $table->string('SessionRef')->nullable();     // if referencing a session 
+            $table->unsignedBigInteger('MonthlyClientID')->nullable();
+            $table->foreign('MonthlyClientID')->references('MonthlyClientID')->on('monthly_clients')->onDelete('cascade'); // or set null
             $table->text('PaymentFor')->nullable();          
-            $table->string('PaymentMethod')->nullable();         // "Cash", "GCash", "BPI"
+            $table->string('PaymentMethod')->nullable();    // "Cash", "GCash", "BPI"
             $table->decimal('Amount', 10, 2);
             $table->dateTime('PaymentDate')->nullable();
-            $table->string('Status')->default('Pending');        // "Completed", "Pending", "Failed"
+            $table->string('Status')->default('Pending');   // "Completed", "Pending", "Failed"
             $table->string('FailureReason')->nullable();
         
             $table->timestamps();
         
             $table->foreign('MemberID')->references('MemberID')->on('members')->onDelete('set null');
         });
-        
     }
 
     /**

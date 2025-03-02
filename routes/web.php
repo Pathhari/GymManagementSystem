@@ -737,4 +737,13 @@ use App\Http\Controllers\FacilityController;
         Route::delete('{id}', [FacilityController::class, 'destroy'])->middleware('multiGuard:owner,admin')->name('facilities.destroy');
     });
     
+    use App\Http\Controllers\MonthlyClientController;   
+
+     Route::prefix('monthly-clients')->group(function () {
+        Route::get('/',        [MonthlyClientController::class, 'index']);
+        Route::get('/{id}',    [MonthlyClientController::class, 'show']);
+        Route::post('/',       [MonthlyClientController::class, 'store']);
+        Route::put('/{id}',    [MonthlyClientController::class, 'update']);
+        Route::delete('/{id}', [MonthlyClientController::class, 'destroy']);
+    });
     

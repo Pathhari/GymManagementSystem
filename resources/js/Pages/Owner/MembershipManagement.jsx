@@ -76,109 +76,81 @@ import AddNewMemberLayout from "../../Layouts/AddNewMemberLayout";
 import ManagePlansLayout from "../../Layouts/ManagePlansLayout";
 
 export default function MembershipManagement() {
+  const theme = useTheme();
 
+  // ─────────────────────────────────────────────────────────
+  // State variables
+  // ─────────────────────────────────────────────────────────
+
+  // Date filtering
   const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate]   = useState("");
-  // Core records
+  const [endDate, setEndDate] = useState("");
+
+  // Membership
   const [membershipRecords, setMembershipRecords] = useState([]);
+  // Walk-Ins
   const [walkInRecords, setWalkInRecords] = useState([]);
+  // Renewals
   const [renewalRecords, setRenewalRecords] = useState([]);
+  // Freezes
   const [freezeRecords, setFreezeRecords] = useState([]);
+  // Activity Logs
   const [activityLogs, setActivityLogs] = useState([]);
 
-  const theme = useTheme();
-  //set validation errors
-  const [validationErrors, setValidationErrors] = useState({});
-  // References
+
+  // Plans / Statuses / Branches
   const [plans, setPlans] = useState([]);
   const [memberStatuses, setMemberStatuses] = useState([]);
   const [branches, setBranches] = useState({});
 
-  //WEBCAM
-  const [capturedImage, setCapturedImage] = useState(null);
-  const [openWebcam, setOpenWebcam] = useState(false);
-  const webcamRef = useRef(null);
-  // UI / State
+  // Searching / filtering
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState(0);
-  const [snackOpen, setSnackOpen] = useState(false);
-  const [snackMessage, setSnackMessage] = useState("");
-  const [isManagePlansOpen, setManagePlansOpen] = useState(false);
   const [branchFilter, setBranchFilter] = useState("all");
 
-  // New state to control expiring soon filter on memberships
+  // Sub‐tab for memberships
+  const [membershipSubTab, setMembershipSubTab] = useState(0);
+  const membershipFilters = [
+    { label: "All" },
+    { label: "Expired" },
+    { label: "Expiring Soon" },
+    { label: "Active" },
+    { label: "Frozen" },
+    { label: "On Hold" },
+    { label: "Terminated" },
+    { label: "New" },
+  ];
+
+  // Add / Manage modals
+  const [isAddMembershipLayoutVisible, setAddMembershipLayoutVisible] = useState(false);
+  const [isManagePlansOpen, setManagePlansOpen] = useState(false);
+
+  // Validation errors
+  const [validationErrors, setValidationErrors] = useState({});
+
+  // Snackbar
+  const [snackOpen, setSnackOpen] = useState(false);
+  const [snackMessage, setSnackMessage] = useState("");
+
+  // Confirm Delete
+  const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteInfo, setDeleteInfo] = useState({ type: "", id: null });
+
+  // Tab-level filters
   const [filterExpiring, setFilterExpiring] = useState(false);
   const [filterExpired, setFilterExpired] = useState(false);
 
-  // Confirmation dialog
-  const [openConfirmation, setOpenConfirmation] = useState(false);
+  // WebCam
+  const webcamRef = useRef(null);
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [openWebcam, setOpenWebcam] = useState(false);
 
-  // Add-member layout
-  const [isAddMembershipLayoutVisible, setAddMembershipLayoutVisible] = useState(false);
-
-  // MEMBERSHIP CRUD
+  // Membership - selected
   const [selectedMembership, setSelectedMembership] = useState(null);
   const [isViewMembershipOpen, setViewMembershipOpen] = useState(false);
   const [isEditMembershipOpen, setEditMembershipOpen] = useState(false);
 
-  // WALK-IN CRUD
-  const [selectedWalkIn, setSelectedWalkIn] = useState(null);
-  const [isViewWalkInOpen, setViewWalkInOpen] = useState(false);
-  const [isEditWalkInOpen, setEditWalkInOpen] = useState(false);
-
-  // “Add Walk-In” dialog
-  const [isAddWalkInOpen, setAddWalkInOpen] = useState(false);
-  const [newWalkIn, setNewWalkIn] = useState({
-    FullName: "",
-    VisitDate: "",
-    PaymentID: "",
-    PaymentMethod: "",
-    PaymentAmount: 350, 
-    Notes: "",
-  });
-
-  const handleOpenAddWalkIn = () => {
-    setNewWalkIn({
-      FullName: "",
-      VisitDate: "",
-      PaymentID: "",
-      PaymentMethod: "",
-      PaymentAmount: 350,
-      Notes: "",
-    });
-    setAddWalkInOpen(true);
-  };
-
-  const handleCloseWalkInDialog = () => {
-    setAddWalkInOpen(false);
-    setNewWalkIn({
-      FullName: "",
-      VisitDate: "",
-      PaymentID: "",
-      PaymentMethod: "",
-      PaymentAmount: 350,
-      Notes: "",
-    });
-  };
-
-  const [membershipSubTab, setMembershipSubTab] = useState(0);
-
-  // An array that labels your sub‐tabs:
-  const membershipFilters = [
-    { label: "All" },           // subTab=0 => show all
-    { label: "Expired" },       // subTab=1
-    { label: "Expiring Soon" }, // subTab=2
-    { label: "Active" },        // subTab=3 (StatusID=1)
-    { label: "Frozen" },        // subTab=4 (StatusID=2)
-    { label: "On Hold" },       // subTab=5 (StatusID=3)
-    { label: "Terminated" },    // subTab=6 (StatusID=4)
-    { label: "New" },           // subTab=7 (StatusID=6)
-  ];
-
-  // FREEZE CRUD
-  const [selectedFreeze, setSelectedFreeze] = useState(null);
-  const [isViewFreezeOpen, setViewFreezeOpen] = useState(false);
-  const [isEditFreezeOpen, setEditFreezeOpen] = useState(false);
+  // Freeze
   const [isFreezeModalOpen, setFreezeModalOpen] = useState(false);
   const [freezeForm, setFreezeForm] = useState({
     MemberID: "",
@@ -186,203 +158,71 @@ export default function MembershipManagement() {
     FreezeEndDate: "",
     Reason: "",
   });
+  const [selectedFreeze, setSelectedFreeze] = useState(null);
+  const [isViewFreezeOpen, setViewFreezeOpen] = useState(false);
+  const [isEditFreezeOpen, setEditFreezeOpen] = useState(false);
+  const [isUnfreezeDialogOpen, setUnfreezeDialogOpen] = useState(false);
+  const [freezeToUnfreeze, setFreezeToUnfreeze] = useState(null);
 
-  // RENEWALS
+  // Renewals
   const [selectedRenewal, setSelectedRenewal] = useState(null);
   const [isViewRenewalOpen, setViewRenewalOpen] = useState(false);
   const [isEditRenewalOpen, setEditRenewalOpen] = useState(false);
   const [isAddRenewalOpen, setAddRenewalOpen] = useState(false);
+
   const [newRenewal, setNewRenewal] = useState({
     MemberID: "",
     NewEndDate: "",
     RenewalAmount: 0,
     PaymentFor: '["Membership Renewal"]',
   });
-
   const [renewalPayments, setRenewalPayments] = useState([
     { PaymentMethod: "", PaymentAmount: "" },
   ]);
-  
-    // ─────────────────────────────────────────────────────────
-  // HELPER: Get the member object from membershipRecords
-  // ─────────────────────────────────────────────────────────
-  function getMemberByID(memberID) {
-    return membershipRecords.find((m) => m.MemberID === memberID);
-  }
 
-  // ─────────────────────────────────────────────────────────
-  // HELPER: Decide the "start date" for renewal based on status
-  // ─────────────────────────────────────────────────────────
-  function getRenewalStartDate(member) {
-    if (!member) return new Date(); // fallback
+  // Walk-Ins
+  const [selectedWalkIn, setSelectedWalkIn] = useState(null);
+  const [isViewWalkInOpen, setViewWalkInOpen] = useState(false);
+  const [isEditWalkInOpen, setEditWalkInOpen] = useState(false);
+  const [isAddWalkInOpen, setAddWalkInOpen] = useState(false);
+  const [openConfirmation, setOpenConfirmation] = useState(false);
+  const [newWalkIn, setNewWalkIn] = useState({
+    FullName: "",
+    VisitDate: "",
+    PaymentID: "",
+    PaymentMethod: "",
+    PaymentAmount: 350,
+    Notes: "",
+  });
 
-    // Suppose 4/5 are "Terminated" / "Expired"
-    // If so => start from "today"
-    // else => start from their existing MembershipEndDate
-    if (member.MemberStatusID === 4 || member.MemberStatusID === 5) {
-      return new Date(); // "today"
-    } else {
-      if (!member.MembershipEndDate) return new Date(); // fallback
-      return new Date(member.MembershipEndDate);
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────
-  // HELPER: Get plan price from the member's PlanID
-  // ─────────────────────────────────────────────────────────
-  function getPlanPriceForMember(member) {
-    if (!member || !member.PlanID) return 0;
-    const plan = plans.find((p) => p.PlanID === member.PlanID);
-    return plan?.Price || 0;
-  }
-
-  // ─────────────────────────────────────────────────────────
-  // HELPER: Simple "monthsBetweenDates(start, end)" integer
-  // ─────────────────────────────────────────────────────────
-  function monthsBetweenDates(start, end) {
-    if (end <= start) return 0; // or 1, if you want a minimum
-
-    const yearDiff = end.getFullYear() - start.getFullYear();
-    let monthDiff = end.getMonth() - start.getMonth();
-    let totalMonths = yearDiff * 12 + monthDiff;
-
-    // Optional partial-month logic if you want:
-    // if (end.getDate() < start.getDate()) totalMonths -= 1;
-
-    if (totalMonths < 0) totalMonths = 0;
-    return totalMonths;
-  }
-
-    // ─────────────────────────────────────────────────────────────────
-  // (A) Handle user clicks "Renew" => open the Add Renewal dialog
-  // ─────────────────────────────────────────────────────────────────
-  function handleOpenRenewalDialog(memberRow) {
-    // We'll store the member's ID plus default values
-    setNewRenewal({
-      MemberID: memberRow.MemberID,
-      NewEndDate: "", // let user pick
-      RenewalAmount: 0,
-      PaymentFor: '["Membership Renewal"]',
-    });
-    setRenewalPayments([{ PaymentMethod: "", PaymentAmount: "" }]);
-
-    setValidationErrors({});
-    setAddRenewalOpen(true);
-  }
-
-  // ─────────────────────────────────────────────────────────────────
-  // (B) Auto-calc RenewalAmount whenever the user picks NewEndDate 
-  //     or changes the Member (the "start date" depends on status)
-  // ─────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    // We need a real member object:
-    const member = getMemberByID(newRenewal.MemberID);
-    if (!member) return; // no valid member => skip
-    if (!newRenewal.NewEndDate) return; // user hasn't chosen end date => skip
-
-    // 1) parse the chosen end date
-    const dtChosen = new Date(newRenewal.NewEndDate);
-    if (isNaN(dtChosen.getTime())) return;
-
-    // 2) decide the "start date" => membership end date or today
-    const dtStart = getRenewalStartDate(member);
-
-    // 3) compute difference in months
-    const diffMonths = monthsBetweenDates(dtStart, dtChosen);
-
-    // 4) multiply by the plan's monthly price
-    const monthlyPrice = getPlanPriceForMember(member);
-    const total = diffMonths * monthlyPrice;
-
-    // If your business rule is: 
-    //   - if the difference is 0, maybe force 1
-    // e.g. 
-    // if (diffMonths <= 0) total = monthlyPrice;
-    // or do nothing if you want 0 => 0
-
-    setNewRenewal((prev) => ({
-      ...prev,
-      RenewalAmount: total,
-    }));
-  }, [newRenewal.MemberID, newRenewal.NewEndDate]);
-
-  // LOGS
+  // Logs
   const [selectedLog, setSelectedLog] = useState(null);
   const [isViewLogOpen, setViewLogOpen] = useState(false);
 
-  // DELETE CONFIRMATION DIALOG STATES
-  const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleteInfo, setDeleteInfo] = useState({ type: "", id: null });
-
-  // Date translator
-  const formatDate = (dateString) => {
-    if (!dateString) return "—";
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
-  const formatDateTime = (dateString) => {
-    if (!dateString) return "—";
-    const dateObj = new Date(dateString);
-    return dateObj.toLocaleString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true, 
-    });
-  };
-
-  // Currency Format
-  const formatCurrency = (value) => {
-    if (value == null || value === "") return "—";
-    return `₱${parseInt(value).toLocaleString("en-PH")}`;
-  };
-
-  // Convert base64 to File
-  const dataURLToFile = (dataURL, filename) => {
-    const arr = dataURL.split(",");
-    const mime = arr[0].match(/:(.*?);/)[1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new File([u8arr], filename, { type: mime });
-  };
-
-  // Handle Capturing Image from Webcam
-  const captureImage = () => {
-    if (webcamRef.current) {
-      const imageSrc = webcamRef.current.getScreenshot();
-      setCapturedImage(imageSrc);
-      setSelectedMembership((prev) => ({
-        ...prev,
-        PhotoFile: dataURLToFile(imageSrc, "captured_photo.jpg"),
-      }));
-      setOpenWebcam(false);
-    }
-  };
-
-  // Handle File Upload
-  const handlePhotoUpload = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setSelectedMembership((prev) => ({
-        ...prev,
-        PhotoFile: e.target.files[0],
-      }));
-      setCapturedImage(null);
-    }
-  };
-  // Webcam handlers
-  const handleOpenWebcam = () => setOpenWebcam(true);
-  const handleCloseWebcam = () => setOpenWebcam(false);
-
-  // Fetch data on mount
+  // ─────────────────────────────────────────────────────────
+  // Monthly Clients: Add / Edit / View
+  // ─────────────────────────────────────────────────────────
+  const [monthlyClientRecords, setMonthlyClientRecords] = useState([]);
+  const [isAddMonthlyClientOpen, setAddMonthlyClientOpen] = useState(false);
+  const [newMonthlyClient, setNewMonthlyClient] = useState({
+    FullName: "",
+    Email: "",
+    Phone: "",
+    StartDate: "",
+    BranchID: "",
+    MonthsToPayUpfront: 1,
+  });
+  const [monthlyClientPayments, setMonthlyClientPayments] = useState([
+    { PaymentMethod: "", PaymentAmount: "" }
+  ]);
+  
+  const [selectedMonthlyClient, setSelectedMonthlyClient] = useState(null);
+  const [isViewMonthlyClientOpen, setViewMonthlyClientOpen] = useState(false);
+  const [isEditMonthlyClientOpen, setEditMonthlyClientOpen] = useState(false);
+  
+  // ─────────────────────────────────────────────────────────
+  // Lifecycle: Fetch data on mount
+  // ─────────────────────────────────────────────────────────
   useEffect(() => {
     axios
       .get("/membership/members")
@@ -411,17 +251,27 @@ export default function MembershipManagement() {
       .then((res) => setWalkInRecords(res.data))
       .catch((err) => console.error("Error fetching walk-ins:", err));
 
-    axios.get("/owner/branches")
+    // Fetch Monthly Clients
+    axios
+      .get("/monthly-clients")
+      .then((res) => {
+        setMonthlyClientRecords(res.data || []);
+      })
+      .catch((err) => console.error("Error fetching monthly clients:", err));
+
+    axios
+      .get("/owner/branches")
       .then((res) => {
         const branchArray = res.data.branches || [];
         const branchMap = {};
-        branchArray.forEach(branch => {
+        branchArray.forEach((branch) => {
           branchMap[branch.BranchID] = branch.BranchName;
         });
         setBranches(branchMap);
       })
       .catch((err) => console.error("Error fetching branches:", err));
 
+    // Auto-refresh membershipRecords
     const intervalId = setInterval(() => {
       axios
         .get("/membership/members")
@@ -432,49 +282,148 @@ export default function MembershipManagement() {
     return () => clearInterval(intervalId);
   }, []);
 
-  // Snackbar helper
+  // ─────────────────────────────────────────────────────────
+  // Snack helper
+  // ─────────────────────────────────────────────────────────
   const showSuccessMessage = (msg) => {
     setSnackMessage(msg);
     setSnackOpen(true);
   };
 
-  // Called by AddNewMemberLayout => new member created
+  // ─────────────────────────────────────────────────────────
+  // Format helpers
+  // ─────────────────────────────────────────────────────────
+  const formatDate = (dateString) => {
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
+  const formatDateTime = (dateString) => {
+    if (!dateString) return "—";
+    const dateObj = new Date(dateString);
+    return dateObj.toLocaleString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+  const formatCurrency = (value) => {
+    if (value == null || value === "") return "—";
+    return `₱${parseInt(value).toLocaleString("en-PH")}`;
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // Photo: Webcam + Upload
+  // ─────────────────────────────────────────────────────────
+  const dataURLToFile = (dataURL, filename) => {
+    const arr = dataURL.split(",");
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
+  };
+  const captureImage = () => {
+    if (webcamRef.current) {
+      const imageSrc = webcamRef.current.getScreenshot();
+      setCapturedImage(imageSrc);
+      setSelectedMembership((prev) => ({
+        ...prev,
+        PhotoFile: dataURLToFile(imageSrc, "captured_photo.jpg"),
+      }));
+      setOpenWebcam(false);
+    }
+  };
+  const handlePhotoUpload = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedMembership((prev) => ({
+        ...prev,
+        PhotoFile: e.target.files[0],
+      }));
+      setCapturedImage(null);
+    }
+  };
+  const handleOpenWebcam = () => setOpenWebcam(true);
+  const handleCloseWebcam = () => setOpenWebcam(false);
+
+  // ─────────────────────────────────────────────────────────
+  // Tab and search handlers
+  // ─────────────────────────────────────────────────────────
+  const handleTabChange = (e, newValue) => {
+    setActiveTab(newValue);
+    setSearchTerm("");
+    if (newValue !== 0) {
+      setFilterExpiring(false);
+      setFilterExpired(false);
+    }
+  };
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value.toLowerCase());
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // Basic getStatusNameByID
+  // ─────────────────────────────────────────────────────────
+  function getStatusNameByID(memberStatusID) {
+    const st = memberStatuses.find((s) => s.MemberStatusID === memberStatusID);
+    return st ? st.StatusName : "Unknown";
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // Date Range Filter Helper
+  // ─────────────────────────────────────────────────────────
+  function filterByDateRange(recordsArray, getDateField) {
+    if (!startDate && !endDate) return recordsArray; // no filter
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+
+    return recordsArray.filter((rec) => {
+      const dateValue = getDateField(rec);
+      if (!dateValue) return false;
+      const recDate = new Date(dateValue);
+
+      if (start && end) {
+        return recDate >= start && recDate <= end;
+      }
+      if (start && !end) {
+        return recDate >= start;
+      }
+      if (!start && end) {
+        return recDate <= end;
+      }
+      return true;
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // MEMBERSHIP CRUD
+  // ─────────────────────────────────────────────────────────
   function handleNewMemberCreated(resData) {
     const memberObj = resData.member;
     setMembershipRecords((prev) => [memberObj, ...prev]);
     showSuccessMessage("New member added successfully!");
   }
 
-  // Searching / filtering
-  const handleTabChange = (e, newValue) => {
-    setActiveTab(newValue);
-    setSearchTerm("");
-    // Reset the expiring filter when changing tabs
-    if(newValue !== 0) setFilterExpiring(false);
-  };
-  const handleSearchChange = (e) => {
-    setSearchTerm(e.target.value.toLowerCase());
-  };
-  const applySearchFilter = (arr) =>
-    arr.filter((item) =>
-      Object.values(item).some((val) => String(val).toLowerCase().includes(searchTerm))
-    );
-
-    // Right near your other filter states:
-    const [filterByStatusID, setFilterByStatusID] = useState(null);
-
-  // --------------- MEMBERSHIP HANDLERS ---------------
-  const handleViewMembership = (row) => {
+  function handleViewMembership(row) {
     setSelectedMembership(row);
     setViewMembershipOpen(true);
-  };
+  }
 
-  const handleEditMembership = (row) => {
+  function handleEditMembership(row) {
     setSelectedMembership({ ...row });
     setEditMembershipOpen(true);
-  };
+  }
 
-  const handleEditMembershipSubmit = async () => {
+  async function handleEditMembershipSubmit() {
     if (!selectedMembership) return;
     try {
       const memberID = selectedMembership.MemberID;
@@ -500,7 +449,8 @@ export default function MembershipManagement() {
         params: { _method: "PUT" },
         headers: { "Content-Type": "multipart/form-data" },
       });
-      
+
+      // Update local state
       setMembershipRecords((prev) =>
         prev.map((m) => (m.MemberID === memberID ? selectedMembership : m))
       );
@@ -510,14 +460,9 @@ export default function MembershipManagement() {
       console.error("Error updating membership:", err);
       alert("Update error. Check console for details.");
     }
-  };
+  }
 
-  const openDeleteDialog = (type, id) => {
-    setDeleteInfo({ type, id });
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDeleteMembership = async (memberID) => {
+  async function handleDeleteMembership(memberID) {
     try {
       await axios.delete(`/membership/members/${memberID}`);
       setMembershipRecords((prev) => prev.filter((m) => m.MemberID !== memberID));
@@ -526,19 +471,39 @@ export default function MembershipManagement() {
       console.error("Error deleting membership:", err);
       alert("Delete error. Check console for details.");
     }
-  };
-
-  function getStatusNameByID(memberStatusID) {
-    const st = memberStatuses.find((s) => s.MemberStatusID === memberStatusID);
-    return st ? st.StatusName : "Unknown";
   }
 
-  // --------------- WALK-IN HANDLERS ---------------
+
+  // ─────────────────────────────────────────────────────────
+  // WALK‐IN CRUD
+  // ─────────────────────────────────────────────────────────
+  const handleOpenAddWalkIn = () => {
+    setNewWalkIn({
+      FullName: "",
+      VisitDate: "",
+      PaymentID: "",
+      PaymentMethod: "",
+      PaymentAmount: 350,
+      Notes: "",
+    });
+    setAddWalkInOpen(true);
+  };
+  const handleCloseWalkInDialog = () => {
+    setAddWalkInOpen(false);
+    setNewWalkIn({
+      FullName: "",
+      VisitDate: "",
+      PaymentID: "",
+      PaymentMethod: "",
+      PaymentAmount: 350,
+      Notes: "",
+    });
+  };
+
   function handleViewWalkIn(row) {
     setSelectedWalkIn(row);
     setViewWalkInOpen(true);
   }
-
   function handleEditWalkIn(row) {
     setSelectedWalkIn({ ...row });
     setEditWalkInOpen(true);
@@ -549,12 +514,12 @@ export default function MembershipManagement() {
     try {
       const walkInID = selectedWalkIn.WalkInID;
       await axios.put(`/operations/walk-ins/${walkInID}`, {
-        FullName:      selectedWalkIn.FullName,
-        VisitDate:     selectedWalkIn.VisitDate,
-        PaymentID:     selectedWalkIn.PaymentID,
+        FullName: selectedWalkIn.FullName,
+        VisitDate: selectedWalkIn.VisitDate,
+        PaymentID: selectedWalkIn.PaymentID,
         PaymentMethod: selectedWalkIn.PaymentMethod,
-        AmountPaid:    selectedWalkIn.AmountPaid,
-        Notes:         selectedWalkIn.Notes,
+        AmountPaid: selectedWalkIn.AmountPaid,
+        Notes: selectedWalkIn.Notes,
       });
       setWalkInRecords((prev) =>
         prev.map((w) => (w.WalkInID === walkInID ? selectedWalkIn : w))
@@ -577,11 +542,26 @@ export default function MembershipManagement() {
       alert("Delete error. Check console for details.");
     }
   }
-  
   function handleAddWalkInChange(e) {
     const { name, value } = e.target;
     setNewWalkIn((prev) => ({ ...prev, [name]: value }));
   }
+  const validateWalkIn = () => {
+    let errors = {};
+    if (!newWalkIn.FullName.trim()) {
+      errors.FullName = "Full Name is required.";
+    }
+    if (!newWalkIn.VisitDate) {
+      errors.VisitDate = "Visit Date is required.";
+    }
+    if (!newWalkIn.PaymentMethod) {
+      errors.PaymentMethod = "Please select a Payment Method.";
+    }
+    if (!newWalkIn.PaymentAmount || newWalkIn.PaymentAmount <= 0) {
+      errors.PaymentAmount = "Payment Amount must be greater than zero.";
+    }
+    return errors;
+  };
   const handleOpenConfirmation = () => {
     const errors = validateWalkIn();
     if (Object.keys(errors).length > 0) {
@@ -591,7 +571,6 @@ export default function MembershipManagement() {
     setValidationErrors({});
     setOpenConfirmation(true);
   };
-
   const handleAddWalkIn = async () => {
     const errors = validateWalkIn();
     if (Object.keys(errors).length > 0) {
@@ -626,7 +605,6 @@ export default function MembershipManagement() {
       alert("Create error. Check console for details.");
     }
   };
-
   const getTodayWalkIns = () => {
     const todayDate = new Date().toISOString().split("T")[0];
     return walkInRecords.filter((walkIn) => {
@@ -635,7 +613,9 @@ export default function MembershipManagement() {
     }).length;
   };
 
-  // --------------- FREEZE HANDLERS ---------------
+  // ─────────────────────────────────────────────────────────
+  // FREEZE CRUD
+  // ─────────────────────────────────────────────────────────
   function handleOpenFreezeModal(memberID) {
     setFreezeForm({
       MemberID: memberID,
@@ -645,17 +625,16 @@ export default function MembershipManagement() {
     });
     setFreezeModalOpen(true);
   }
-
   function handleFreezeFormChange(e) {
     const { name, value } = e.target;
     setFreezeForm((prev) => ({ ...prev, [name]: value }));
   }
-
   async function handleSubmitFreeze() {
     try {
       const res = await axios.post("/membership/freezes", freezeForm);
       const newFreeze = res.data;
       setFreezeRecords((prev) => [newFreeze, ...prev]);
+      // refresh membership list
       const refreshed = await axios.get("/membership/members");
       setMembershipRecords(refreshed.data.members || []);
       setFreezeModalOpen(false);
@@ -665,30 +644,26 @@ export default function MembershipManagement() {
       alert("Error. Check console for details.");
     }
   }
-
   function handleViewFreeze(freezeRow) {
     setSelectedFreeze(freezeRow);
     setViewFreezeOpen(true);
   }
-
   function handleEditFreeze(freezeRow) {
     setSelectedFreeze({ ...freezeRow });
     setEditFreezeOpen(true);
   }
-
   function handleEditFreezeChange(e) {
     const { name, value } = e.target;
     setSelectedFreeze((prev) => ({ ...prev, [name]: value }));
   }
-
   async function handleEditFreezeSubmit() {
     if (!selectedFreeze) return;
     try {
       const freezeID = selectedFreeze.FreezeID;
       const res = await axios.put(`/membership/freezes/${freezeID}`, {
         FreezeStartDate: selectedFreeze.FreezeStartDate,
-        FreezeEndDate:   selectedFreeze.FreezeEndDate,
-        Reason:          selectedFreeze.Reason,
+        FreezeEndDate: selectedFreeze.FreezeEndDate,
+        Reason: selectedFreeze.Reason,
       });
       const updatedFreeze = res.data;
       setFreezeRecords((prev) =>
@@ -702,91 +677,106 @@ export default function MembershipManagement() {
     }
   }
 
+  const openUnfreezeDialog = (type, freezeID) => {
+    if (type === "freeze") {
+      setFreezeToUnfreeze(freezeID);
+      setUnfreezeDialogOpen(true);
+    }
+  };
+  const handleUnfreezeMember = async () => {
+    if (!freezeToUnfreeze) return;
+    try {
+      await axios.delete(`/membership/freezes/${freezeToUnfreeze}`);
+      setFreezeRecords((prev) => prev.filter((f) => f.FreezeID !== freezeToUnfreeze));
+      const refreshed = await axios.get("/membership/members");
+      setMembershipRecords(refreshed.data.members || []);
+      setUnfreezeDialogOpen(false);
+      showSuccessMessage("Member successfully unfrozen!");
+    } catch (err) {
+      console.error("Error unfreezing member:", err);
+      alert("Error. Check console for details.");
+    }
+  };
   async function handleDeleteFreeze(freezeID) {
     try {
       await axios.delete(`/membership/freezes/${freezeID}`);
       setFreezeRecords((prev) => prev.filter((f) => f.FreezeID !== freezeID));
-      showSuccessMessage("Freeze Deleted successfully!")
+      showSuccessMessage("Freeze Deleted successfully!");
     } catch (err) {
       console.error("Error deleting freeze:", err);
       alert("Error. Check console for details.");
     }
   }
 
-  // --------------- RENEWAL HANDLERS ---------------
+  // ─────────────────────────────────────────────────────────
+  // RENEWAL CRUD
+  // ─────────────────────────────────────────────────────────
+  const getMemberByID = (memberID) => membershipRecords.find((m) => m.MemberID === memberID);
+  const getPlanPriceForMember = (member) => {
+    if (!member?.PlanID) return 0;
+    const plan = plans.find((p) => p.PlanID === member.PlanID);
+    return plan?.Price || 0;
+  };
+  function monthsBetweenDates(start, end) {
+    if (end <= start) return 0;
+    const yearDiff = end.getFullYear() - start.getFullYear();
+    let monthDiff = end.getMonth() - start.getMonth();
+    let totalMonths = yearDiff * 12 + monthDiff;
+    if (totalMonths < 0) totalMonths = 0;
+    return totalMonths;
+  }
+  function getRenewalStartDate(member) {
+    if (!member) return new Date();
+    if (member.MemberStatusID === 4 || member.MemberStatusID === 5) {
+      // Terminated or Expired => start from today
+      return new Date();
+    } else {
+      if (!member.MembershipEndDate) return new Date();
+      return new Date(member.MembershipEndDate);
+    }
+  }
+
+  // When user clicks "Renew" from membership row
   function handleOpenRenewalDialog(memberRow) {
     setNewRenewal({
       MemberID: memberRow.MemberID,
-      NewEndDate: "", // let user pick
+      NewEndDate: "",
       RenewalAmount: 0,
-      PaymentMethod: "",
-      PaymentAmount: 0,
       PaymentFor: '["Membership Renewal"]',
     });
+    setRenewalPayments([{ PaymentMethod: "", PaymentAmount: "" }]);
     setValidationErrors({});
     setAddRenewalOpen(true);
   }
-  
-  
+
+  // Auto-calc renewal amount whenever newRenewal.NewEndDate or .MemberID changes
+  useEffect(() => {
+    const member = getMemberByID(newRenewal.MemberID);
+    if (!member) return;
+    if (!newRenewal.NewEndDate) return;
+
+    const dtChosen = new Date(newRenewal.NewEndDate);
+    if (isNaN(dtChosen.getTime())) return;
+
+    const dtStart = getRenewalStartDate(member);
+    const diffMonths = monthsBetweenDates(dtStart, dtChosen);
+    const monthlyPrice = getPlanPriceForMember(member);
+    const total = diffMonths * monthlyPrice;
+
+    setNewRenewal((prev) => ({
+      ...prev,
+      RenewalAmount: total,
+    }));
+  }, [newRenewal.MemberID, newRenewal.NewEndDate]);
+
   const validateRenewal = () => {
     let errors = {};
-    if (!newRenewal.MemberID) {
-      errors.MemberID = "No member selected.";
-    }
-    if (!newRenewal.RenewalAmount || Number(newRenewal.RenewalAmount) <= 0) {
-      errors.RenewalAmount = "Please enter a valid renewal amount.";
-    }
-    if (!newRenewal.PaymentMethod) {
-      errors.PaymentMethod = "Please select a payment method.";
-    }
-    if (!newRenewal.PaymentAmount || Number(newRenewal.PaymentAmount) <= 0) {
-      errors.PaymentAmount = "Please enter a valid payment amount.";
-    }
-    return errors;
-  };
-  
-
-  function handleAddRenewalChange(e) {
-    const { name, value } = e.target;
-    if (name === "PlanID") {
-      const selectedPlan = plans.find(plan => plan.PlanID === Number(value));
-      if (selectedPlan) {
-        let updatedFields = {
-          PlanID: value,
-          PaymentAmount: selectedPlan.Price
-        };
-        if (selectedPlan.DurationInDays) {
-          const today = new Date();
-          today.setDate(today.getDate() + selectedPlan.DurationInDays);
-          updatedFields.MembershipEndDate = today.toISOString().split("T")[0];
-        }
-        setNewRenewal(prev => ({ ...prev, ...updatedFields }));
-        return;
-      }
-    }
-    setNewRenewal(prev => ({ ...prev, [name]: value }));
-  }
-
-  useEffect(() => {
-    if (newRenewal.PlanID) {
-      const selectedPlan = plans.find(plan => plan.PlanID === Number(newRenewal.PlanID));
-      if (selectedPlan) {
-        setNewRenewal(prev => ({ ...prev, PaymentAmount: selectedPlan.Price }));
-      }
-    }
-  }, [newRenewal.PlanID, plans]);
-
-  async function handleAddRenewal() {
-    let errors = {};
-
     if (!newRenewal.NewEndDate) {
       errors.NewEndDate = "Please select the new membership end date.";
     }
     if (!newRenewal.RenewalAmount || Number(newRenewal.RenewalAmount) <= 0) {
       errors.RenewalAmount = "Please enter a valid renewal amount.";
     }
-
-    // Check that we have at least one payment row
     if (!renewalPayments.length) {
       errors.Payments = "At least one payment row is required.";
     } else {
@@ -799,8 +789,6 @@ export default function MembershipManagement() {
         }
       });
     }
-
-    // (Optional) If you want totalPaid >= RenewalAmount
     const totalPaid = renewalPayments.reduce(
       (sum, p) => sum + Number(p.PaymentAmount || 0),
       0
@@ -808,33 +796,33 @@ export default function MembershipManagement() {
     if (totalPaid < newRenewal.RenewalAmount) {
       errors.totalPaid = "The sum of payments is less than the renewal amount.";
     }
+    return errors;
+  };
 
-    // If any errors exist
+  async function handleAddRenewal() {
+    const errors = validateRenewal();
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
       return;
     }
-
     try {
-      // Build the request body
       const body = {
-        MemberID:      newRenewal.MemberID,
-        NewEndDate:    newRenewal.NewEndDate,
+        MemberID: newRenewal.MemberID,
+        NewEndDate: newRenewal.NewEndDate,
         RenewalAmount: Number(newRenewal.RenewalAmount),
-        PaymentFor:    newRenewal.PaymentFor,
-        Payments:      renewalPayments,
+        PaymentFor: newRenewal.PaymentFor,
+        Payments: renewalPayments,
       };
-
       const res = await axios.post("/membership/renewals", body);
       const { renewal, member } = res.data;
-      
-      // update local states
+
+      // Update local states
       setRenewalRecords((prev) => [renewal, ...prev]);
       setMembershipRecords((prev) =>
         prev.map((m) => (m.MemberID === member.MemberID ? member : m))
       );
 
-      // reset & close
+      // Reset & close
       setNewRenewal({
         MemberID: "",
         NewEndDate: "",
@@ -851,37 +839,19 @@ export default function MembershipManagement() {
     }
   }
 
-  const validateWalkIn = () => {
-    let errors = {};
-    if (!newWalkIn.FullName.trim()) {
-      errors.FullName = "Full Name is required.";
-    }
-    if (!newWalkIn.VisitDate) {
-      errors.VisitDate = "Visit Date is required.";
-    }
-    if (!newWalkIn.PaymentMethod) {
-      errors.PaymentMethod = "Please select a Payment Method.";
-    }
-    if (!newWalkIn.PaymentAmount || newWalkIn.PaymentAmount <= 0) {
-      errors.PaymentAmount = "Payment Amount must be greater than zero.";
-    }
-    return errors;
-  };
-
-  const handleViewRenewal = (row) => {
+  function handleViewRenewal(row) {
     setSelectedRenewal(row);
     setViewRenewalOpen(true);
-  };
-  const handleEditRenewal = (row) => {
+  }
+  function handleEditRenewal(row) {
     setSelectedRenewal({ ...row });
     setEditRenewalOpen(true);
-  };
-  const handleEditRenewalSubmit = () => {
+  }
+  function handleEditRenewalSubmit() {
+    // If there's an actual update route, implement here
     setEditRenewalOpen(false);
-    // If you have an update route for renewal, call it here
-  };
-
-  const handleDeleteRenewal = async (renewalID) => {
+  }
+  async function handleDeleteRenewal(renewalID) {
     try {
       await axios.delete(`/membership/renewals/${renewalID}`);
       setRenewalRecords((prev) => prev.filter((r) => r.RenewalID !== renewalID));
@@ -890,69 +860,223 @@ export default function MembershipManagement() {
       console.error("Error deleting renewal:", err);
       alert("Delete error. Check console for details.");
     }
-  };
+  }
 
+  // ─────────────────────────────────────────────────────────
   // LOGS
+  // ─────────────────────────────────────────────────────────
   function handleViewLog(row) {
     setSelectedLog(row);
     setViewLogOpen(true);
   }
-
   async function handleDeleteLog(logID) {
-    // Implementation for log deletion if needed
+    // If needed, implement an endpoint for logs
   }
 
-  // METRICS
+  // ─────────────────────────────────────────────────────────
+  // MONTHLY CLIENTS: Add / View / Edit / Delete
+  // ─────────────────────────────────────────────────────────
+  async function handleAddMonthlyClient() {
+    try {
+      // Basic client-side validation
+      if (
+        !newMonthlyClient.FullName.trim() ||
+        !newMonthlyClient.VisitDate ||
+        !newMonthlyClient.MonthlyFee
+      ) {
+        alert("Please fill in required fields (Name, VisitDate, MonthlyFee).");
+        return;
+      }
+
+      // POST to your backend
+      const res = await axios.post("/monthly-clients", newMonthlyClient);
+      const savedClient = res.data;
+
+      // Add to local state
+      setMonthlyClientRecords((prev) => [...prev, savedClient]);
+
+      setAddMonthlyClientOpen(false);
+      setSnackMessage("Monthly Client Added Successfully!");
+      setSnackOpen(true);
+
+      // Reset form
+      setNewMonthlyClient({
+        FullName: "",
+        VisitDate: "",
+        MonthlyFee: "",
+        Notes: "",
+      });
+    } catch (err) {
+      console.error("Error adding monthly client:", err);
+      alert("Error. Check console for details.");
+    }
+  }
+
+  function handleViewMonthlyClient(row) {
+    setSelectedMonthlyClient(row);
+    setViewMonthlyClientOpen(true);
+  }
+
+  function handleEditMonthlyClient(row) {
+    setSelectedMonthlyClient({ ...row });
+    setEditMonthlyClientOpen(true);
+  }
+
+  async function handleAddMonthlyClientSubmit() {
+    try {
+      if (!newMonthlyClient.FullName.trim()) {
+        alert("Full Name is required.");
+        return;
+      }
+      // Build request body
+      const payload = {
+        ...newMonthlyClient,
+        Payments: monthlyClientPayments.map((p) => ({
+          PaymentMethod: p.PaymentMethod,
+          PaymentAmount: Number(p.PaymentAmount) || 0,
+        })),
+      };
+  
+      const res = await axios.post("/monthly-clients", payload);
+      const created = res.data.monthlyClient || res.data;
+  
+      setMonthlyClientRecords((prev) => [created, ...prev]);
+      // Reset form
+      setNewMonthlyClient({
+        FullName: "",
+        Email: "",
+        Phone: "",
+        StartDate: "",
+        BranchID: "",
+        MonthsToPayUpfront: 1,
+      });
+      setMonthlyClientPayments([{ PaymentMethod: "", PaymentAmount: "" }]);
+      setAddMonthlyClientOpen(false);
+  
+      showSuccessMessage("Monthly client created successfully!");
+    } catch (err) {
+      console.error("Error creating monthly client:", err);
+      alert("Error creating monthly client. Check console for details.");
+    }
+  }
+  
+  function handleViewMonthlyClient(row) {
+    setSelectedMonthlyClient(row);
+    setViewMonthlyClientOpen(true);
+  }
+  
+  function handleEditMonthlyClient(row) {
+    setSelectedMonthlyClient({ ...row });
+    setEditMonthlyClientOpen(true);
+  }
+  
+  async function handleEditMonthlyClientSubmit() {
+    if (!selectedMonthlyClient) return;
+    try {
+      const id = selectedMonthlyClient.MonthlyClientID;
+      await axios.put(`/monthly-clients/${id}`, {
+        FullName: selectedMonthlyClient.FullName,
+        Email: selectedMonthlyClient.Email,
+        Phone: selectedMonthlyClient.Phone,
+        StartDate: selectedMonthlyClient.StartDate,
+        EndDate: selectedMonthlyClient.EndDate,
+        IsActive: selectedMonthlyClient.IsActive,
+      });
+  
+      setMonthlyClientRecords((prev) =>
+        prev.map((c) => (c.MonthlyClientID === id ? selectedMonthlyClient : c))
+      );
+      setEditMonthlyClientOpen(false);
+      showSuccessMessage("Monthly client updated!");
+    } catch (err) {
+      console.error("Error updating monthly client:", err);
+      alert("Update error. See console.");
+    }
+  }
+  
+
+  async function handleEditMonthlyClientSubmit() {
+    if (!selectedMonthlyClient) return;
+    try {
+      const { MonthlyClientID } = selectedMonthlyClient;
+      // PUT or PATCH to your backend
+      await axios.put(`/monthly-clients/${MonthlyClientID}`, selectedMonthlyClient);
+
+      setMonthlyClientRecords((prev) =>
+        prev.map((c) =>
+          c.MonthlyClientID === MonthlyClientID ? selectedMonthlyClient : c
+        )
+      );
+      setEditMonthlyClientOpen(false);
+      showSuccessMessage("Monthly Client updated!");
+    } catch (err) {
+      console.error("Error updating monthly client:", err);
+      alert("Error. Check console for details.");
+    }
+  }
+
+  async function handleDeleteMonthlyClient(clientID) {
+    try {
+      await axios.delete(`/monthly-clients/${clientID}`);
+      setMonthlyClientRecords((prev) =>
+        prev.filter((c) => c.MonthlyClientID !== clientID)
+      );
+      showSuccessMessage("Monthly Client deleted!");
+    } catch (err) {
+      console.error("Error deleting monthly client:", err);
+      alert("Delete error. Check console for details.");
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // Key Metrics
+  // ─────────────────────────────────────────────────────────
   const totalMembers = membershipRecords.length;
-  // FIX: Make sure "Expired" is matched in lowercase
-  // For example, if you know the status IDs:
-  const activeCount = membershipRecords.filter(m => m.MemberStatusID === 1).length;
-  const frozenCount = membershipRecords.filter(m => m.MemberStatusID === 2).length;
-  const onHoldCount = membershipRecords.filter(m => m.MemberStatusID === 3).length;
-  const terminatedCount = membershipRecords.filter(m => m.MemberStatusID === 4).length;
-  const newCount = membershipRecords.filter(m => m.MemberStatusID === 6).length;
-  const expiredMemberships = membershipRecords.filter((m) => {
-    if (!m?.MemberStatusID) return false;
-    return getStatusNameByID(m.MemberStatusID)?.toLowerCase() === "expired";
-  }).length;
+  const activeCount = membershipRecords.filter((m) => m.MemberStatusID === 1).length;
+  const frozenCount = membershipRecords.filter((m) => m.MemberStatusID === 2).length;
+  const onHoldCount = membershipRecords.filter((m) => m.MemberStatusID === 3).length;
+  const terminatedCount = membershipRecords.filter((m) => m.MemberStatusID === 4).length;
+  const newCount = membershipRecords.filter((m) => m.MemberStatusID === 6).length;
+  const expiredMemberships = membershipRecords.filter(
+    (m) => getStatusNameByID(m.MemberStatusID)?.toLowerCase() === "expired"
+  ).length;
 
   const today = new Date();
   const next30 = new Date();
   next30.setDate(today.getDate() + 7);
-
   const upcomingExpirations = membershipRecords.filter((m) => {
     if (!m?.MembershipEndDate) return false;
     const endDate = new Date(m.MembershipEndDate);
     return endDate > today && endDate <= next30;
   }).length;
 
-  // DataGrid columns
+  // ─────────────────────────────────────────────────────────
+  // DataGrid Columns
+  // ─────────────────────────────────────────────────────────
   const membershipColumns = [
     {
       field: "StartedBranchID",
       headerName: "Branch",
       width: 180,
-      renderCell: (params) => {
-        return branches[params.value] || "—"; 
-      },
-    },    
-    { 
-      field: "FullName", 
-      headerName: "Full Name", 
+      renderCell: (params) => branches[params.value] || "—",
+    },
+    {
+      field: "FullName",
+      headerName: "Full Name",
       width: 150,
-      renderCell: (params) => params.value ?? "—"
+      renderCell: (params) => params.value ?? "—",
     },
-    { 
-      field: "Email", 
-      headerName: "Email", 
+    {
+      field: "Email",
+      headerName: "Email",
       width: 170,
-      renderCell: (params) => params.value ?? "—"
+      renderCell: (params) => params.value ?? "—",
     },
-    { 
-      field: "Phone", 
-      headerName: "Phone", 
+    {
+      field: "Phone",
+      headerName: "Phone",
       width: 130,
-      renderCell: (params) => params.value ?? "—"
+      renderCell: (params) => params.value ?? "—",
     },
     {
       field: "PlanID",
@@ -995,13 +1119,14 @@ export default function MembershipManagement() {
       field: "MembershipEndDate",
       headerName: "Ends",
       width: 150,
-      renderCell: (params) => params.value ? formatDate(params.value) : "—",
+      renderCell: (params) =>
+        params.value ? formatDate(params.value) : "—",
     },
-    { 
-      field: "Notes", 
-      headerName: "Remarks", 
+    {
+      field: "Notes",
+      headerName: "Remarks",
       width: 150,
-      renderCell: (params) => params.value ?? "—"
+      renderCell: (params) => params.value ?? "—",
     },
     {
       field: "Actions",
@@ -1058,37 +1183,37 @@ export default function MembershipManagement() {
       ),
     },
   ];
-
   const walkInColumns = [
-    { 
-      field: "WalkInID", 
-      headerName: "Walk-In ID", 
+    {
+      field: "WalkInID",
+      headerName: "Walk-In ID",
       width: 100,
-      renderCell: (params) => params.value ?? "—"
+      renderCell: (params) => params.value ?? "—",
     },
-    { 
-      field: "FullName", 
-      headerName: "Full Name", 
+    {
+      field: "FullName",
+      headerName: "Full Name",
       width: 160,
-      renderCell: (params) => params.value ?? "—"
+      renderCell: (params) => params.value ?? "—",
     },
     {
       field: "VisitDate",
       headerName: "Visit Date",
       width: 300,
-      renderCell: (params) => params.value ? formatDateTime(params.value) : "—",
+      renderCell: (params) =>
+        params.value ? formatDateTime(params.value) : "—",
     },
-    { 
-      field: "PaymentID", 
-      headerName: "Payment ID", 
+    {
+      field: "PaymentID",
+      headerName: "Payment ID",
       width: 110,
-      renderCell: (params) => params.value ?? "—"
+      renderCell: (params) => params.value ?? "—",
     },
-    { 
-      field: "Notes", 
-      headerName: "Notes", 
+    {
+      field: "Notes",
+      headerName: "Notes",
       width: 150,
-      renderCell: (params) => params.value ?? "—"
+      renderCell: (params) => params.value ?? "—",
     },
     {
       field: "Actions",
@@ -1128,7 +1253,6 @@ export default function MembershipManagement() {
       ),
     },
   ];
-
   const renewalColumns = [
     {
       field: "MemberID",
@@ -1141,11 +1265,12 @@ export default function MembershipManagement() {
         return member ? member.FullName : "—";
       },
     },
-    { 
-      field: "RenewalDate", 
-      headerName: "Renewal Date", 
+    {
+      field: "RenewalDate",
+      headerName: "Renewal Date",
       width: 150,
-      renderCell: (params) => params.value ? formatDate(params.value) : "—",
+      renderCell: (params) =>
+        params.value ? formatDate(params.value) : "—",
     },
     {
       field: "PlanID",
@@ -1158,9 +1283,9 @@ export default function MembershipManagement() {
         return plan ? plan.PlanName : "—";
       },
     },
-    { 
-      field: "RenewalAmount", 
-      headerName: "Amount", 
+    {
+      field: "RenewalAmount",
+      headerName: "Amount",
       width: 100,
       renderCell: (params) => formatCurrency(params.value),
     },
@@ -1196,16 +1321,13 @@ export default function MembershipManagement() {
       ),
     },
   ];
-
   const freezeColumns = [
     {
       field: "StartedBranchID",
       headerName: "Branch",
       width: 180,
-      renderCell: (params) => {
-        return branches[params.value] || "—"; 
-      },
-    },    
+      renderCell: (params) => branches[params.value] || "—",
+    },
     {
       field: "MemberName",
       headerName: "Member Name",
@@ -1216,21 +1338,23 @@ export default function MembershipManagement() {
         return member ? member.FullName : "—";
       },
     },
-    { 
-      field: "FreezeStartDate", 
-      headerName: "Start Date", 
+    {
+      field: "FreezeStartDate",
+      headerName: "Start Date",
       width: 180,
-      renderCell: (params) => params.value ? formatDate(params.value) : "—",
+      renderCell: (params) =>
+        params.value ? formatDate(params.value) : "—",
     },
-    { 
-      field: "FreezeEndDate", 
-      headerName: "End Date", 
+    {
+      field: "FreezeEndDate",
+      headerName: "End Date",
       width: 180,
-      renderCell: (params) => params.value ? formatDate(params.value) : "—",
+      renderCell: (params) =>
+        params.value ? formatDate(params.value) : "—",
     },
-    { 
-      field: "Reason", 
-      headerName: "Reason", 
+    {
+      field: "Reason",
+      headerName: "Reason",
       width: 150,
       renderCell: (params) => params.value ?? "—",
     },
@@ -1265,7 +1389,6 @@ export default function MembershipManagement() {
       ),
     },
   ];
-
   const logColumns = [
     { field: "UserID", headerName: "User ID", width: 100 },
     { field: "Action", headerName: "Action", width: 160 },
@@ -1296,33 +1419,92 @@ export default function MembershipManagement() {
     },
   ];
 
-   // Helper function to filter an array by date range
-   function filterByDateRange(recordsArray, getDateField) {
-    if (!startDate && !endDate) return recordsArray; // no filter
-    const start = startDate ? new Date(startDate) : null;
-    const end   = endDate   ? new Date(endDate)   : null;
-
-    return recordsArray.filter((rec) => {
-      const dateValue = getDateField(rec);
-      if (!dateValue) return false; // or true if you prefer to keep records w/o date
-      const recDate = new Date(dateValue);
-
-      // if start & end exist:
-      if (start && end) {
-        return recDate >= start && recDate <= end;
-      }
-      // if only start
-      if (start && !end) {
-        return recDate >= start;
-      }
-      // if only end
-      if (!start && end) {
-        return recDate <= end;
-      }
-      return true;
-    });
-  }
-
+  const monthlyClientColumns = [
+    {
+      field: "BranchID",
+      headerName: "Branch",
+      width: 150,
+      renderCell: (params) => branches[params.value] || "—",
+    },
+    {
+      field: "FullName",
+      headerName: "Full Name",
+      width: 200,
+    },
+    {
+      field: "Email",
+      headerName: "Email",
+      width: 200,
+    },
+    {
+      field: "Phone",
+      headerName: "Phone",
+      width: 130,
+    },
+    {
+      field: "StartDate",
+      headerName: "Start Date",
+      width: 130,
+      renderCell: (params) => (params.value ? formatDate(params.value) : "—"),
+    },
+    {
+      field: "EndDate",
+      headerName: "End Date",
+      width: 130,
+      renderCell: (params) => (params.value ? formatDate(params.value) : "—"),
+    },
+    {
+      field: "IsActive",
+      headerName: "Active?",
+      width: 90,
+      renderCell: (params) =>
+        params.value ? (
+          <span style={{ color: "#4caf50", fontWeight: "bold" }}>Yes</span>
+        ) : (
+          <span style={{ color: "#f44336", fontWeight: "bold" }}>No</span>
+        ),
+    },
+    {
+      field: "Actions",
+      headerName: "Actions",
+      width: 320,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title="View">
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#4caf50", color: "#fff", minWidth: 40 }}
+              onClick={() => handleViewMonthlyClient(params.row)}
+            >
+              <VisibilityIcon fontSize="small" />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Edit">
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#2196f3", color: "#fff", minWidth: 40 }}
+              onClick={() => handleEditMonthlyClient(params.row)}
+            >
+              <EditIcon fontSize="small" />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
+              onClick={() => openDeleteDialog("monthlyClient", params.row.MonthlyClientID)}
+            >
+              <DeleteIcon fontSize="small" />
+            </Button>
+          </Tooltip>
+        </Box>
+      ),
+    },
+  ];
+  
+  // ─────────────────────────────────────────────────────────
+  // getFilteredData
+  // ─────────────────────────────────────────────────────────
   function getFilteredData() {
     const applyBranchAndSearch = (arr) =>
       arr.filter((item) => {
@@ -1333,21 +1515,17 @@ export default function MembershipManagement() {
         );
         return branchMatches && searchMatches;
       });
-  
+
+    // MEMBERSHIPS (activeTab=0)
     if (activeTab === 0) {
-      // MEMBERSHIP TAB
-      let data = membershipRecords.slice(); // shallow copy for safety
-  
-      // ─────────────────────────────────────────────────────────────────
-      // (a) Apply sub-tab filters (Expired, Expiring Soon, etc.)
-      // ─────────────────────────────────────────────────────────────────
+      let data = membershipRecords.slice();
       switch (membershipSubTab) {
-        case 1: // "Expired"
+        case 1: // Expired
           data = data.filter(
             (m) => getStatusNameByID(m.MemberStatusID)?.toLowerCase() === "expired"
           );
           break;
-        case 2: { // "Expiring Soon"
+        case 2: // Expiring Soon
           const today = new Date();
           const next7 = new Date();
           next7.setDate(today.getDate() + 7);
@@ -1357,57 +1535,77 @@ export default function MembershipManagement() {
             return endDate > today && endDate <= next7;
           });
           break;
-        }
-        case 3: // "Active" => StatusID = 1
+        case 3: // Active
           data = data.filter((m) => m.MemberStatusID === 1);
           break;
-        case 4: // "Frozen" => StatusID = 2
+        case 4: // Frozen
           data = data.filter((m) => m.MemberStatusID === 2);
           break;
-        case 5: // "On Hold" => StatusID = 3
+        case 5: // On Hold
           data = data.filter((m) => m.MemberStatusID === 3);
           break;
-        case 6: // "Terminated" => StatusID = 4
+        case 6: // Terminated
           data = data.filter((m) => m.MemberStatusID === 4);
           break;
-        case 7: // "New" => StatusID = 6
+        case 7: // New
           data = data.filter((m) => m.MemberStatusID === 6);
           break;
-        // case 0 => "All" => do nothing
         default:
           break;
       }
-  
-      // ─────────────────────────────────────────────────────────────────
-      // (b) Apply Branch & Search filters
-      // ─────────────────────────────────────────────────────────────────
       data = applyBranchAndSearch(data);
-  
-      // ─────────────────────────────────────────────────────────────────
-      // (c) Apply Date Range filter => MEMBERSHIP START DATE
-      // ─────────────────────────────────────────────────────────────────
       data = filterByDateRange(data, (m) => m.MembershipStartDate);
-  
       return data;
     }
-  
-    // WAlK-INS, RENEWALS, FREEZE, ETC.
-    // ... your usual code ...
-    if (activeTab === 1) return applySearchFilter(walkInRecords);
-    if (activeTab === 2) return applySearchFilter(renewalRecords);
-    if (activeTab === 3) return applyBranchAndSearch(freezeRecords);
-    return applySearchFilter(activityLogs);
-  }
-  
-  
-  
 
+    if (activeTab === 1) {
+      // Walk-Ins
+      return walkInRecords.filter((item) =>
+        Object.values(item).some((val) =>
+          String(val).toLowerCase().includes(searchTerm)
+        )
+      );
+    }
+    if (activeTab === 2) {
+      // Renewals
+      return renewalRecords.filter((item) =>
+        Object.values(item).some((val) =>
+          String(val).toLowerCase().includes(searchTerm)
+        )
+      );
+    }
+    if (activeTab === 3) {
+      // Freezes
+      let data = freezeRecords.slice();
+      data = applyBranchAndSearch(data);
+      return data;
+    }
+    if (activeTab === 4) {
+      // Monthly Clients
+      let data = monthlyClientRecords.slice();
+      data = applyBranchAndSearch(data);
+      data = filterByDateRange(data, (c) => c.VisitDate);
+      return data;
+    }
+
+    // Activity Logs
+    return activityLogs.filter((item) =>
+      Object.values(item).some((val) =>
+        String(val).toLowerCase().includes(searchTerm)
+      )
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // DataGrid rows + columns
+  // ─────────────────────────────────────────────────────────
   const rows = getFilteredData();
   let columns = [];
   if (activeTab === 0) columns = membershipColumns;
   else if (activeTab === 1) columns = walkInColumns;
   else if (activeTab === 2) columns = renewalColumns;
   else if (activeTab === 3) columns = freezeColumns;
+  else if (activeTab === 4) columns = monthlyClientColumns;
   else columns = logColumns;
 
   const getRowId = (row) => {
@@ -1415,14 +1613,18 @@ export default function MembershipManagement() {
     if (activeTab === 1) return row.WalkInID;
     if (activeTab === 2) return row.RenewalID;
     if (activeTab === 3) return row.FreezeID;
-    return row.LogID; 
+    if (activeTab === 4) return row.MonthlyClientID;
+    return row.LogID;
   };
 
+  // ─────────────────────────────────────────────────────────
   // Export logic
+  // ─────────────────────────────────────────────────────────
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
   const openExportMenu = Boolean(exportAnchorEl);
   const handleExportMenuOpen = (e) => setExportAnchorEl(e.currentTarget);
   const handleExportMenuClose = () => setExportAnchorEl(null);
+
   const [csvData, setCsvData] = useState([]);
   const [csvHeaders, setCsvHeaders] = useState([]);
   const [csvFilename, setCsvFilename] = useState("export.csv");
@@ -1433,6 +1635,7 @@ export default function MembershipManagement() {
     let data = [];
     let filename = "";
 
+    // Different exports per tab
     if (activeTab === 0) {
       headers = [
         { label: "Member ID", key: "MemberID" },
@@ -1459,7 +1662,6 @@ export default function MembershipManagement() {
         Notes: m.Notes || "—",
       }));
       filename = "Memberships.csv";
-
     } else if (activeTab === 1) {
       headers = [
         { label: "Walk-In ID", key: "WalkInID" },
@@ -1478,7 +1680,6 @@ export default function MembershipManagement() {
         Notes: w.Notes || "—",
       }));
       filename = "WalkIns.csv";
-
     } else if (activeTab === 2) {
       headers = [
         { label: "Renewal ID", key: "RenewalID" },
@@ -1495,7 +1696,6 @@ export default function MembershipManagement() {
         RenewalAmount: `₱${parseFloat(r.RenewalAmount || 0).toFixed(2)}`,
       }));
       filename = "Renewals.csv";
-
     } else if (activeTab === 3) {
       headers = [
         { label: "Freeze ID", key: "FreezeID" },
@@ -1512,12 +1712,30 @@ export default function MembershipManagement() {
         Reason: f.Reason || "—",
       }));
       filename = "Freezes.csv";
+    } else if (activeTab === 4) {
+      // Monthly Clients
+      headers = [
+        { label: "Client ID", key: "MonthlyClientID" },
+        { label: "Full Name", key: "FullName" },
+        { label: "Visit Date", key: "VisitDate" },
+        { label: "Monthly Fee", key: "MonthlyFee" },
+        { label: "Notes", key: "Notes" },
+      ];
+      data = rows.map((c) => ({
+        MonthlyClientID: c.MonthlyClientID,
+        FullName: c.FullName,
+        VisitDate: formatDate(c.VisitDate),
+        MonthlyFee: `₱${parseFloat(c.MonthlyFee || 0).toFixed(2)}`,
+        Notes: c.Notes || "—",
+      }));
+      filename = "MonthlyClients.csv";
     }
 
     if (data.length === 0) {
       alert("No data available for export!");
       return;
     }
+
     setCsvHeaders(headers);
     setCsvData(data);
     setCsvFilename(filename);
@@ -1528,7 +1746,7 @@ export default function MembershipManagement() {
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "pt",
-      format: "A4"
+      format: "A4",
     });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -1537,9 +1755,19 @@ export default function MembershipManagement() {
     let tableBody = [];
     let title = "";
 
+    // Prepare data
     if (activeTab === 0) {
       title = "Memberships Report";
-      tableHeaders = ["ID", "Full Name", "Email", "Plan", "Status", "Start Date", "End Date", "Notes"];
+      tableHeaders = [
+        "ID",
+        "Full Name",
+        "Email",
+        "Plan",
+        "Status",
+        "Start Date",
+        "End Date",
+        "Notes",
+      ];
       tableBody = rows.map((m) => [
         m.MemberID,
         m.FullName,
@@ -1548,53 +1776,76 @@ export default function MembershipManagement() {
         getStatusNameByID(m.MemberStatusID),
         formatDate(m.MembershipStartDate),
         formatDate(m.MembershipEndDate),
-        m.Notes || "—"
+        m.Notes || "—",
       ]);
-
     } else if (activeTab === 1) {
       title = "Walk-In Report";
-      tableHeaders = ["ID", "Name", "Visit Date", "Payment Method", "Amount Paid", "Notes"];
+      tableHeaders = [
+        "ID",
+        "Name",
+        "Visit Date",
+        "Payment Method",
+        "Amount Paid",
+        "Notes",
+      ];
       tableBody = rows.map((w) => [
         w.WalkInID,
         w.FullName,
         formatDateTime(w.VisitDate),
         w.PaymentMethod || "N/A",
         Number(w.AmountPaid || 0).toFixed(2),
-        w.Notes || "—"
+        w.Notes || "—",
       ]);
-
     } else if (activeTab === 2) {
       title = "Renewal Report";
       tableHeaders = ["ID", "Member Name", "Renewal Date", "Plan", "Amount"];
       tableBody = rows.map((r) => [
         r.RenewalID,
-        membershipRecords.find((m) => m.MemberID === r.MemberID)?.FullName || "Unknown",
+        membershipRecords.find((m) => m.MemberID === r.MemberID)?.FullName ||
+          "Unknown",
         formatDate(r.RenewalDate),
         plans.find((p) => p.PlanID === r.PlanID)?.PlanName || "Unknown",
-        parseFloat(r.RenewalAmount || 0).toFixed(2)
+        parseFloat(r.RenewalAmount || 0).toFixed(2),
       ]);
-
     } else if (activeTab === 3) {
       title = "Freeze Report";
       tableHeaders = ["ID", "Member Name", "Branch", "Start Date", "End Date", "Reason"];
       tableBody = rows.map((f) => [
         f.FreezeID,
-        membershipRecords.find((m) => m.MemberID === f.MemberID)?.FullName || "Unknown",
+        membershipRecords.find((m) => m.MemberID === f.MemberID)?.FullName ||
+          "Unknown",
         branches[f.StartedBranchID] || "Unknown",
         formatDate(f.FreezeStartDate),
         formatDate(f.FreezeEndDate),
-        f.Reason || "—"
+        f.Reason || "—",
+      ]);
+    } else if (activeTab === 4) {
+      title = "Monthly Clients Report";
+      tableHeaders = ["ID", "Client Name", "Visit Date", "Fee Paid", "Notes"];
+      tableBody = rows.map((c) => [
+        c.MonthlyClientID,
+        c.FullName,
+        formatDate(c.VisitDate),
+        `₱${parseFloat(c.MonthlyFee || 0).toFixed(2)}`,
+        c.Notes || "—",
       ]);
     }
 
     tableBody.sort((a, b) => a[0] - b[0]);
+
+    // Cover page
     doc.addImage(coverPage, "PNG", 0, 0, pageWidth, pageHeight);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(24);
     doc.setTextColor("#ffffff");
     doc.text(title, pageWidth / 2, 100, { align: "center" });
     doc.setFontSize(14);
-    doc.text("Generated on: " + new Date().toLocaleDateString(), pageWidth / 2, 130, { align: "center" });
+    doc.text(
+      "Generated on: " + new Date().toLocaleDateString(),
+      pageWidth / 2,
+      130,
+      { align: "center" }
+    );
 
     doc.autoTable({
       head: [tableHeaders],
@@ -1638,40 +1889,30 @@ export default function MembershipManagement() {
           };
           data.cell.styles.textColor = statusColor(statusText);
         }
-      }
+      },
     });
 
-    const pdfFilename = 
-      activeTab === 0 ? "MembershipList.pdf" :
-      activeTab === 1 ? "WalkInsList.pdf" :
-      activeTab === 2 ? "RenewalsList.pdf" : "FreezesList.pdf";
+    const pdfFilename =
+      activeTab === 0
+        ? "MembershipList.pdf"
+        : activeTab === 1
+        ? "WalkInsList.pdf"
+        : activeTab === 2
+        ? "RenewalsList.pdf"
+        : activeTab === 3
+        ? "FreezesList.pdf"
+        : "MonthlyClientsList.pdf";
+
     doc.save(pdfFilename);
   };
 
-  const [isUnfreezeDialogOpen, setUnfreezeDialogOpen] = useState(false);
-  const [freezeToUnfreeze, setFreezeToUnfreeze] = useState(null);
-
-  const openUnfreezeDialog = (type, freezeID) => {
-    if (type === "freeze") {
-      setFreezeToUnfreeze(freezeID);
-      setUnfreezeDialogOpen(true);
-    }
+  // ─────────────────────────────────────────────────────────
+  // Open Delete Dialog
+  // ─────────────────────────────────────────────────────────
+  const openDeleteDialog = (type, id) => {
+    setDeleteInfo({ type, id });
+    setDeleteDialogOpen(true);
   };
-  const handleUnfreezeMember = async () => {
-    if (!freezeToUnfreeze) return;
-    try {
-      await axios.delete(`/membership/freezes/${freezeToUnfreeze}`);
-      setFreezeRecords((prev) => prev.filter((f) => f.FreezeID !== freezeToUnfreeze));
-      const refreshed = await axios.get("/membership/members");
-      setMembershipRecords(refreshed.data.members || []);
-      setUnfreezeDialogOpen(false);
-      showSuccessMessage("Member successfully unfrozen!");
-    } catch (err) {
-      console.error("Error unfreezing member:", err);
-      alert("Error. Check console for details.");
-    }
-  };
-
   const confirmDelete = () => {
     setDeleteDialogOpen(false);
     if (!deleteInfo.id || !deleteInfo.type) return;
@@ -1687,6 +1928,12 @@ export default function MembershipManagement() {
         break;
       case "log":
         handleDeleteLog(deleteInfo.id);
+        break;
+      case "freeze":
+        handleDeleteFreeze(deleteInfo.id);
+        break;
+      case "monthlyClient":
+        handleDeleteMonthlyClient(deleteInfo.id);
         break;
       default:
         break;
@@ -1806,6 +2053,7 @@ export default function MembershipManagement() {
           <Tab icon={<PeopleIcon />} label="Walk-Ins" />
           <Tab icon={<AutorenewIcon />} label="Renewals" />
           <Tab icon={<AcUnitIcon />} label="Freezes" />
+          <Tab icon={<GroupsIcon />} label="Monthly Clients" />
         </Tabs>
       </Box>
 
@@ -1927,6 +2175,16 @@ export default function MembershipManagement() {
                 >
                   Add Walk-In
                 </Button>
+               )}
+              {activeTab === 4 && (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={() => setAddMonthlyClientOpen(true)}
+              >
+                Add Monthly Client
+              </Button>
               )}
             </Grid>
           </Grid>
@@ -2268,6 +2526,7 @@ export default function MembershipManagement() {
           )}
         </DialogContent>
       </Dialog>
+
       <Dialog
         open={isEditWalkInOpen}
         onClose={() => setEditWalkInOpen(false)}
@@ -2446,6 +2705,357 @@ export default function MembershipManagement() {
           </Button>
         </DialogActions>
       </Dialog>
+
+       {/* NEW: ADD MONTHLY CLIENT DIALOG */}
+    <Dialog
+      open={isAddMonthlyClientOpen}
+      onClose={() => setAddMonthlyClientOpen(false)}
+      fullWidth
+      maxWidth="sm"
+    >
+      <DialogTitle>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="h5">
+            <PersonIcon sx={{ verticalAlign: "middle", mr: 1 }} />
+            Add New Monthly Client
+          </Typography>
+          <IconButton
+            onClick={() => setAddMonthlyClientOpen(false)}
+            sx={{ "&:hover": { color: "red" } }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+      <DialogContent dividers>
+        {/* Basic Info */}
+        <TextField
+          label="Full Name"
+          fullWidth
+          sx={{ my: 1 }}
+          value={newMonthlyClient.FullName}
+          onChange={(e) =>
+            setNewMonthlyClient((prev) => ({ ...prev, FullName: e.target.value }))
+          }
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <PersonIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          label="Email"
+          fullWidth
+          type="email"
+          sx={{ my: 1 }}
+          value={newMonthlyClient.Email}
+          onChange={(e) =>
+            setNewMonthlyClient((prev) => ({ ...prev, Email: e.target.value }))
+          }
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <EmailIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          label="Phone"
+          fullWidth
+          sx={{ my: 1 }}
+          value={newMonthlyClient.Phone}
+          onChange={(e) =>
+            setNewMonthlyClient((prev) => ({ ...prev, Phone: e.target.value }))
+          }
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <PhoneIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <FormControl fullWidth sx={{ my: 1 }}>
+          <InputLabel>Branch</InputLabel>
+          <Select
+            value={newMonthlyClient.BranchID ?? ""}
+            onChange={(e) =>
+              setNewMonthlyClient((prev) => ({ ...prev, BranchID: e.target.value }))
+            }
+            label="Branch"
+            startAdornment={
+              <InputAdornment position="start">
+                <GroupsIcon />
+              </InputAdornment>
+            }
+          >
+            <MenuItem value="">-- Select Branch --</MenuItem>
+            {Object.entries(branches).map(([BranchID, BranchName]) => (
+              <MenuItem key={BranchID} value={BranchID}>
+                {BranchName}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        {/* Start Date */}
+        <TextField
+          label="Start Date"
+          type="date"
+          fullWidth
+          sx={{ my: 1 }}
+          value={newMonthlyClient.StartDate}
+          onChange={(e) =>
+            setNewMonthlyClient((prev) => ({ ...prev, StartDate: e.target.value }))
+          }
+          InputLabelProps={{ shrink: true }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <EventIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        {/* Months To Pay Upfront */}
+        <TextField
+          label="Months to Pay Upfront"
+          type="number"
+          fullWidth
+          sx={{ my: 1 }}
+          value={newMonthlyClient.MonthsToPayUpfront}
+          onChange={(e) =>
+            setNewMonthlyClient((prev) => ({
+              ...prev,
+              MonthsToPayUpfront: e.target.value,
+            }))
+          }
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <DescriptionIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        <Divider sx={{ my: 2 }} />
+        <Typography variant="subtitle1" sx={{ fontWeight: "bold", mb: 1 }}>
+          Split Payments
+        </Typography>
+        {monthlyClientPayments.map((pay, idx) => (
+          <Box key={idx} sx={{ display: "flex", gap: 2, mb: 1 }}>
+            <FormControl sx={{ minWidth: 120 }}>
+              <InputLabel>Method</InputLabel>
+              <Select
+                label="Method"
+                value={pay.PaymentMethod}
+                onChange={(e) =>
+                  setMonthlyClientPayments((prev) =>
+                    prev.map((p, i) =>
+                      i === idx ? { ...p, PaymentMethod: e.target.value } : p
+                    )
+                  )
+                }
+                startAdornment={
+                  <InputAdornment position="start">
+                    <PaymentIcon />
+                  </InputAdornment>
+                }
+              >
+                <MenuItem value="">-- Select --</MenuItem>
+                <MenuItem value="Cash">Cash</MenuItem>
+                <MenuItem value="BDO">BDO</MenuItem>
+                <MenuItem value="BPI">BPI</MenuItem>
+                <MenuItem value="GCash">GCash</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Amount"
+              type="number"
+              value={pay.PaymentAmount}
+              onChange={(e) =>
+                setMonthlyClientPayments((prev) =>
+                  prev.map((p, i) =>
+                    i === idx ? { ...p, PaymentAmount: e.target.value } : p
+                  )
+                )
+              }
+              InputProps={{
+                startAdornment: <InputAdornment position="start">₱</InputAdornment>,
+              }}
+              sx={{ width: 150 }}
+            />
+            {monthlyClientPayments.length > 1 && (
+              <IconButton
+                onClick={() =>
+                  setMonthlyClientPayments((prev) => prev.filter((_, i) => i !== idx))
+                }
+                color="error"
+              >
+                <CloseIcon />
+              </IconButton>
+            )}
+          </Box>
+        ))}
+        <Button
+          variant="outlined"
+          onClick={() =>
+            setMonthlyClientPayments((prev) => [...prev, { PaymentMethod: "", PaymentAmount: "" }])
+          }
+          sx={{ mb: 2 }}
+        >
+          Add Payment
+        </Button>
+      </DialogContent>
+      <DialogActions sx={{ pr: 3, pb: 2 }}>
+        <Button onClick={() => setAddMonthlyClientOpen(false)}>Cancel</Button>
+        <Button variant="contained" onClick={handleAddMonthlyClientSubmit}>
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
+    
+    {/* NEW: VIEW MONTHLY CLIENT DIALOG */}
+    <Dialog
+      open={isViewMonthlyClientOpen}
+      onClose={() => setViewMonthlyClientOpen(false)}
+      fullWidth
+      maxWidth="md"
+    >
+      <DialogTitle>Monthly Client Details</DialogTitle>
+      <DialogContent dividers>
+        {selectedMonthlyClient && (
+          <Box>
+            <Typography variant="h6" gutterBottom>
+              {selectedMonthlyClient.FullName}
+            </Typography>
+            <Typography>Email: {selectedMonthlyClient.Email}</Typography>
+            <Typography>Phone: {selectedMonthlyClient.Phone}</Typography>
+            <Typography>
+              StartDate: {selectedMonthlyClient.StartDate ? formatDate(selectedMonthlyClient.StartDate) : "—"}
+            </Typography>
+            <Typography>
+              EndDate: {selectedMonthlyClient.EndDate ? formatDate(selectedMonthlyClient.EndDate) : "—"}
+            </Typography>
+            <Typography>
+              Active?: {selectedMonthlyClient.IsActive ? "Yes" : "No"}
+            </Typography>
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setViewMonthlyClientOpen(false)}>Close</Button>
+      </DialogActions>
+    </Dialog>
+
+    {/* NEW: EDIT MONTHLY CLIENT DIALOG */}
+    <Dialog
+      open={isEditMonthlyClientOpen}
+      onClose={() => setEditMonthlyClientOpen(false)}
+      fullWidth
+      maxWidth="sm"
+    >
+      <DialogTitle>Edit Monthly Client</DialogTitle>
+      <DialogContent dividers>
+        {selectedMonthlyClient && (
+          <>
+            <TextField
+              label="Full Name"
+              fullWidth
+              sx={{ my: 1 }}
+              value={selectedMonthlyClient.FullName}
+              onChange={(e) =>
+                setSelectedMonthlyClient((prev) => ({
+                  ...prev,
+                  FullName: e.target.value,
+                }))
+              }
+            />
+            <TextField
+              label="Email"
+              fullWidth
+              sx={{ my: 1 }}
+              value={selectedMonthlyClient.Email}
+              onChange={(e) =>
+                setSelectedMonthlyClient((prev) => ({
+                  ...prev,
+                  Email: e.target.value,
+                }))
+              }
+            />
+            <TextField
+              label="Phone"
+              fullWidth
+              sx={{ my: 1 }}
+              value={selectedMonthlyClient.Phone}
+              onChange={(e) =>
+                setSelectedMonthlyClient((prev) => ({
+                  ...prev,
+                  Phone: e.target.value,
+                }))
+              }
+            />
+            <TextField
+              label="Start Date"
+              type="date"
+              fullWidth
+              sx={{ my: 1 }}
+              value={selectedMonthlyClient.StartDate || ""}
+              onChange={(e) =>
+                setSelectedMonthlyClient((prev) => ({
+                  ...prev,
+                  StartDate: e.target.value,
+                }))
+              }
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="End Date"
+              type="date"
+              fullWidth
+              sx={{ my: 1 }}
+              value={selectedMonthlyClient.EndDate || ""}
+              onChange={(e) =>
+                setSelectedMonthlyClient((prev) => ({
+                  ...prev,
+                  EndDate: e.target.value,
+                }))
+              }
+              InputLabelProps={{ shrink: true }}
+            />
+            <FormControl fullWidth sx={{ my: 1 }}>
+              <InputLabel>Active?</InputLabel>
+              <Select
+                value={selectedMonthlyClient.IsActive ? "true" : "false"}
+                onChange={(e) =>
+                  setSelectedMonthlyClient((prev) => ({
+                    ...prev,
+                    IsActive: e.target.value === "true",
+                  }))
+                }
+                label="Active?"
+              >
+                <MenuItem value="true">Yes</MenuItem>
+                <MenuItem value="false">No</MenuItem>
+              </Select>
+            </FormControl>
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setEditMonthlyClientOpen(false)}>Cancel</Button>
+        <Button variant="contained" onClick={handleEditMonthlyClientSubmit}>
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+
       {/* VIEW Membership */}
       <Dialog
         open={isViewMembershipOpen}

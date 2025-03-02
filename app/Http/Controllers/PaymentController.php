@@ -112,9 +112,10 @@ class PaymentController extends Controller
      */
     public function index()
     {
-        $payments = Payment::with('member')
+        $payments = Payment::with('member', 'monthlyClient')
             ->orderBy('PaymentDate','desc')
             ->get();
+        
     
         return response()->json($payments);
     }

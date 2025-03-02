@@ -264,14 +264,18 @@ export default function PaymentsAndInvoices() {
     }
   };
 
-  // 3) PAYMENTS
   const fetchAllPayments = async () => {
     try {
       const res = await axios.get("/payments");
       const mapped = res.data.map((p) => ({
         paymentId: p.PaymentID,
         memberId: p.MemberID ? p.MemberID.toString() : "",
-        payerName: p.member ? p.member.FullName : p.WalkInName || "N/A",
+        monthlyClientId: p.MonthlyClientID ? p.MonthlyClientID.toString() : "",
+        payerName:
+          p.member?.FullName ??
+          p.monthly_client?.FullName ??  // note the underscore here
+          p.WalkInName ??
+          "N/A",
         paymentDate: new Date(p.PaymentDate).toISOString(),
         amountPaid: Number(p.Amount),
         method: p.PaymentMethod,
@@ -285,15 +289,16 @@ export default function PaymentsAndInvoices() {
       console.error(err);
     }
   };
+  
 
-  // 4) INVOICES
   const fetchAllInvoices = async () => {
     try {
       const res = await axios.get("/invoices");
       const mapped = res.data.map((inv) => ({
         invoiceId: inv.InvoiceID,
         memberId: inv.MemberID ? inv.MemberID.toString() : "",
-        memberName: inv.member ? inv.member.FullName : "N/A",
+        // Use member name if available, otherwise try monthly_client
+        memberName: inv.member?.FullName ?? inv.monthly_client?.FullName ?? "N/A",
         invoiceDate: inv.InvoiceDate,
         dueDate: inv.DueDate,
         invoiceTotal: inv.InvoiceTotal,
@@ -306,6 +311,8 @@ export default function PaymentsAndInvoices() {
       console.error(err);
     }
   };
+  
+  
 
   // 5) UNPAID
   const fetchUnpaidInvoices = async () => {
