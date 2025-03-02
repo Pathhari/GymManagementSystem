@@ -594,6 +594,7 @@ Route::prefix('operations')->group(function() {
         Route::post('lockers', [OperationsController::class, 'storeLocker'])->name('operations.lockers.store');
         Route::post('lockers/borrow', [OperationsController::class, 'borrowLockerKey'])->name('operations.lockers.borrow');
         Route::post('lockers/{usageId}/return', [OperationsController::class, 'returnLockerKey'])->name('operations.lockers.return');
+        Route::get('lockers/activity-log', [OperationsController::class, 'lockerActivityLog']);
     });
 
     // Equipment

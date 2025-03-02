@@ -395,6 +395,35 @@ class OperationsController extends Controller
         }
     }
 
+    public function lockerActivityLog()
+    {
+        try {
+            // Get the authenticated staff (if applicable)
+            $staff = auth('staff')->user();
+    
+            // Build a query to fetch all locker usage records, including the member and locker details.
+            $query = LockerUsage::with(['member', 'locker']);
+    
+            // If staff is logged in, restrict to lockers in their branches.
+            if ($staff) {
+                $branchIDs = $staff->branches->pluck('BranchID');
+                $query->whereHas('locker', function ($q) use ($branchIDs) {
+                    $q->whereIn('BranchID', $branchIDs);
+                });
+            }
+    
+            // Order by BorrowDate descending so the most recent activities are first.
+            $usageLogs = $query->orderBy('BorrowDate', 'desc')->get();
+    
+            return response()->json(['usages' => $usageLogs], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error'   => 'Server error.',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+    
   /* ------------------------------------------------------------------
      * Q. EQUIPMENT & MAINTENANCE
      * ------------------------------------------------------------------ */

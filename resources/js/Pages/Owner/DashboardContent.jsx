@@ -332,7 +332,7 @@ export default function OwnerDashboard(onClose) {
     depositedAmount: '',
     remarks: '',
   });
-
+  
   // Charts
   const [cashFlows, setCashFlows] = useState([]);
   const [revenueChartData, setRevenueChartData] = useState(null);
@@ -340,10 +340,12 @@ export default function OwnerDashboard(onClose) {
   const [gymChartData, setGymChartData] = useState(null);
   const [cafeChartData, setCafeChartData] = useState(null);
   const [yogurtChartData, setYogurtChartData] = useState(null);
+  const [yogurtCafeChartData, setYogurtCafeChartData] = useState(null);
   const [expenseChartData, setExpenseChartData] = useState(null);
 
   // Tab change
   const handleTabChange = (event, newValue) => setActiveTab(newValue);
+  const [paymentFilter, setPaymentFilter] = useState('all');
 
   // Initial load
   useEffect(() => {
@@ -407,9 +409,9 @@ export default function OwnerDashboard(onClose) {
 
   // Rebuild consolidated if filtered flows or expenses change
   useEffect(() => {
-    buildConsolidatedRows(filteredFlows, filteredExpenses);
+    buildConsolidatedRows(filteredFlows, filteredExpenses, paymentFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredFlows, filteredExpenses]);
+  }, [filteredFlows, filteredExpenses, paymentFilter]);
 
   // Chart building
   const buildRevenueTrends = (flows) => {
@@ -461,6 +463,7 @@ export default function OwnerDashboard(onClose) {
     const gym = flows.filter((f) => f.BusinessType === 'Gym');
     const cafe = flows.filter((f) => f.BusinessType === 'Cafe');
     const yogurt = flows.filter((f) => f.BusinessType === 'Yogurt');
+    const yogurtCafe = flows.filter((f) => f.BusinessType === 'Yogurt Cafe');
 
     function buildChart(arr, label) {
       const grouped = arr.reduce((acc, f) => {
@@ -513,6 +516,7 @@ export default function OwnerDashboard(onClose) {
     setGymChartData(buildChart(gym, 'Gym'));
     setCafeChartData(buildChart(cafe, 'Cafe'));
     setYogurtChartData(buildChart(yogurt, 'Yogurt'));
+    setYogurtCafeChartData(buildChart(yogurtCafe, 'Yogurt Cafe'));
   };
 
   const buildExpenseChart = (expenses) => {
@@ -563,9 +567,28 @@ export default function OwnerDashboard(onClose) {
     setFilteredExpenses(newFiltered);
   };
 
+  function getFlowPaymentTotal(flow, filter) {
+    // If we want only “Cash,” that means combine “CashSales” + “WalkInCashSales”.
+    // If “GCash,” combine “GCashSales” + “WalkInGCashSales”. Etc.
+    switch (filter) {
+      case 'Cash':
+        return (parseFloat(flow.CashSales) || 0) + (parseFloat(flow.WalkInCashSales) || 0);
+      case 'GCash':
+        return (parseFloat(flow.GCashSales) || 0) + (parseFloat(flow.WalkInGCashSales) || 0);
+      case 'BPI':
+        return (parseFloat(flow.BPISales) || 0) + (parseFloat(flow.WalkInBPISales) || 0);
+      case 'BDO':
+        return (parseFloat(flow.BDOSales) || 0) + (parseFloat(flow.WalkInBDOSales) || 0);
+      default:
+        // "all" => just use the flow’s total
+        return parseFloat(flow.TotalSales) || 0;
+    }
+  }
+
   // Consolidated
   const buildConsolidatedRows = (flows, expenses) => {
     const groupByDate = {};
+  
     flows.forEach((flow) => {
       const d = flow.Date;
       if (!groupByDate[d]) {
@@ -573,52 +596,67 @@ export default function OwnerDashboard(onClose) {
           gym: 0,
           cafe: 0,
           yogurt: 0,
+          yogurtCafe: 0,
           overall: 0,
           pettyCash: 0,
           deposited: 0,
         };
       }
-      const t = parseFloat(flow.TotalSales || 0);
-      if (flow.BusinessType === 'Gym') groupByDate[d].gym += t;
-      else if (flow.BusinessType === 'Cafe') groupByDate[d].cafe += t;
-      else if (flow.BusinessType === 'Yogurt') groupByDate[d].yogurt += t;
-      else if (flow.BusinessType === 'Overall') {
-        groupByDate[d].overall += t;
+  
+      // NEW: Only sum up the relevant payment columns:
+      const paymentTotal = getFlowPaymentTotal(flow, paymentFilter);
+  
+      if (flow.BusinessType === 'Gym') {
+        groupByDate[d].gym += paymentTotal;
+      } else if (flow.BusinessType === 'Cafe') {
+        groupByDate[d].cafe += paymentTotal;
+      } else if (flow.BusinessType === 'Yogurt') {
+        groupByDate[d].yogurt += paymentTotal;
+      }  else if (flow.BusinessType === 'Yogurt Cafe') {
+        groupByDate[d].yogurtCafe += paymentTotal;
+      } else if (flow.BusinessType === 'Overall') {
+        groupByDate[d].overall += paymentTotal;
         groupByDate[d].pettyCash = parseFloat(flow.PettyCash || 0);
         groupByDate[d].deposited = parseFloat(flow.DepositedAmount || 0);
       }
     });
-    // Sum expenses
+  
+    // sum expenses as before ...
     const expenseMap = {};
     expenses.forEach((exp) => {
       const dt = (exp.ExpenseDate || '').slice(0, 10);
       if (!expenseMap[dt]) expenseMap[dt] = 0;
       expenseMap[dt] += parseFloat(exp.Amount || 0);
     });
+  
     const allDates = Object.keys(groupByDate).sort((a, b) => new Date(a) - new Date(b));
     const newRows = allDates.map((dateString, idx) => {
       const rec = groupByDate[dateString];
       const dailyExp = expenseMap[dateString] || 0;
-      const totalAllBiz = rec.gym + rec.cafe + rec.yogurt + rec.overall;
+      const totalAllBiz = rec.gym + rec.cafe + rec.yogurt + rec.yogurtCafe + rec.overall;
       const netProfit = totalAllBiz - dailyExp;
-      const takeHome = netProfit - rec.pettyCash;
+      const pettyCash = rec.pettyCash; // from 'Overall' flow row
+      const takeHome = netProfit - pettyCash;
+  
       return {
         id: idx,
         Date: dateString,
         Gym: rec.gym,
         Cafe: rec.cafe,
         Yogurt: rec.yogurt,
+        YogurtCafe: rec.yogurtCafe,
         Overall: rec.overall,
         DailyExpenses: dailyExp,
         NetProfit: netProfit,
-        PettyCash: rec.pettyCash,
+        PettyCash: pettyCash,
         Deposited: rec.deposited,
         TakeHome: takeHome,
       };
     });
+  
     setConsolidatedRows(newRows);
   };
-
+  
   const consolidatedColumns = [
     {
       field: 'Date',
@@ -645,6 +683,12 @@ export default function OwnerDashboard(onClose) {
       renderCell: (params) => formatCurrency(params.value),
     },
     {
+         field: 'YogurtCafe',
+         headerName: 'Yogurt Cafe',
+         width: 110,
+         renderCell: (params) => formatCurrency(params.value),
+    },
+    {
       field: 'DailyExpenses',
       headerName: 'Expenses',
       width: 90,
@@ -669,6 +713,17 @@ export default function OwnerDashboard(onClose) {
       renderCell: (params) => formatCurrency(params.value),
     },
   ];
+
+      // Filter out these columns if paymentFilter !== 'Cash'
+      const columnsToHideWhenNotCash = ['DailyExpenses', 'PettyCash', 'TakeHome'];
+
+      const finalConsolidatedColumns = consolidatedColumns.filter((col) => {
+        if (columnsToHideWhenNotCash.includes(col.field)) {
+          // Only show them if paymentFilter === 'Cash'
+          return paymentFilter === 'Cash';
+        }
+        return true;
+      });
 
   const handleConsolidatedRowClick = (params) => {
     setSelectedConsolidatedRow(params.row);
@@ -1351,6 +1406,28 @@ export default function OwnerDashboard(onClose) {
                     </Box>
                   </Paper>
                 </Grid>
+                 <Grid item xs={12} md={6}>
+                  <Paper sx={{ p: 2, height: 280, boxShadow: 3, display: 'flex', flexDirection: 'column' }}>
+                     <Typography variant="subtitle1" gutterBottom>
+                       Yogurt Cafe
+                     </Typography>
+                     <Box sx={{ flexGrow: 1, height: '100%', minHeight: 0 }}>
+                       {yogurtCafeChartData ? (
+                         <Line
+                           data={yogurtCafeChartData}
+                           options={{
+                             responsive: true,
+                             maintainAspectRatio: false,
+                             plugins: { legend: { position: 'bottom' } },
+                           }}
+                         />
+                       ) : (
+                         <Typography>Loading Yogurt Cafe chart...</Typography>
+                       )}
+                     </Box>
+                   </Paper>
+                 </Grid>                
+
                 <Grid item xs={12} md={12}>
                   <Paper
                     sx={{
@@ -1525,6 +1602,7 @@ export default function OwnerDashboard(onClose) {
                   <Tab icon={<FitnessCenter />} iconPosition='start' label='Gym Cash Flow' />
                   <Tab icon={<LocalCafe />} iconPosition='start' label='Café Cash Flow' />
                   <Tab icon={<Icecream />} iconPosition='start' label='Yogurt Cash Flow' />
+                  <Tab icon={<LocalCafe />} iconPosition='start' label='Yogurt Cafe Cash Flow' />
                 </Tabs>
                 {selectedTab === 0 && (
                   <>
@@ -1572,6 +1650,28 @@ export default function OwnerDashboard(onClose) {
                     <Box sx={{ height: 400 }}>
                       <DataGrid
                         rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Yogurt')}
+                        columns={flowColumns}
+                        pageSize={5}
+                        rowsPerPageOptions={[5, 10]}
+                        disableSelectionOnClick
+                        autoHeight
+                        density='compact'
+                        disableColumnMenu
+                      />
+                    </Box>
+                  </>
+                )}
+                {selectedTab === 3 && (
+                  <>
+                    <Typography variant='h6' sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
+                      Yogurt Cafe Cash Flow
+                    </Typography>
+                    <Box sx={{ height: 400 }}>
+                      <DataGrid
+                        rows={filteredFlows
+                          .map((f, i) => flowRows[i])
+                          .filter((r) => r.BusinessType === 'Yogurt Cafe')
+                        }
                         columns={flowColumns}
                         pageSize={5}
                         rowsPerPageOptions={[5, 10]}
@@ -1661,46 +1761,94 @@ export default function OwnerDashboard(onClose) {
 
           {/* =================== CONSOLIDATED TAB =================== */}
           {activeTab === 3 && (
-            <Box sx={{ mt: 1 }}>
-              <Paper sx={{ p: 2, boxShadow: 3 }}>
-                <Typography variant='h6' gutterBottom sx={{ mb: 3, fontWeight: 'bold' }}>
-                  Consolidated Daily Table
-                </Typography>
-                <Box sx={{ height: 400 }}>
-                  <DataGrid
-                    rows={consolidatedRows}
-                    columns={[
-                      ...consolidatedColumns,
-                      {
-                        field: 'actions',
-                        headerName: 'Actions',
-                        width: 180,
-                        align: 'center',
-                        headerAlign: 'center',
-                        renderCell: (params) => (
-                          <Button
-                            variant='contained'
-                            color='primary'
-                            size='small'
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openConsolidatedPettyDialog(params.row);
-                            }}
-                          >
-                            Set Petty Cash
-                          </Button>
-                        ),
-                      },
-                    ]}
-                    pageSize={5}
-                    rowsPerPageOptions={[5, 10]}
-                    disableSelectionOnClick
-                    disableColumnMenu
-                  />
-                </Box>
-              </Paper>
-            </Box>
-          )}
+          <Box sx={{ mt: 1 }}>
+            <Paper sx={{ p: 2, boxShadow: 3 }}>
+              <Typography variant="h6" gutterBottom sx={{ mb: 3, fontWeight: "bold" }}>
+                Consolidated Daily Table
+              </Typography>
+
+              {/* Payment Method Filter Buttons */}
+              <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
+                <Button
+                  variant={paymentFilter === "all" ? "contained" : "outlined"}
+                  onClick={() => setPaymentFilter("all")}
+                >
+                  All
+                </Button>
+                <Button
+                  variant={paymentFilter === "Cash" ? "contained" : "outlined"}
+                  onClick={() => setPaymentFilter("Cash")}
+                >
+                  Cash
+                </Button>
+                <Button
+                  variant={paymentFilter === "GCash" ? "contained" : "outlined"}
+                  onClick={() => setPaymentFilter("GCash")}
+                >
+                  GCash
+                </Button>
+                <Button
+                  variant={paymentFilter === "BPI" ? "contained" : "outlined"}
+                  onClick={() => setPaymentFilter("BPI")}
+                >
+                  BPI
+                </Button>
+                <Button
+                  variant={paymentFilter === "BDO" ? "contained" : "outlined"}
+                  onClick={() => setPaymentFilter("BDO")}
+                >
+                  BDO
+                </Button>
+              </Box>
+
+              {/* Build the final columns */}
+              {(() => {
+                const columnsToHideWhenNotCash = ["DailyExpenses", "PettyCash", "TakeHome"];
+                const finalConsolidatedColumns = consolidatedColumns.filter((col) => {
+                  if (columnsToHideWhenNotCash.includes(col.field)) {
+                    return paymentFilter === "Cash"; // only keep if "Cash"
+                  }
+                  return true;
+                });
+
+                return (
+                  <Box sx={{ height: 400 }}>
+                    <DataGrid
+                      rows={consolidatedRows}
+                      columns={[
+                        ...finalConsolidatedColumns,
+                        {
+                          field: "actions",
+                          headerName: "Actions",
+                          width: 180,
+                          align: "center",
+                          headerAlign: "center",
+                          renderCell: (params) => (
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openConsolidatedPettyDialog(params.row);
+                              }}
+                            >
+                              Set Petty Cash
+                            </Button>
+                          ),
+                        },
+                      ]}
+                      pageSize={5}
+                      rowsPerPageOptions={[5, 10]}
+                      disableSelectionOnClick
+                      disableColumnMenu
+                    />
+                  </Box>
+                );
+              })()}
+            </Paper>
+          </Box>
+        )}
         </>
       )}
 
@@ -2163,6 +2311,7 @@ export default function OwnerDashboard(onClose) {
                   </MenuItem>
                   <MenuItem value='Cafe'>Cafe</MenuItem>
                   <MenuItem value='Yogurt'>Yogurt</MenuItem>
+                  <MenuItem value='Yogurt Cafe'>Yogurt Cafe</MenuItem>
                 </Select>
               </FormControl>
               <TextField
