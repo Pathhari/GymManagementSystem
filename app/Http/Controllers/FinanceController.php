@@ -97,17 +97,10 @@ class FinanceController extends Controller
     {
         $staff = auth('staff')->user();
     
-        // 1) Conditionally build validation rule for BranchID
-        //    If BusinessType === 'Overall', we allow null. Otherwise, require exists:branches
-        $branchRule = ['required','exists:branches,BranchID'];
-        if ($request->BusinessType === 'Overall') {
-            // Let BranchID be nullable
-            $branchRule = ['nullable'];
-        }
-    
-        // 2) Validate, using the conditional BranchID rule
+        // 1) Validate
+        //    If you have no scenario where BranchID can be null, remove the "Overall" logic entirely:
         $data = $request->validate([
-            'BranchID'         => $branchRule,
+            'BranchID'         => 'required|exists:branches,BranchID',
             'Date'             => 'required|date',
             'BusinessType'     => 'required|string|max:100',
     
@@ -126,39 +119,23 @@ class FinanceController extends Controller
             'Remarks'          => 'nullable|string',
         ]);
     
-        // 3) If 'Overall', set BranchID to null and skip the normal staff check
+        // If you still want "Overall" to have null BranchID, handle it here:
+        // (Remove if you are no longer using Overall lumpsum)
         if ($data['BusinessType'] === 'Overall') {
             $data['BranchID'] = null;
-        } else {
-            // If not Overall => zero out PettyCash/Deposited, if that's your logic
-            $data['PettyCash']       = 0;
-            $data['DepositedAmount'] = 0;
+        }
     
-            // Staff check only if we actually have a BranchID
-            if ($staff && !empty($data['BranchID'])) {
-                $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
-                if (!in_array($data['BranchID'], $staffBranchIDs)) {
-                    return response()->json([
-                        'error' => 'You cannot create a Cash Flow for a branch you are not assigned to.'
-                    ], 403);
-                }
+        // 2) Staff check
+        if ($staff && !empty($data['BranchID'])) {
+            $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
+            if (!in_array($data['BranchID'], $staffBranchIDs)) {
+                return response()->json([
+                    'error' => 'You cannot create a Cash Flow for a branch you are not assigned to.'
+                ], 403);
             }
         }
     
-        // 4) If "Overall", optionally carry over from yesterday's "Overall" record
-        if ($data['BusinessType'] === 'Overall') {
-            $today     = \Carbon\Carbon::parse($data['Date']);
-            $yesterday = (clone $today)->subDay();
-            $yesterdays = DailyCashFlow::where('BusinessType', 'Overall')
-                ->whereDate('Date', $yesterday)
-                ->first();
-    
-            if ($yesterdays) {
-                $data['PettyCash'] = ($data['PettyCash'] ?? 0) + ($yesterdays->PettyCash ?? 0);
-            }
-        }
-    
-        // 5) Compute total from all columns
+        // 3) Compute total from sales columns
         $total = 0;
         $total += $data['CashSales']        ?? 0;
         $total += $data['GCashSales']       ?? 0;
@@ -168,25 +145,23 @@ class FinanceController extends Controller
         $total += $data['WalkInGCashSales'] ?? 0;
         $total += $data['WalkInBPISales']   ?? 0;
         $total += $data['WalkInBDOSales']   ?? 0;
+    
         $data['TotalSales'] = $total;
     
-        // 6) Upsert logic: check if row already exists for [Date + BranchID + BusinessType]
+        // 4) Upsert: check if row already exists for [Date + BranchID + BusinessType]
         $existingQuery = DailyCashFlow::where('BusinessType', $data['BusinessType'])
             ->whereDate('Date', $data['Date']);
     
-        // If not 'Overall', also match exact BranchID
         if ($data['BusinessType'] !== 'Overall') {
             $existingQuery->where('BranchID', $data['BranchID']);
         } else {
-            // 'Overall' => stored as null, so check for that
             $existingQuery->whereNull('BranchID');
         }
     
         $existing = $existingQuery->first();
     
         if ($existing) {
-            // We have a record for this day + branch + business => update/merge
-            // Add the new amounts to each column
+            // We have a record -> update/merge
             $existing->CashSales        += $data['CashSales']        ?? 0;
             $existing->GCashSales       += $data['GCashSales']       ?? 0;
             $existing->BPISales         += $data['BPISales']         ?? 0;
@@ -195,28 +170,29 @@ class FinanceController extends Controller
             $existing->WalkInGCashSales += $data['WalkInGCashSales'] ?? 0;
             $existing->WalkInBPISales   += $data['WalkInBPISales']   ?? 0;
             $existing->WalkInBDOSales   += $data['WalkInBDOSales']   ?? 0;
-            
-            if ($data['BusinessType'] === 'Overall') {
-                // Overwrite PettyCash, DepositedAmount if your logic says so, or add them
-                $existing->PettyCash       = $data['PettyCash']       ?? 0;
-                $existing->DepositedAmount = $data['DepositedAmount'] ?? 0;
-            }
+    
+            // *** Now we let every business have petty & deposit
+            // If you want to ADD to petty, do +=. If you want to OVERWRITE, do =.
+            $existing->PettyCash       += $data['PettyCash']       ?? 0;
+            $existing->DepositedAmount += $data['DepositedAmount'] ?? 0;
     
             // Recompute total
-            $existing->TotalSales = 
-                ($existing->CashSales + $existing->GCashSales + $existing->BPISales + $existing->BDOSales) +
-                ($existing->WalkInCashSales + $existing->WalkInGCashSales + $existing->WalkInBPISales + $existing->WalkInBDOSales);
+            $existing->TotalSales = (
+                $existing->CashSales + $existing->GCashSales + 
+                $existing->BPISales   + $existing->BDOSales   +
+                $existing->WalkInCashSales  + $existing->WalkInGCashSales + 
+                $existing->WalkInBPISales   + $existing->WalkInBDOSales
+            );
     
             // Append remarks if provided
             if (!empty($data['Remarks'])) {
-                // Combine remarks
                 $existing->Remarks = trim($existing->Remarks . ' | ' . $data['Remarks']);
             }
-            $existing->save();
     
+            $existing->save();
             $flow = $existing;
         } else {
-            // No existing => create new
+            // Create new
             $flow = DailyCashFlow::create($data);
         }
     
@@ -226,7 +202,6 @@ class FinanceController extends Controller
             'data'    => $flow,
         ], 201);
     }
-    
     
 
     public function indexCashFlow()
