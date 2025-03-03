@@ -383,10 +383,11 @@ export default function PaymentsAndInvoices() {
   // Payment columns
   const paymentColumns = [
     {
-      field: "paymentId",
-      headerName: "Payment ID",
-      width: 120,
-      renderCell: (params) => params.value ?? "—",
+      field: "paymentDate",
+      headerName: "Payment Date",
+      width: 250,
+      renderCell: (params) =>
+        params.value ? formatDate(params.value) : "—", // show PaymentDate in "YYYY-MM-DD" (or local date)
     },
     {
       field: "payerName",
@@ -400,13 +401,6 @@ export default function PaymentsAndInvoices() {
       width: 200,
       renderCell: (params) =>
         Array.isArray(params.value) && params.value.length > 0 ? params.value.join(", ") : "—",
-    },
-    {
-      field: "paymentDate",
-      headerName: "Payment Date",
-      width: 250,
-      renderCell: (params) =>
-        params.value ? formatDate(params.value) : "—", // show PaymentDate in "YYYY-MM-DD" (or local date)
     },
     {
       field: "amountPaid",
