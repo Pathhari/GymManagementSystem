@@ -70,6 +70,12 @@ export default function TaskTimeManagement() {
   const [schedule, setSchedule] = useState([]);
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [logs, setLogs] = useState([]);
+
+  // Function to add log entries
+  const addLog = (message) => {
+    setLogs((prev) => [{ time: new Date(), message }, ...prev]);
+  };
 
   // 1) Load initial data
   useEffect(() => {
@@ -84,17 +90,16 @@ export default function TaskTimeManagement() {
             description: item.TaskDescription,
           }));
           setTasks(normalized);
-        }        if (data.attendance) setAttendance(data.attendance);
+        }
+        if (data.attendance) setAttendance(data.attendance);
         if (data.schedule) setSchedule(data.schedule);
       })
       .catch(err => console.error("Failed to load dashboard info:", err));
   }, []);
 
-  // 2) Keep clock updated
+  // Update currentTime every second
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -113,8 +118,12 @@ export default function TaskTimeManagement() {
     // find the movedTask
     const movedTask = updatedTasks[destination.index];
     // update local status
+    const previousStatus = movedTask.status;
     movedTask.status = destination.droppableId;
     setTasks(updatedTasks);
+
+    // Log the task move
+    addLog(`Task "${movedTask.description || "Untitled Task"}" moved from ${previousStatus} to ${destination.droppableId} at ${new Date().toLocaleTimeString()}`);
 
     // Optionally persist changes:
     if (movedTask.TaskID) {
@@ -135,49 +144,12 @@ export default function TaskTimeManagement() {
     }
   };
 
-  // 3) Clock in/out
-  const handleClockInOut = async () => {
-    if (!staffId) {
-      console.warn("No staffId available.");
-      return;
-    }
-    const dateStr = new Date().toISOString().split("T")[0];
-    const timeStr = currentTime.toLocaleTimeString("it-IT").slice(0,5);
-
-    const clockData = {
-      StaffID: staffId,
-      Date: dateStr,
-      TimeIn: isClockedIn ? null : timeStr,
-      TimeOut: isClockedIn ? timeStr : null,
-    };
-
-    try {
-      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
-      const response = await fetch("/staff/attendance/clock-in-out", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-TOKEN": csrfToken,
-          "Accept": "application/json",
-        },
-        body: JSON.stringify(clockData),
-      });
-      if (!response.ok) {
-        throw new Error(`Clock in/out failed with status ${response.status}`);
-      }
-
-      const respData = await response.json();
-      console.log("Clock in/out recorded:", respData);
-
-      // Refresh attendance
-      const attendRes = await fetch("/staff/attendance");
-      const finalData = await attendRes.json();
-      setAttendance(Array.isArray(finalData) ? finalData : finalData.attendance || []);
-      setIsClockedIn(!isClockedIn);
-
-    } catch (err) {
-      console.error("Failed to record attendance:", err);
-    }
+  // Clock In/Out handler
+  const handleClockInOut = () => {
+    const action = isClockedIn ? "Clock Out" : "Clock In";
+    setIsClockedIn(!isClockedIn);
+    addLog(`${action} at ${new Date().toLocaleTimeString()}`);
+    // Optionally, send a request to persist clock in/out info
   };
 
   // Status chips
@@ -227,145 +199,97 @@ export default function TaskTimeManagement() {
     );
   };
 
-  // Setup columns
+  // Setup columns and logs UI
   return (
-    <Box sx={{ p: 4, display: "flex", gap: 3 }}>
-      {/* LEFT: Time & Attendance */}
-      <Box sx={{ width: 400 }}>
-        <Paper sx={{ p: 2, mb: 3, textAlign: "center" }}>
-          <Typography variant="h5" gutterBottom>
-            <AccessTime /> {currentTime.toLocaleTimeString()}
-          </Typography>
-          <Button
-            variant="contained"
-            color={isClockedIn ? "error" : "success"}
-            onClick={handleClockInOut}
-            fullWidth
-            sx={{ mt: 2 }}
-          >
-            {isClockedIn ? (
-              <>
-                <AlarmOff /> Clock Out
-              </>
-            ) : (
-              <>
-                <AlarmOn /> Clock In
-              </>
-            )}
-          </Button>
-        </Paper>
-
-        <Paper sx={{ p: 2, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            <ScheduleIcon /> Work Schedule
-          </Typography>
-          {schedule.length === 0 ? (
-            <Typography variant="body2" color="textSecondary">
-              No schedules found.
-            </Typography>
-          ) : (
-            schedule.map((shift, idx) => (
-              <Paper key={idx} sx={{ p: 2, mb: 1 }}>
-                <Typography>
-                  {shift.ShiftDate
-                    ? new Date(shift.ShiftDate).toLocaleDateString()
-                    : "Unknown Date"}
-                </Typography>
-                <Typography color="textSecondary">
-                  {shift.ShiftStart || "??:??"} - {shift.ShiftEnd || "??:??"}
-                </Typography>
-              </Paper>
-            ))
-          )}
-        </Paper>
-
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" gutterBottom>
-            Attendance History
-          </Typography>
-          {attendance.length === 0 ? (
-            <Typography variant="body2" color="textSecondary">
-              No attendance records found.
-            </Typography>
-          ) : (
-            attendance.map((entry, idx) => (
-              <Box key={idx} display="flex" justifyContent="space-between" p={1}>
-                <Typography>
-                  {entry.Date
-                    ? new Date(entry.Date).toLocaleDateString()
-                    : "Unknown Date"}
-                </Typography>
-                <Typography color="textSecondary">
-                  {entry.TimeIn || ""}
-                  {entry.TimeOut ? ` - ${entry.TimeOut}` : ""}
-                </Typography>
-              </Box>
-            ))
-          )}
-        </Paper>
-      </Box>
-
-      {/* RIGHT: Task Management */}
-      <Box sx={{ flex: 1 }}>
-        <Typography variant="h4" mb={2}>
+    <Box sx={{ p: 4 }}>
+      {/* Header: Task Management & Real-Time Clock */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4">
           Task Management
         </Typography>
-        <Divider sx={{ mb: 2 }} />
+      
+      </Box>
+      
+      <Divider sx={{ mb: 3 }} />
 
-        <DragDropContext onDragEnd={onDragEnd}>
-          <Box display="flex" gap={3}>
-            {/* PENDING COLUMN */}
-            <Droppable droppableId="Pending">
-              {(provided, snapshot) => (
-                <Paper
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  style={getListStyle("Pending", snapshot.isDraggingOver)}
-                >
-                  <Typography variant="h6" p={2}>
-                    <PendingIcon /> Pending ({pendingTasks.length})
-                  </Typography>
-                  {pendingTasks.map(renderTaskItem)}
-                  {provided.placeholder}
-                </Paper>
-              )}
-            </Droppable>
+      <Box display="flex" gap={3}>
+        {/* Task Columns */}
+        <Box sx={{ flex: 2 }}>
+          <DragDropContext onDragEnd={onDragEnd}>
+            <Box display="flex" gap={3}>
+              {/* PENDING COLUMN */}
+              <Droppable droppableId="Pending">
+                {(provided, snapshot) => (
+                  <Paper
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    style={getListStyle("Pending", snapshot.isDraggingOver)}
+                  >
+                    <Typography variant="h6" p={2}>
+                      <PendingIcon /> Pending ({pendingTasks.length})
+                    </Typography>
+                    {pendingTasks.map(renderTaskItem)}
+                    {provided.placeholder}
+                  </Paper>
+                )}
+              </Droppable>
 
-            {/* IN-PROGRESS COLUMN */}
-            <Droppable droppableId="InProgress">
-              {(provided, snapshot) => (
-                <Paper
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  style={getListStyle("InProgress", snapshot.isDraggingOver)}
-                >
-                  <Typography variant="h6" p={2}>
-                    <WorkOutlineIcon /> In Progress ({inProgressTasks.length})
-                  </Typography>
-                  {inProgressTasks.map(renderTaskItem)}
-                  {provided.placeholder}
-                </Paper>
-              )}
-            </Droppable>
+              {/* IN-PROGRESS COLUMN */}
+              <Droppable droppableId="InProgress">
+                {(provided, snapshot) => (
+                  <Paper
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    style={getListStyle("InProgress", snapshot.isDraggingOver)}
+                  >
+                    <Typography variant="h6" p={2}>
+                      <WorkOutlineIcon /> In Progress ({inProgressTasks.length})
+                    </Typography>
+                    {inProgressTasks.map(renderTaskItem)}
+                    {provided.placeholder}
+                  </Paper>
+                )}
+              </Droppable>
 
-            {/* COMPLETED COLUMN */}
-            <Droppable droppableId="Completed">
-              {(provided, snapshot) => (
-                <Paper
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  style={getListStyle("Completed", snapshot.isDraggingOver)}
-                >
-                  <Typography variant="h6" p={2}>
-                    <DoneIcon /> Completed ({completedTasks.length})
-                  </Typography>
-                  {completedTasks.map(renderTaskItem)}
-                  {provided.placeholder}
-                </Paper>
-              )}
-            </Droppable>
-          </Box>
-        </DragDropContext>
+              {/* COMPLETED COLUMN */}
+              <Droppable droppableId="Completed">
+                {(provided, snapshot) => (
+                  <Paper
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    style={getListStyle("Completed", snapshot.isDraggingOver)}
+                  >
+                    <Typography variant="h6" p={2}>
+                      <DoneIcon /> Completed ({completedTasks.length})
+                    </Typography>
+                    {completedTasks.map(renderTaskItem)}
+                    {provided.placeholder}
+                  </Paper>
+                )}
+              </Droppable>
+            </Box>
+          </DragDropContext>
+        </Box>
+
+        {/* Activity Logs */}
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="h5" mb={2}>
+            Activity Logs
+          </Typography>
+          <Paper sx={{ maxHeight: 400, overflow: "auto", p: 2 }}>
+            {logs.length > 0 ? (
+              logs.map((log, idx) => (
+                <Typography key={idx} variant="caption" display="block" gutterBottom>
+                  [{new Date(log.time).toLocaleTimeString()}] {log.message}
+                </Typography>
+              ))
+            ) : (
+              <Typography variant="caption" color="textSecondary">
+                No logs yet.
+              </Typography>
+            )}
+          </Paper>
+        </Box>
       </Box>
     </Box>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
 import {
@@ -24,22 +24,50 @@ import {
   Divider,
   Menu,
   Snackbar,
+  InputAdornment,
+  Stack,
+  IconButton,
+  OutlinedInput,
+  FormHelperText,
 } from "@mui/material";
-
+import '@fontsource/roboto';
+import Webcam from "react-webcam";
+import CloseIcon from "@mui/icons-material/Close";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import { useTheme } from "@mui/material/styles";
 import { DataGrid } from "@mui/x-data-grid";
 import AddIcon from "@mui/icons-material/Add";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
-import PeopleIcon from "@mui/icons-material/People";
-import AutorenewIcon from "@mui/icons-material/Autorenew";
 import AcUnitIcon from "@mui/icons-material/AcUnit";
-import HistoryIcon from "@mui/icons-material/History";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import PeopleIcon from "@mui/icons-material/People";
+import EmailIcon from "@mui/icons-material/Email";
+import PhoneIcon from "@mui/icons-material/Phone";
 import GroupsIcon from "@mui/icons-material/Groups";
+import AutorenewIcon from "@mui/icons-material/Autorenew";
+import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import HistoryIcon from "@mui/icons-material/History";
 import DirectionsWalkIcon from "@mui/icons-material/DirectionsWalk";
 import WarningIcon from "@mui/icons-material/Warning";
-import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import BadgeIcon from "@mui/icons-material/Badge";
+import CreditCardIcon from "@mui/icons-material/CreditCard";
+import NotesIcon from "@mui/icons-material/Notes";
+import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
+import PersonIcon from "@mui/icons-material/Person";
+import EventIcon from "@mui/icons-material/Event";
+import PaymentIcon from "@mui/icons-material/Payment";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import FileUploadIcon from "@mui/icons-material/FileUpload";
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import StickyNote2Icon from '@mui/icons-material/StickyNote2';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import SaveIcon from '@mui/icons-material/Save';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import DescriptionIcon from '@mui/icons-material/Description';
+import ListAltIcon from '@mui/icons-material/ListAlt';
+
 import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
@@ -49,41 +77,116 @@ import AddNewMemberLayout from "../../Layouts/AddNewMemberLayout";
 import ManagePlansLayout from "../../Layouts/ManagePlansLayout";
 
 export default function MembershipManagement() {
-  // Core records
+  const theme = useTheme();
+
+  // ─────────────────────────────────────────────────────────
+  // STAFF BRANCH CONFIGURATION
+  // In a staff-tailored view the branch should be pre-set.
+  // Replace "1" with the actual branch ID from your user session/props.
+  const staffBranch = "1";
+
+  // ─────────────────────────────────────────────────────────
+  // State variables
+  // ─────────────────────────────────────────────────────────
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  // Membership records etc.
   const [membershipRecords, setMembershipRecords] = useState([]);
   const [walkInRecords, setWalkInRecords] = useState([]);
   const [renewalRecords, setRenewalRecords] = useState([]);
   const [freezeRecords, setFreezeRecords] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
 
-  // References
+  // Plans / Statuses / Branches
   const [plans, setPlans] = useState([]);
   const [memberStatuses, setMemberStatuses] = useState([]);
-  const [branches, setBranches] = useState([]);
+  const [branches, setBranches] = useState({});
 
-  // UI / State
+  // Searching / filtering and active tab
   const [searchTerm, setSearchTerm] = useState("");
+  // For staff, we force the branch filter to be the staff’s branch.
+  const [branchFilter, setBranchFilter] = useState(staffBranch);
   const [activeTab, setActiveTab] = useState(0);
+
+  // Sub‐tab for memberships
+  const [membershipSubTab, setMembershipSubTab] = useState(0);
+  const membershipFilters = [
+    { label: "All" },
+    { label: "Expired" },
+    { label: "Expiring Soon" },
+    { label: "Active" },
+    { label: "Frozen" },
+    { label: "On Hold" },
+    { label: "Terminated" },
+    { label: "New" },
+  ];
+
+  // Add / Manage modals
+  const [isAddMembershipLayoutVisible, setAddMembershipLayoutVisible] = useState(false);
+  const [isManagePlansOpen, setManagePlansOpen] = useState(false);
+
+  // Validation errors
+  const [validationErrors, setValidationErrors] = useState({});
+
+  // Snackbar
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackMessage, setSnackMessage] = useState("");
-  const [isManagePlansOpen, setManagePlansOpen] = useState(false);
-  const [branchFilter, setBranchFilter] = useState("all");
 
-  // Add-member layout
-  const [isAddMembershipLayoutVisible, setAddMembershipLayoutVisible] = useState(false);
+  // Confirm Delete
+  const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteInfo, setDeleteInfo] = useState({ type: "", id: null });
 
-  // MEMBERSHIP CRUD
+  // Tab-level filters
+  const [filterExpiring, setFilterExpiring] = useState(false);
+  const [filterExpired, setFilterExpired] = useState(false);
+
+  // WebCam
+  const webcamRef = useRef(null);
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [openWebcam, setOpenWebcam] = useState(false);
+
+  // Membership - selected
   const [selectedMembership, setSelectedMembership] = useState(null);
   const [isViewMembershipOpen, setViewMembershipOpen] = useState(false);
   const [isEditMembershipOpen, setEditMembershipOpen] = useState(false);
 
-  // WALK-IN CRUD
+  // Freeze
+  const [isFreezeModalOpen, setFreezeModalOpen] = useState(false);
+  const [freezeForm, setFreezeForm] = useState({
+    MemberID: "",
+    FreezeStartDate: "",
+    FreezeEndDate: "",
+    Reason: "",
+  });
+  const [selectedFreeze, setSelectedFreeze] = useState(null);
+  const [isViewFreezeOpen, setViewFreezeOpen] = useState(false);
+  const [isEditFreezeOpen, setEditFreezeOpen] = useState(false);
+  const [isUnfreezeDialogOpen, setUnfreezeDialogOpen] = useState(false);
+  const [freezeToUnfreeze, setFreezeToUnfreeze] = useState(null);
+
+  // Renewals
+  const [selectedRenewal, setSelectedRenewal] = useState(null);
+  const [isViewRenewalOpen, setViewRenewalOpen] = useState(false);
+  const [isEditRenewalOpen, setEditRenewalOpen] = useState(false);
+  const [isAddRenewalOpen, setAddRenewalOpen] = useState(false);
+
+  const [newRenewal, setNewRenewal] = useState({
+    MemberID: "",
+    NewEndDate: "",
+    RenewalAmount: 0,
+    PaymentFor: '["Membership Renewal"]',
+  });
+  const [renewalPayments, setRenewalPayments] = useState([
+    { PaymentMethod: "", PaymentAmount: "" },
+  ]);
+
+  // Walk-Ins
   const [selectedWalkIn, setSelectedWalkIn] = useState(null);
   const [isViewWalkInOpen, setViewWalkInOpen] = useState(false);
   const [isEditWalkInOpen, setEditWalkInOpen] = useState(false);
-
-  // “Add Walk-In” dialog
   const [isAddWalkInOpen, setAddWalkInOpen] = useState(false);
+  const [openConfirmation, setOpenConfirmation] = useState(false);
   const [newWalkIn, setNewWalkIn] = useState({
     FullName: "",
     VisitDate: "",
@@ -93,39 +196,33 @@ export default function MembershipManagement() {
     Notes: "",
   });
 
-  // FREEZE CRUD
-  const [selectedFreeze, setSelectedFreeze] = useState(null);
-  const [isViewFreezeOpen, setViewFreezeOpen] = useState(false);
-  const [isEditFreezeOpen, setEditFreezeOpen] = useState(false);
-  const [isFreezeModalOpen, setFreezeModalOpen] = useState(false);
-  const [freezeForm, setFreezeForm] = useState({
-    MemberID: "",
-    FreezeStartDate: "",
-    FreezeEndDate: "",
-    Reason: "",
-  });
-
-  // RENEWALS
-  const [selectedRenewal, setSelectedRenewal] = useState(null);
-  const [isViewRenewalOpen, setViewRenewalOpen] = useState(false);
-  const [isEditRenewalOpen, setEditRenewalOpen] = useState(false);
-  const [isAddRenewalOpen, setAddRenewalOpen] = useState(false);
-  const [newRenewal, setNewRenewal] = useState({
-    MemberID: "",
-    PlanID: "",
-    RenewalAmount: 0,
-    PaymentMethod: "",
-    PaymentAmount: "",
-    PaymentFor: '["Renewal Fee"]'
-  });
-
   // Logs
   const [selectedLog, setSelectedLog] = useState(null);
   const [isViewLogOpen, setViewLogOpen] = useState(false);
 
-  // Fetch data on mount
+  // Monthly Clients
+  const [monthlyClientRecords, setMonthlyClientRecords] = useState([]);
+  const [isAddMonthlyClientOpen, setAddMonthlyClientOpen] = useState(false);
+  const [newMonthlyClient, setNewMonthlyClient] = useState({
+    FullName: "",
+    Email: "",
+    Phone: "",
+    StartDate: "",
+    BranchID: "",
+    MonthsToPayUpfront: 1,
+  });
+  const [monthlyClientPayments, setMonthlyClientPayments] = useState([
+    { PaymentMethod: "", PaymentAmount: "" }
+  ]);
+  
+  const [selectedMonthlyClient, setSelectedMonthlyClient] = useState(null);
+  const [isViewMonthlyClientOpen, setViewMonthlyClientOpen] = useState(false);
+  const [isEditMonthlyClientOpen, setEditMonthlyClientOpen] = useState(false);
+  
+  // ─────────────────────────────────────────────────────────
+  // Lifecycle: Fetch data on mount
+  // ─────────────────────────────────────────────────────────
   useEffect(() => {
-    // 1) membership/members
     axios
       .get("/membership/members")
       .then((res) => {
@@ -138,87 +235,222 @@ export default function MembershipManagement() {
       })
       .catch((err) => console.error("Error fetching members:", err));
 
-    // 2) membership/plans
     axios
       .get("/membership/plans")
       .then((res) => setPlans(res.data || []))
       .catch((err) => console.error("Error fetching plans:", err));
 
-    // 3) membership/statuses
     axios
       .get("/membership/statuses")
       .then((res) => setMemberStatuses(res.data || []))
       .catch((err) => console.error("Error fetching statuses:", err));
 
-    // 4) walk-ins
     axios
       .get("/operations/walk-ins")
       .then((res) => setWalkInRecords(res.data))
       .catch((err) => console.error("Error fetching walk-ins:", err));
 
-    // 5) branches
+    // Fetch Monthly Clients
+    axios
+      .get("/monthly-clients")
+      .then((res) => {
+        setMonthlyClientRecords(res.data || []);
+      })
+      .catch((err) => console.error("Error fetching monthly clients:", err));
+
     axios
       .get("/owner/branches")
       .then((res) => {
-        setBranches(res.data.branches || []);
+        const branchArray = res.data.branches || [];
+        const branchMap = {};
+        branchArray.forEach((branch) => {
+          branchMap[branch.BranchID] = branch.BranchName;
+        });
+        setBranches(branchMap);
       })
       .catch((err) => console.error("Error fetching branches:", err));
 
-    // Periodic refresh for membership
+    // Auto-refresh membershipRecords
     const intervalId = setInterval(() => {
       axios
         .get("/membership/members")
         .then((res) => setMembershipRecords(res.data.members || []))
         .catch(console.error);
-    }, 100000); // 100s
+    }, 100000);
 
     return () => clearInterval(intervalId);
   }, []);
 
-  // Snackbar helper
+  // ─────────────────────────────────────────────────────────
+  // For staff view: Compute records only for the staff branch
+  const staffMembers = membershipRecords.filter(
+    (m) => String(m.StartedBranchID) === staffBranch
+  );
+
+  // Update key metrics to show only staff branch records.
+  const totalMembers = staffMembers.length;
+  const activeCount = staffMembers.filter((m) => m.MemberStatusID === 1).length;
+  const frozenCount = staffMembers.filter((m) => m.MemberStatusID === 2).length;
+  const onHoldCount = staffMembers.filter((m) => m.MemberStatusID === 3).length;
+  const terminatedCount = staffMembers.filter((m) => m.MemberStatusID === 4).length;
+  const newCount = staffMembers.filter((m) => m.MemberStatusID === 6).length;
+  const expiredMemberships = staffMembers.filter(
+    (m) =>
+      getStatusNameByID(m.MemberStatusID)?.toLowerCase() === "expired"
+  ).length;
+
+  const today = new Date();
+  const next30 = new Date();
+  next30.setDate(today.getDate() + 7);
+  const upcomingExpirations = staffMembers.filter((m) => {
+    if (!m?.MembershipEndDate) return false;
+    const endDate = new Date(m.MembershipEndDate);
+    return endDate > today && endDate <= next30;
+  }).length;
+
+  // ─────────────────────────────────────────────────────────
+  // Snack helper
+  // ─────────────────────────────────────────────────────────
   const showSuccessMessage = (msg) => {
     setSnackMessage(msg);
     setSnackOpen(true);
   };
 
-  // Called by AddNewMemberLayout => new member created
+  // ─────────────────────────────────────────────────────────
+  // Format helpers
+  // ─────────────────────────────────────────────────────────
+  const formatDate = (dateString) => {
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
+  const formatDateTime = (dateString) => {
+    if (!dateString) return "—";
+    const dateObj = new Date(dateString);
+    return dateObj.toLocaleString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+  const formatCurrency = (value) => {
+    if (value == null || value === "") return "—";
+    return `₱${parseInt(value).toLocaleString("en-PH")}`;
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // Photo: Webcam + Upload
+  // ─────────────────────────────────────────────────────────
+  const dataURLToFile = (dataURL, filename) => {
+    const arr = dataURL.split(",");
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
+  };
+  const captureImage = () => {
+    if (webcamRef.current) {
+      const imageSrc = webcamRef.current.getScreenshot();
+      setCapturedImage(imageSrc);
+      setSelectedMembership((prev) => ({
+        ...prev,
+        PhotoFile: dataURLToFile(imageSrc, "captured_photo.jpg"),
+      }));
+      setOpenWebcam(false);
+    }
+  };
+  const handlePhotoUpload = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedMembership((prev) => ({
+        ...prev,
+        PhotoFile: e.target.files[0],
+      }));
+      setCapturedImage(null);
+    }
+  };
+  const handleOpenWebcam = () => setOpenWebcam(true);
+  const handleCloseWebcam = () => setOpenWebcam(false);
+
+  // ─────────────────────────────────────────────────────────
+  // Tab and search handlers
+  // ─────────────────────────────────────────────────────────
+  const handleTabChange = (e, newValue) => {
+    setActiveTab(newValue);
+    setSearchTerm("");
+    if (newValue !== 0) {
+      setFilterExpiring(false);
+      setFilterExpired(false);
+    }
+  };
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value.toLowerCase());
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // Basic getStatusNameByID
+  // ─────────────────────────────────────────────────────────
+  function getStatusNameByID(memberStatusID) {
+    const st = memberStatuses.find((s) => s.MemberStatusID === memberStatusID);
+    return st ? st.StatusName : "Unknown";
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // Date Range Filter Helper
+  // ─────────────────────────────────────────────────────────
+  function filterByDateRange(recordsArray, getDateField) {
+    if (!startDate && !endDate) return recordsArray;
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+    return recordsArray.filter((rec) => {
+      const dateValue = getDateField(rec);
+      if (!dateValue) return false;
+      const recDate = new Date(dateValue);
+      if (start && end) {
+        return recDate >= start && recDate <= end;
+      }
+      if (start && !end) {
+        return recDate >= start;
+      }
+      if (!start && end) {
+        return recDate <= end;
+      }
+      return true;
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // MEMBERSHIP CRUD (all functions remain unchanged)
+  // ─────────────────────────────────────────────────────────
   function handleNewMemberCreated(resData) {
-    // resData = { member: {...} }
     const memberObj = resData.member;
     setMembershipRecords((prev) => [memberObj, ...prev]);
     showSuccessMessage("New member added successfully!");
   }
 
-  // Searching / filtering
-  const handleTabChange = (e, newValue) => {
-    setActiveTab(newValue);
-    setSearchTerm("");
-  };
-  const handleSearchChange = (e) => {
-    setSearchTerm(e.target.value.toLowerCase());
-  };
-  const applySearchFilter = (arr) =>
-    arr.filter((item) =>
-      Object.values(item).some((val) => String(val).toLowerCase().includes(searchTerm))
-    );
-
-  // --------------- MEMBERSHIP HANDLERS ---------------
-  const handleViewMembership = (row) => {
+  function handleViewMembership(row) {
     setSelectedMembership(row);
     setViewMembershipOpen(true);
-  };
+  }
 
-  const handleEditMembership = (row) => {
+  function handleEditMembership(row) {
     setSelectedMembership({ ...row });
     setEditMembershipOpen(true);
-  };
+  }
 
-  const handleEditMembershipSubmit = async () => {
+  async function handleEditMembershipSubmit() {
     if (!selectedMembership) return;
     try {
       const memberID = selectedMembership.MemberID;
-
-      // Construct FormData
       const formData = new FormData();
       formData.append("FullName", selectedMembership.FullName);
       formData.append("Email", selectedMembership.Email);
@@ -233,16 +465,15 @@ export default function MembershipManagement() {
       formData.append("FreeSessions", selectedMembership.FreeSessions || "0");
       formData.append("Notes", selectedMembership.Notes || "");
 
-      // If a new file was selected, append it
       if (selectedMembership.PhotoFile) {
         formData.append("PhotoFile", selectedMembership.PhotoFile);
       }
 
-      await axios.put(`/membership/members/${memberID}`, formData, {
+      await axios.post(`/membership/members/${memberID}`, formData, {
+        params: { _method: "PUT" },
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      // Update local membershipRecords
       setMembershipRecords((prev) =>
         prev.map((m) => (m.MemberID === memberID ? selectedMembership : m))
       );
@@ -252,10 +483,9 @@ export default function MembershipManagement() {
       console.error("Error updating membership:", err);
       alert("Update error. Check console for details.");
     }
-  };
+  }
 
-  const handleDeleteMembership = async (memberID) => {
-    if (!window.confirm("Delete this member?")) return;
+  async function handleDeleteMembership(memberID) {
     try {
       await axios.delete(`/membership/members/${memberID}`);
       setMembershipRecords((prev) => prev.filter((m) => m.MemberID !== memberID));
@@ -264,19 +494,38 @@ export default function MembershipManagement() {
       console.error("Error deleting membership:", err);
       alert("Delete error. Check console for details.");
     }
-  };
-
-  function getStatusNameByID(memberStatusID) {
-    const st = memberStatuses.find((s) => s.MemberStatusID === memberStatusID);
-    return st ? st.StatusName : "Unknown";
   }
 
-  // --------------- WALK-IN HANDLERS ---------------
+  // ─────────────────────────────────────────────────────────
+  // WALK‐IN CRUD
+  // ─────────────────────────────────────────────────────────
+  const handleOpenAddWalkIn = () => {
+    setNewWalkIn({
+      FullName: "",
+      VisitDate: "",
+      PaymentID: "",
+      PaymentMethod: "",
+      PaymentAmount: 350,
+      Notes: "",
+    });
+    setAddWalkInOpen(true);
+  };
+  const handleCloseWalkInDialog = () => {
+    setAddWalkInOpen(false);
+    setNewWalkIn({
+      FullName: "",
+      VisitDate: "",
+      PaymentID: "",
+      PaymentMethod: "",
+      PaymentAmount: 350,
+      Notes: "",
+    });
+  };
+
   function handleViewWalkIn(row) {
     setSelectedWalkIn(row);
     setViewWalkInOpen(true);
   }
-
   function handleEditWalkIn(row) {
     setSelectedWalkIn({ ...row });
     setEditWalkInOpen(true);
@@ -286,16 +535,14 @@ export default function MembershipManagement() {
     if (!selectedWalkIn) return;
     try {
       const walkInID = selectedWalkIn.WalkInID;
-
       await axios.put(`/operations/walk-ins/${walkInID}`, {
-        FullName:      selectedWalkIn.FullName,
-        VisitDate:     selectedWalkIn.VisitDate,
-        PaymentID:     selectedWalkIn.PaymentID,
+        FullName: selectedWalkIn.FullName,
+        VisitDate: selectedWalkIn.VisitDate,
+        PaymentID: selectedWalkIn.PaymentID,
         PaymentMethod: selectedWalkIn.PaymentMethod,
-        AmountPaid:    selectedWalkIn.AmountPaid,
-        Notes:         selectedWalkIn.Notes,
+        AmountPaid: selectedWalkIn.AmountPaid,
+        Notes: selectedWalkIn.Notes,
       });
-
       setWalkInRecords((prev) =>
         prev.map((w) => (w.WalkInID === walkInID ? selectedWalkIn : w))
       );
@@ -308,7 +555,6 @@ export default function MembershipManagement() {
   }
 
   async function handleDeleteWalkIn(walkInID) {
-    if (!window.confirm("Delete this walk-in?")) return;
     try {
       await axios.delete(`/operations/walk-ins/${walkInID}`);
       setWalkInRecords((prev) => prev.filter((w) => w.WalkInID !== walkInID));
@@ -318,47 +564,80 @@ export default function MembershipManagement() {
       alert("Delete error. Check console for details.");
     }
   }
-
-  // “Add New Walk-In”
   function handleAddWalkInChange(e) {
     const { name, value } = e.target;
     setNewWalkIn((prev) => ({ ...prev, [name]: value }));
   }
-
-  async function handleAddWalkIn() {
+  const validateWalkIn = () => {
+    let errors = {};
+    if (!newWalkIn.FullName.trim()) {
+      errors.FullName = "Full Name is required.";
+    }
+    if (!newWalkIn.VisitDate) {
+      errors.VisitDate = "Visit Date is required.";
+    }
+    if (!newWalkIn.PaymentMethod) {
+      errors.PaymentMethod = "Please select a Payment Method.";
+    }
+    if (!newWalkIn.PaymentAmount || newWalkIn.PaymentAmount <= 0) {
+      errors.PaymentAmount = "Payment Amount must be greater than zero.";
+    }
+    return errors;
+  };
+  const handleOpenConfirmation = () => {
+    const errors = validateWalkIn();
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+    setValidationErrors({});
+    setOpenConfirmation(true);
+  };
+  const handleAddWalkIn = async () => {
+    const errors = validateWalkIn();
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
     try {
-      await axios.post(`/operations/walk-ins`, {
-        FullName:       newWalkIn.FullName,
-        VisitDate:      newWalkIn.VisitDate,
-        PaymentID:      newWalkIn.PaymentID,
-        PaymentMethod:  newWalkIn.PaymentMethod,
-        PaymentAmount:  newWalkIn.PaymentAmount,
+      const res = await axios.post(`/operations/walk-ins`, {
+        FullName: newWalkIn.FullName,
+        VisitDate: newWalkIn.VisitDate,
+        PaymentID: newWalkIn.PaymentID,
+        PaymentMethod: newWalkIn.PaymentMethod,
+        PaymentAmount: newWalkIn.PaymentAmount || 350,
         PaymentFor: JSON.stringify(["Walk-In Payment"]),
-        Notes:          newWalkIn.Notes,
+        Notes: newWalkIn.Notes,
       });
-
+      const newWalkInRecord = res.data;
+      setWalkInRecords((prev) => [newWalkInRecord, ...prev]);
       setNewWalkIn({
         FullName: "",
         VisitDate: "",
         PaymentID: "",
         PaymentMethod: "",
-        PaymentAmount: "",
+        PaymentAmount: 350,
         Notes: "",
       });
+      setValidationErrors({});
       setAddWalkInOpen(false);
-
-      // Re-fetch
-      const refreshed = await axios.get("/operations/walk-ins");
-      setWalkInRecords(refreshed.data);
-
       showSuccessMessage("Walk-In created successfully!");
     } catch (err) {
       console.error("Error creating walk-in:", err);
       alert("Create error. Check console for details.");
     }
-  }
+  };
+  const getTodayWalkIns = () => {
+    const todayDate = new Date().toISOString().split("T")[0];
+    return walkInRecords.filter((walkIn) => {
+      const walkInDate = new Date(walkIn.VisitDate).toISOString().split("T")[0];
+      return walkInDate === todayDate;
+    }).length;
+  };
 
-  // --------------- FREEZE HANDLERS ---------------
+  // ─────────────────────────────────────────────────────────
+  // FREEZE CRUD
+  // ─────────────────────────────────────────────────────────
   function handleOpenFreezeModal(memberID) {
     setFreezeForm({
       MemberID: memberID,
@@ -368,22 +647,17 @@ export default function MembershipManagement() {
     });
     setFreezeModalOpen(true);
   }
-
   function handleFreezeFormChange(e) {
     const { name, value } = e.target;
     setFreezeForm((prev) => ({ ...prev, [name]: value }));
   }
-
   async function handleSubmitFreeze() {
     try {
       const res = await axios.post("/membership/freezes", freezeForm);
       const newFreeze = res.data;
       setFreezeRecords((prev) => [newFreeze, ...prev]);
-
-      // Re-fetch membership
       const refreshed = await axios.get("/membership/members");
       setMembershipRecords(refreshed.data.members || []);
-
       setFreezeModalOpen(false);
       showSuccessMessage("Freeze created successfully. Member is now Frozen!");
     } catch (err) {
@@ -391,106 +665,184 @@ export default function MembershipManagement() {
       alert("Error. Check console for details.");
     }
   }
-
   function handleViewFreeze(freezeRow) {
     setSelectedFreeze(freezeRow);
     setViewFreezeOpen(true);
   }
-
   function handleEditFreeze(freezeRow) {
     setSelectedFreeze({ ...freezeRow });
     setEditFreezeOpen(true);
   }
-
   function handleEditFreezeChange(e) {
     const { name, value } = e.target;
     setSelectedFreeze((prev) => ({ ...prev, [name]: value }));
   }
-
   async function handleEditFreezeSubmit() {
     if (!selectedFreeze) return;
     try {
       const freezeID = selectedFreeze.FreezeID;
       const res = await axios.put(`/membership/freezes/${freezeID}`, {
         FreezeStartDate: selectedFreeze.FreezeStartDate,
-        FreezeEndDate:   selectedFreeze.FreezeEndDate,
-        Reason:          selectedFreeze.Reason,
+        FreezeEndDate: selectedFreeze.FreezeEndDate,
+        Reason: selectedFreeze.Reason,
       });
       const updatedFreeze = res.data;
-
       setFreezeRecords((prev) =>
         prev.map((f) => (f.FreezeID === freezeID ? updatedFreeze : f))
       );
       setEditFreezeOpen(false);
-      alert("Freeze updated successfully!");
+      showSuccessMessage("Freeze Updated successfully!");
     } catch (err) {
       console.error("Error updating freeze:", err);
       alert("Error. Check console for details.");
     }
   }
 
+  const openUnfreezeDialog = (type, freezeID) => {
+    if (type === "freeze") {
+      setFreezeToUnfreeze(freezeID);
+      setUnfreezeDialogOpen(true);
+    }
+  };
+  const handleUnfreezeMember = async () => {
+    if (!freezeToUnfreeze) return;
+    try {
+      await axios.delete(`/membership/freezes/${freezeToUnfreeze}`);
+      setFreezeRecords((prev) => prev.filter((f) => f.FreezeID !== freezeToUnfreeze));
+      const refreshed = await axios.get("/membership/members");
+      setMembershipRecords(refreshed.data.members || []);
+      setUnfreezeDialogOpen(false);
+      showSuccessMessage("Member successfully unfrozen!");
+    } catch (err) {
+      console.error("Error unfreezing member:", err);
+      alert("Error. Check console for details.");
+    }
+  };
   async function handleDeleteFreeze(freezeID) {
-    if (!window.confirm("Delete this freeze record?")) return;
     try {
       await axios.delete(`/membership/freezes/${freezeID}`);
       setFreezeRecords((prev) => prev.filter((f) => f.FreezeID !== freezeID));
-      alert("Freeze deleted!");
+      showSuccessMessage("Freeze Deleted successfully!");
     } catch (err) {
       console.error("Error deleting freeze:", err);
       alert("Error. Check console for details.");
     }
   }
 
-  // --------------- RENEWAL HANDLERS ---------------
+  // ─────────────────────────────────────────────────────────
+  // RENEWAL CRUD
+  // ─────────────────────────────────────────────────────────
+  const getMemberByID = (memberID) => membershipRecords.find((m) => m.MemberID === memberID);
+  const getPlanPriceForMember = (member) => {
+    if (!member?.PlanID) return 0;
+    const plan = plans.find((p) => p.PlanID === member.PlanID);
+    return plan?.Price || 0;
+  };
+  function monthsBetweenDates(start, end) {
+    if (end <= start) return 0;
+    const yearDiff = end.getFullYear() - start.getFullYear();
+    let monthDiff = end.getMonth() - start.getMonth();
+    let totalMonths = yearDiff * 12 + monthDiff;
+    if (totalMonths < 0) totalMonths = 0;
+    return totalMonths;
+  }
+  function getRenewalStartDate(member) {
+    if (!member) return new Date();
+    if (member.MemberStatusID === 4 || member.MemberStatusID === 5) {
+      return new Date();
+    } else {
+      if (!member.MembershipEndDate) return new Date();
+      return new Date(member.MembershipEndDate);
+    }
+  }
+
   function handleOpenRenewalDialog(memberRow) {
-    // You can default PaymentMethod, PaymentFor, etc. if needed
     setNewRenewal({
       MemberID: memberRow.MemberID,
-      PlanID: "",
+      NewEndDate: "",
       RenewalAmount: 0,
-      PaymentMethod: "",
-      PaymentAmount: "",
-      PaymentFor: '["Renewal Fee"]',
+      PaymentFor: '["Membership Renewal"]',
     });
+    setRenewalPayments([{ PaymentMethod: "", PaymentAmount: "" }]);
+    setValidationErrors({});
     setAddRenewalOpen(true);
   }
 
-  function handleAddRenewalChange(e) {
-    const { name, value } = e.target;
-    setNewRenewal((prev) => ({ ...prev, [name]: value }));
-  }
+  useEffect(() => {
+    const member = getMemberByID(newRenewal.MemberID);
+    if (!member) return;
+    if (!newRenewal.NewEndDate) return;
+    const dtChosen = new Date(newRenewal.NewEndDate);
+    if (isNaN(dtChosen.getTime())) return;
+    const dtStart = getRenewalStartDate(member);
+    const diffMonths = monthsBetweenDates(dtStart, dtChosen);
+    const monthlyPrice = getPlanPriceForMember(member);
+    const total = diffMonths * monthlyPrice;
+    setNewRenewal((prev) => ({
+      ...prev,
+      RenewalAmount: total,
+    }));
+  }, [newRenewal.MemberID, newRenewal.NewEndDate]);
+
+  const validateRenewal = () => {
+    let errors = {};
+    if (!newRenewal.NewEndDate) {
+      errors.NewEndDate = "Please select the new membership end date.";
+    }
+    if (!newRenewal.RenewalAmount || Number(newRenewal.RenewalAmount) <= 0) {
+      errors.RenewalAmount = "Please enter a valid renewal amount.";
+    }
+    if (!renewalPayments.length) {
+      errors.Payments = "At least one payment row is required.";
+    } else {
+      renewalPayments.forEach((p, idx) => {
+        if (!p.PaymentMethod) {
+          errors[`Payments.${idx}.PaymentMethod`] = "Method is required.";
+        }
+        if (!p.PaymentAmount || Number(p.PaymentAmount) <= 0) {
+          errors[`Payments.${idx}.PaymentAmount`] = "Must be > 0";
+        }
+      });
+    }
+    const totalPaid = renewalPayments.reduce(
+      (sum, p) => sum + Number(p.PaymentAmount || 0),
+      0
+    );
+    if (totalPaid < newRenewal.RenewalAmount) {
+      errors.totalPaid = "The sum of payments is less than the renewal amount.";
+    }
+    return errors;
+  };
 
   async function handleAddRenewal() {
+    const errors = validateRenewal();
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
     try {
       const body = {
-        MemberID:      newRenewal.MemberID,
-        PlanID:        newRenewal.PlanID,
-        RenewalAmount: newRenewal.RenewalAmount,
-        PaymentMethod: newRenewal.PaymentMethod,
-        PaymentAmount: newRenewal.PaymentAmount,
-        PaymentFor:    newRenewal.PaymentFor,
+        MemberID: newRenewal.MemberID,
+        NewEndDate: newRenewal.NewEndDate,
+        RenewalAmount: Number(newRenewal.RenewalAmount),
+        PaymentFor: newRenewal.PaymentFor,
+        Payments: renewalPayments,
       };
-
       const res = await axios.post("/membership/renewals", body);
-      // The back end might return { renewal, invoice, payment }
-      // but for the DataGrid we only push the renewal object
-      const created = res.data.renewal ?? res.data; 
-      // If your storeRenewal returns: { renewal: {...}, invoice: {...}, payment: {...} }
-
-      // Add renewal to local state
-      setRenewalRecords((prev) => [created, ...prev]);
-
-      // Reset
+      const { renewal, member } = res.data;
+      setRenewalRecords((prev) => [renewal, ...prev]);
+      setMembershipRecords((prev) =>
+        prev.map((m) => (m.MemberID === member.MemberID ? member : m))
+      );
       setNewRenewal({
         MemberID: "",
-        PlanID: "",
+        NewEndDate: "",
         RenewalAmount: 0,
-        PaymentMethod: "",
-        PaymentAmount: "",
-        PaymentFor: '["Renewal Fee"]',
+        PaymentFor: '["Membership Renewal"]',
       });
+      setRenewalPayments([{ PaymentMethod: "", PaymentAmount: "" }]);
+      setValidationErrors({});
       setAddRenewalOpen(false);
-
       showSuccessMessage("Renewal created successfully!");
     } catch (err) {
       console.error("Error creating renewal:", err);
@@ -498,20 +850,18 @@ export default function MembershipManagement() {
     }
   }
 
-  const handleViewRenewal = (row) => {
+  function handleViewRenewal(row) {
     setSelectedRenewal(row);
     setViewRenewalOpen(true);
-  };
-  const handleEditRenewal = (row) => {
+  }
+  function handleEditRenewal(row) {
     setSelectedRenewal({ ...row });
     setEditRenewalOpen(true);
-  };
-  const handleEditRenewalSubmit = () => {
+  }
+  function handleEditRenewalSubmit() {
     setEditRenewalOpen(false);
-    // If you have an update route for renewal, call it here
-  };
-  const handleDeleteRenewal = async (renewalID) => {
-    if (!window.confirm("Delete this renewal?")) return;
+  }
+  async function handleDeleteRenewal(renewalID) {
     try {
       await axios.delete(`/membership/renewals/${renewalID}`);
       setRenewalRecords((prev) => prev.filter((r) => r.RenewalID !== renewalID));
@@ -520,57 +870,215 @@ export default function MembershipManagement() {
       console.error("Error deleting renewal:", err);
       alert("Delete error. Check console for details.");
     }
-  };
+  }
 
+  // ─────────────────────────────────────────────────────────
   // LOGS
+  // ─────────────────────────────────────────────────────────
   function handleViewLog(row) {
     setSelectedLog(row);
     setViewLogOpen(true);
   }
-  function handleDeleteLog(logID) {
-    // ...
+  async function handleDeleteLog(logID) {
+    // Implement if needed
   }
 
-  // METRICS
-  const totalMembers = membershipRecords.length;
-  const expiredMemberships = membershipRecords.filter((m) => {
-    if (!m?.MemberStatusID) return false;
-    return getStatusNameByID(m.MemberStatusID) === "Expired";
-  }).length;
+ 
+  // ─────────────────────────────────────────────────────────
+  // MONTHLY CLIENTS: Add / View / Edit / Delete
+  // ─────────────────────────────────────────────────────────
+  async function handleAddMonthlyClient() {
+    try {
+      // Basic client-side validation
+      if (
+        !newMonthlyClient.FullName.trim() ||
+        !newMonthlyClient.VisitDate ||
+        !newMonthlyClient.MonthlyFee
+      ) {
+        alert("Please fill in required fields (Name, VisitDate, MonthlyFee).");
+        return;
+      }
 
-  const today = new Date();
-  const next30 = new Date();
-  next30.setDate(today.getDate() + 30);
+      // POST to your backend
+      const res = await axios.post("/monthly-clients", newMonthlyClient);
+      const savedClient = res.data;
 
-  const upcomingExpirations = membershipRecords.filter((m) => {
-    if (!m?.MembershipEndDate) return false;
-    const endDate = new Date(m.MembershipEndDate);
-    return endDate > today && endDate <= next30;
-  }).length;
+      // Add to local state
+      setMonthlyClientRecords((prev) => [...prev, savedClient]);
 
-  // DataGrid columns
+      setAddMonthlyClientOpen(false);
+      setSnackMessage("Monthly Client Added Successfully!");
+      setSnackOpen(true);
+
+      // Reset form
+      setNewMonthlyClient({
+        FullName: "",
+        VisitDate: "",
+        MonthlyFee: "",
+        Notes: "",
+      });
+    } catch (err) {
+      console.error("Error adding monthly client:", err);
+      alert("Error. Check console for details.");
+    }
+  }
+
+  function handleViewMonthlyClient(row) {
+    setSelectedMonthlyClient(row);
+    setViewMonthlyClientOpen(true);
+  }
+
+  function handleEditMonthlyClient(row) {
+    setSelectedMonthlyClient({ ...row });
+    setEditMonthlyClientOpen(true);
+  }
+
+  async function handleAddMonthlyClientSubmit() {
+    try {
+      if (!newMonthlyClient.FullName.trim()) {
+        alert("Full Name is required.");
+        return;
+      }
+      // Build request body
+      const payload = {
+        ...newMonthlyClient,
+        Payments: monthlyClientPayments.map((p) => ({
+          PaymentMethod: p.PaymentMethod,
+          PaymentAmount: Number(p.PaymentAmount) || 0,
+        })),
+      };
+  
+      const res = await axios.post("/monthly-clients", payload);
+      const created = res.data.monthlyClient || res.data;
+  
+      setMonthlyClientRecords((prev) => [created, ...prev]);
+      // Reset form
+      setNewMonthlyClient({
+        FullName: "",
+        Email: "",
+        Phone: "",
+        StartDate: "",
+        BranchID: "",
+        MonthsToPayUpfront: 1,
+      });
+      setMonthlyClientPayments([{ PaymentMethod: "", PaymentAmount: "" }]);
+      setAddMonthlyClientOpen(false);
+  
+      showSuccessMessage("Monthly client created successfully!");
+    } catch (err) {
+      console.error("Error creating monthly client:", err);
+      alert("Error creating monthly client. Check console for details.");
+    }
+  }
+  
+  function handleViewMonthlyClient(row) {
+    setSelectedMonthlyClient(row);
+    setViewMonthlyClientOpen(true);
+  }
+  
+  function handleEditMonthlyClient(row) {
+    setSelectedMonthlyClient({ ...row });
+    setEditMonthlyClientOpen(true);
+  }
+  
+  async function handleEditMonthlyClientSubmit() {
+    if (!selectedMonthlyClient) return;
+    try {
+      const id = selectedMonthlyClient.MonthlyClientID;
+      await axios.put(`/monthly-clients/${id}`, {
+        FullName: selectedMonthlyClient.FullName,
+        Email: selectedMonthlyClient.Email,
+        Phone: selectedMonthlyClient.Phone,
+        StartDate: selectedMonthlyClient.StartDate,
+        EndDate: selectedMonthlyClient.EndDate,
+        IsActive: selectedMonthlyClient.IsActive,
+      });
+  
+      setMonthlyClientRecords((prev) =>
+        prev.map((c) => (c.MonthlyClientID === id ? selectedMonthlyClient : c))
+      );
+      setEditMonthlyClientOpen(false);
+      showSuccessMessage("Monthly client updated!");
+    } catch (err) {
+      console.error("Error updating monthly client:", err);
+      alert("Update error. See console.");
+    }
+  }
+  
+
+  async function handleEditMonthlyClientSubmit() {
+    if (!selectedMonthlyClient) return;
+    try {
+      const { MonthlyClientID } = selectedMonthlyClient;
+      // PUT or PATCH to your backend
+      await axios.put(`/monthly-clients/${MonthlyClientID}`, selectedMonthlyClient);
+
+      setMonthlyClientRecords((prev) =>
+        prev.map((c) =>
+          c.MonthlyClientID === MonthlyClientID ? selectedMonthlyClient : c
+        )
+      );
+      setEditMonthlyClientOpen(false);
+      showSuccessMessage("Monthly Client updated!");
+    } catch (err) {
+      console.error("Error updating monthly client:", err);
+      alert("Error. Check console for details.");
+    }
+  }
+
+  async function handleDeleteMonthlyClient(clientID) {
+    try {
+      await axios.delete(`/monthly-clients/${clientID}`);
+      setMonthlyClientRecords((prev) =>
+        prev.filter((c) => c.MonthlyClientID !== clientID)
+      );
+      showSuccessMessage("Monthly Client deleted!");
+    } catch (err) {
+      console.error("Error deleting monthly client:", err);
+      alert("Delete error. Check console for details.");
+    }
+  }
+  // ─────────────────────────────────────────────────────────
+  // Key Metrics already computed above for staffMembers
+  // ─────────────────────────────────────────────────────────
+
+  // ─────────────────────────────────────────────────────────
+  // DataGrid Columns
+  // ─────────────────────────────────────────────────────────
   const membershipColumns = [
     {
       field: "StartedBranchID",
       headerName: "Branch",
-      width: 130,
-      renderCell: (params) => {
-        const startedBranchId = params.value;
-        const br = branches.find((b) => b.BranchID === startedBranchId);
-        return br ? br.BranchName : "N/A";
-      },
+      width: 180,
+      renderCell: (params) => branches[params.value] || "—",
     },
-    { field: "FullName", headerName: "Full Name", width: 150 },
-    { field: "Email", headerName: "Email", width: 170 },
-    { field: "Phone", headerName: "Phone", width: 130 },
+    {
+      field: "FullName",
+      headerName: "Full Name",
+      width: 150,
+      renderCell: (params) => params.value ?? "—",
+    },
+    {
+      field: "Email",
+      headerName: "Email",
+      width: 170,
+      renderCell: (params) => params.value ?? "—",
+    },
+    {
+      field: "Phone",
+      headerName: "Phone",
+      width: 130,
+      renderCell: (params) => params.value ?? "—",
+    },
     {
       field: "PlanID",
       headerName: "Plan",
-      width: 120,
+      width: 180,
       renderCell: (params) => {
         const pid = Number(params.value);
+        if (!pid) return "—";
         const plan = plans.find((pl) => pl.PlanID === pid);
-        return plan ? plan.PlanName : "Unknown";
+        return plan ? plan.PlanName : "—";
       },
     },
     {
@@ -579,11 +1087,39 @@ export default function MembershipManagement() {
       width: 120,
       renderCell: (params) => {
         const msid = params.value;
-        const stName = getStatusNameByID(msid);
-        return <span>{stName}</span>;
+        const stName = getStatusNameByID(msid) ?? "—";
+        const getStatusColor = (status) => {
+          switch (status?.toLowerCase()) {
+            case "active":
+              return "#4caf50";
+            case "expired":
+              return "#f44336";
+            case "frozen":
+              return "#2196f3";
+            default:
+              return "#757575";
+          }
+        };
+        return (
+          <span style={{ color: getStatusColor(stName), fontWeight: "bold" }}>
+            {stName}
+          </span>
+        );
       },
     },
-    { field: "MembershipEndDate", headerName: "Ends", width: 100 },
+    {
+      field: "MembershipEndDate",
+      headerName: "Ends",
+      width: 150,
+      renderCell: (params) =>
+        params.value ? formatDate(params.value) : "—",
+    },
+    {
+      field: "Notes",
+      headerName: "Remarks",
+      width: 150,
+      renderCell: (params) => params.value ?? "—",
+    },
     {
       field: "Actions",
       headerName: "Actions",
@@ -621,7 +1157,7 @@ export default function MembershipManagement() {
             <Button
               variant="contained"
               sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
-              onClick={() => handleDeleteMembership(params.row.MemberID)}
+              onClick={() => openDeleteDialog("membership", params.row.MemberID)}
             >
               <DeleteIcon fontSize="small" />
             </Button>
@@ -639,13 +1175,38 @@ export default function MembershipManagement() {
       ),
     },
   ];
-
   const walkInColumns = [
-    { field: "WalkInID", headerName: "Walk-In ID", width: 100 },
-    { field: "FullName", headerName: "Full Name", width: 160 },
-    { field: "VisitDate", headerName: "Visit Date", width: 160 },
-    { field: "PaymentID", headerName: "Payment ID", width: 110 },
-    { field: "Notes", headerName: "Notes", width: 150 },
+    {
+      field: "WalkInID",
+      headerName: "Walk-In ID",
+      width: 100,
+      renderCell: (params) => params.value ?? "—",
+    },
+    {
+      field: "FullName",
+      headerName: "Full Name",
+      width: 160,
+      renderCell: (params) => params.value ?? "—",
+    },
+    {
+      field: "VisitDate",
+      headerName: "Visit Date",
+      width: 300,
+      renderCell: (params) =>
+        params.value ? formatDateTime(params.value) : "—",
+    },
+    {
+      field: "PaymentID",
+      headerName: "Payment ID",
+      width: 110,
+      renderCell: (params) => params.value ?? "—",
+    },
+    {
+      field: "Notes",
+      headerName: "Notes",
+      width: 150,
+      renderCell: (params) => params.value ?? "—",
+    },
     {
       field: "Actions",
       headerName: "Actions",
@@ -675,7 +1236,7 @@ export default function MembershipManagement() {
             <Button
               variant="contained"
               sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
-              onClick={() => handleDeleteWalkIn(params.row.WalkInID)}
+              onClick={() => openDeleteDialog("walkin", params.row.WalkInID)}
             >
               <DeleteIcon fontSize="small" />
             </Button>
@@ -684,7 +1245,6 @@ export default function MembershipManagement() {
       ),
     },
   ];
-
   const renewalColumns = [
     {
       field: "MemberID",
@@ -692,22 +1252,35 @@ export default function MembershipManagement() {
       width: 160,
       renderCell: (params) => {
         const memberId = Number(params.value);
+        if (!memberId) return "—";
         const member = membershipRecords.find((m) => m.MemberID === memberId);
-        return member ? member.FullName : "N/A";
+        return member ? member.FullName : "—";
       },
     },
-    { field: "RenewalDate", headerName: "Renewal Date", width: 120 },
+    {
+      field: "RenewalDate",
+      headerName: "Renewal Date",
+      width: 150,
+      renderCell: (params) =>
+        params.value ? formatDate(params.value) : "—",
+    },
     {
       field: "PlanID",
       headerName: "Plan",
-      width: 120,
+      width: 280,
       renderCell: (params) => {
         const pid = Number(params.value);
+        if (!pid) return "—";
         const plan = plans.find((pl) => pl.PlanID === pid);
-        return plan ? plan.PlanName : "Unknown";
+        return plan ? plan.PlanName : "—";
       },
     },
-    { field: "RenewalAmount", headerName: "Amount", width: 100 },
+    {
+      field: "RenewalAmount",
+      headerName: "Amount",
+      width: 100,
+      renderCell: (params) => formatCurrency(params.value),
+    },
     {
       field: "Actions",
       headerName: "Actions",
@@ -732,7 +1305,7 @@ export default function MembershipManagement() {
           <Button
             variant="contained"
             sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
-            onClick={() => handleDeleteRenewal(params.row.RenewalID)}
+            onClick={() => openDeleteDialog("renewal", params.row.RenewalID)}
           >
             <DeleteIcon fontSize="small" />
           </Button>
@@ -740,27 +1313,47 @@ export default function MembershipManagement() {
       ),
     },
   ];
-
   const freezeColumns = [
+    {
+      field: "StartedBranchID",
+      headerName: "Branch",
+      width: 180,
+      renderCell: (params) => branches[params.value] || "—",
+    },
     {
       field: "MemberName",
       headerName: "Member Name",
       width: 160,
       renderCell: (params) => {
-        const member = membershipRecords.find(
-          (m) => m.MemberID === params.row.MemberID
-        );
-        return member ? member.FullName : "Unknown";
+        if (!params.row.MemberID) return "—";
+        const member = membershipRecords.find((m) => m.MemberID === params.row.MemberID);
+        return member ? member.FullName : "—";
       },
     },
-    { field: "FreezeStartDate", headerName: "Start Date", width: 130 },
-    { field: "FreezeEndDate", headerName: "End Date", width: 130 },
-    { field: "Reason", headerName: "Reason", width: 150 },
+    {
+      field: "FreezeStartDate",
+      headerName: "Start Date",
+      width: 180,
+      renderCell: (params) =>
+        params.value ? formatDate(params.value) : "—",
+    },
+    {
+      field: "FreezeEndDate",
+      headerName: "End Date",
+      width: 180,
+      renderCell: (params) =>
+        params.value ? formatDate(params.value) : "—",
+    },
+    {
+      field: "Reason",
+      headerName: "Reason",
+      width: 150,
+      renderCell: (params) => params.value ?? "—",
+    },
     {
       field: "Actions",
       headerName: "Actions",
       width: 240,
-      sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
           <Button
@@ -780,15 +1373,14 @@ export default function MembershipManagement() {
           <Button
             variant="contained"
             sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
-            onClick={() => handleDeleteFreeze(params.row.FreezeID)}
+            onClick={() => openUnfreezeDialog("freeze", params.row.FreezeID)}
           >
-            <DeleteIcon fontSize="small" />
+            <AcUnitIcon fontSize="small" />
           </Button>
         </Box>
       ),
     },
   ];
-
   const logColumns = [
     { field: "UserID", headerName: "User ID", width: 100 },
     { field: "Action", headerName: "Action", width: 160 },
@@ -810,7 +1402,7 @@ export default function MembershipManagement() {
           <Button
             variant="contained"
             sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
-            onClick={() => handleDeleteLog(params.row.LogID)}
+            onClick={() => openDeleteDialog("log", params.row.LogID)}
           >
             <DeleteIcon fontSize="small" />
           </Button>
@@ -819,7 +1411,89 @@ export default function MembershipManagement() {
     },
   ];
 
-  // Filter rows by tab
+  const monthlyClientColumns = [
+    {
+      field: "BranchID",
+      headerName: "Branch",
+      width: 150,
+      renderCell: (params) => branches[params.value] || "—",
+    },
+    {
+      field: "FullName",
+      headerName: "Full Name",
+      width: 200,
+    },
+    {
+      field: "Email",
+      headerName: "Email",
+      width: 200,
+    },
+    {
+      field: "Phone",
+      headerName: "Phone",
+      width: 130,
+    },
+    {
+      field: "StartDate",
+      headerName: "Start Date",
+      width: 130,
+      renderCell: (params) => (params.value ? formatDate(params.value) : "—"),
+    },
+    {
+      field: "EndDate",
+      headerName: "End Date",
+      width: 130,
+      renderCell: (params) => (params.value ? formatDate(params.value) : "—"),
+    },
+    {
+      field: "IsActive",
+      headerName: "Active?",
+      width: 90,
+      renderCell: (params) =>
+        params.value ? (
+          <span style={{ color: "#4caf50", fontWeight: "bold" }}>Yes</span>
+        ) : (
+          <span style={{ color: "#f44336", fontWeight: "bold" }}>No</span>
+        ),
+    },
+    {
+      field: "Actions",
+      headerName: "Actions",
+      width: 320,
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", gap: 1 }}>
+          <Tooltip title="View">
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#4caf50", color: "#fff", minWidth: 40 }}
+              onClick={() => handleViewMonthlyClient(params.row)}
+            >
+              <VisibilityIcon fontSize="small" />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Edit">
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#2196f3", color: "#fff", minWidth: 40 }}
+              onClick={() => handleEditMonthlyClient(params.row)}
+            >
+              <EditIcon fontSize="small" />
+            </Button>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#f44336", color: "#fff", minWidth: 40 }}
+              onClick={() => openDeleteDialog("monthlyClient", params.row.MonthlyClientID)}
+            >
+              <DeleteIcon fontSize="small" />
+            </Button>
+          </Tooltip>
+        </Box>
+      ),
+    },
+  ];
+  
   function getFilteredData() {
     const applyBranchAndSearch = (arr) =>
       arr.filter((item) => {
@@ -830,12 +1504,76 @@ export default function MembershipManagement() {
         );
         return branchMatches && searchMatches;
       });
-
-    if (activeTab === 0) return applyBranchAndSearch(membershipRecords);
-    if (activeTab === 1) return applySearchFilter(walkInRecords);
-    if (activeTab === 2) return applySearchFilter(renewalRecords);
-    if (activeTab === 3) return applySearchFilter(freezeRecords);
-    return applySearchFilter(activityLogs);
+    if (activeTab === 0) {
+      let data = membershipRecords.slice();
+      switch (membershipSubTab) {
+        case 1:
+          data = data.filter(
+            (m) => getStatusNameByID(m.MemberStatusID)?.toLowerCase() === "expired"
+          );
+          break;
+        case 2:
+          const today = new Date();
+          const next7 = new Date();
+          next7.setDate(today.getDate() + 7);
+          data = data.filter((m) => {
+            if (!m.MembershipEndDate) return false;
+            const endDate = new Date(m.MembershipEndDate);
+            return endDate > today && endDate <= next7;
+          });
+          break;
+        case 3:
+          data = data.filter((m) => m.MemberStatusID === 1);
+          break;
+        case 4:
+          data = data.filter((m) => m.MemberStatusID === 2);
+          break;
+        case 5:
+          data = data.filter((m) => m.MemberStatusID === 3);
+          break;
+        case 6:
+          data = data.filter((m) => m.MemberStatusID === 4);
+          break;
+        case 7:
+          data = data.filter((m) => m.MemberStatusID === 6);
+          break;
+        default:
+          break;
+      }
+      data = applyBranchAndSearch(data);
+      data = filterByDateRange(data, (m) => m.MembershipStartDate);
+      return data;
+    }
+    if (activeTab === 1) {
+      return walkInRecords.filter((item) =>
+        Object.values(item).some((val) =>
+          String(val).toLowerCase().includes(searchTerm)
+        )
+      );
+    }
+    if (activeTab === 2) {
+      return renewalRecords.filter((item) =>
+        Object.values(item).some((val) =>
+          String(val).toLowerCase().includes(searchTerm)
+        )
+      );
+    }
+    if (activeTab === 3) {
+      let data = freezeRecords.slice();
+      data = applyBranchAndSearch(data);
+      return data;
+    }
+    if (activeTab === 4) {
+      let data = monthlyClientRecords.slice();
+      data = applyBranchAndSearch(data);
+      data = filterByDateRange(data, (c) => c.VisitDate);
+      return data;
+    }
+    return activityLogs.filter((item) =>
+      Object.values(item).some((val) =>
+        String(val).toLowerCase().includes(searchTerm)
+      )
+    );
   }
 
   const rows = getFilteredData();
@@ -846,58 +1584,321 @@ export default function MembershipManagement() {
   else if (activeTab === 3) columns = freezeColumns;
   else columns = logColumns;
 
-  // Unique ID for each tab
   const getRowId = (row) => {
     if (activeTab === 0) return row.MemberID;
     if (activeTab === 1) return row.WalkInID;
-    if (activeTab === 2) return row.RenewalID; // Must have 'RenewalID'
+    if (activeTab === 2) return row.RenewalID;
     if (activeTab === 3) return row.FreezeID;
-    return row.LogID; 
+    return row.LogID;
   };
 
-  // Export logic
+  // Export logic and menus remain unchanged...
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
   const openExportMenu = Boolean(exportAnchorEl);
   const handleExportMenuOpen = (e) => setExportAnchorEl(e.currentTarget);
   const handleExportMenuClose = () => setExportAnchorEl(null);
 
+  const [csvData, setCsvData] = useState([]);
+  const [csvHeaders, setCsvHeaders] = useState([]);
+  const [csvFilename, setCsvFilename] = useState("export.csv");
+
   const handleExportCSV = () => {
     handleExportMenuClose();
-  };
-  const handleExportPDF = () => {
-    handleExportMenuClose();
-    const doc = new jsPDF();
+    let headers = [];
+    let data = [];
+    let filename = "";
     if (activeTab === 0) {
-      doc.text("Memberships Export", 14, 10);
-      const bodyData = rows.map((m) => [m.MemberID, m.FullName, m.Email]);
-      doc.autoTable({
-        head: [["ID", "FullName", "Email"]],
-        body: bodyData,
-        startY: 20,
-      });
-      doc.save("Memberships.pdf");
+      headers = [
+        { label: "Member ID", key: "MemberID" },
+        { label: "Full Name", key: "FullName" },
+        { label: "Email", key: "Email" },
+        { label: "Phone", key: "Phone" },
+        { label: "Plan", key: "PlanID" },
+        { label: "Status", key: "MemberStatusID" },
+        { label: "Start Date", key: "MembershipStartDate" },
+        { label: "End Date", key: "MembershipEndDate" },
+        { label: "Free Sessions", key: "FreeSessions" },
+        { label: "Notes", key: "Notes" },
+      ];
+      data = rows.map((m) => ({
+        MemberID: m.MemberID,
+        FullName: m.FullName,
+        Email: m.Email,
+        Phone: m.Phone || "—",
+        PlanID: plans.find((p) => p.PlanID === m.PlanID)?.PlanName || "Unknown",
+        MemberStatusID: getStatusNameByID(m.MemberStatusID),
+        MembershipStartDate: formatDate(m.MembershipStartDate),
+        MembershipEndDate: formatDate(m.MembershipEndDate),
+        FreeSessions: m.FreeSessions || "0",
+        Notes: m.Notes || "—",
+      }));
+      filename = "Memberships.csv";
+    } else if (activeTab === 1) {
+      headers = [
+        { label: "Walk-In ID", key: "WalkInID" },
+        { label: "Full Name", key: "FullName" },
+        { label: "Visit Date", key: "VisitDate" },
+        { label: "Payment Method", key: "PaymentMethod" },
+        { label: "Amount Paid", key: "AmountPaid" },
+        { label: "Notes", key: "Notes" },
+      ];
+      data = rows.map((w) => ({
+        WalkInID: w.WalkInID,
+        FullName: w.FullName,
+        VisitDate: formatDateTime(w.VisitDate),
+        PaymentMethod: w.PaymentMethod || "N/A",
+        AmountPaid: `₱${parseFloat(w.AmountPaid || 0).toFixed(2)}`,
+        Notes: w.Notes || "—",
+      }));
+      filename = "WalkIns.csv";
+    } else if (activeTab === 2) {
+      headers = [
+        { label: "Renewal ID", key: "RenewalID" },
+        { label: "Member ID", key: "MemberID" },
+        { label: "Renewal Date", key: "RenewalDate" },
+        { label: "Plan", key: "PlanID" },
+        { label: "Amount", key: "RenewalAmount" },
+      ];
+      data = rows.map((r) => ({
+        RenewalID: r.RenewalID,
+        MemberID: r.MemberID,
+        RenewalDate: formatDate(r.RenewalDate),
+        PlanID: plans.find((p) => p.PlanID === r.PlanID)?.PlanName || "Unknown",
+        RenewalAmount: `₱${parseFloat(r.RenewalAmount || 0).toFixed(2)}`,
+      }));
+      filename = "Renewals.csv";
+    } else if (activeTab === 3) {
+      headers = [
+        { label: "Freeze ID", key: "FreezeID" },
+        { label: "Member ID", key: "MemberID" },
+        { label: "Start Date", key: "FreezeStartDate" },
+        { label: "End Date", key: "FreezeEndDate" },
+        { label: "Reason", key: "Reason" },
+      ];
+      data = rows.map((f) => ({
+        FreezeID: f.FreezeID,
+        MemberID: f.MemberID,
+        FreezeStartDate: formatDate(f.FreezeStartDate),
+        FreezeEndDate: formatDate(f.FreezeEndDate),
+        Reason: f.Reason || "—",
+      }));
+      filename = "Freezes.csv";
+    } else if (activeTab === 4) {
+      headers = [
+        { label: "Client ID", key: "MonthlyClientID" },
+        { label: "Full Name", key: "FullName" },
+        { label: "Visit Date", key: "VisitDate" },
+        { label: "Monthly Fee", key: "MonthlyFee" },
+        { label: "Notes", key: "Notes" },
+      ];
+      data = rows.map((c) => ({
+        MonthlyClientID: c.MonthlyClientID,
+        FullName: c.FullName,
+        VisitDate: formatDate(c.VisitDate),
+        MonthlyFee: `₱${parseFloat(c.MonthlyFee || 0).toFixed(2)}`,
+        Notes: c.Notes || "—",
+      }));
+      filename = "MonthlyClients.csv";
     }
-    // else if other tabs...
+    if (data.length === 0) {
+      alert("No data available for export!");
+      return;
+    }
+    setCsvHeaders(headers);
+    setCsvData(data);
+    setCsvFilename(filename);
   };
 
-  let csvData = rows;
-  let csvHeaders = [
-    { label: "MemberID", key: "MemberID" },
-    { label: "FullName", key: "FullName" },
-    { label: "Email", key: "Email" },
-  ];
-  let csvFilename = "Data.csv";
-  if (activeTab === 0) {
-    csvFilename = "Memberships.csv";
-  } else if (activeTab === 1) {
-    csvFilename = "WalkIns.csv";
-  }
+  const handleExportPDF = () => {
+    handleExportMenuClose();
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "pt",
+      format: "A4",
+    });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const coverPage = "/imgs/coverpage2.png";
+    let tableHeaders = [];
+    let tableBody = [];
+    let title = "";
+    if (activeTab === 0) {
+      title = "Memberships Report";
+      tableHeaders = [
+        "ID",
+        "Full Name",
+        "Email",
+        "Plan",
+        "Status",
+        "Start Date",
+        "End Date",
+        "Notes",
+      ];
+      tableBody = rows.map((m) => [
+        m.MemberID,
+        m.FullName,
+        m.Email,
+        plans.find((p) => p.PlanID === m.PlanID)?.PlanName || "Unknown",
+        getStatusNameByID(m.MemberStatusID),
+        formatDate(m.MembershipStartDate),
+        formatDate(m.MembershipEndDate),
+        m.Notes || "—",
+      ]);
+    } else if (activeTab === 1) {
+      title = "Walk-In Report";
+      tableHeaders = [
+        "ID",
+        "Name",
+        "Visit Date",
+        "Payment Method",
+        "Amount Paid",
+        "Notes",
+      ];
+      tableBody = rows.map((w) => [
+        w.WalkInID,
+        w.FullName,
+        formatDateTime(w.VisitDate),
+        w.PaymentMethod || "N/A",
+        Number(w.AmountPaid || 0).toFixed(2),
+        w.Notes || "—",
+      ]);
+    } else if (activeTab === 2) {
+      title = "Renewal Report";
+      tableHeaders = ["ID", "Member Name", "Renewal Date", "Plan", "Amount"];
+      tableBody = rows.map((r) => [
+        r.RenewalID,
+        membershipRecords.find((m) => m.MemberID === r.MemberID)?.FullName || "Unknown",
+        formatDate(r.RenewalDate),
+        plans.find((p) => p.PlanID === r.PlanID)?.PlanName || "Unknown",
+        parseFloat(r.RenewalAmount || 0).toFixed(2),
+      ]);
+    } else if (activeTab === 3) {
+      title = "Freeze Report";
+      tableHeaders = ["ID", "Member Name", "Branch", "Start Date", "End Date", "Reason"];
+      tableBody = rows.map((f) => [
+        f.FreezeID,
+        membershipRecords.find((m) => m.MemberID === f.MemberID)?.FullName || "Unknown",
+        branches[f.StartedBranchID] || "Unknown",
+        formatDate(f.FreezeStartDate),
+        formatDate(f.FreezeEndDate),
+        f.Reason || "—",
+      ]);
+    } else if (activeTab === 4) {
+      title = "Monthly Clients Report";
+      tableHeaders = ["ID", "Client Name", "Visit Date", "Fee Paid", "Notes"];
+      tableBody = rows.map((c) => [
+        c.MonthlyClientID,
+        c.FullName,
+        formatDate(c.VisitDate),
+        `₱${parseFloat(c.MonthlyFee || 0).toFixed(2)}`,
+        c.Notes || "—",
+      ]);
+    }
+    tableBody.sort((a, b) => a[0] - b[0]);
+    doc.addImage(coverPage, "PNG", 0, 0, pageWidth, pageHeight);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(24);
+    doc.setTextColor("#ffffff");
+    doc.text(title, pageWidth / 2, 100, { align: "center" });
+    doc.setFontSize(14);
+    doc.text(
+      "Generated on: " + new Date().toLocaleDateString(),
+      pageWidth / 2,
+      130,
+      { align: "center" }
+    );
+    doc.autoTable({
+      head: [tableHeaders],
+      body: tableBody,
+      startY: 100,
+      theme: "striped",
+      headStyles: {
+        fillColor: "#050505",
+        textColor: "#ffffff",
+        fontStyle: "bold",
+        fontSize: 10,
+      },
+      bodyStyles: {
+        textColor: "#333333",
+        fontSize: 10,
+      },
+      alternateRowStyles: {
+        fillColor: "#f5f5f5",
+      },
+      styles: {
+        overflow: "linebreak",
+        cellPadding: 5,
+        halign: "center",
+        valign: "middle",
+      },
+      margin: { top: 50, left: 20, right: 20, bottom: 20 },
+      didParseCell: (data) => {
+        if (activeTab === 0 && data.column.index === 4) {
+          const statusText = data.cell.raw;
+          const statusColor = (status) => {
+            switch (status?.toLowerCase()) {
+              case "active":
+                return "#4caf50";
+              case "expired":
+                return "#f44336";
+              case "frozen":
+                return "#2196f3";
+              default:
+                return "#000000";
+            }
+          };
+          data.cell.styles.textColor = statusColor(statusText);
+        }
+      },
+    });
+    const pdfFilename =
+      activeTab === 0
+        ? "MembershipList.pdf"
+        : activeTab === 1
+        ? "WalkInsList.pdf"
+        : activeTab === 2
+        ? "RenewalsList.pdf"
+        : activeTab === 3
+        ? "FreezesList.pdf"
+        : "MonthlyClientsList.pdf";
+    doc.save(pdfFilename);
+  };
+
+  const openDeleteDialog = (type, id) => {
+    setDeleteInfo({ type, id });
+    setDeleteDialogOpen(true);
+  };
+  const confirmDelete = () => {
+    setDeleteDialogOpen(false);
+    if (!deleteInfo.id || !deleteInfo.type) return;
+    switch (deleteInfo.type) {
+      case "membership":
+        handleDeleteMembership(deleteInfo.id);
+        break;
+      case "walkin":
+        handleDeleteWalkIn(deleteInfo.id);
+        break;
+      case "renewal":
+        handleDeleteRenewal(deleteInfo.id);
+        break;
+      case "log":
+        handleDeleteLog(deleteInfo.id);
+        break;
+      case "freeze":
+        handleDeleteFreeze(deleteInfo.id);
+        break;
+      case "monthlyClient":
+        handleDeleteMonthlyClient(deleteInfo.id);
+        break;
+      default:
+        break;
+    }
+  };
 
   return (
     <Box sx={{ p: 4 }}>
       {/* Key Metrics Section */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        {/* Total Members */}
         <Grid item xs={12} sm={6} md={3}>
           <Card
             sx={{
@@ -918,32 +1919,34 @@ export default function MembershipManagement() {
             </CardContent>
           </Card>
         </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+        <Card
+          sx={{
+            bgcolor: "text.primary",
+            color: "background.paper",
+            p: 1.5,
+            display: "flex",
+            alignItems: "center",
+            boxShadow: 2,
+          }}
+        >
+          <DirectionsWalkIcon sx={{ fontSize: 30, color: "green", mr: 1.5 }} />
+          <CardContent sx={{ p: 0.5 }}>
+            <Typography variant="body2">Active Members</Typography>
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              {activeCount}
+            </Typography>
+          </CardContent>
+        </Card>
+      </Grid>
 
-        {/* Walk-Ins */}
         <Grid item xs={12} sm={6} md={3}>
           <Card
-            sx={{
-              bgcolor: "text.primary",
-              color: "background.paper",
-              p: 1.5,
-              display: "flex",
-              alignItems: "center",
-              boxShadow: 2,
+            onClick={() => {
+              setActiveTab(0);
+              setFilterExpired((prev) => !prev);
+              setFilterExpiring(false);
             }}
-          >
-            <DirectionsWalkIcon sx={{ fontSize: 30, color: "primary.main", mr: 1.5 }} />
-            <CardContent sx={{ p: 0.5 }}>
-              <Typography variant="body2">Walk-Ins</Typography>
-              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                {walkInRecords.length}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Expired */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
             sx={{
               bgcolor: "text.primary",
               color: "background.paper",
@@ -955,17 +1958,20 @@ export default function MembershipManagement() {
           >
             <WarningIcon sx={{ fontSize: 30, color: "red", mr: 1.5 }} />
             <CardContent sx={{ p: 0.5 }}>
-              <Typography variant="body2">Expired</Typography>
+              <Typography variant="body2">Expired Members</Typography>
               <Typography variant="h6" sx={{ fontWeight: "bold" }}>
                 {expiredMemberships}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-
-        {/* Expiring Soon */}
         <Grid item xs={12} sm={6} md={3}>
           <Card
+            onClick={() => {
+              setActiveTab(0);
+              setFilterExpiring((prev) => !prev);
+              setFilterExpired(false);
+            }}
             sx={{
               bgcolor: "text.primary",
               color: "background.paper",
@@ -986,7 +1992,7 @@ export default function MembershipManagement() {
         </Grid>
       </Grid>
 
-      {/* Tabs */}
+      {/* Tabs and Toolbar */}
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
         <Typography variant="h4">Membership Management</Typography>
         <Tabs value={activeTab} onChange={handleTabChange}>
@@ -994,104 +2000,140 @@ export default function MembershipManagement() {
           <Tab icon={<PeopleIcon />} label="Walk-Ins" />
           <Tab icon={<AutorenewIcon />} label="Renewals" />
           <Tab icon={<AcUnitIcon />} label="Freezes" />
+          <Tab icon={<GroupsIcon />} label="Monthly Clients" />
         </Tabs>
       </Box>
 
+      {activeTab === 0 && (
+        <Tabs
+          value={membershipSubTab}
+          onChange={(e, newValue) => setMembershipSubTab(newValue)}
+          textColor="primary"
+          indicatorColor="primary"
+          sx={{ mb: 2 }}
+        >
+          {membershipFilters.map((f, idx) => (
+            <Tab key={idx} label={f.label} />
+          ))}
+        </Tabs>
+      )}
+
       <Paper elevation={2} sx={{ p: 2 }}>
+        {/* Toolbar Container */}
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-          <FormControl variant="outlined" size="small" sx={{ width: 150, mr: 2 }}>
-            <InputLabel>Branch</InputLabel>
-            <Select
-              label="Branch"
-              value={branchFilter}
-              onChange={(e) => setBranchFilter(e.target.value)}
-            >
-              <MenuItem value="all">All</MenuItem>
-              {branches.map((b) => (
-                <MenuItem key={b.BranchID} value={String(b.BranchID)}>
-                  {b.BranchName}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          <TextField
-            variant="outlined"
-            size="small"
-            placeholder="Search..."
-            value={searchTerm}
-            onChange={handleSearchChange}
-            sx={{ width: 350, maxWidth: "100%" }}
-          />
-
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Button
-              variant="outlined"
-              startIcon={<FileDownloadIcon />}
-              onClick={(e) => setExportAnchorEl(e.currentTarget)}
-              sx={{ textTransform: "none" }}
-            >
-              Export
-            </Button>
-            <Menu
-              anchorEl={exportAnchorEl}
-              open={openExportMenu}
-              onClose={handleExportMenuClose}
-              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-            >
-              <MenuItem onClick={handleExportCSV}>
-                <CSVLink
-                  data={csvData}
-                  headers={csvHeaders}
-                  filename={csvFilename}
-                  style={{ textDecoration: "none", color: "inherit" }}
+          <Grid container spacing={2} alignItems="center" sx={{ flexWrap: "wrap" }}>
+            <Grid item>
+              {/* For staff view, the branch filter is pre-set and disabled */}
+              <FormControl variant="outlined" size="small" sx={{ width: 150 }}>
+                <InputLabel>Branch</InputLabel>
+                <Select
+                  value={branchFilter}
+                  onChange={(e) => setBranchFilter(e.target.value)}
+                  label="Branch"
+                  disabled
                 >
-                  Export CSV
-                </CSVLink>
-              </MenuItem>
-              <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
-            </Menu>
+                  <MenuItem value={staffBranch}>
+                    {branches[staffBranch] || "Your Branch"}
+                  </MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs>
+              <TextField
+                variant="outlined"
+                size="small"
+                placeholder="Search..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                fullWidth
+                sx={{ maxWidth: 350 }}
+              />
+            </Grid>
+                
+            <Grid item>
+              <TextField
+                label="Start Date"
+                type="date"
+                size="small"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ mr: 1 }}
+              />
+              <TextField
+                label="End Date"
+                type="date"
+                size="small"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
 
-            <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1 }}>
+            <Grid item sx={{ ml: "auto", display: "flex", gap: 1 }}>
+              <Button
+                variant="outlined"
+                startIcon={<FileDownloadIcon />}
+                onClick={(e) => setExportAnchorEl(e.currentTarget)}
+                sx={{ textTransform: "none" }}
+              >
+                Export
+              </Button>
+              <Menu
+                anchorEl={exportAnchorEl}
+                open={openExportMenu}
+                onClose={handleExportMenuClose}
+                anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+              >
+                <MenuItem onClick={handleExportCSV}>
+                  <CSVLink
+                    data={csvData}
+                    headers={csvHeaders}
+                    filename={csvFilename}
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
+                    Export CSV
+                  </CSVLink>
+                </MenuItem>
+                <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
+              </Menu>
               <Button variant="outlined" onClick={() => setManagePlansOpen(true)}>
                 Manage Plans and Promotions
               </Button>
-            </Box>
-
-            {activeTab === 0 && (
+              {activeTab === 0 && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<AddIcon />}
+                  onClick={() => setAddMembershipLayoutVisible(true)}
+                >
+                  Add Member
+                </Button>
+              )}
+              {activeTab === 1 && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<AddIcon />}
+                  onClick={() => setAddWalkInOpen(true)}
+                >
+                  Add Walk-In
+                </Button>
+               )}
+              {activeTab === 4 && (
               <Button
                 variant="contained"
                 color="primary"
                 startIcon={<AddIcon />}
-                onClick={() => setAddMembershipLayoutVisible(true)}
+                onClick={() => setAddMonthlyClientOpen(true)}
               >
-                Add Member
+                Add Monthly Client
               </Button>
-            )}
-            {activeTab === 1 && (
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => setAddWalkInOpen(true)}
-              >
-                Add Walk-In
-              </Button>
-            )}
-            {activeTab === 2 && (
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => setAddRenewalOpen(true)}
-              >
-                Add Renewal
-              </Button>
-            )}
-          </Box>
+              )}
+            </Grid>
+          </Grid>
         </Box>
-
-        <div style={{ height: 450, width: "100%" }}>
+        <Box style={{ height: 510, width: "100%", mt: 2 }}>
           <DataGrid
             rows={rows}
             columns={columns}
@@ -1099,608 +2141,2092 @@ export default function MembershipManagement() {
             pageSize={5}
             rowsPerPageOptions={[5, 10]}
           />
-        </div>
+        </Box>
       </Paper>
 
-      {/* Add Member Layout */}
       {isAddMembershipLayoutVisible && (
         <AddNewMemberLayout
           onClose={() => setAddMembershipLayoutVisible(false)}
           onMemberCreated={handleNewMemberCreated}
         />
       )}
-
-      {/* Manage Plans Layout */}
       {isManagePlansOpen && <ManagePlansLayout onClose={() => setManagePlansOpen(false)} />}
 
- {/* ADD Walk-In Dialog */}
-<Dialog
-  open={isAddWalkInOpen}
-  onClose={() => setAddWalkInOpen(false)}
-  fullWidth
-  maxWidth="sm"
->
-  <DialogTitle>Add New Walk-In</DialogTitle>
-  <DialogContent>
-    <TextField
-      label="Full Name"
-      name="FullName"
-      fullWidth
-      margin="dense"
-      value={newWalkIn.FullName}
-      onChange={handleAddWalkInChange}
-    />
-
-    <TextField
-      label="Visit Date"
-      name="VisitDate"
-      type="datetime-local"
-      fullWidth
-      margin="dense"
-      value={newWalkIn.VisitDate}
-      onChange={handleAddWalkInChange}
-      InputLabelProps={{ shrink: true }}
-    />
-
-    {/* Payment Method */}
-    <FormControl fullWidth margin="dense">
-      <InputLabel>Payment Method</InputLabel>
-      <Select
-        name="PaymentMethod"
-        label="Payment Method"
-        value={newWalkIn.PaymentMethod}
-        onChange={handleAddWalkInChange}
-      >
-        <MenuItem value="">-- Select Method --</MenuItem>
-        <MenuItem value="W-In Cash">W-In Cash</MenuItem>
-        <MenuItem value="W-In BDO">W-In BDO</MenuItem>
-        <MenuItem value="W-In BPI">W-In BPI</MenuItem>
-        <MenuItem value="W-In GCash">W-In GCash</MenuItem>
-      </Select>
-    </FormControl>
-
-    {/* Payment Amount */}
-    <TextField
-      label="Payment Amount"
-      name="PaymentAmount"
-      type="number"
-      fullWidth
-      margin="dense"
-      value={newWalkIn.PaymentAmount}
-      onChange={handleAddWalkInChange}
-    />
-
-    <TextField
-      label="Notes"
-      name="Notes"
-      fullWidth
-      margin="dense"
-      multiline
-      rows={3}
-      value={newWalkIn.Notes}
-      onChange={handleAddWalkInChange}
-    />
-  </DialogContent>
-  <DialogActions>
-    <Button onClick={() => setAddWalkInOpen(false)}>Cancel</Button>
-    <Button variant="contained" onClick={handleAddWalkIn}>
-      Save
-    </Button>
-  </DialogActions>
-</Dialog>
-
-
-      {/* VIEW WALK-IN */}
-      <Dialog open={isViewWalkInOpen} onClose={() => setViewWalkInOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Walk-In Details</DialogTitle>
+  
+      {/* ADD Walk-In Dialog */}
+      <Dialog open={isAddWalkInOpen} onClose={() => setAddWalkInOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="h5">
+              <PersonIcon sx={{ verticalAlign: "middle", mr: 1 }} />Add New Walk-In
+            </Typography>
+            <IconButton onClick={() => setAddWalkInOpen(false)} sx={{ color: "inherit", "&:hover": { color: "red" } }}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
         <DialogContent dividers>
-          {selectedWalkIn && (
-            <Box sx={{ p: 2 }}>
-              <Typography>Name: {selectedWalkIn.FullName}</Typography>
-              <Typography>Visit Date: {selectedWalkIn.VisitDate}</Typography>
-              <Typography>Payment ID: {selectedWalkIn.PaymentID}</Typography>
-              <Typography>Payment Method: {selectedWalkIn.PaymentMethod || "N/A"}</Typography>
-              <Typography>Payment Amount: {selectedWalkIn.AmountPaid || "N/A"}</Typography>
-              <Typography>Notes: {selectedWalkIn.Notes}</Typography>
-            </Box>
-          )}
+          <Box sx={{ p: 2 }}>
+            <Divider sx={{ mb: 3 }} />
+            <form onSubmit={(e) => e.preventDefault()}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <TextField
+                  label="Full Name"
+                  name="FullName"
+                  fullWidth
+                  required
+                  error={!!validationErrors.FullName}
+                  helperText={validationErrors.FullName}
+                  value={newWalkIn.FullName}
+                  onChange={handleAddWalkInChange}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <PersonIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <TextField
+                  label="Visit Date"
+                  name="VisitDate"
+                  type="datetime-local"
+                  fullWidth
+                  required
+                  error={!!validationErrors.VisitDate}
+                  helperText={validationErrors.VisitDate}
+                  value={newWalkIn.VisitDate}
+                  onChange={handleAddWalkInChange}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <FormControl fullWidth required error={!!validationErrors.PaymentMethod}>
+                  <InputLabel>Payment Method</InputLabel>
+                  <Select
+                    name="PaymentMethod"
+                    value={newWalkIn.PaymentMethod}
+                    onChange={handleAddWalkInChange}
+                    input={
+                      <OutlinedInput
+                        label="Payment Method"
+                        startAdornment={
+                          <InputAdornment position="start">
+                            <PaymentIcon />
+                          </InputAdornment>
+                        }
+                      />
+                    }
+                  >
+                    <MenuItem value="">-- Select Method --</MenuItem>
+                    <MenuItem value="W-In Cash">W-In Cash</MenuItem>
+                    <MenuItem value="W-In BDO">W-In BDO</MenuItem>
+                    <MenuItem value="W-In BPI">W-In BPI</MenuItem>
+                    <MenuItem value="W-In GCash">W-In GCash</MenuItem>
+                  </Select>
+                  {validationErrors.PaymentMethod && (
+                    <Typography color="error" variant="caption">
+                      {validationErrors.PaymentMethod}
+                    </Typography>
+                  )}
+                </FormControl>
+                <TextField
+                  label="Payment Amount"
+                  name="PaymentAmount"
+                  type="number"
+                  fullWidth
+                  margin="dense"
+                  value={newWalkIn.PaymentAmount}
+                  onChange={(e) =>
+                    setNewWalkIn((prev) => ({ ...prev, PaymentAmount: e.target.value }))
+                  }
+                  variant="outlined"
+                  error={!!validationErrors.PaymentAmount}
+                  helperText={validationErrors.PaymentAmount}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <TextField
+                  label="Notes"
+                  name="Notes"
+                  fullWidth
+                  multiline
+                  rows={3}
+                  value={newWalkIn.Notes}
+                  onChange={handleAddWalkInChange}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <StickyNote2Icon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
+              <Box sx={{ mt: 4, display: "flex", flexDirection: "row", gap: 3, justifyContent: "flex-end" }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleOpenConfirmation}
+                  disabled={
+                    !newWalkIn.FullName.trim() ||
+                    !newWalkIn.VisitDate ||
+                    !newWalkIn.PaymentMethod ||
+                    !newWalkIn.PaymentAmount ||
+                    isNaN(newWalkIn.PaymentAmount) ||
+                    Number(newWalkIn.PaymentAmount) <= 0
+                  }
+                  sx={{ textTransform: "none" }}
+                >
+                  <SaveIcon sx={{ mr: 1 }} />
+                  Save Walk-In
+                </Button>
+              </Box>
+            </form>
+          </Box>
         </DialogContent>
-        <DialogActions>
-          <Button variant="contained" onClick={() => setViewWalkInOpen(false)}>
-            Close
+      </Dialog>
+
+      <Dialog
+        open={openConfirmation}
+        onClose={() => setOpenConfirmation(false)}
+        PaperProps={{ sx: { borderRadius: 3, minWidth: 350 } }}
+      >
+        <DialogTitle sx={{ textAlign: "center", p: 3 }}>
+          <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
+            <CheckCircleOutlineIcon sx={{ fontSize: 50, color: "primary.main" }} />
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              Confirm Submission
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers sx={{ textAlign: "center", py: 2 }}>
+          <Typography variant="body1">Are you sure you want to add this walk-in?</Typography>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: "center", gap: 2, py: 2 }}>
+          <Button onClick={() => setOpenConfirmation(false)} sx={{ textTransform: "none" }} style={{ color: "red" }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            sx={{ textTransform: "none" }}
+            onClick={async () => {
+              await handleAddWalkIn(); 
+              setOpenConfirmation(false);
+            }}
+          >
+            Confirm
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* EDIT WALK-IN */}
-      <Dialog open={isEditWalkInOpen} onClose={() => setEditWalkInOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Edit Walk-In</DialogTitle>
-        <DialogContent dividers>
+      <Dialog
+        open={isViewWalkInOpen}
+        onClose={() => setViewWalkInOpen(false)}
+        fullWidth
+        maxWidth="lg"
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle sx={{ p: 2 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <DirectionsWalkIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Walk-in Details
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setViewWalkInOpen(false)} sx={{ "&:hover": { color: theme.palette.error.main } }}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 4 }}>
           {selectedWalkIn && (
-            <>
-              <TextField
-                label="Full Name"
-                name="FullName"
-                fullWidth
-                margin="dense"
-                value={selectedWalkIn.FullName}
-                onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({ ...prev, FullName: e.target.value }))
-                }
-              />
-              <TextField
-                label="Visit Date"
-                name="VisitDate"
-                type="datetime-local"
-                fullWidth
-                margin="dense"
-                value={selectedWalkIn.VisitDate}
-                onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({ ...prev, VisitDate: e.target.value }))
-                }
-                InputLabelProps={{ shrink: true }}
-              />
-              <TextField
-                label="Payment ID"
-                name="PaymentID"
-                fullWidth
-                margin="dense"
-                value={selectedWalkIn.PaymentID || ""}
-                onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({ ...prev, PaymentID: e.target.value }))
-                }
-              />
-              <TextField
-                label="Payment Method"
-                name="PaymentMethod"
-                fullWidth
-                margin="dense"
-                value={selectedWalkIn.PaymentMethod || ""}
-                onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({ ...prev, PaymentMethod: e.target.value }))
-                }
-              />
-              <TextField
-                label="Payment Amount"
-                name="AmountPaid"
-                type="number"
-                fullWidth
-                margin="dense"
-                value={selectedWalkIn.AmountPaid || ""}
-                onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({ ...prev, AmountPaid: e.target.value }))
-                }
-              />
-              <TextField
-                label="Notes"
-                name="Notes"
-                fullWidth
-                margin="dense"
-                multiline
-                rows={3}
-                value={selectedWalkIn.Notes || ""}
-                onChange={(e) =>
-                  setSelectedWalkIn((prev) => ({ ...prev, Notes: e.target.value }))
-                }
-              />
-            </>
+            <Box sx={{ display: "flex", flexDirection: "row", gap: 4 }}>
+              <Grid container spacing={3}>
+                <Grid item xs={6}>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <PersonIcon color="primary" /> Personal Information
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Full Name"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={selectedWalkIn.FullName || "—"}
+                    sx={{ mb: 2 }}
+                  />
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mt: 3,
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <EventIcon color="primary" /> Visit Details
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Visit Date & Time"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={
+                      selectedWalkIn.VisitDate
+                        ? new Date(selectedWalkIn.VisitDate).toLocaleString("en-US", {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                            hour12: true,
+                          })
+                        : "—"
+                    }
+                    sx={{ mb: 2 }}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <PaymentIcon color="primary" /> Payment Details
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Payment Method"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={selectedWalkIn.PaymentMethod || "N/A"}
+                    sx={{ mb: 2 }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Payment Amount"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={
+                      selectedWalkIn.AmountPaid
+                        ? `₱${parseFloat(selectedWalkIn.AmountPaid).toFixed(2)}`
+                        : "N/A"
+                    }
+                    sx={{ mb: 2 }}
+                  />
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mt: 3,
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <NotesIcon color="primary" /> Notes
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Notes"
+                    variant="filled"
+                    multiline
+                    rows={3}
+                    InputProps={{ readOnly: true }}
+                    value={selectedWalkIn.Notes?.length ? selectedWalkIn.Notes : "No notes available."}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditWalkInOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleEditWalkInSubmit}>
+      </Dialog>
+
+      <Dialog
+        open={isEditWalkInOpen}
+        onClose={() => setEditWalkInOpen(false)}
+        fullWidth
+        maxWidth="lg"
+        fullScreen={window.innerWidth < 600}
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle sx={{ p: 2 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <DirectionsWalkIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Edit Walk-in Details
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setEditWalkInOpen(false)} sx={{ "&:hover": { color: theme.palette.error.main } }}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 4 }}>
+          {selectedWalkIn && (
+            <Box sx={{ display: "flex", flexDirection: "row", gap: 4 }}>
+              <Grid container spacing={3}>
+                {/* Left Column: Personal & Visit Details */}
+                <Grid item xs={6}>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <PersonIcon color="primary" /> Personal Information
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Full Name"
+                    name="FullName"
+                    variant="outlined"
+                    value={selectedWalkIn.FullName || ""}
+                    onChange={(e) =>
+                      setSelectedWalkIn((prev) => ({ ...prev, FullName: e.target.value }))
+                    }
+                    sx={{ mb: 2 }}
+                  />
+
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mt: 3,
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <EventIcon color="primary" /> Visit Details
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Visit Date & Time"
+                    name="VisitDate"
+                    type="datetime-local"
+                    variant="outlined"
+                    value={selectedWalkIn.VisitDate || ""}
+                    onChange={(e) =>
+                      setSelectedWalkIn((prev) => ({ ...prev, VisitDate: e.target.value }))
+                    }
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ mb: 2 }}
+                  />
+                </Grid>
+
+                {/* Right Column: Payment Details & Notes */}
+                <Grid item xs={6}>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <PaymentIcon color="primary" /> Payment Details
+                  </Typography>
+                  <FormControl fullWidth variant="outlined" sx={{ mb: 2 }}>
+                    <InputLabel>Payment Method</InputLabel>
+                    <Select
+                      name="PaymentMethod"
+                      value={selectedWalkIn.PaymentMethod || ""}
+                      onChange={(e) =>
+                        setSelectedWalkIn((prev) => ({ ...prev, PaymentMethod: e.target.value }))
+                      }
+                      label="Payment Method"
+                    >
+                      <MenuItem value="">-- Select Payment Method --</MenuItem>
+                      <MenuItem value="Cash">Cash</MenuItem>
+                      <MenuItem value="BDO">BDO</MenuItem>
+                      <MenuItem value="BPI">BPI</MenuItem>
+                      <MenuItem value="GCash">GCash</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    fullWidth
+                    label="Payment Amount"
+                    name="AmountPaid"
+                    type="number"
+                    variant="outlined"
+                    value={selectedWalkIn.AmountPaid || ""}
+                    onChange={(e) =>
+                      setSelectedWalkIn((prev) => ({ ...prev, AmountPaid: e.target.value }))
+                    }
+                    sx={{ mb: 2 }}
+                  />
+
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mt: 3,
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <NotesIcon color="primary" /> Notes
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Notes"
+                    name="Notes"
+                    variant="outlined"
+                    multiline
+                    rows={3}
+                    value={selectedWalkIn.Notes || ""}
+                    onChange={(e) =>
+                      setSelectedWalkIn((prev) => ({ ...prev, Notes: e.target.value }))
+                    }
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+          <Button
+            variant="contained"
+            onClick={handleEditWalkInSubmit}
+            sx={{
+              px: 4,
+              py: 1,
+              fontSize: "1rem",
+              fontWeight: "bold",
+              borderRadius: 2,
+              textTransform: "none",
+            }}
+            startIcon={<SaveIcon />}
+          >
             Save Changes
           </Button>
         </DialogActions>
       </Dialog>
+
+       {/* NEW: ADD MONTHLY CLIENT DIALOG */}
+    <Dialog
+      open={isAddMonthlyClientOpen}
+      onClose={() => setAddMonthlyClientOpen(false)}
+      fullWidth
+      maxWidth="sm"
+    >
+      <DialogTitle>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="h5">
+            <PersonIcon sx={{ verticalAlign: "middle", mr: 1 }} />
+            Add New Monthly Client
+          </Typography>
+          <IconButton
+            onClick={() => setAddMonthlyClientOpen(false)}
+            sx={{ "&:hover": { color: "red" } }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+      <DialogContent dividers>
+        {/* Basic Info */}
+        <TextField
+          label="Full Name"
+          fullWidth
+          sx={{ my: 1 }}
+          value={newMonthlyClient.FullName}
+          onChange={(e) =>
+            setNewMonthlyClient((prev) => ({ ...prev, FullName: e.target.value }))
+          }
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <PersonIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          label="Email"
+          fullWidth
+          type="email"
+          sx={{ my: 1 }}
+          value={newMonthlyClient.Email}
+          onChange={(e) =>
+            setNewMonthlyClient((prev) => ({ ...prev, Email: e.target.value }))
+          }
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <EmailIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          label="Phone"
+          fullWidth
+          sx={{ my: 1 }}
+          value={newMonthlyClient.Phone}
+          onChange={(e) =>
+            setNewMonthlyClient((prev) => ({ ...prev, Phone: e.target.value }))
+          }
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <PhoneIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <FormControl fullWidth sx={{ my: 1 }}>
+          <InputLabel>Branch</InputLabel>
+          <Select
+            value={newMonthlyClient.BranchID ?? ""}
+            onChange={(e) =>
+              setNewMonthlyClient((prev) => ({ ...prev, BranchID: e.target.value }))
+            }
+            label="Branch"
+            startAdornment={
+              <InputAdornment position="start">
+                <GroupsIcon />
+              </InputAdornment>
+            }
+          >
+            <MenuItem value="">-- Select Branch --</MenuItem>
+            {Object.entries(branches).map(([BranchID, BranchName]) => (
+              <MenuItem key={BranchID} value={BranchID}>
+                {BranchName}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        {/* Start Date */}
+        <TextField
+          label="Start Date"
+          type="date"
+          fullWidth
+          sx={{ my: 1 }}
+          value={newMonthlyClient.StartDate}
+          onChange={(e) =>
+            setNewMonthlyClient((prev) => ({ ...prev, StartDate: e.target.value }))
+          }
+          InputLabelProps={{ shrink: true }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <EventIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        {/* Months To Pay Upfront */}
+        <TextField
+          label="Months to Pay Upfront"
+          type="number"
+          fullWidth
+          sx={{ my: 1 }}
+          value={newMonthlyClient.MonthsToPayUpfront}
+          onChange={(e) =>
+            setNewMonthlyClient((prev) => ({
+              ...prev,
+              MonthsToPayUpfront: e.target.value,
+            }))
+          }
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <DescriptionIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        <Divider sx={{ my: 2 }} />
+        <Typography variant="subtitle1" sx={{ fontWeight: "bold", mb: 1 }}>
+          Split Payments
+        </Typography>
+        {monthlyClientPayments.map((pay, idx) => (
+          <Box key={idx} sx={{ display: "flex", gap: 2, mb: 1 }}>
+            <FormControl sx={{ minWidth: 120 }}>
+              <InputLabel>Method</InputLabel>
+              <Select
+                label="Method"
+                value={pay.PaymentMethod}
+                onChange={(e) =>
+                  setMonthlyClientPayments((prev) =>
+                    prev.map((p, i) =>
+                      i === idx ? { ...p, PaymentMethod: e.target.value } : p
+                    )
+                  )
+                }
+                startAdornment={
+                  <InputAdornment position="start">
+                    <PaymentIcon />
+                  </InputAdornment>
+                }
+              >
+                <MenuItem value="">-- Select --</MenuItem>
+                <MenuItem value="Cash">Cash</MenuItem>
+                <MenuItem value="BDO">BDO</MenuItem>
+                <MenuItem value="BPI">BPI</MenuItem>
+                <MenuItem value="GCash">GCash</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Amount"
+              type="number"
+              value={pay.PaymentAmount}
+              onChange={(e) =>
+                setMonthlyClientPayments((prev) =>
+                  prev.map((p, i) =>
+                    i === idx ? { ...p, PaymentAmount: e.target.value } : p
+                  )
+                )
+              }
+              InputProps={{
+                startAdornment: <InputAdornment position="start">₱</InputAdornment>,
+              }}
+              sx={{ width: 150 }}
+            />
+            {monthlyClientPayments.length > 1 && (
+              <IconButton
+                onClick={() =>
+                  setMonthlyClientPayments((prev) => prev.filter((_, i) => i !== idx))
+                }
+                color="error"
+              >
+                <CloseIcon />
+              </IconButton>
+            )}
+          </Box>
+        ))}
+        <Button
+          variant="outlined"
+          onClick={() =>
+            setMonthlyClientPayments((prev) => [...prev, { PaymentMethod: "", PaymentAmount: "" }])
+          }
+          sx={{ mb: 2 }}
+        >
+          Add Payment
+        </Button>
+      </DialogContent>
+      <DialogActions sx={{ pr: 3, pb: 2 }}>
+        <Button onClick={() => setAddMonthlyClientOpen(false)}>Cancel</Button>
+        <Button variant="contained" onClick={handleAddMonthlyClientSubmit}>
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
+    
+    {/* NEW: VIEW MONTHLY CLIENT DIALOG */}
+    <Dialog
+      open={isViewMonthlyClientOpen}
+      onClose={() => setViewMonthlyClientOpen(false)}
+      fullWidth
+      maxWidth="md"
+    >
+      <DialogTitle>Monthly Client Details</DialogTitle>
+      <DialogContent dividers>
+        {selectedMonthlyClient && (
+          <Box>
+            <Typography variant="h6" gutterBottom>
+              {selectedMonthlyClient.FullName}
+            </Typography>
+            <Typography>Email: {selectedMonthlyClient.Email}</Typography>
+            <Typography>Phone: {selectedMonthlyClient.Phone}</Typography>
+            <Typography>
+              StartDate: {selectedMonthlyClient.StartDate ? formatDate(selectedMonthlyClient.StartDate) : "—"}
+            </Typography>
+            <Typography>
+              EndDate: {selectedMonthlyClient.EndDate ? formatDate(selectedMonthlyClient.EndDate) : "—"}
+            </Typography>
+            <Typography>
+              Active?: {selectedMonthlyClient.IsActive ? "Yes" : "No"}
+            </Typography>
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setViewMonthlyClientOpen(false)}>Close</Button>
+      </DialogActions>
+    </Dialog>
+
+    {/* NEW: EDIT MONTHLY CLIENT DIALOG */}
+    <Dialog
+      open={isEditMonthlyClientOpen}
+      onClose={() => setEditMonthlyClientOpen(false)}
+      fullWidth
+      maxWidth="sm"
+    >
+      <DialogTitle>Edit Monthly Client</DialogTitle>
+      <DialogContent dividers>
+        {selectedMonthlyClient && (
+          <>
+            <TextField
+              label="Full Name"
+              fullWidth
+              sx={{ my: 1 }}
+              value={selectedMonthlyClient.FullName}
+              onChange={(e) =>
+                setSelectedMonthlyClient((prev) => ({
+                  ...prev,
+                  FullName: e.target.value,
+                }))
+              }
+            />
+            <TextField
+              label="Email"
+              fullWidth
+              sx={{ my: 1 }}
+              value={selectedMonthlyClient.Email}
+              onChange={(e) =>
+                setSelectedMonthlyClient((prev) => ({
+                  ...prev,
+                  Email: e.target.value,
+                }))
+              }
+            />
+            <TextField
+              label="Phone"
+              fullWidth
+              sx={{ my: 1 }}
+              value={selectedMonthlyClient.Phone}
+              onChange={(e) =>
+                setSelectedMonthlyClient((prev) => ({
+                  ...prev,
+                  Phone: e.target.value,
+                }))
+              }
+            />
+            <TextField
+              label="Start Date"
+              type="date"
+              fullWidth
+              sx={{ my: 1 }}
+              value={selectedMonthlyClient.StartDate || ""}
+              onChange={(e) =>
+                setSelectedMonthlyClient((prev) => ({
+                  ...prev,
+                  StartDate: e.target.value,
+                }))
+              }
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="End Date"
+              type="date"
+              fullWidth
+              sx={{ my: 1 }}
+              value={selectedMonthlyClient.EndDate || ""}
+              onChange={(e) =>
+                setSelectedMonthlyClient((prev) => ({
+                  ...prev,
+                  EndDate: e.target.value,
+                }))
+              }
+              InputLabelProps={{ shrink: true }}
+            />
+            <FormControl fullWidth sx={{ my: 1 }}>
+              <InputLabel>Active?</InputLabel>
+              <Select
+                value={selectedMonthlyClient.IsActive ? "true" : "false"}
+                onChange={(e) =>
+                  setSelectedMonthlyClient((prev) => ({
+                    ...prev,
+                    IsActive: e.target.value === "true",
+                  }))
+                }
+                label="Active?"
+              >
+                <MenuItem value="true">Yes</MenuItem>
+                <MenuItem value="false">No</MenuItem>
+              </Select>
+            </FormControl>
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setEditMonthlyClientOpen(false)}>Cancel</Button>
+        <Button variant="contained" onClick={handleEditMonthlyClientSubmit}>
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
+
 
       {/* VIEW Membership */}
       <Dialog
         open={isViewMembershipOpen}
         onClose={() => setViewMembershipOpen(false)}
         fullWidth
-        maxWidth="md"
+        maxWidth="xl"
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 4,
+            p: 3,
+          },
+        }}
       >
-        <DialogTitle>Membership Details</DialogTitle>
-        <DialogContent dividers>
+        <DialogTitle sx={{ p: 2 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <PersonIcon sx={{ fontSize: 32, color: "primary.main" }} />
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              Membership Details
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={() => setViewMembershipOpen(false)}
+            sx={{ "&:hover": { color: theme.palette.error.main } }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+        <DialogContent dividers sx={{ p: 4 }}>
           {selectedMembership && (
-            <Box sx={{ p: 2 }}>
-              {selectedMembership.PhotoPath ? (
-                <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
-                  <img
-                    src={`/storage/${selectedMembership.PhotoPath}`}
-                    alt="Member"
-                    style={{ maxWidth: "150px", borderRadius: "8px" }}
+            <Box>
+              <Grid container spacing={4}>
+                <Grid item xs={12} sm={3} display="flex" justifyContent="center">
+                  <Box
+                    sx={{
+                      width: 250,
+                      height: 250,
+                      borderRadius: 2,
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      bgcolor: "#f9f9f9",
+                      border: "1px solid #ddd",
+                      boxShadow: 1,
+                    }}
+                  >
+                    {selectedMembership.PhotoPath ? (
+                      <Box
+                        component="img"
+                        src={`/storage/${selectedMembership.PhotoPath}`}
+                        alt="Member"
+                        sx={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          borderRadius: 2,
+                        }}
+                      />
+                    ) : (
+                      <Typography variant="body1" sx={{ color: "gray", textAlign: "center" }}>
+                        No photo available.
+                      </Typography>
+                    )}
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={9}>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} sm={4}>
+                      <Typography
+                        variant="h5"
+                        sx={{
+                          fontWeight: "bold",
+                          mb: 2,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                        }}
+                      >
+                        <PeopleIcon color="white" /> Personal Information
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        variant="filled"
+                        label="Name"
+                        InputProps={{
+                          readOnly: true,
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <BadgeIcon />
+                            </InputAdornment>
+                          ),
+                        }}
+                        value={selectedMembership.FullName}
+                        sx={{ mb: 2 }}
+                      />
+                      <TextField
+                        fullWidth
+                        variant="filled"
+                        label="Email"
+                        InputProps={{
+                          readOnly: true,
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <EmailIcon />
+                            </InputAdornment>
+                          ),
+                        }}
+                        value={selectedMembership.Email}
+                        sx={{ mb: 2 }}
+                      />
+                      <TextField
+                        fullWidth
+                        variant="filled"
+                        label="Phone"
+                        InputProps={{
+                          readOnly: true,
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <PhoneIcon />
+                            </InputAdornment>
+                          ),
+                        }}
+                        value={selectedMembership.Phone || "—"}
+                        sx={{ mb: 2 }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={8}>
+                      <Typography
+                        variant="h5"
+                        sx={{
+                          fontWeight: "bold",
+                          mb: 2,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                        }}
+                      >
+                        <AutorenewIcon color="white" /> Membership Info
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={4}>
+                          <TextField
+                            fullWidth
+                            label="Plan"
+                            variant="filled"
+                            InputProps={{
+                              readOnly: true,
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <GroupsIcon />
+                                </InputAdornment>
+                              ),
+                            }}
+                            value={
+                              plans.find((pl) => pl.PlanID === Number(selectedMembership.PlanID))
+                                ?.PlanName || "Unknown"
+                            }
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                          <TextField
+                            fullWidth
+                            label="Status"
+                            variant="filled"
+                            InputProps={{
+                              readOnly: true,
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <WarningIcon />
+                                </InputAdornment>
+                              ),
+                            }}
+                            value={getStatusNameByID(selectedMembership.MemberStatusID)}
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                          <TextField
+                            fullWidth
+                            label="Start Date"
+                            variant="filled"
+                            InputProps={{
+                              readOnly: true,
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <EventAvailableIcon />
+                                </InputAdornment>
+                              ),
+                            }}
+                            value={formatDate(selectedMembership.MembershipStartDate)}
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                          <TextField
+                            fullWidth
+                            label="End Date"
+                            variant="filled"
+                            InputProps={{
+                              readOnly: true,
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <HistoryIcon />
+                                </InputAdornment>
+                              ),
+                            }}
+                            value={formatDate(selectedMembership.MembershipEndDate)}
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                          <TextField
+                            fullWidth
+                            label="Free Sessions"
+                            variant="filled"
+                            InputProps={{
+                              readOnly: true,
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <DirectionsWalkIcon />
+                                </InputAdornment>
+                              ),
+                            }}
+                            value={selectedMembership.FreeSessions || 0}
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                          <TextField
+                            fullWidth
+                            label="Card Number"
+                            variant="filled"
+                            InputProps={{
+                              readOnly: true,
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <CreditCardIcon />
+                                </InputAdornment>
+                              ),
+                            }}
+                            value={selectedMembership.MembershipCardNumber || "—"}
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                          <TextField
+                            fullWidth
+                            label="Card Issued?"
+                            variant="filled"
+                            InputProps={{
+                              readOnly: true,
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <BadgeIcon />
+                                </InputAdornment>
+                              ),
+                            }}
+                            value={selectedMembership.MembershipCardIssued ? "Yes" : "No"}
+                          />
+                        </Grid>
+                        <Grid item xs={12} sm={4} />
+                        <Grid item xs={12} sm={4} />
+                      </Grid>
+                    </Grid>
+                  </Grid>
+                </Grid>
+                <Grid item xs={12}>
+                  <Divider sx={{ my: 3 }} />
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <NotesIcon color="primary" /> Notes
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={3}
+                    variant="filled"
+                    InputProps={{
+                      readOnly: true,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <HistoryIcon />
+                        </InputAdornment>
+                      ),
+                    }}
+                    value={
+                      selectedMembership.Notes?.length
+                        ? selectedMembership.Notes
+                        : "No notes available."
+                    }
                   />
-                </Box>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+
+{/* EDIT Membership */}
+<Dialog
+  open={isEditMembershipOpen}
+  onClose={() => setEditMembershipOpen(false)}
+  fullWidth
+  maxWidth="xl"
+  sx={{
+    "& .MuiDialog-paper": {
+      borderRadius: 3,
+      boxShadow: 6,
+      p: 3,
+    },
+  }}
+>
+  <Box display="flex" justifyContent="space-between" alignItems="center">
+    <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+      <PersonIcon sx={{ fontSize: 32, color: "primary.main" }} />
+      <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+        Edit Membership
+      </Typography>
+    </Box>
+    <IconButton
+      onClick={() => setEditMembershipOpen(false)}
+      sx={{ "&:hover": { color: theme.palette.error.main } }}
+    >
+      <CloseIcon />
+    </IconButton>
+  </Box>
+  <DialogContent dividers sx={{ p: 4 }}>
+    {selectedMembership && (
+      <Box>
+        <Grid container spacing={4}>
+          <Grid
+            item
+            xs={12}
+            sm={3}
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+            gap={2}
+          >
+            {/* Photo Preview */}
+            <Box
+              sx={{
+                width: 250,
+                height: 250,
+                borderRadius: 2,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                bgcolor: "#f9f9f9",
+                border: "1px solid #ddd",
+                boxShadow: 1,
+              }}
+            >
+              {capturedImage ? (
+                <Box
+                  component="img"
+                  src={capturedImage}
+                  alt="Captured"
+                  sx={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    borderRadius: 2,
+                  }}
+                />
+              ) : selectedMembership.PhotoPath ? (
+                <Box
+                  component="img"
+                  src={`/storage/${selectedMembership.PhotoPath}`}
+                  alt="Member"
+                  sx={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    borderRadius: 2,
+                  }}
+                />
               ) : (
-                <Typography variant="body2" align="center" sx={{ color: "gray" }}>
+                <Typography
+                  variant="body1"
+                  sx={{ color: "gray", textAlign: "center" }}
+                >
                   No photo available.
                 </Typography>
               )}
-              <Typography variant="h6" gutterBottom>
-                Personal Information
-              </Typography>
-              <Typography>Name: {selectedMembership.FullName}</Typography>
-              <Typography>Email: {selectedMembership.Email}</Typography>
-              <Typography>Phone: {selectedMembership.Phone || "—"}</Typography>
-
-              <Divider sx={{ my: 2 }} />
-
-              <Typography variant="h6" gutterBottom>
-                Membership Info
-              </Typography>
-              <Typography>Plan: {selectedMembership.PlanID}</Typography>
-              <Typography>
-                Status: {getStatusNameByID(selectedMembership.MemberStatusID)}
-              </Typography>
-              <Typography>
-                Start Date: {selectedMembership.MembershipStartDate || "—"}
-              </Typography>
-              <Typography>
-                End Date: {selectedMembership.MembershipEndDate || "—"}
-              </Typography>
-              <Typography>
-                Free Sessions: {selectedMembership.FreeSessions || 0}
-              </Typography>
-              <Typography>
-                Card Number: {selectedMembership.MembershipCardNumber || "—"}
-              </Typography>
-              <Typography>
-                Card Issued? {selectedMembership.MembershipCardIssued ? "Yes" : "No"}
-              </Typography>
-
-              <Divider sx={{ my: 2 }} />
-
-              <Typography variant="h6" gutterBottom>
-                Notes
-              </Typography>
-              <Typography>
-                {selectedMembership.Notes?.length
-                  ? selectedMembership.Notes
-                  : "No notes available."}
-              </Typography>
             </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button variant="contained" onClick={() => setViewMembershipOpen(false)}>
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
 
-      {/* EDIT Membership */}
-      <Dialog
-        open={isEditMembershipOpen}
-        onClose={() => setEditMembershipOpen(false)}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Edit Membership</DialogTitle>
-        <DialogContent dividers>
-          {selectedMembership && (
-            <>
-              <TextField
-                label="Full Name"
-                fullWidth
-                margin="dense"
-                value={selectedMembership.FullName}
-                onChange={(e) =>
-                  setSelectedMembership((prev) => ({ ...prev, FullName: e.target.value }))
-                }
-              />
-              <TextField
-                label="Phone"
-                fullWidth
-                margin="dense"
-                value={selectedMembership.Phone || ""}
-                onChange={(e) =>
-                  setSelectedMembership((prev) => ({ ...prev, Phone: e.target.value }))
-                }
-              />
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Plan</InputLabel>
-                <Select
-                  label="Plan"
-                  value={selectedMembership.PlanID || ""}
-                  onChange={(e) =>
-                    setSelectedMembership((prev) => ({ ...prev, PlanID: e.target.value }))
-                  }
-                >
-                  {plans.map((plan) => (
-                    <MenuItem key={plan.PlanID} value={plan.PlanID}>
-                      {plan.PlanName}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            {/* Upload & Recapture Buttons */}
+            <Box display="flex" gap={1}>
+              {/* Upload Button */}
+              <Button variant="outlined" component="label" startIcon={<FileUploadIcon />}>
+                Upload Photo
+                <input type="file" hidden accept="image/*" onChange={handlePhotoUpload} />
+              </Button>
 
-              <TextField
-                label="Membership Card Number"
-                fullWidth
-                margin="dense"
-                value={selectedMembership.MembershipCardNumber || ""}
-                onChange={(e) =>
-                  setSelectedMembership((prev) => ({
-                    ...prev,
-                    MembershipCardNumber: e.target.value,
-                  }))
-                }
-              />
-
-              <TextField
-                label="Membership Status"
-                fullWidth
-                margin="dense"
-                value={selectedMembership.MemberStatusID || ""}
-                onChange={(e) =>
-                  setSelectedMembership((prev) => ({
-                    ...prev,
-                    MemberStatusID: e.target.value,
-                  }))
-                }
-              />
-
-              <TextField
-                label="Start Date"
-                type="date"
-                fullWidth
-                margin="dense"
-                InputLabelProps={{ shrink: true }}
-                value={selectedMembership.MembershipStartDate || ""}
-                onChange={(e) =>
-                  setSelectedMembership((prev) => ({
-                    ...prev,
-                    MembershipStartDate: e.target.value,
-                  }))
-                }
-              />
-              <TextField
-                label="End Date"
-                type="date"
-                fullWidth
-                margin="dense"
-                InputLabelProps={{ shrink: true }}
-                value={selectedMembership.MembershipEndDate || ""}
-                onChange={(e) =>
-                  setSelectedMembership((prev) => ({
-                    ...prev,
-                    MembershipEndDate: e.target.value,
-                  }))
-                }
-              />
-
-              <TextField
-                label="Free Sessions"
-                type="number"
-                fullWidth
-                margin="dense"
-                value={selectedMembership.FreeSessions || 0}
-                onChange={(e) =>
-                  setSelectedMembership((prev) => ({
-                    ...prev,
-                    FreeSessions: e.target.value,
-                  }))
-                }
-              />
-
-              <TextField
-                label="Notes"
-                fullWidth
-                margin="dense"
-                multiline
-                rows={2}
-                value={selectedMembership.Notes || ""}
-                onChange={(e) =>
-                  setSelectedMembership((prev) => ({
-                    ...prev,
-                    Notes: e.target.value,
-                  }))
-                }
-              />
-
-              <Box sx={{ mt: 2 }}>
-                <Button variant="contained" component="label">
-                  Upload Biometric/Photo
-                  <input
-                    type="file"
-                    hidden
-                    accept="image/*"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        setSelectedMembership((prev) => ({
-                          ...prev,
-                          PhotoFile: e.target.files[0],
-                        }));
-                      }
-                    }}
-                  />
-                </Button>
-              </Box>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditMembershipOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleEditMembershipSubmit}>
-            Save Changes
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* CREATE Freeze */}
-      <Dialog open={isFreezeModalOpen} onClose={() => setFreezeModalOpen(false)}>
-        <DialogTitle>Freeze Membership</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Start Date"
-            type="date"
-            name="FreezeStartDate"
-            InputLabelProps={{ shrink: true }}
-            value={freezeForm.FreezeStartDate}
-            onChange={handleFreezeFormChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="End Date"
-            type="date"
-            name="FreezeEndDate"
-            InputLabelProps={{ shrink: true }}
-            value={freezeForm.FreezeEndDate}
-            onChange={handleFreezeFormChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Reason"
-            name="Reason"
-            value={freezeForm.Reason}
-            onChange={handleFreezeFormChange}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFreezeModalOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSubmitFreeze}>
-            Submit Freeze
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* VIEW Freeze */}
-      <Dialog open={isViewFreezeOpen} onClose={() => setViewFreezeOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Freeze Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedFreeze && (
-            <Box sx={{ p: 2 }}>
-              <Typography>MemberID: {selectedFreeze.MemberID}</Typography>
-              <Typography>Start: {selectedFreeze.FreezeStartDate}</Typography>
-              <Typography>End: {selectedFreeze.FreezeEndDate}</Typography>
-              <Typography>Reason: {selectedFreeze.Reason}</Typography>
+              {/* Recapture Button */}
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<PhotoCameraIcon />}
+                onClick={() => setOpenWebcam(true)}
+              >
+                Recapture
+              </Button>
             </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button variant="contained" onClick={() => setViewFreezeOpen(false)}>
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
+          </Grid>
 
-      {/* EDIT Freeze */}
-      <Dialog open={isEditFreezeOpen} onClose={() => setEditFreezeOpen(false)}>
-        <DialogTitle>Edit Freeze</DialogTitle>
-        <DialogContent>
-          {selectedFreeze && (
-            <>
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Start Date"
-                type="date"
-                name="FreezeStartDate"
-                InputLabelProps={{ shrink: true }}
-                value={selectedFreeze.FreezeStartDate || ""}
-                onChange={handleEditFreezeChange}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="End Date"
-                type="date"
-                name="FreezeEndDate"
-                InputLabelProps={{ shrink: true }}
-                value={selectedFreeze.FreezeEndDate || ""}
-                onChange={handleEditFreezeChange}
-              />
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Reason"
-                name="Reason"
-                value={selectedFreeze.Reason || ""}
-                onChange={handleEditFreezeChange}
-              />
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditFreezeOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleEditFreezeSubmit}>
-            Save Changes
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* VIEW Renewal */}
-      <Dialog open={isViewRenewalOpen} onClose={() => setViewRenewalOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Renewal Details</DialogTitle>
-        <DialogContent dividers>
-          {selectedRenewal && (
-            <Box sx={{ p: 2 }}>
-              <Typography>RenewalID: {selectedRenewal.RenewalID}</Typography>
-              <Typography>MemberID: {selectedRenewal.MemberID}</Typography>
-              <Typography>Renewal Date: {selectedRenewal.RenewalDate}</Typography>
-              <Typography>PlanID: {selectedRenewal.PlanID}</Typography>
-              <Typography>Amount: {selectedRenewal.RenewalAmount}</Typography>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button variant="contained" onClick={() => setViewRenewalOpen(false)}>
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ADD Renewal */}
-      <Dialog open={isAddRenewalOpen} onClose={() => setAddRenewalOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Add New Renewal</DialogTitle>
-        <DialogContent>
-          {/* MemberID */}
-          <TextField
-            label="Member ID"
-            name="MemberID"
-            type="number"
-            fullWidth
-            margin="dense"
-            value={newRenewal.MemberID}
-            onChange={handleAddRenewalChange}
-          />
-          {/* PlanID */}
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Plan</InputLabel>
-            <Select
-              name="PlanID"
-              label="Plan"
-              value={newRenewal.PlanID}
-              onChange={(e) => {
-                const selectedPlanID = e.target.value;
-                setNewRenewal((prev) => ({ ...prev, PlanID: selectedPlanID }));
-
-                // auto-fill RenewalAmount from plan’s Price:
-                const planObj = plans.find((p) => p.PlanID === selectedPlanID);
-                if (planObj) {
-                  setNewRenewal((prev) => ({
-                    ...prev,
-                    PlanID: selectedPlanID,
-                    RenewalAmount: planObj.Price,
-                  }));
-                }
+          {/* Webcam Dialog */}
+          <Dialog open={openWebcam} onClose={handleCloseWebcam} maxWidth="sm" fullWidth>
+            <DialogTitle sx={{ textAlign: "center" }}>Capture Profile Picture</DialogTitle>
+            <DialogContent
+              dividers
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              {plans.map((p) => (
-                <MenuItem key={p.PlanID} value={p.PlanID}>
-                  {p.PlanName}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+              <Webcam
+                audio={false}
+                height={240}
+                ref={webcamRef}
+                screenshotFormat="image/jpeg"
+                width={320}
+                videoConstraints={{ width: 320, height: 240, facingMode: "user" }}
+              />
+            </DialogContent>
+            <DialogActions sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
+              <IconButton onClick={handleCloseWebcam} sx={{ color: "#FF0000" }}>
+                <CloseIcon fontSize="large" />
+              </IconButton>
+              <IconButton onClick={captureImage} color="primary">
+                <CameraAltIcon fontSize="large" />
+              </IconButton>
+            </DialogActions>
+          </Dialog>
 
-          {/* RenewalAmount */}
+          <Grid item xs={12} sm={9}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} sm={4}>
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight: "bold",
+                    mb: 2,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  <PeopleIcon color="white" />
+                  Personal Information
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="Full Name"
+                  variant="filled"
+                  value={selectedMembership.FullName || ""}
+                  onChange={(e) =>
+                    setSelectedMembership((prev) => ({
+                      ...prev,
+                      FullName: e.target.value,
+                    }))
+                  }
+                  sx={{ mb: 2 }}
+                />
+                <TextField
+                  fullWidth
+                  label="Email"
+                  variant="filled"
+                  value={selectedMembership.Email || ""}
+                  onChange={(e) =>
+                    setSelectedMembership((prev) => ({
+                      ...prev,
+                      Email: e.target.value,
+                    }))
+                  }
+                  sx={{ mb: 2 }}
+                />
+                <TextField
+                  fullWidth
+                  label="Phone"
+                  variant="filled"
+                  value={selectedMembership.Phone || ""}
+                  onChange={(e) =>
+                    setSelectedMembership((prev) => ({
+                      ...prev,
+                      Phone: e.target.value,
+                    }))
+                  }
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={8}>
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight: "bold",
+                    mb: 2,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  <AutorenewIcon color="white" />
+                  Membership Info
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={4}>
+                    <FormControl variant="filled" fullWidth>
+                      <InputLabel>Plan</InputLabel>
+                      <Select
+                        value={selectedMembership.PlanID || ""}
+                        onChange={(e) =>
+                          setSelectedMembership((prev) => ({
+                            ...prev,
+                            PlanID: e.target.value,
+                          }))
+                        }
+                      >
+                        {plans.map((plan) => (
+                          <MenuItem key={plan.PlanID} value={plan.PlanID}>
+                            {plan.PlanName}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <FormControl variant="filled" fullWidth>
+                      <InputLabel>Membership Status</InputLabel>
+                      <Select
+                        value={selectedMembership.MemberStatusID || ""}
+                        onChange={(e) =>
+                          setSelectedMembership((prev) => ({
+                            ...prev,
+                            MemberStatusID: e.target.value,
+                          }))
+                        }
+                      >
+                        {memberStatuses.map((status) => (
+                          <MenuItem key={status.MemberStatusID} value={status.MemberStatusID}>
+                            {status.StatusName}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="Start Date"
+                      variant="filled"
+                      type="date"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      value={selectedMembership.MembershipStartDate || ""}
+                      onChange={(e) =>
+                        setSelectedMembership((prev) => ({
+                          ...prev,
+                          MembershipStartDate: e.target.value,
+                        }))
+                      }
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="End Date"
+                      variant="filled"
+                      type="date"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      value={selectedMembership.MembershipEndDate || ""}
+                      onChange={(e) =>
+                        setSelectedMembership((prev) => ({
+                          ...prev,
+                          MembershipEndDate: e.target.value,
+                        }))
+                      }
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="Free Sessions"
+                      variant="filled"
+                      type="number"
+                      fullWidth
+                      value={selectedMembership.FreeSessions || 0}
+                      onChange={(e) =>
+                        setSelectedMembership((prev) => ({
+                          ...prev,
+                          FreeSessions: e.target.value,
+                        }))
+                      }
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="Card Number"
+                      variant="filled"
+                      fullWidth
+                      value={selectedMembership.MembershipCardNumber || ""}
+                      onChange={(e) =>
+                        setSelectedMembership((prev) => ({
+                          ...prev,
+                          MembershipCardNumber: e.target.value,
+                        }))
+                      }
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <FormControl variant="filled" fullWidth>
+                      <InputLabel>Card Issued?</InputLabel>
+                      <Select
+                        value={selectedMembership.MembershipCardIssued ? "Yes" : "No"}
+                        onChange={(e) =>
+                          setSelectedMembership((prev) => ({
+                            ...prev,
+                            MembershipCardIssued: e.target.value === "Yes",
+                          }))
+                        }
+                      >
+                        <MenuItem value="No">No</MenuItem>
+                        <MenuItem value="Yes">Yes</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    {/* Empty grid for spacing */}
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    {/* Empty grid for spacing */}
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="h6" sx={{ fontWeight: "bold", mt: 2, mb: 1 }}>
+                      Notes
+                    </Typography>
+                    <TextField
+                      label="Notes"
+                      variant="filled"
+                      fullWidth
+                      multiline
+                      rows={3}
+                      value={selectedMembership.Notes || ""}
+                      onChange={(e) =>
+                        setSelectedMembership((prev) => ({
+                          ...prev,
+                          Notes: e.target.value,
+                        }))
+                      }
+                    />
+                  </Grid>
+                </Grid>
+              </Grid>
+            </Grid>
+          </Grid>
+        </Grid>
+      </Box>
+    )}
+  </DialogContent>
+  <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+    <Button
+      variant="contained"
+      onClick={handleEditMembershipSubmit}
+      sx={{
+        px: 4,
+        py: 1,
+        fontSize: "1rem",
+        fontWeight: "bold",
+        borderRadius: 2,
+        textTransform: "none",
+      }}
+      startIcon={<SaveIcon />}
+    >
+      Save Changes
+    </Button>
+  </DialogActions>
+</Dialog>
+
+
+      {/* CREATE Freeze */}
+      <Dialog
+      open={isFreezeModalOpen}
+      onClose={() => setFreezeModalOpen(false)}
+      fullWidth
+      maxWidth="sm"
+      sx={{
+        "& .MuiDialog-paper": {
+          borderRadius: 3,
+          boxShadow: 6,
+          p: 3,
+          overflow: "hidden",
+        },
+      }}
+    >
+      <DialogTitle sx={{ p: 2 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <AcUnitIcon sx={{ fontSize: 32, color: "primary.main" }} />
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              Freeze Membership
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={() => setFreezeModalOpen(false)}
+            sx={{ "&:hover": { color: theme.palette.error.main } }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+
+      <DialogContent dividers>
+        <TextField
+          fullWidth
+          margin="normal"
+          label="Start Date"
+          type="date"
+          name="FreezeStartDate"
+          InputLabelProps={{ shrink: true }}
+          value={freezeForm.FreezeStartDate}
+          onChange={handleFreezeFormChange}
+          variant="outlined"
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <EventIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          fullWidth
+          margin="normal"
+          label="End Date"
+          type="date"
+          name="FreezeEndDate"
+          InputLabelProps={{ shrink: true }}
+          value={freezeForm.FreezeEndDate}
+          onChange={handleFreezeFormChange}
+          variant="outlined"
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <EventIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          fullWidth
+          margin="normal"
+          label="Reason"
+          name="Reason"
+          value={freezeForm.Reason}
+          onChange={handleFreezeFormChange}
+          variant="outlined"
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <StickyNote2Icon />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </DialogContent>
+
+      <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+        <Button
+          variant="contained"
+          onClick={handleSubmitFreeze}
+          disabled={
+            !freezeForm.FreezeStartDate ||
+            !freezeForm.FreezeEndDate ||
+            !freezeForm.Reason.trim()
+          }
+          sx={{
+            px: 4,
+            py: 1,
+            textTransform: "none",
+          }}
+          startIcon={<SaveIcon />}
+        >
+          SUBMIT FREEZE
+        </Button>
+      </DialogActions>
+
+    </Dialog>
+
+      {/* VIEW Freeze */}
+      <Dialog
+        open={isViewFreezeOpen}
+        onClose={() => setViewFreezeOpen(false)}
+        fullWidth
+        maxWidth="lg" // Landscape format with proper width
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            overflow: "hidden", // Prevents vertical scrolling
+          },
+        }}
+      >
+        {/* Title */}
+        <DialogTitle sx={{ p: 2 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <AcUnitIcon sx={{ fontSize: 32, color: "primary.main" }} />
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              Freeze Details
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={() => setViewFreezeOpen(false)}
+            sx={{ "&:hover": { color: theme.palette.error.main } }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+        {/* Content */}
+        <DialogContent dividers sx={{ p: 4 }}>
+          {selectedFreeze && (
+            <Box sx={{ display: "flex", flexDirection: "row", gap: 4 }}>
+              <Grid container spacing={3}>
+                {/* Left Column: Member & Freeze Dates */}
+                <Grid item xs={6}>
+                  {/* Member Information */}
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <PersonIcon color="primary" /> Member Information
+                  </Typography>
+                  
+                  <TextField
+                    fullWidth
+                    label="Member ID"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={selectedFreeze.MemberID || "—"}
+                    sx={{ mb: 2 }}
+                  />
+
+                  {/* Freeze Period */}
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mt: 3,
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <EventIcon color="primary" /> Freeze Period
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Start Date"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={formatDate(selectedFreeze.FreezeStartDate)}
+                    sx={{ mb: 2 }}
+                  />
+
+                  <TextField
+                    fullWidth
+                    label="End Date"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={formatDate(selectedFreeze.FreezeEndDate)}
+                    sx={{ mb: 2 }}
+                  />
+                </Grid>
+
+                {/* Right Column: Reason */}
+                <Grid item xs={6}>
+                  {/* Freeze Reason */}
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <NotesIcon color="primary" /> Freeze Reason
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Reason"
+                    variant="filled"
+                    multiline
+                    rows={4}
+                    InputProps={{ readOnly: true }}
+                    value={selectedFreeze.Reason || "No reason provided."}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+
+
+      {/* EDIT Freeze */}
+      <Dialog
+      open={isEditFreezeOpen}
+      onClose={() => setEditFreezeOpen(false)}
+      fullWidth
+      maxWidth="sm"
+      sx={{
+        "& .MuiDialog-paper": {
+          borderRadius: 3,
+          boxShadow: 6,
+          p: 3,
+          overflow: "hidden",
+        },
+      }}
+    >
+      <DialogTitle sx={{ p: 2 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <AcUnitIcon sx={{ fontSize: 32, color: "primary.main" }} />
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              Edit Freeze
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={() => setEditFreezeOpen(false)}
+            sx={{ "&:hover": { color: theme.palette.error.main } }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+
+      <DialogContent dividers>
+        {selectedFreeze && (
+          <>
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Start Date"
+              type="date"
+              name="FreezeStartDate"
+              InputLabelProps={{ shrink: true }}
+              value={selectedFreeze.FreezeStartDate || ""}
+              onChange={handleEditFreezeChange}
+              variant="outlined"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <EventIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              fullWidth
+              margin="normal"
+              label="End Date"
+              type="date"
+              name="FreezeEndDate"
+              InputLabelProps={{ shrink: true }}
+              value={selectedFreeze.FreezeEndDate || ""}
+              onChange={handleEditFreezeChange}
+              variant="outlined"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <EventIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              fullWidth
+              margin="normal"
+              label="Reason"
+              name="Reason"
+              value={selectedFreeze.Reason || ""}
+              onChange={handleEditFreezeChange}
+              variant="outlined"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <StickyNote2Icon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </>
+        )}
+      </DialogContent>
+
+      <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+        <Button
+          variant="contained"
+          onClick={handleEditFreezeSubmit}
+          sx={{
+            px: 4,
+            py: 1,
+            fontSize: "1rem",
+            fontWeight: "bold",
+            borderRadius: 2,
+            textTransform: "none",
+            ml: 2,
+          }}
+          startIcon={<SaveIcon />}
+        >
+          Save Changes
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+     {/* VIEW Renewal */}
+        <Dialog
+          open={isViewRenewalOpen}
+          onClose={() => setViewRenewalOpen(false)}
+          fullWidth
+          maxWidth="sm" // Reduced width
+          sx={{
+            "& .MuiDialog-paper": {
+              borderRadius: 3,
+              boxShadow: 6,
+              p: 3,
+              maxWidth: "55vw", // Less wide than before
+            },
+          }}
+        >
+            <DialogTitle sx={{ p: 2 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <AutorenewIcon sx={{ fontSize: 32, color: "primary.main" }} />
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              Renewal Details
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={() => setViewRenewalOpen(false)}
+            sx={{ "&:hover": { color: theme.palette.error.main } }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+          {/* Content */}
+          <DialogContent dividers sx={{ p: 4 }}>
+            {selectedRenewal && (
+              <Box>
+                <Grid container spacing={3}>
+                  {/* Left Column: Member & Renewal Info */}
+                  <Grid item xs={12} sm={6}>
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: "bold",
+                        mb: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                      }}
+                    >
+                      <PersonIcon color="primary" /> Member Information
+                    </Typography>
+                    <TextField
+                    fullWidth
+                    label="Member Name"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={
+                      membershipRecords.find((m) => m.MemberID === selectedRenewal.MemberID)
+                        ?.FullName || "—"
+                    }
+                    sx={{ mb: 2 }}
+                  />
+                    <TextField
+                      fullWidth
+                      label="Renewal ID"
+                      variant="filled"
+                      InputProps={{ readOnly: true }}
+                      value={selectedRenewal.RenewalID || "—"}
+                      sx={{ mb: 2 }}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Renewal Date"
+                      variant="filled"
+                      InputProps={{ readOnly: true }}
+                      value={formatDate(selectedRenewal.RenewalDate)}
+                      sx={{ mb: 2 }}
+                    />
+                  </Grid>
+
+                  {/* Right Column: Plan & Payment Info */}
+                  <Grid item xs={12} sm={6}>
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: "bold",
+                        mb: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                      }}
+                    >
+                      <PaymentIcon color="primary" /> Payment & Plan
+                    </Typography>
+                    <TextField
+                    fullWidth
+                    label="Plan Name"
+                    variant="filled"
+                    InputProps={{ readOnly: true }}
+                    value={
+                      plans.find((plan) => plan.PlanID === selectedRenewal.PlanID)?.PlanName || "—"
+                    }
+                    sx={{ mb: 2 }}
+                  />
+                    <TextField
+                      fullWidth
+                      label="Amount Paid"
+                      variant="filled"
+                      InputProps={{ readOnly: true }}
+                      value={
+                        selectedRenewal.RenewalAmount
+                          ? `₱${parseFloat(selectedRenewal.RenewalAmount).toFixed(2)}`
+                          : "N/A"
+                      }
+                      sx={{ mb: 2 }}
+                    />
+                  </Grid>
+                </Grid>
+              </Box>
+            )}
+          </DialogContent>
+        </Dialog>
+
+
+      {/* ADD Renewal Dialog (Manual End Date) */}
+      <Dialog
+        open={isAddRenewalOpen}
+        onClose={() => setAddRenewalOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3, overflow: "hidden" } }}
+      >
+        <DialogTitle sx={{ p: 2 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" alignItems="center" gap={1}>
+              <AutorenewIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Add New Renewal
+              </Typography>
+            </Box>
+            <IconButton
+              onClick={() => setAddRenewalOpen(false)}
+              sx={{ "&:hover": { color: "red" } }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent dividers>
+          {/* (A) Member Name */}
+          <TextField
+            label="Member Name"
+            fullWidth
+            variant="outlined"
+            margin="normal"
+            value={
+              membershipRecords.find((m) => m.MemberID === newRenewal.MemberID)?.FullName
+              || "Unknown Member"
+            }
+            InputProps={{
+              readOnly: true,
+              startAdornment: (
+                <InputAdornment position="start">
+                  <PersonIcon />
+                </InputAdornment>
+              ),
+            }}
+          />
+
+          {/* (B) New Membership End Date */}
+          <TextField
+            label="New Membership End Date"
+            name="NewEndDate"
+            type="date"
+            fullWidth
+            margin="normal"
+            variant="outlined"
+            value={newRenewal.NewEndDate}
+            onChange={(e) =>
+              setNewRenewal((prev) => ({ ...prev, NewEndDate: e.target.value }))
+            }
+            InputLabelProps={{ shrink: true }}
+            error={!!validationErrors.NewEndDate}
+            helperText={validationErrors.NewEndDate}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <EventIcon />
+                </InputAdornment>
+              ),
+            }}
+          />
+
+          {/* Renewal Amount (auto-filled by the useEffect) */}
           <TextField
             label="Renewal Amount"
             name="RenewalAmount"
@@ -1708,79 +4234,322 @@ export default function MembershipManagement() {
             fullWidth
             margin="dense"
             value={newRenewal.RenewalAmount}
-            onChange={handleAddRenewalChange}
+            onChange={(e) =>
+              setNewRenewal((prev) => ({
+                ...prev,
+                RenewalAmount: e.target.value,
+              }))
+            }
+            variant="outlined"
+            error={!!validationErrors.RenewalAmount}
+            helperText={validationErrors.RenewalAmount}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
+                </InputAdornment>
+              ),
+            }}
           />
 
-          {/* Payment fields */}
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Payment Method</InputLabel>
-            <Select
-              name="PaymentMethod"
-              label="Payment Method"
-              value={newRenewal.PaymentMethod}
-              onChange={handleAddRenewalChange}
+          {/* Payment Splits */}
+          <Typography variant="subtitle2" sx={{ mt: 2 }}>
+            Payments (Split Allowed)
+          </Typography>
+          {renewalPayments.map((payment, index) => (
+            <Box
+              key={index}
+              sx={{
+                display: "flex",
+                gap: 2,
+                mb: 1,
+                mt: 1,
+                flexWrap: "wrap",
+                alignItems: "center",
+                backgroundColor: "#f9f9f9",
+                p: 1,
+                borderRadius: 1,
+              }}
             >
-              <MenuItem value="">-- Select Method --</MenuItem>
-              <MenuItem value="Cash">Cash</MenuItem>
-              <MenuItem value="BDO">BDO</MenuItem>
-              <MenuItem value="BPI">BPI</MenuItem>
-              <MenuItem value="GCash">GCash</MenuItem>
-            </Select>
-          </FormControl>
+              <FormControl
+                sx={{ minWidth: 120 }}
+                error={!!validationErrors[`Payments.${index}.PaymentMethod`]}
+              >
+                <InputLabel>Method</InputLabel>
+                <Select
+                  label="Method"
+                  value={payment.PaymentMethod}
+                  onChange={(e) =>
+                    setRenewalPayments((prev) =>
+                      prev.map((p, i) =>
+                        i === index ? { ...p, PaymentMethod: e.target.value } : p
+                      )
+                    )
+                  }
+                  startAdornment={
+                    <InputAdornment position="start">
+                      <PaymentIcon />
+                    </InputAdornment>
+                  }
+                >
+                  <MenuItem value="">-- Select --</MenuItem>
+                  <MenuItem value="Cash">Cash</MenuItem>
+                  <MenuItem value="BDO">BDO</MenuItem>
+                  <MenuItem value="BPI">BPI</MenuItem>
+                  <MenuItem value="GCash">GCash</MenuItem>
+                </Select>
+                {validationErrors[`Payments.${index}.PaymentMethod`] && (
+                  <FormHelperText>
+                    {validationErrors[`Payments.${index}.PaymentMethod`]}
+                  </FormHelperText>
+                )}
+              </FormControl>
 
-          <TextField
-            label="Payment Amount"
-            name="PaymentAmount"
-            type="number"
-            fullWidth
-            margin="dense"
-            value={newRenewal.PaymentAmount}
-            onChange={handleAddRenewalChange}
-          />
+              <TextField
+                label="Amount"
+                type="number"
+                value={payment.PaymentAmount}
+                onChange={(e) =>
+                  setRenewalPayments((prev) =>
+                    prev.map((p, i) =>
+                      i === index
+                        ? { ...p, PaymentAmount: e.target.value }
+                        : p
+                    )
+                  )
+                }
+                error={!!validationErrors[`Payments.${index}.PaymentAmount`]}
+                helperText={validationErrors[`Payments.${index}.PaymentAmount`]}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">₱</InputAdornment>
+                  ),
+                }}
+                sx={{ width: 150 }}
+              />
 
+              {renewalPayments.length > 1 && (
+                <IconButton
+                  onClick={() =>
+                    setRenewalPayments((prev) => prev.filter((_, i) => i !== index))
+                  }
+                  color="error"
+                >
+                  <CloseIcon />
+                </IconButton>
+              )}
+            </Box>
+          ))}
+
+          <Button
+            variant="outlined"
+            onClick={() =>
+              setRenewalPayments((prev) => [...prev, { PaymentMethod: "", PaymentAmount: "" }])
+            }
+            sx={{ mt: 1 }}
+          >
+            Add Payment
+          </Button>
+
+          {/* PaymentFor (read-only) */}
           <TextField
-            label="PaymentFor (JSON array)"
+            label="Payment For"
             name="PaymentFor"
             fullWidth
             margin="dense"
-            value={newRenewal.PaymentFor}
-            onChange={handleAddRenewalChange}
-            helperText='e.g. ["Renewal Fee"]'
+            value={newRenewal.PaymentFor.replace(/^\["|"\]$/g, "")}
+            variant="outlined"
+            disabled
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <DescriptionIcon />
+                </InputAdornment>
+              ),
+            }}
+            sx={{ mt: 2 }}
           />
+
+          {/* Show sum-of-payments error if any */}
+          {validationErrors.totalPaid && (
+            <Typography color="error" sx={{ mt: 1 }}>
+              {validationErrors.totalPaid}
+            </Typography>
+          )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddRenewalOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleAddRenewal}>
-            Save
+
+        <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+          <Button
+            variant="contained"
+            onClick={handleAddRenewal}
+            sx={{ px: 4, py: 1, textTransform: "none" }}
+            startIcon={<SaveIcon />}
+          >
+            SAVE RENEWAL
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* EDIT Renewal */}
-      <Dialog open={isEditRenewalOpen} onClose={() => setEditRenewalOpen(false)}>
-        <DialogTitle>Edit Renewal</DialogTitle>
-        <DialogContent>
+
+     {/* EDIT Renewal */}
+      <Dialog
+        open={isEditRenewalOpen}
+        onClose={() => setEditRenewalOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            maxWidth: "65vw", // Ensures it's not too wide
+          },
+        }}
+      >
+      <DialogTitle sx={{ p: 2 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <AutorenewIcon sx={{ fontSize: 32, color: "primary.main" }} />
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              Edit Renewal
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={() => setEditRenewalOpen(false)}
+            sx={{ "&:hover": { color: theme.palette.error.main } }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
+        {/* Content */}
+        <DialogContent dividers sx={{ p: 4 }}>
           {selectedRenewal && (
-            <>
-              <TextField
-                label="Renewal Amount"
-                fullWidth
-                margin="dense"
-                type="number"
-                value={selectedRenewal.RenewalAmount}
-                onChange={(e) =>
-                  setSelectedRenewal((prev) => ({ ...prev, RenewalAmount: e.target.value }))
-                }
-              />
-            </>
+            <Box>
+              <Grid container spacing={3}>
+                {/* Left Column: Renewal & Member Info */}
+                <Grid item xs={12} sm={6}>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <PersonIcon color="primary" /> Member Information
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Member Name"
+                    variant="outlined"
+                    disabled
+                    value={
+                      membershipRecords.find((m) => m.MemberID === selectedRenewal.MemberID)
+                        ?.FullName || "—"
+                    }
+                    sx={{ mb: 2 }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Renewal ID"
+                    variant="outlined"
+                    disabled={true}
+                    value={selectedRenewal.RenewalID || "—"}
+                    sx={{ mb: 2 }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Renewal Date"
+                    variant="outlined"
+                    type="date"
+                    InputLabelProps={{ shrink: true }}
+                    value={selectedRenewal.RenewalDate || ""}
+                    onChange={(e) =>
+                      setSelectedRenewal((prev) => ({
+                        ...prev,
+                        RenewalDate: e.target.value,
+                      }))
+                    }
+                    sx={{ mb: 2 }}
+                  />
+                </Grid>
+
+                {/* Right Column: Plan & Payment Info */}
+                <Grid item xs={12} sm={6}>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: "bold",
+                      mb: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <PaymentIcon color="primary" /> Payment & Plan
+                  </Typography>
+                  <FormControl fullWidth variant="outlined" sx={{ mb: 2 }}>
+                    <InputLabel>Plan ID</InputLabel>
+                    <Select
+                      name="PlanID"
+                      value={selectedRenewal.PlanID || ""}
+                      onChange={(e) =>
+                        setSelectedRenewal((prev) => ({
+                          ...prev,
+                          PlanID: e.target.value,
+                        }))
+                      }
+                      label="Plan ID"
+                    >
+                      <MenuItem value="">-- Select Plan --</MenuItem>
+                      {plans.map((plan) => (
+                        <MenuItem key={plan.PlanID} value={plan.PlanID}>
+                          {plan.PlanName}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    fullWidth
+                    label="Renewal Amount"
+                    variant="outlined"
+                    type="number"
+                    value={selectedRenewal.RenewalAmount || ""}
+                    onChange={(e) =>
+                      setSelectedRenewal((prev) => ({
+                        ...prev,
+                        RenewalAmount: e.target.value,
+                      }))
+                    }
+                    sx={{ mb: 2 }}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditRenewalOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleEditRenewalSubmit}>
-            Save
-          </Button>
-        </DialogActions>
+
+        {/* Actions */}
+        <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+        <Button
+          variant="contained"
+          onClick={handleEditRenewalSubmit}
+          sx={{
+            px: 4,
+            py: 1,
+            fontSize: "1rem",
+            fontWeight: "bold",
+            borderRadius: 2,
+            textTransform: "none",
+          }}
+          startIcon={<SaveIcon />}
+        >
+          Save Changes
+        </Button>
+      </DialogActions>
       </Dialog>
 
       {/* VIEW Log */}
@@ -1799,6 +4568,70 @@ export default function MembershipManagement() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setViewLogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+     {/* UNFREEZE CONFIRMATION DIALOG */}
+      <Dialog
+        open={isUnfreezeDialogOpen}
+        onClose={() => setUnfreezeDialogOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            fontWeight: "bold",
+          }}
+        >
+          <AcUnitIcon color="primary" />
+          Confirm Unfreeze
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography>
+            Are you sure you want to unfreeze this member? This action will restore their membership status to Active.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUnfreezeDialogOpen(false)} sx={{ color: "gray" }}>Cancel</Button>
+          <Button variant="contained" color="primary" onClick={handleUnfreezeMember}>
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+
+
+      {/* DELETE CONFIRMATION DIALOG */}
+      <Dialog
+        open={isDeleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            fontWeight: "bold",
+          }}
+        >
+          <DeleteForeverIcon color="error" />
+          Confirm Deletion
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography>
+            Are you sure you want to delete this record? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: "gray" }}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={confirmDelete}>
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
 

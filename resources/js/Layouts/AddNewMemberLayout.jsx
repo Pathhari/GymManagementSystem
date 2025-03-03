@@ -348,10 +348,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
             <PersonIcon sx={{ verticalAlign: "middle", mr: 1 }} />
             Add New Member
           </Typography>
-          <IconButton
-            onClick={onClose}
-            sx={{ "&:hover": { color: "red" } }}
-          >
+          <IconButton onClick={onClose} sx={{ "&:hover": { color: "red" } }}>
             <CloseIcon />
           </IconButton>
         </Box>
@@ -368,7 +365,11 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                 item
                 xs={12}
                 md={6}
-                sx={{ backgroundColor: "rgba(0,0,0,0.02)", p: 2, borderRadius: 2 }}
+                sx={{
+                  backgroundColor: "rgba(0,0,0,0.02)",
+                  p: 2,
+                  borderRadius: 2,
+                }}
               >
                 <Typography variant="subtitle1" sx={{ mb: 2 }}>
                   Personal & Membership Details
@@ -532,7 +533,9 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       control={
                         <Checkbox
                           checked={membershipCardIssued}
-                          onChange={(e) => setMembershipCardIssued(e.target.checked)}
+                          onChange={(e) =>
+                            setMembershipCardIssued(e.target.checked)
+                          }
                         />
                       }
                       label="Membership Card Issued?"
@@ -598,7 +601,11 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                 item
                 xs={12}
                 md={6}
-                sx={{ backgroundColor: "rgba(0,0,0,0.02)", p: 2, borderRadius: 2 }}
+                sx={{
+                  backgroundColor: "rgba(0,0,0,0.02)",
+                  p: 2,
+                  borderRadius: 2,
+                }}
               >
                 <Typography variant="subtitle1" sx={{ mb: 2 }}>
                   Photo & Additional Info
@@ -666,111 +673,143 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                     />
                   </Grid>
 
-                  {/* Payment (Split) */}
+                  {/* Payment + Photo Preview side by side */}
                   <Grid item xs={12}>
                     <Typography variant="subtitle2" sx={{ mb: 1 }}>
                       Payments (Split Allowed)
                     </Typography>
 
-                    {/* If captured via webcam, show preview */}
-                    {capturedImage && (
-                      <Box
-                        component="img"
-                        src={capturedImage}
-                        alt="Captured"
-                        sx={{
-                          width: 150,
-                          height: 150,
-                          border: "1px solid #ccc",
-                          borderRadius: 2,
-                          objectFit: "cover",
-                          mb: 2,
-                        }}
-                      />
-                    )}
-
-                    {/* Payment Rows */}
-                    {payments.map((payment, index) => (
-                      <Box
-                        key={index}
-                        sx={{
-                          display: "flex",
-                          gap: 2,
-                          mb: 1,
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                          backgroundColor: "#f9f9f9",
-                          p: 1,
-                          borderRadius: 1,
-                        }}
-                      >
-                        <FormControl
-                          sx={{ minWidth: 120 }}
-                          error={!!errors[`Payments_${index}_PaymentMethod`]}
-                        >
-                          <InputLabel>Method</InputLabel>
-                          <Select
-                            label="Method"
-                            value={payment.PaymentMethod}
-                            onChange={(e) =>
-                              handlePaymentChange(index, "PaymentMethod", e.target.value)
-                            }
-                            startAdornment={
-                              <InputAdornment position="start">
-                                <PaymentIcon />
-                              </InputAdornment>
-                            }
-                          >
-                            <MenuItem value="">-- Select --</MenuItem>
-                            <MenuItem value="Cash">Cash</MenuItem>
-                            <MenuItem value="BDO">BDO</MenuItem>
-                            <MenuItem value="BPI">BPI</MenuItem>
-                            <MenuItem value="GCash">GCash</MenuItem>
-                          </Select>
-                          {errors[`Payments_${index}_PaymentMethod`] && (
-                            <FormHelperText>
-                              {errors[`Payments_${index}_PaymentMethod`][0]}
-                            </FormHelperText>
-                          )}
-                        </FormControl>
-
-                        <TextField
-                          label="Amount"
-                          type="number"
-                          value={payment.PaymentAmount}
-                          onChange={(e) =>
-                            handlePaymentChange(index, "PaymentAmount", e.target.value)
-                          }
-                          error={!!errors[`Payments_${index}_PaymentAmount`]}
-                          helperText={errors[`Payments_${index}_PaymentAmount`]?.[0]}
-                          InputProps={{
-                            startAdornment: (
-                              <InputAdornment position="start">₱</InputAdornment>
-                            ),
+                    {/* Wrap the image preview and the payment rows in a flex container */}
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 3,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {/* If captured via webcam, show preview */}
+                      {capturedImage && (
+                        <Box
+                          component="img"
+                          src={capturedImage}
+                          alt="Captured"
+                          sx={{
+                            width: 150,
+                            height: 150,
+                            border: "1px solid #ccc",
+                            borderRadius: 2,
+                            objectFit: "cover",
                           }}
-                          sx={{ width: 150 }}
                         />
+                      )}
 
-                        {/* Remove row if we have more than 1 payment */}
-                        {payments.length > 1 && (
-                          <IconButton
-                            onClick={() => handleRemovePaymentRow(index)}
-                            color="error"
+                      {/* Payment Rows */}
+                      <Box>
+                        {payments.map((payment, index) => (
+                          <Box
+                            key={index}
+                            sx={{
+                              display: "flex",
+                              gap: 2,
+                              mb: 1,
+                              flexWrap: "wrap",
+                              alignItems: "center",
+                              backgroundColor: "#f9f9f9",
+                              p: 1,
+                              borderRadius: 1,
+                            }}
                           >
-                            <CloseIcon />
-                          </IconButton>
+                            <FormControl
+                              sx={{ minWidth: 120 }}
+                              error={!!errors[`Payments_${index}_PaymentMethod`]}
+                            >
+                              <InputLabel>Method</InputLabel>
+                              <Select
+                                label="Method"
+                                value={payment.PaymentMethod}
+                                onChange={(e) =>
+                                  handlePaymentChange(
+                                    index,
+                                    "PaymentMethod",
+                                    e.target.value
+                                  )
+                                }
+                                startAdornment={
+                                  <InputAdornment position="start">
+                                    <PaymentIcon />
+                                  </InputAdornment>
+                                }
+                              >
+                                <MenuItem value="">-- Select --</MenuItem>
+                                <MenuItem value="Cash">Cash</MenuItem>
+                                <MenuItem value="BDO">BDO</MenuItem>
+                                <MenuItem value="BPI">BPI</MenuItem>
+                                <MenuItem value="GCash">GCash</MenuItem>
+                              </Select>
+                              {errors[`Payments_${index}_PaymentMethod`] && (
+                                <FormHelperText>
+                                  {
+                                    errors[`Payments_${index}_PaymentMethod`][0]
+                                  }
+                                </FormHelperText>
+                              )}
+                            </FormControl>
+
+                            <TextField
+                              label="Amount"
+                              type="number"
+                              value={payment.PaymentAmount}
+                              onChange={(e) =>
+                                handlePaymentChange(
+                                  index,
+                                  "PaymentAmount",
+                                  e.target.value
+                                )
+                              }
+                              error={!!errors[`Payments_${index}_PaymentAmount`]}
+                              helperText={
+                                errors[`Payments_${index}_PaymentAmount`]?.[0]
+                              }
+                              InputProps={{
+                                startAdornment: (
+                                  <InputAdornment position="start">₱</InputAdornment>
+                                ),
+                              }}
+                              sx={{ width: 150 }}
+                            />
+
+                            {/* Remove row if we have more than 1 payment */}
+                            {payments.length > 1 && (
+                              <IconButton
+                                onClick={() => handleRemovePaymentRow(index)}
+                                color="error"
+                              >
+                                <CloseIcon />
+                              </IconButton>
+                            )}
+                          </Box>
+                        ))}
+
+                        <Button
+                          variant="outlined"
+                          onClick={handleAddPaymentRow}
+                          sx={{ mt: 1 }}
+                        >
+                          Add Payment
+                        </Button>
+                        {errors.Payments && (
+                          <Typography
+                            variant="caption"
+                            color="error"
+                            display="block"
+                            sx={{ mt: 1 }}
+                          >
+                            {errors.Payments[0]}
+                          </Typography>
                         )}
                       </Box>
-                    ))}
-
-                    <Button variant="outlined" onClick={handleAddPaymentRow} sx={{ mt: 1 }}>
-                      Add Payment
-                    </Button>
-                    {errors.Payments && (
-                      <Typography variant="caption" color="error" display="block" sx={{ mt: 1 }}>
-                        {errors.Payments[0]}
-                      </Typography>
-                    )}
+                    </Box>
                   </Grid>
                 </Grid>
               </Grid>

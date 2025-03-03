@@ -22,6 +22,7 @@ import {
   TableRow,
   TableCell,
   TableBody,
+  TablePagination,
 } from "@mui/material";
 import { styled, useTheme } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
@@ -279,9 +280,12 @@ export default function LockerManagement() {
   // ----------------- 9) ACTIVITY LOG (ALL USAGES) ------------------
   const [logOpen, setLogOpen] = useState(false);
   const [usageHistory, setUsageHistory] = useState([]);
+  const [logPage, setLogPage] = useState(0);
+  const rowsPerPage = 10;
 
   const handleOpenLog = () => {
     setLogOpen(true);
+    setLogPage(0);
     // Example endpoint => /operations/lockers/activity-log
     axios
       .get("/operations/lockers/activity-log")
@@ -346,11 +350,7 @@ export default function LockerManagement() {
           Add Locker
         </Button>
 
-        <Button
-          variant="outlined"
-          startIcon={<RestoreIcon />}
-          onClick={handleOpenLog}
-        >
+        <Button variant="outlined" startIcon={<RestoreIcon />} onClick={handleOpenLog}>
           View Activity Log
         </Button>
       </Box>
@@ -358,9 +358,7 @@ export default function LockerManagement() {
       {/* Outer container with horizontal scroll */}
       <Box sx={{ overflowX: "auto", mb: 3 }}>
         {/* Inner container: 3 rows using row slicing */}
-        <Box
-          sx={{ display: "flex", flexDirection: "column", minWidth: containerWidth }}
-        >
+        <Box sx={{ display: "flex", flexDirection: "column", minWidth: containerWidth }}>
           {chunkedLockers.map((rowLockers, rowIndex) => (
             <Box key={rowIndex} sx={{ display: "flex", gap: 2, mb: 2 }}>
               {rowLockers.map((locker) => {
@@ -644,92 +642,100 @@ export default function LockerManagement() {
       </Dialog>
 
       {/* ACTIVITY LOG DIALOG */}
-{/* ACTIVITY LOG DIALOG */}
-<Dialog
-  open={logOpen}
-  onClose={handleCloseLog}
-  fullWidth
-  maxWidth="lg"
-  PaperProps={{
-    sx: { borderRadius: 3, boxShadow: 6, p: 2 },
-  }}
->
-  <DialogTitle
-    sx={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      borderBottom: "1px solid #eee",
-      pb: 1,
-    }}
-  >
-    <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-      Locker Activity Log
-    </Typography>
-    <IconButton onClick={handleCloseLog} sx={{ "&:hover": { color: "red" } }}>
-      <CloseIcon />
-    </IconButton>
-  </DialogTitle>
+      <Dialog
+        open={logOpen}
+        onClose={handleCloseLog}
+        fullWidth
+        maxWidth="lg"
+        PaperProps={{
+          sx: { borderRadius: 3, boxShadow: 6, p: 2 },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            borderBottom: "1px solid #eee",
+            pb: 1,
+          }}
+        >
+          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+            Locker Activity Log
+          </Typography>
+          <IconButton onClick={handleCloseLog} sx={{ "&:hover": { color: "red" } }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
 
-  <DialogContent dividers sx={{ p: 2 }}>
-    {usageHistory.length === 0 ? (
-      <Typography variant="body2" color="text.secondary">
-        No usage records found.
-      </Typography>
-    ) : (
-      <Paper sx={{ maxHeight: 450, overflow: "auto" }}>
-        <Table stickyHeader size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell align="center">Usage ID</TableCell>
-              <TableCell align="center">Locker ID</TableCell>
-              <TableCell>Member</TableCell>
-              <TableCell>Borrow Date</TableCell>
-              <TableCell>Return Date</TableCell>
-              <TableCell align="center">Returned?</TableCell>
-              <TableCell>Notes</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {usageHistory.map((usage) => (
-              <TableRow key={usage.UsageID} hover>
-                <TableCell align="center">{usage.UsageID}</TableCell>
-                <TableCell align="center">{usage.LockerID}</TableCell>
-                <TableCell>{usage.member?.FullName || "—"}</TableCell>
-                <TableCell>
-                  {usage.BorrowDate
-                    ? new Date(usage.BorrowDate).toLocaleString()
-                    : "—"}
-                </TableCell>
-                <TableCell>
-                  {usage.ReturnDate
-                    ? new Date(usage.ReturnDate).toLocaleString()
-                    : "—"}
-                </TableCell>
-                <TableCell align="center">
-                  {usage.Returned ? "Yes" : "No"}
-                </TableCell>
-                <TableCell>{usage.Notes || "—"}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Paper>
-    )}
-  </DialogContent>
+        <DialogContent dividers sx={{ p: 2 }}>
+          {usageHistory.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No usage records found.
+            </Typography>
+          ) : (
+            <Paper sx={{ maxHeight: 450, overflow: "auto" }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell align="center">Usage ID</TableCell>
+                    <TableCell align="center">Locker ID</TableCell>
+                    <TableCell>Member</TableCell>
+                    <TableCell>Borrow Date</TableCell>
+                    <TableCell>Return Date</TableCell>
+                    <TableCell align="center">Returned?</TableCell>
+                    <TableCell>Notes</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {usageHistory
+                    .slice(logPage * rowsPerPage, logPage * rowsPerPage + rowsPerPage)
+                    .map((usage) => (
+                      <TableRow key={usage.UsageID} hover>
+                        <TableCell align="center">{usage.UsageID}</TableCell>
+                        <TableCell align="center">{usage.LockerID}</TableCell>
+                        <TableCell>{usage.member?.FullName || "—"}</TableCell>
+                        <TableCell>
+                          {usage.BorrowDate
+                            ? new Date(usage.BorrowDate).toLocaleString()
+                            : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {usage.ReturnDate
+                            ? new Date(usage.ReturnDate).toLocaleString()
+                            : "—"}
+                        </TableCell>
+                        <TableCell align="center">
+                          {usage.Returned ? "Yes" : "No"}
+                        </TableCell>
+                        <TableCell>{usage.Notes || "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+              <TablePagination
+                component="div"
+                count={usageHistory.length}
+                page={logPage}
+                onPageChange={(event, newPage) => setLogPage(newPage)}
+                rowsPerPage={rowsPerPage}
+                rowsPerPageOptions={[]}
+              />
+            </Paper>
+          )}
+        </DialogContent>
 
-  <DialogActions sx={{ justifyContent: "flex-end", p: 2 }}>
-    <Button
-      onClick={handleCloseLog}
-      variant="contained"
-      color="primary"
-      sx={{ textTransform: "none" }}
-    >
-      Close
-    </Button>
-  </DialogActions>
-</Dialog>
-
+        <DialogActions sx={{ justifyContent: "flex-end", p: 2 }}>
+          <Button
+            onClick={handleCloseLog}
+            variant="contained"
+            color="primary"
+            sx={{ textTransform: "none" }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
