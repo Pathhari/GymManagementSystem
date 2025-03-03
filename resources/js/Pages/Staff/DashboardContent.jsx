@@ -812,17 +812,16 @@ export default function StaffDashboard() {
                 attendance.map((entry, idx) => (
                   <Box key={idx} display="flex" justifyContent="space-between" p={1}>
                     <Typography>
-                      {entry.Date
-                        ? new Date(entry.Date).toLocaleDateString()
-                        : "Unknown Date"}
+                      {formatDate(entry.Date)}
                     </Typography>
                     <Typography color="textSecondary">
-                      {entry.TimeIn || ""}
-                      {entry.TimeOut ? ` - ${entry.TimeOut}` : ""}
+                      {formatTime(entry.TimeIn)}
+                      {entry.TimeOut ? ` - ${formatTime(entry.TimeOut)}` : ""}
                     </Typography>
                   </Box>
                 ))
               )}
+
             </CardContent>
           </Card>
         </Grid>
