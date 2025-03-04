@@ -27,107 +27,73 @@ import {
 import { DataGrid } from "@mui/x-data-grid";
 
 // ===== MUI Icons =====
-import CampaignIcon from "@mui/icons-material/Campaign";        // For Announcements Tab
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth"; // For Expiring Membership Tab
-import MarkunreadMailboxIcon from "@mui/icons-material/MarkunreadMailbox"; // For Bulk SMS & Email Tab
-import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive"; // For Ad-hoc
-import GroupsIcon from "@mui/icons-material/Groups";            // For Staff Notification
-import EmailIcon from "@mui/icons-material/Email";              // For Mailjet Template Tab
-import ForumIcon from "@mui/icons-material/Forum";              // For Semaphore Tab
+import CampaignIcon from "@mui/icons-material/Campaign"; // For Announcements tab
+import EmailIcon from "@mui/icons-material/Email";       // For Mailjet tab
+import ForumIcon from "@mui/icons-material/Forum";       // For Semaphore tab
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import SendIcon from "@mui/icons-material/Send";
-import SmsIcon from "@mui/icons-material/Sms";
 
-// ---------------- DataGrid columns ----------------
-const allMembersColumns = [
+// ---------- DataGrid columns ----------
+const mailjetColumns = [
   { field: "MemberID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
-  { field: "Email", headerName: "Email", width: 220 },
+  { field: "Email", headerName: "Email", width: 200 },
+  { field: "MemberStatusID", headerName: "StatusID", width: 100 },
 ];
 
-const expiringColumns = [
-  { field: "MemberID", headerName: "ID", width: 80 },
-  { field: "name", headerName: "Name", width: 180 },
-  {
-    field: "expiry_date",
-    headerName: "Expiry Date",
-    width: 180,
-    valueGetter: (params) =>
-      params.row.expiry_date
-        ? new Date(params.row.expiry_date).toLocaleDateString()
-        : "",
-  },
-  { field: "Email", headerName: "Email", width: 220 },
-];
-
-// Columns for the "SMS Member Selection" DataGrid
-const smsColumns = [
+const semaphoreColumns = [
   { field: "MemberID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Phone", headerName: "Phone", width: 180 },
+  { field: "MemberStatusID", headerName: "StatusID", width: 100 },
 ];
 
 export default function Notifications() {
-  // ---------------------------------------------------
-  //                  STATES & HOOKS
-  // ---------------------------------------------------
-  // 1) Tab
+  // -------------------------------------------------------------------
+  //                         STATE & HOOKS
+  // -------------------------------------------------------------------
+  // Tabs: 0 => Announcements, 1 => Mailjet, 2 => Semaphore
   const [activeTab, setActiveTab] = useState(0);
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
   };
 
-  // 2) Announcements
+  // ------------------ A) Announcements ------------------
   const [announcements, setAnnouncements] = useState([]);
   const [isEditOpen, setEditOpen] = useState(false);
   const [editData, setEditData] = useState(null);
   const [newTopic, setNewTopic] = useState("");
   const [newMessage, setNewMessage] = useState("");
 
-  // 3) Bulk SMS & Bulk Email
-  const [bulkSMSMessage, setBulkSMSMessage] = useState("");
-  const [bulkEmailSubject, setBulkEmailSubject] = useState("");
-  const [bulkEmailBody, setBulkEmailBody] = useState("");
-
-  // 4) Ad-hoc Notification
-  const [adHocMemberID, setAdHocMemberID] = useState("");
-  const [adHocMethod, setAdHocMethod] = useState("SMS");
-  const [adHocMessage, setAdHocMessage] = useState("");
-
-  // 5) Staff Notification
-  const [staffList, setStaffList] = useState([]);
-  const [selectedStaff, setSelectedStaff] = useState([]);
-  const [notifSubject, setNotifSubject] = useState("");
-  const [notifMessage, setNotifMessage] = useState("");
-
-  // 6) Expiring Membership
-  const [expiringMembers, setExpiringMembers] = useState([]);
-
-  // 7) Mailjet Templated Email
+  // ------------------ B) Mailjet Templated Email ------------------
   const [allMembers, setAllMembers] = useState([]);
-  const [selectedMemberIDs, setSelectedMemberIDs] = useState([]);
+  const [selectedMailjetIDs, setSelectedMailjetIDs] = useState([]);
   const [templateId, setTemplateId] = useState("");
+  const [mailjetFilterStatus, setMailjetFilterStatus] = useState("All");
 
-  // 8) Semaphore SMS
+  // ------------------ C) Semaphore SMS ------------------
+  const [semaphoreMembers, setSemaphoreMembers] = useState([]);
+  const [selectedSemaphoreIDs, setSelectedSemaphoreIDs] = useState([]);
   const [semaphoreNumbers, setSemaphoreNumbers] = useState("");
   const [semaphoreMessage, setSemaphoreMessage] = useState("");
   const [semaphoreSenderName, setSemaphoreSenderName] = useState("");
+  const [semaphoreFilterStatus, setSemaphoreFilterStatus] = useState("All");
 
-  // 9) SMS Members
-  const [smsMembers, setSmsMembers] = useState([]);
-  const [selectedSMSMemberIDs, setSelectedSMSMemberIDs] = useState([]);
+  // ------------------ Member Statuses ------------------
+  // Hard-coded or from an API for: 
+  // 1=ACTIVE, 2=FROZEN, 3=ON-HOLD, 4=TERMINATED, 5=EXPIRED, 6=NEW MEMBER
+  const [memberStatuses, setMemberStatuses] = useState([]);
 
-  // ---------------------------------------------------
-  //                 USE EFFECTS (LOAD DATA)
-  // ---------------------------------------------------
+  // -------------------------------------------------------------------
+  //                   USE EFFECT: LOAD DATA
+  // -------------------------------------------------------------------
   useEffect(() => {
     loadAnnouncements();
-    loadStaff();
-    loadExpiringMembers();
-    loadAllMembers();
-    loadMembersForSMS();
+    loadAllMembersMailjet();
+    loadAllMembersSemaphore();
+    loadMemberStatuses();
   }, []);
 
   const loadAnnouncements = async () => {
@@ -140,45 +106,42 @@ export default function Notifications() {
     }
   };
 
-  const loadStaff = async () => {
-    try {
-      const res = await axios.get("/staff");
-      setStaffList(res.data || []);
-    } catch (error) {
-      console.error("Error loading staff:", error);
-    }
-  };
-
-  const loadExpiringMembers = async () => {
-    try {
-      const res = await axios.get("/membership/expiring?days=7");
-      setExpiringMembers(res.data || []);
-    } catch (error) {
-      console.error("Failed to load expiring members:", error);
-    }
-  };
-
-  const loadAllMembers = async () => {
+  const loadAllMembersMailjet = async () => {
     try {
       const res = await axios.get("/membership/members");
       setAllMembers(res.data.members || []);
     } catch (error) {
-      console.error("Failed to load all members:", error);
+      console.error("Failed to load members for Mailjet:", error);
     }
   };
 
-  const loadMembersForSMS = async () => {
+  const loadAllMembersSemaphore = async () => {
     try {
       const res = await axios.get("/membership/members");
-      setSmsMembers(res.data.members || []);
+      setSemaphoreMembers(res.data.members || []);
     } catch (error) {
-      console.error("Failed to load members for SMS:", error);
+      console.error("Failed to load members for Semaphore:", error);
     }
   };
 
-  // ---------------------------------------------------
-  //       ANNOUNCEMENTS: ADD / EDIT / DELETE
-  // ---------------------------------------------------
+  const loadMemberStatuses = async () => {
+    // Hard-code the required statuses
+    // 1 ACTIVE, 2 FROZEN, 3 ON-HOLD, 4 TERMINATED, 5 EXPIRED, 6 NEW MEMBER
+    const statuses = [
+      { id: "All", name: "All" },
+      { id: "1", name: "ACTIVE" },
+      { id: "2", name: "FROZEN" },
+      { id: "3", name: "ON-HOLD" },
+      { id: "4", name: "TERMINATED" },
+      { id: "5", name: "EXPIRED" },
+      { id: "6", name: "NEW MEMBER" },
+    ];
+    setMemberStatuses(statuses);
+  };
+
+  // -------------------------------------------------------------------
+  //                   A) ANNOUNCEMENTS LOGIC
+  // -------------------------------------------------------------------
   const handleAddAnnouncement = async () => {
     if (!newTopic.trim() || !newMessage.trim()) {
       alert("Please fill out both Topic and Message.");
@@ -199,6 +162,7 @@ export default function Notifications() {
   };
 
   const handleEditOpen = (announcement) => {
+    // "Topic: XYZ\nRest of message"
     const lines = announcement.Message.split("\n");
     const rawTopic = lines[0].replace("Topic: ", "").trim();
     const rawMsg = lines.slice(1).join("\n").trim();
@@ -253,132 +217,11 @@ export default function Notifications() {
     }
   };
 
-  // ---------------------------------------------------
-  //                 STAFF NOTIFICATION
-  // ---------------------------------------------------
-  const handleStaffToggle = (staffId) => {
-    setSelectedStaff((prev) =>
-      prev.includes(staffId)
-        ? prev.filter((id) => id !== staffId)
-        : [...prev, staffId]
-    );
-  };
-
-  const handleSendToStaff = async () => {
-    if (!selectedStaff.length) {
-      alert("Please select at least one staff to notify.");
-      return;
-    }
-    if (!notifSubject.trim() || !notifMessage.trim()) {
-      alert("Provide subject and message.");
-      return;
-    }
-    try {
-      await axios.post("/notifications/send-staff", {
-        staffIds: selectedStaff,
-        subject: notifSubject,
-        message: notifMessage,
-      });
-      alert("Staff notification sent!");
-      setSelectedStaff([]);
-      setNotifSubject("");
-      setNotifMessage("");
-    } catch (error) {
-      console.error("Sending staff notification failed:", error);
-      alert("Failed to send notification to staff.");
-    }
-  };
-
-  // ---------------------------------------------------
-  //                 BULK SMS & EMAIL
-  // ---------------------------------------------------
-  const handleSendBulkSMS = async () => {
-    if (!bulkSMSMessage.trim()) {
-      alert("Enter the SMS message.");
-      return;
-    }
-    try {
-      await axios.post("/notifications/send/bulk-sms", {
-        message: bulkSMSMessage,
-      });
-      alert("Bulk SMS sent!");
-      setBulkSMSMessage("");
-    } catch (error) {
-      console.error("Bulk SMS failed:", error);
-      alert("Failed to send bulk SMS.");
-    }
-  };
-
-  const handleSendBulkEmail = async () => {
-    if (!bulkEmailSubject.trim() || !bulkEmailBody.trim()) {
-      alert("Fill out subject and body.");
-      return;
-    }
-    try {
-      await axios.post("/notifications/send/bulk-email", {
-        subject: bulkEmailSubject,
-        body: bulkEmailBody,
-      });
-      alert("Bulk Email sent!");
-      setBulkEmailSubject("");
-      setBulkEmailBody("");
-    } catch (error) {
-      console.error("Bulk email failed:", error);
-      alert("Failed to send bulk email.");
-    }
-  };
-
-  // ---------------------------------------------------
-  //                 AD-HOC NOTIFICATION
-  // ---------------------------------------------------
-  const handleSendAdHoc = async () => {
-    if (!adHocMemberID.trim() || !adHocMessage.trim()) {
-      alert("Provide MemberID and Message.");
-      return;
-    }
-    try {
-      await axios.post("/notifications/send/ad-hoc", {
-        MemberID: adHocMemberID,
-        method: adHocMethod,
-        message: adHocMessage,
-      });
-      alert("Ad-hoc notification sent!");
-      setAdHocMemberID("");
-      setAdHocMessage("");
-    } catch (error) {
-      console.error("Ad-hoc notify failed:", error);
-      alert("Failed to send ad-hoc notification.");
-    }
-  };
-
-  // ---------------------------------------------------
-  //      EXPIRING MEMBERSHIP (MAILJET REMINDER)
-  // ---------------------------------------------------
-  const handleSendExpiringMembershipEmails = async () => {
-    if (!window.confirm("Send expiring membership reminder emails via Mailjet?")) {
-      return;
-    }
-    try {
-      const response = await axios.get("/notifications/send-expiring-reminder");
-      if (response.data.status === "success") {
-        alert("Expiring membership emails sent!");
-      } else if (response.data.status === "no-action") {
-        alert("No members expiring soon.");
-      } else {
-        console.warn(response.data);
-        alert("Mailjet: Some issue occurred. Check logs.");
-      }
-    } catch (error) {
-      console.error("Mailjet send failed:", error);
-      alert("Failed to send expiring membership emails.");
-    }
-  };
-
-  // ---------------------------------------------------
-  //       MAILJET TEMPLATED EMAIL (CUSTOM TEMPLATE)
-  // ---------------------------------------------------
-  const handleMemberSelection = (ids) => {
-    setSelectedMemberIDs(ids);
+  // -------------------------------------------------------------------
+  //                   B) MAILJET TEMPLATED EMAIL
+  // -------------------------------------------------------------------
+  const handleMailjetSelection = (ids) => {
+    setSelectedMailjetIDs(ids);
   };
 
   const handleSendMailjetTemplate = async () => {
@@ -386,13 +229,13 @@ export default function Notifications() {
       alert("Please enter the Mailjet Template ID.");
       return;
     }
-    if (selectedMemberIDs.length === 0) {
+    if (selectedMailjetIDs.length === 0) {
       alert("Please select at least one member.");
       return;
     }
     if (
       !window.confirm(
-        `Send Mailjet template #${templateId} to ${selectedMemberIDs.length} member(s)?`
+        `Send Mailjet template #${templateId} to ${selectedMailjetIDs.length} member(s)?`
       )
     ) {
       return;
@@ -401,7 +244,7 @@ export default function Notifications() {
     try {
       const response = await axios.post("/notifications/send-mailjet-template", {
         templateId: parseInt(templateId, 10),
-        memberIds: selectedMemberIDs,
+        memberIds: selectedMailjetIDs,
       });
       if (response.data.status === "success") {
         alert("Template emails sent!");
@@ -417,9 +260,33 @@ export default function Notifications() {
     }
   };
 
-  // ---------------------------------------------------
-  //                 SEMAPHORE SMS
-  // ---------------------------------------------------
+  // Filter for Mailjet tab
+  const filteredMailjetMembers = allMembers.filter((m) => {
+    if (mailjetFilterStatus === "All") return true;
+    return String(m.MemberStatusID) === mailjetFilterStatus;
+  });
+
+  // -------------------------------------------------------------------
+  //                   C) SEMAPHORE SMS
+  // -------------------------------------------------------------------
+  const handleSemaphoreSelection = (ids) => {
+    setSelectedSemaphoreIDs(ids);
+  };
+
+  const handleAutoFillSemaphoreNumbers = () => {
+    const selectedRows = semaphoreMembers.filter((m) =>
+      selectedSemaphoreIDs.includes(m.MemberID)
+    );
+    const phones = selectedRows
+      .map((m) => m.Phone)
+      .filter((p) => p && p.trim() !== "");
+    if (phones.length === 0) {
+      alert("No valid phone numbers among selected members.");
+      return;
+    }
+    setSemaphoreNumbers(phones.join(","));
+  };
+
   const handleSendSemaphoreSMS = async () => {
     if (!semaphoreNumbers.trim()) {
       alert("Please provide at least one mobile number.");
@@ -456,25 +323,15 @@ export default function Notifications() {
     }
   };
 
-  // Auto-fill phone numbers from selected rows in SMS DataGrid
-  const handleAutoFillNumbers = () => {
-    const selectedRows = smsMembers.filter((m) =>
-      selectedSMSMemberIDs.includes(m.MemberID)
-    );
-    const phones = selectedRows
-      .map((m) => m.Phone)
-      .filter((p) => !!p && p.trim().length > 0);
+  // Filter for Semaphore tab
+  const filteredSemaphoreMembers = semaphoreMembers.filter((m) => {
+    if (semaphoreFilterStatus === "All") return true;
+    return String(m.MemberStatusID) === semaphoreFilterStatus;
+  });
 
-    if (phones.length === 0) {
-      alert("No valid phone numbers among selected members.");
-      return;
-    }
-    setSemaphoreNumbers(phones.join(","));
-  };
-
-  // ---------------------------------------------------
-  //                    RENDER
-  // ---------------------------------------------------
+  // -------------------------------------------------------------------
+  //                          RENDER
+  // -------------------------------------------------------------------
   return (
     <Box sx={{ p: 4 }}>
       <Typography variant="h4" gutterBottom>
@@ -482,22 +339,17 @@ export default function Notifications() {
       </Typography>
       <Divider sx={{ mb: 3 }} />
 
-      {/* -------------------- TABS -------------------- */}
+      {/* TABS: [0] Announcements, [1] Mailjet, [2] Semaphore */}
       <Tabs value={activeTab} onChange={handleTabChange} sx={{ mb: 2 }}>
         <Tab icon={<CampaignIcon />} label="Announcements" />
-        <Tab icon={<CalendarMonthIcon />} label="Expiring" />
-        <Tab icon={<MarkunreadMailboxIcon />} label="Bulk SMS & Email" />
-        <Tab icon={<NotificationsActiveIcon />} label="Ad-hoc" />
-        <Tab icon={<GroupsIcon />} label="Staff" />
         <Tab icon={<EmailIcon />} label="Mailjet" />
         <Tab icon={<ForumIcon />} label="Semaphore" />
       </Tabs>
 
-      {/* ========================== TAB PANELS ========================== */}
-      {/* -------------------- TAB 0: Announcements -------------------- */}
+      {/* ==================== TAB 0: ANNOUNCEMENTS ==================== */}
       {activeTab === 0 && (
         <Grid container spacing={3}>
-          {/* Left: Add Announcement */}
+          {/* A) Add Announcement */}
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 2 }}>
               <Typography variant="h6">Add Announcement</Typography>
@@ -534,7 +386,7 @@ export default function Notifications() {
             </Paper>
           </Grid>
 
-          {/* Right: Recent Announcements */}
+          {/* B) Recent Announcements */}
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 2, height: "100%" }}>
               <Typography variant="h6" gutterBottom>
@@ -561,10 +413,7 @@ export default function Notifications() {
                       <Typography variant="subtitle1" fontWeight="bold">
                         {parsedTopic}
                       </Typography>
-                      <Typography
-                        variant="body2"
-                        sx={{ whiteSpace: "pre-line" }}
-                      >
+                      <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
                         {parsedMsg}
                       </Typography>
                       <Box sx={{ mt: 1 }}>
@@ -597,221 +446,8 @@ export default function Notifications() {
         </Grid>
       )}
 
-      {/* ------------------ TAB 1: Expiring Memberships ------------------ */}
+      {/* ==================== TAB 1: MAILJET ==================== */}
       {activeTab === 1 && (
-        <Paper sx={{ p: 2 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-            <Typography variant="h6">
-              Expiring Memberships (Next 7 Days)
-            </Typography>
-            <Button
-              variant="contained"
-              color="warning"
-              startIcon={<CalendarMonthIcon />}
-              onClick={handleSendExpiringMembershipEmails}
-            >
-              Send Expiring Emails
-            </Button>
-          </Box>
-          <div style={{ width: "100%", height: 400 }}>
-            <DataGrid
-              rows={expiringMembers}
-              columns={expiringColumns}
-              getRowId={(row) => row.MemberID}
-              pageSize={5}
-              rowsPerPageOptions={[5, 10]}
-            />
-          </div>
-        </Paper>
-      )}
-
-      {/* ------------------ TAB 2: Bulk SMS & Email ------------------ */}
-      {activeTab === 2 && (
-        <Grid container spacing={3}>
-          {/* Bulk SMS */}
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="h6">Bulk SMS</Typography>
-              <Stack spacing={2} sx={{ mt: 1 }}>
-                <TextField
-                  label="SMS Message"
-                  fullWidth
-                  multiline
-                  rows={2}
-                  value={bulkSMSMessage}
-                  onChange={(e) => setBulkSMSMessage(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SmsIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <Button
-                  variant="contained"
-                  startIcon={<SendIcon />}
-                  onClick={handleSendBulkSMS}
-                >
-                  Send Bulk SMS
-                </Button>
-              </Stack>
-            </Paper>
-          </Grid>
-
-          {/* Bulk Email */}
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="h6">Bulk Email</Typography>
-              <Stack spacing={2} sx={{ mt: 1 }}>
-                <TextField
-                  label="Subject"
-                  fullWidth
-                  value={bulkEmailSubject}
-                  onChange={(e) => setBulkEmailSubject(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <EmailIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <TextField
-                  label="Email Body"
-                  fullWidth
-                  multiline
-                  rows={3}
-                  value={bulkEmailBody}
-                  onChange={(e) => setBulkEmailBody(e.target.value)}
-                />
-                <Button
-                  variant="contained"
-                  startIcon={<SendIcon />}
-                  onClick={handleSendBulkEmail}
-                >
-                  Send Bulk Email
-                </Button>
-              </Stack>
-            </Paper>
-          </Grid>
-        </Grid>
-      )}
-
-      {/* ------------------ TAB 3: Ad-hoc Notification ------------------ */}
-      {activeTab === 3 && (
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" gutterBottom>
-            Ad-hoc Notification
-          </Typography>
-          <Stack spacing={2} sx={{ mt: 1, maxWidth: 600 }}>
-            <TextField
-              label="Member ID"
-              fullWidth
-              value={adHocMemberID}
-              onChange={(e) => setAdHocMemberID(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <GroupsIcon />
-                  </InputAdornment>
-                ),
-              }}
-            />
-            <FormControl fullWidth>
-              <InputLabel>Method</InputLabel>
-              <Select
-                value={adHocMethod}
-                label="Method"
-                onChange={(e) => setAdHocMethod(e.target.value)}
-              >
-                <MenuItem value="SMS">SMS</MenuItem>
-                <MenuItem value="Email">Email</MenuItem>
-              </Select>
-            </FormControl>
-            <TextField
-              label="Message"
-              fullWidth
-              multiline
-              rows={3}
-              value={adHocMessage}
-              onChange={(e) => setAdHocMessage(e.target.value)}
-            />
-            <Button
-              variant="contained"
-              color="success"
-              startIcon={<NotificationsActiveIcon />}
-              onClick={handleSendAdHoc}
-            >
-              Send Ad-hoc
-            </Button>
-          </Stack>
-        </Paper>
-      )}
-
-      {/* ------------------ TAB 4: Staff Notification ------------------ */}
-      {activeTab === 4 && (
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" gutterBottom>
-            Notify Staff
-          </Typography>
-          <Stack spacing={2} sx={{ mt: 1, maxWidth: 600 }}>
-            <TextField
-              label="Subject"
-              fullWidth
-              value={notifSubject}
-              onChange={(e) => setNotifSubject(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <CampaignIcon />
-                  </InputAdornment>
-                ),
-              }}
-            />
-            <TextField
-              label="Message"
-              fullWidth
-              multiline
-              rows={2}
-              value={notifMessage}
-              onChange={(e) => setNotifMessage(e.target.value)}
-            />
-            {/* Staff List */}
-            <Box
-              sx={{
-                maxHeight: 120,
-                overflowY: "auto",
-                border: "1px solid #ccc",
-                p: 1,
-              }}
-            >
-              {staffList.map((staff) => (
-                <Box
-                  key={staff.id}
-                  sx={{ display: "flex", alignItems: "center" }}
-                >
-                  <Checkbox
-                    checked={selectedStaff.includes(staff.id)}
-                    onChange={() => handleStaffToggle(staff.id)}
-                  />
-                  <Typography>{staff.name}</Typography>
-                </Box>
-              ))}
-            </Box>
-            <Button
-              variant="contained"
-              startIcon={<SendIcon />}
-              onClick={handleSendToStaff}
-            >
-              Send to Staff
-            </Button>
-          </Stack>
-        </Paper>
-      )}
-
-      {/* ------------------ TAB 5: Mailjet Templates ------------------ */}
-      {activeTab === 5 && (
         <Paper sx={{ p: 2 }}>
           <Typography variant="h6" gutterBottom>
             Mailjet Templated Email
@@ -828,6 +464,7 @@ export default function Notifications() {
             </a>
           </Typography>
 
+          {/* 1) Template ID */}
           <Stack spacing={2} sx={{ mb: 2, maxWidth: 400 }}>
             <TextField
               label="Mailjet Template ID"
@@ -844,17 +481,36 @@ export default function Notifications() {
             />
           </Stack>
 
+          {/* 2) Filter by MemberStatusID */}
+          <Box sx={{ mb: 2, maxWidth: 300 }}>
+            <FormControl fullWidth>
+              <InputLabel>Filter by Status</InputLabel>
+              <Select
+                value={mailjetFilterStatus}
+                label="Filter by Status"
+                onChange={(e) => setMailjetFilterStatus(e.target.value)}
+              >
+                {memberStatuses.map((st) => (
+                  <MenuItem key={st.id} value={st.id}>
+                    {st.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+
+          {/* 3) DataGrid with filtered members */}
           <Typography variant="subtitle1" sx={{ mb: 1 }}>
             Select Members to Receive the Template
           </Typography>
           <div style={{ width: "100%", height: 400 }}>
             <DataGrid
-              rows={allMembers}
-              columns={allMembersColumns}
+              rows={filteredMailjetMembers}
+              columns={mailjetColumns}
               getRowId={(row) => row.MemberID}
               checkboxSelection
               onSelectionModelChange={(newSelection) => {
-                handleMemberSelection(newSelection);
+                handleMailjetSelection(newSelection);
               }}
               pageSize={5}
               rowsPerPageOptions={[5, 10]}
@@ -873,41 +529,63 @@ export default function Notifications() {
         </Paper>
       )}
 
-      {/* ------------------ TAB 6: Semaphore SMS ------------------ */}
-      {activeTab === 6 && (
+      {/* ==================== TAB 2: SEMAPHORE ==================== */}
+      {activeTab === 2 && (
         <Paper sx={{ p: 2 }}>
           <Typography variant="h6" gutterBottom>
             Send SMS via Semaphore
           </Typography>
 
-          {/* 1) DataGrid to pick which members to text */}
+          {/* 1) Filter by MemberStatusID */}
+          <Box sx={{ mb: 2, maxWidth: 300 }}>
+            <FormControl fullWidth>
+              <InputLabel>Filter by Status</InputLabel>
+              <Select
+                value={semaphoreFilterStatus}
+                label="Filter by Status"
+                onChange={(e) => setSemaphoreFilterStatus(e.target.value)}
+              >
+                {memberStatuses.map((st) => (
+                  <MenuItem key={st.id} value={st.id}>
+                    {st.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+
+          {/* 2) DataGrid with filtered members to pick phone numbers */}
           <Typography variant="subtitle1" sx={{ mb: 1 }}>
             (Optional) Select members to pull their phone numbers
           </Typography>
           <div style={{ width: "100%", height: 300, marginBottom: 16 }}>
             <DataGrid
-              rows={smsMembers}
-              columns={smsColumns}
+              rows={semaphoreMembers.filter((m) =>
+                semaphoreFilterStatus === "All"
+                  ? true
+                  : String(m.MemberStatusID) === semaphoreFilterStatus
+              )}
+              columns={semaphoreColumns}
               getRowId={(row) => row.MemberID}
               checkboxSelection
-              rowSelectionModel={selectedSMSMemberIDs}
-              onRowSelectionModelChange={(newSelection) => {
-                setSelectedSMSMemberIDs(newSelection);
+              onSelectionModelChange={(newSelection) => {
+                handleSemaphoreSelection(newSelection);
               }}
               pageSize={5}
               rowsPerPageOptions={[5, 10]}
             />
           </div>
+
           <Button
             variant="outlined"
             sx={{ mb: 2 }}
             startIcon={<AddCircleOutlineIcon />}
-            onClick={handleAutoFillNumbers}
+            onClick={handleAutoFillSemaphoreNumbers}
           >
             Auto-Fill from Selected
           </Button>
 
-          {/* 2) Manual fields for custom phone input */}
+          {/* 3) Manual fields for phone, message, sendername */}
           <Stack spacing={2} sx={{ maxWidth: 600 }}>
             <TextField
               label='Recipient Number(s)'
@@ -918,7 +596,7 @@ export default function Notifications() {
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SmsIcon />
+                    <ForumIcon />
                   </InputAdornment>
                 ),
               }}
@@ -944,13 +622,6 @@ export default function Notifications() {
               fullWidth
               value={semaphoreSenderName}
               onChange={(e) => setSemaphoreSenderName(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <ForumIcon />
-                  </InputAdornment>
-                ),
-              }}
             />
 
             <Button

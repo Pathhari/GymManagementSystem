@@ -7,16 +7,26 @@ use Illuminate\Http\Request;
 
 class BranchController extends Controller
 {
-    public function indexJson()
+    public function indexJson(Request $request)
     {
-        $branches = Branch::with(['staff' => function($query) {
-            $query->select('staff.StaffID', 'staff.FullName'); // Explicit table name
-        }])->get();
-    
+        // If an admin is authenticated, use their assigned branches
+        if (auth()->guard('admin')->check()) {
+            $admin = auth('admin')->user();
+            $branches = $admin->branches()->with(['staff' => function($query) {
+                $query->select('staff.StaffID', 'staff.FullName');
+            }])->get();
+        } else {
+            // Otherwise, return all branches
+            $branches = Branch::with(['staff' => function($query) {
+                $query->select('staff.StaffID', 'staff.FullName');
+            }])->get();
+        }
+        
         return response()->json([
             'branches' => $branches
         ]);
     }
+    
 
     public function storeJson(Request $request)
     {

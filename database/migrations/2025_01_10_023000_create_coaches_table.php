@@ -13,11 +13,16 @@ return new class extends Migration
     {
         Schema::create('coaches', function (Blueprint $table) {
             $table->id('CoachID');
-            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->unsignedBigInteger('BranchID')->nullable();
             $table->foreign('BranchID')->references('BranchID')->on('branches');
+        
             $table->string('FullName');
             $table->string('Specialty')->nullable();
-            $table->string('Availability')->nullable();
+        
+            // Two datetime columns for start–end range
+            $table->dateTime('AvailabilityStart')->nullable();
+            $table->dateTime('AvailabilityEnd')->nullable();
+        
             $table->string('ContactInfo')->nullable();
         
             $table->timestamps();

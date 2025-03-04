@@ -199,8 +199,13 @@ const Reports = () => {
         setCashFlowRecords(cashflowResponse.data.flows || []);
 
         // Membership Plans
-        setMembershipPlans(membershipPlansResponse.data || []);
-
+        const rawPlans = membershipPlansResponse.data || [];
+        const transformedPlans = rawPlans.map(plan => ({
+          ...plan,
+          members_count: plan.members ? plan.members.length : 0,
+        }));
+        setMembershipPlans(transformedPlans);        
+        
         // Staff Performance
         setStaffPerformance(staffPerformanceResponse.data || []);
 
@@ -308,8 +313,15 @@ const Reports = () => {
     datasets: [
       {
         data: membershipPlans.map((p) => Number(p.members_count) || 0),
-        backgroundColor: ["#42a5f5", "#66bb6a", "#ef5350"],
-      },
+        backgroundColor: [
+          "#42a5f5", // Blue
+          "#66bb6a", // Green
+          "#ef5350", // Red
+          "#ffa726", // Orange
+          "#ab47bc", // Purple
+          "#ffee58", // Yellow
+          // ...Add more if needed
+        ],      },
     ],
   }), [membershipPlans]);
 

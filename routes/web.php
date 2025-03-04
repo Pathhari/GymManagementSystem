@@ -412,7 +412,6 @@ use App\Http\Controllers\MembershipController;
 |--------------------------------------------------------------------------
 */
 use App\Http\Controllers\BookingController;
-use App\Http\Controllers\CoachController;
 
 Route::prefix('booking')->group(function() {
 
@@ -440,17 +439,6 @@ Route::prefix('booking')->group(function() {
         Route::post('sessions/book', [BookingController::class, 'storeSessionBooking'])->name('booking.sessions.book');
         Route::post('sessions/waitlist', [BookingController::class, 'addToWaitlist'])->name('booking.sessions.waitlist');
         Route::post('sessions/attendance', [BookingController::class, 'markAttendance'])->name('booking.sessions.attendance');
-
-        Route::get('/coaches', [CoachController::class, 'index']);
-    
-        // Create coach
-        Route::post('/coaches', [CoachController::class, 'store']);
-        
-        // Update coach
-        Route::put('/coaches/{id}', [CoachController::class, 'update']);
-        
-        // Delete coach
-        Route::delete('/coaches/{id}', [CoachController::class, 'destroy']);
     });
 
     // Some routes might not require staff
@@ -461,8 +449,28 @@ Route::prefix('booking')->group(function() {
     Route::get('/booking/sessions/bookings', [BookingController::class, 'listSessionBookings'])
         ->middleware('multiGuard:owner,admin,staff');
 
-    Route::delete('/booking/{id}', [BookingController::class, 'destroyBooking']);
-    Route::delete('/booking/sessions/{id}', [BookingController::class, 'cancelSession']);
+    Route::delete('/booking/{id}', [BookingController::class, 'destroyBooking']) ->middleware('multiGuard:owner,admin,staff');
+    
+    Route::delete('/booking/sessions/{id}', [BookingController::class, 'cancelSession']) ->middleware('multiGuard:owner,admin,staff');
+    
+
+    use App\Http\Controllers\CoachController;
+
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        // Coach CRUD
+        Route::get('/coaches',        [CoachController::class, 'index']);
+        Route::post('/coaches',       [CoachController::class, 'store']);
+        Route::get('/coaches/{id}',   [CoachController::class, 'show']);
+        Route::put('/coaches/{id}',   [CoachController::class, 'update']);
+        Route::delete('/coaches/{id}',[CoachController::class, 'destroy']);
+    
+        // Availability CRUD for each coach
+        Route::post('/coaches/{coachId}/availabilities', [CoachController::class, 'storeAvailability']);
+        Route::put('/coaches/{coachId}/availabilities/{availabilityId}', [CoachController::class, 'updateAvailability']);
+        Route::delete('/coaches/{coachId}/availabilities/{availabilityId}', [CoachController::class, 'destroyAvailability']);
+    });
+    
+
 
 
 use App\Http\Controllers\StaffController;
@@ -543,6 +551,10 @@ Route::prefix('staff')->group(function () {
             // Route::delete('{id}', [StaffController::class, 'destroyBonus'])->name('bonus.destroy');
         });
     });
+});
+
+Route::middleware('auth:admin')->prefix('admin')->group(function () {
+    Route::get('staff', [StaffController::class, 'indexStaffJson'])->name('admin.staff');
 });
 
 /*
@@ -693,6 +705,10 @@ Route::prefix('system')->group(function() {
 |--------------------------------------------------------------------------
 */
 use App\Http\Controllers\BranchController;
+
+Route::middleware('auth:admin')->prefix('admin')->group(function () {
+    Route::get('branches', [BranchController::class, 'indexJson'])->name('admin.branches');
+});
 
 Route::prefix('owner/branches')->name('branches.')->group(function() {
     // Accessible by owner, admin, staff
