@@ -1599,27 +1599,27 @@ function buildConsolidatedRows(flows, expenses, paymentFilter) {
                     </Box>
                   </Paper>
                 </Grid>
-                <Grid item xs={12} md={6}>
+                 <Grid item xs={12} md={6}>
                   <Paper sx={{ p: 2, height: 280, boxShadow: 3, display: 'flex', flexDirection: 'column' }}>
-                    <Typography variant="subtitle1" gutterBottom>
-                      Yogurt Cafe
-                    </Typography>
-                    <Box sx={{ flexGrow: 1, height: '100%', minHeight: 0 }}>
-                      {yogurtCafeChartData ? (
-                        <Line
-                          data={yogurtCafeChartData}
-                          options={{
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: { legend: { position: 'bottom' } },
-                          }}
-                        />
-                      ) : (
-                        <Typography>Loading Yogurt Cafe chart...</Typography>
-                      )}
-                    </Box>
-                  </Paper>
-                </Grid>
+                     <Typography variant="subtitle1" gutterBottom>
+                       Yogurt Cafe
+                     </Typography>
+                     <Box sx={{ flexGrow: 1, height: '100%', minHeight: 0 }}>
+                       {yogurtCafeChartData ? (
+                         <Line
+                           data={yogurtCafeChartData}
+                           options={{
+                             responsive: true,
+                             maintainAspectRatio: false,
+                             plugins: { legend: { position: 'bottom' } },
+                           }}
+                         />
+                       ) : (
+                         <Typography>Loading Yogurt Cafe chart...</Typography>
+                       )}
+                     </Box>
+                   </Paper>
+                 </Grid>                
 
                 <Grid item xs={12} md={12}>
                   <Paper

@@ -704,93 +704,79 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                         />
                       )}
 
-                      {/* Payment Rows */}
-                      <Box>
-                        {payments.map((payment, index) => (
-                          <Box
-                            key={index}
-                            sx={{
-                              display: "flex",
-                              gap: 2,
-                              mb: 1,
-                              flexWrap: "wrap",
-                              alignItems: "center",
-                              backgroundColor: "#f9f9f9",
-                              p: 1,
-                              borderRadius: 1,
-                            }}
+                     {/* Payment Rows */}
+                    <Box>
+                      {payments.map((payment, index) => (
+                        <Box
+                          key={index}
+                          sx={(theme) => ({
+                            display: "flex",
+                            gap: 2,
+                            mb: 1,
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                            p: 1,
+                            borderRadius: 1,
+                          })}
+                        >
+                          <FormControl
+                            sx={{ minWidth: 120 }}
+                            error={!!errors[`Payments_${index}_PaymentMethod`]}
                           >
-                            <FormControl
-                              sx={{ minWidth: 120 }}
-                              error={!!errors[`Payments_${index}_PaymentMethod`]}
-                            >
-                              <InputLabel>Method</InputLabel>
-                              <Select
-                                label="Method"
-                                value={payment.PaymentMethod}
-                                onChange={(e) =>
-                                  handlePaymentChange(
-                                    index,
-                                    "PaymentMethod",
-                                    e.target.value
-                                  )
-                                }
-                                startAdornment={
-                                  <InputAdornment position="start">
-                                    <PaymentIcon />
-                                  </InputAdornment>
-                                }
-                              >
-                                <MenuItem value="">-- Select --</MenuItem>
-                                <MenuItem value="Cash">Cash</MenuItem>
-                                <MenuItem value="BDO">BDO</MenuItem>
-                                <MenuItem value="BPI">BPI</MenuItem>
-                                <MenuItem value="GCash">GCash</MenuItem>
-                              </Select>
-                              {errors[`Payments_${index}_PaymentMethod`] && (
-                                <FormHelperText>
-                                  {
-                                    errors[`Payments_${index}_PaymentMethod`][0]
-                                  }
-                                </FormHelperText>
-                              )}
-                            </FormControl>
-
-                            <TextField
-                              label="Amount"
-                              type="number"
-                              value={payment.PaymentAmount}
+                            <InputLabel>Method</InputLabel>
+                            <Select
+                              label="Method"
+                              value={payment.PaymentMethod}
                               onChange={(e) =>
-                                handlePaymentChange(
-                                  index,
-                                  "PaymentAmount",
-                                  e.target.value
-                                )
+                                handlePaymentChange(index, "PaymentMethod", e.target.value)
                               }
-                              error={!!errors[`Payments_${index}_PaymentAmount`]}
-                              helperText={
-                                errors[`Payments_${index}_PaymentAmount`]?.[0]
+                              startAdornment={
+                                <InputAdornment position="start">
+                                  <PaymentIcon />
+                                </InputAdornment>
                               }
-                              InputProps={{
-                                startAdornment: (
-                                  <InputAdornment position="start">₱</InputAdornment>
-                                ),
-                              }}
-                              sx={{ width: 150 }}
-                            />
-
-                            {/* Remove row if we have more than 1 payment */}
-                            {payments.length > 1 && (
-                              <IconButton
-                                onClick={() => handleRemovePaymentRow(index)}
-                                color="error"
-                              >
-                                <CloseIcon />
-                              </IconButton>
+                            >
+                              <MenuItem value="">-- Select --</MenuItem>
+                              <MenuItem value="Cash">Cash</MenuItem>
+                              <MenuItem value="BDO">BDO</MenuItem>
+                              <MenuItem value="BPI">BPI</MenuItem>
+                              <MenuItem value="GCash">GCash</MenuItem>
+                            </Select>
+                            {errors[`Payments_${index}_PaymentMethod`] && (
+                              <FormHelperText>
+                                {errors[`Payments_${index}_PaymentMethod`][0]}
+                              </FormHelperText>
                             )}
-                          </Box>
-                        ))}
+                          </FormControl>
 
+                          <TextField
+                            label="Amount"
+                            type="number"
+                            value={payment.PaymentAmount}
+                            onChange={(e) =>
+                              handlePaymentChange(index, "PaymentAmount", e.target.value)
+                            }
+                            error={!!errors[`Payments_${index}_PaymentAmount`]}
+                            helperText={errors[`Payments_${index}_PaymentAmount`]?.[0]}
+                            InputProps={{
+                              startAdornment: (
+                                <InputAdornment position="start">₱</InputAdornment>
+                              ),
+                            }}
+                            sx={{ width: 150 }}
+                          />
+
+                          {/* Remove row if we have more than 1 payment */}
+                          {payments.length > 1 && (
+                            <IconButton
+                              onClick={() => handleRemovePaymentRow(index)}
+                              color="error"
+                            >
+                              <CloseIcon />
+                            </IconButton>
+                          )}
+                        </Box>
+                      ))}
                         <Button
                           variant="outlined"
                           onClick={handleAddPaymentRow}
