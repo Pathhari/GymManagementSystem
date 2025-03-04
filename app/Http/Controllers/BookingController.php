@@ -206,74 +206,103 @@ class BookingController extends Controller
     }
     
     /**
-     * Create a Coaching Session (no Payment creation here).
+     * Create a new Coaching Session
      */
     public function storeSession(Request $request)
-{
-    // Adjust your validation to accept "YYYY-MM-DD HH:mm:ss"
-    $data = $request->validate([
-        'BranchID'    => 'required|integer|exists:branches,BranchID',
-        'SessionName' => 'required|string|max:255',
-        'SessionType' => 'required|string|max:50',
-        'CoachID'     => 'required|exists:coaches,CoachID',
-        
-        // IMPORTANT: now using 'Y-m-d H:i:s'
-        'StartTime'   => 'required|date_format:Y-m-d H:i:s',
-        'EndTime'     => 'required|date_format:Y-m-d H:i:s|after:StartTime',
+    {
+        // Validate all fields
+        $data = $request->validate([
+            'BranchID'    => 'required|integer|exists:branches,BranchID',
+            'SessionName' => 'required|string|max:255',
+            'SessionType' => 'required|string|max:50',
+            'CoachID'     => 'required|exists:coaches,CoachID',
 
-        'Capacity'    => 'nullable|integer|min:1',
-        'Location'    => 'nullable|string|max:255',
-        'Fee'         => 'nullable|numeric|min:0',
-    ]);
+            // Using 'Y-m-d H:i:s'
+            'StartTime'   => 'required|date_format:Y-m-d H:i:s',
+            'EndTime'     => 'required|date_format:Y-m-d H:i:s|after:StartTime',
 
-    // Create the session
-    $session = CoachingSession::create([
-        'BranchID'    => $data['BranchID'],
-        'SessionName' => $data['SessionName'],
-        'SessionType' => $data['SessionType'],
-        'CoachID'     => $data['CoachID'],
-        'StartTime'   => $data['StartTime'],  // "2025-03-10 13:00:00"
-        'EndTime'     => $data['EndTime'],    // "2025-03-10 14:00:00"
-        'Capacity'    => $data['Capacity'] ?? 10,
-        'Location'    => $data['Location'] ?? null,
-        'Fee'         => $data['Fee'] ?? 0,
-        'Participants'=> 0,
-        'Status'      => 'Scheduled',
-    ]);
+            'Capacity'    => 'nullable|integer|min:1',
+            'Location'    => 'nullable|string|max:255',
+            'Fee'         => 'nullable|numeric|min:0',
+        ]);
 
-    return response()->json([
-        'message' => 'Session created successfully.',
-        'session' => $session,
-    ], 201);
-}
+        // Fetch the Coach so we can check availability:
+        $coach = Coach::findOrFail($data['CoachID']);
 
-    
-    
+        // If you have an actual method isAvailableBetween() in the Coach model:
+        if (!$coach->isAvailableBetween($data['StartTime'], $data['EndTime'])) {
+            return response()->json([
+                'error' => 'Coach is not available at that time.'
+            ], 422);
+        }
+
+        // Create the session
+        $session = CoachingSession::create([
+            'BranchID'    => $data['BranchID'],
+            'SessionName' => $data['SessionName'],
+            'SessionType' => $data['SessionType'],
+            'CoachID'     => $data['CoachID'],
+            'StartTime'   => $data['StartTime'],  // "YYYY-MM-DD HH:mm:ss"
+            'EndTime'     => $data['EndTime'],    // "YYYY-MM-DD HH:mm:ss"
+            'Capacity'    => $data['Capacity'] ?? 10,
+            'Location'    => $data['Location'] ?? null,
+            'Fee'         => $data['Fee'] ?? 0,
+            'Participants'=> 0,
+            'Status'      => 'Scheduled', // or whatever default status
+        ]);
+
+        return response()->json([
+            'message' => 'Session created successfully.',
+            'session' => $session,
+        ], 201);
+    }
+
     /**
      * Update an existing Coaching Session
      */
     public function updateSession(Request $request, $id)
     {
+        // Validate
         $data = $request->validate([
             'SessionName'  => 'required|string|max:255',
             'BranchID'     => 'required|integer|exists:branches,BranchID',
             'SessionType'  => 'required|string|max:50',
             'CoachID'      => 'required|exists:coaches,CoachID',
-            // Now using "Y-m-d H:i:s" => from the front end we pass that exact format
+
+            // "Y-m-d H:i:s" format (EndTime is nullable, but must be after StartTime if supplied)
             'StartTime'    => 'required|date_format:Y-m-d H:i:s',
             'EndTime'      => 'nullable|date_format:Y-m-d H:i:s|after:StartTime',
+
             'Capacity'     => 'nullable|integer|min:1',
             'Location'     => 'nullable|string|max:255',
             'Fee'          => 'nullable|numeric|min:0',
             'Status'       => 'nullable|string|max:50',
         ]);
-    
+
+        // Fetch the existing session
         $session = CoachingSession::findOrFail($id);
+
+        // Check the coach’s availability only if both Start & End times are provided.
+        // (If EndTime is null, your DB might allow it, or you might handle that differently.)
+        if (!empty($data['StartTime']) && !empty($data['EndTime'])) {
+            $coach = Coach::findOrFail($data['CoachID']);
+
+            if (!$coach->isAvailableBetween($data['StartTime'], $data['EndTime'])) {
+                return response()->json([
+                    'error' => 'Coach is not available at that time.'
+                ], 422);
+            }
+        }
+
+        // Update the session
         $session->update($data);
-    
-        return response()->json(['message' => 'Session updated successfully.']);
+
+        return response()->json([
+            'message' => 'Session updated successfully.',
+            'session' => $session, // Optionally return the updated session
+        ]);
     }
-    
+
 
     public function cancelSession($id)
     {
