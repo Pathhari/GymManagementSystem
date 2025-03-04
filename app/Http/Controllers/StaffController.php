@@ -244,6 +244,44 @@ public function staffDashboardInfo()
      * V. ATTENDANCE (Attendance)
      * ------------------------------------------------------------------ */
 
+     public function storeAttendance(Request $request)
+     {
+         // Validation
+         $data = $request->validate([
+             'StaffID'     => 'required|exists:staff,StaffID',
+             'Date'        => 'required|date',
+             'TimeIn'      => 'nullable|date_format:H:i',
+             'TimeOut'     => 'nullable|date_format:H:i|after:TimeIn',
+             'HoursWorked' => 'nullable|numeric|min:0',
+             'OvertimeHours' => 'nullable|numeric|min:0',
+         ]);
+     
+         // Create a new attendance (or optionally firstOrNew if you want to handle upsert logic)
+         $attendance = new Attendance();
+         $attendance->StaffID       = $data['StaffID'];
+         $attendance->Date          = $data['Date'];
+         $attendance->TimeIn        = $data['TimeIn'] ?? null;
+         $attendance->TimeOut       = $data['TimeOut'] ?? null;
+         $attendance->HoursWorked   = $data['HoursWorked'] ?? 0;
+         $attendance->OvertimeHours = $data['OvertimeHours'] ?? 0;
+         // Compute HoursWorked automatically if TimeIn and TimeOut are provided
+         if (!empty($attendance->TimeIn) && !empty($attendance->TimeOut)) {
+             $in  = strtotime($attendance->Date . ' ' . $attendance->TimeIn);
+             $out = strtotime($attendance->Date . ' ' . $attendance->TimeOut);
+             $attendance->HoursWorked = max(($out - $in) / 3600, 0);
+         }
+         $attendance->save();
+     
+         // Return the newly created record with staff relationship
+         $attendance->load('staff');
+     
+         return response()->json([
+             'message'    => 'Attendance created successfully.',
+             'attendance' => $attendance,
+         ], 201);
+     }
+     
+
     /**
      * Clock in/out or update an attendance record, return JSON.
      */

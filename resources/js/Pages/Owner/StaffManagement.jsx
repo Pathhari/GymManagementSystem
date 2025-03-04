@@ -61,12 +61,12 @@ import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 
-
-
 // Import external layout components
 import AddNewStaffLayout from "../../Layouts/AddNewStaffLayout";
 import AddPayrollLayout from "../../Layouts/AddPayrollLayout";
 import AddStaffTaskLayout from "../../Layouts/AddStaffTaskLayout";
+import AddAttendanceLayout from '../../Layouts/AddAttendanceLayout';
+
 
 export default function StaffManagement({ staff = [], attendance = [], payroll = [], tasks = [], schedules = [], staffData, payrollData }) {
 
@@ -1376,6 +1376,16 @@ function handleNewPayrollCreated(resData) {
 
           doc.save(`${staffName}-Payslip.pdf`);
         };
+
+        const [isAddAttendanceOpen, setAddAttendanceOpen] = useState(false);
+
+        // 2) Add a helper to handle newly created attendance
+        function handleNewAttendanceCreated(resData) {
+          const newAttendance = resData.attendance;
+          setAttendanceRecords((prev) => [newAttendance, ...prev]);
+          setFilteredAttendance((prev) => [newAttendance, ...prev]);
+          showSuccessMessage("New attendance record added successfully!");
+        }
         
   return (
     <Box sx={{ p: 4 }}>
@@ -1456,6 +1466,16 @@ function handleNewPayrollCreated(resData) {
                 Add New Staff
               </Button>
             )}
+            {activeTab === 1 && (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={() => setAddAttendanceOpen(true)}
+              >
+                Add Attendance
+              </Button>
+            )}
             {activeTab === 2 && (
               <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddPayrollOpen(true)}>
                 Add Payroll
@@ -1495,24 +1515,23 @@ function handleNewPayrollCreated(resData) {
             />
           )}
 
-      {isAddPayrollOpen && (
-        <AddPayrollLayout
-          onClose={() => setAddPayrollOpen(false)}
-          onAdd={(newPayroll) => {
-            axios.post(route('staff.payroll.store'), newPayroll)
-              .then(res => handleNewPayrollCreated(res.data)) // Use the new function
-              .catch(err => console.error('Error adding payroll:', err));
-          }}
+          {isAddPayrollOpen && (
+            <AddPayrollLayout
+              onClose={() => setAddPayrollOpen(false)}
+              onAdd={(newPayroll) => {
+                axios.post(route('staff.payroll.store'), newPayroll)
+                  .then(res => handleNewPayrollCreated(res.data))
+                  .catch(err => console.error('Error adding payroll:', err));
+              }}
+              staffOptions={staffRecords.map((s) => ({
+                value: s.StaffID,
+                label: s.FullName,
+                hourlyRate: s.HourlyRate,
+                overtimeRate: s.OvertimeRate,
+              }))}
+            />
+          )}
 
-          staffOptions={staffRecords.map((s) => ({
-            value: s.StaffID,
-            label: s.FullName,
-            dailyRate: s.DailyRate,
-            hourlyRate: s.HourlyRate,
-            overtimeRate: s.OvertimeRate,          
-          }))}
-        />
-      )}
 
       {isAddTaskOpen && (
         <AddStaffTaskLayout
@@ -1529,6 +1548,25 @@ function handleNewPayrollCreated(resData) {
           }))}
         />
       )}
+
+        {isAddAttendanceOpen && (
+          <AddAttendanceLayout
+            onClose={() => setAddAttendanceOpen(false)}
+            onAdd={(attendanceData) => {
+              axios
+                .post(route("staff.attendance.store"), attendanceData)
+                .then((res) => {
+                  handleNewAttendanceCreated(res.data);
+                  setAddAttendanceOpen(false);
+                })
+                .catch((err) => console.error("Error adding attendance:", err));
+            }}
+            staffOptions={staffRecords.map((s) => ({
+              value: s.StaffID,
+              label: s.FullName,
+            }))}
+          />
+        )}
 
       {/* ------------------- VIEW & EDIT DIALOGS ------------------- */}
 

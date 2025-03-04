@@ -239,17 +239,21 @@ class FinanceController extends Controller
     public function storeExpense(Request $request)
     {
         $staff = auth('staff')->user();
-
+    
         $data = $request->validate([
-            'BranchID'       => 'required|exists:branches,BranchID',
-            'ExpenseDate'    => 'required|date',
-            'ExpenseCategory'=> 'required|string|max:100',
-            'Amount'         => 'required|numeric|min:0',
-            'PaymentMethod'  => 'nullable|string|max:50',
-            'StaffID'        => 'nullable|exists:staff,StaffID',
-            'Notes'          => 'nullable|string',
+            'BranchID'        => 'required|exists:branches,BranchID',
+            'ExpenseDate'     => 'required|date',
+            'ExpenseCategory' => 'required|string|max:100',
+            'Amount'          => 'required|numeric|min:0',
+            'PaymentMethod'   => 'nullable|string|max:50',
+            'StaffID'         => 'nullable|exists:staff,StaffID',
+            'Notes'           => 'nullable|string',
+    
+            // NEW validation for BusinessType
+            'BusinessType'    => 'required|string|max:50', 
+            // optionally -> 'in:Gym,Cafe,Yogurt,"Yogurt Cafe"' if you want to enforce choices
         ]);
-
+    
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
             if (!in_array($data['BranchID'], $staffBranchIDs)) {
@@ -258,9 +262,9 @@ class FinanceController extends Controller
                 ], 403);
             }
         }
-
+    
         $expense = Expense::create($data);
-
+    
         return response()->json([
             'success' => true,
             'message' => 'Expense created successfully.',
@@ -273,40 +277,47 @@ class FinanceController extends Controller
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
-
+    
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
             $expenses = Expense::with('staff')
-                ->select('ExpenseID', 'ExpenseDate', 'ExpenseCategory', 'Amount', 'Notes', 'StaffID', 'BranchID')
+                ->select('ExpenseID', 'ExpenseDate', 'ExpenseCategory',
+                         'Amount', 'Notes', 'StaffID', 'BranchID',
+                         'BusinessType' // <--- Include this so it shows in JSON
+                )
                 ->whereIn('BranchID', $staffBranchIDs)
                 ->orderBy('ExpenseDate', 'desc')
                 ->get();
         } elseif ($admin || $owner) {
             $expenses = Expense::with('staff')
                 ->orderBy('ExpenseDate', 'desc')
-                ->get();
+                ->get(); 
+                // returns all columns, including BusinessType if you haven't hidden it
         } else {
             $expenses = collect([]);
         }
-
+    
         return response()->json(['expenses' => $expenses]);
     }
-
+    
     public function updateExpense(Request $request, $id)
     {
-        $staff = auth('staff')->user();
+        $staff   = auth('staff')->user();
         $expense = Expense::findOrFail($id);
-
+    
         $data = $request->validate([
-            'BranchID'       => 'required|exists:branches,BranchID',
-            'ExpenseDate'    => 'required|date',
-            'ExpenseCategory'=> 'required|string|max:100',
-            'Amount'         => 'required|numeric|min:0',
-            'PaymentMethod'  => 'nullable|string|max:50',
-            'StaffID'        => 'nullable|exists:staff,StaffID',
-            'Notes'          => 'nullable|string',
+            'BranchID'        => 'required|exists:branches,BranchID',
+            'ExpenseDate'     => 'required|date',
+            'ExpenseCategory' => 'required|string|max:100',
+            'Amount'          => 'required|numeric|min:0',
+            'PaymentMethod'   => 'nullable|string|max:50',
+            'StaffID'         => 'nullable|exists:staff,StaffID',
+            'Notes'           => 'nullable|string',
+            
+            // NEW
+            'BusinessType'    => 'required|string|max:50',
         ]);
-
+    
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
             if (!in_array($expense->BranchID, $staffBranchIDs)) {
@@ -320,16 +331,16 @@ class FinanceController extends Controller
                 ], 403);
             }
         }
-
+    
         $expense->update($data);
-
+    
         return response()->json([
             'success' => true,
             'message' => 'Expense updated successfully.',
             'data'    => $expense
         ]);
     }
-
+    
     public function destroyExpense($id)
     {
         $staff = auth('staff')->user();

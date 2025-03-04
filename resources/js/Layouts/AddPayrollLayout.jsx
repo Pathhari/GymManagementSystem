@@ -23,7 +23,6 @@ import Autocomplete from "@mui/material/Autocomplete";
 import CloseIcon from "@mui/icons-material/Close";
 import PersonIcon from "@mui/icons-material/Person";
 import DateRangeIcon from "@mui/icons-material/DateRange";
-import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import SaveIcon from "@mui/icons-material/Save";
 
@@ -40,42 +39,23 @@ const initialPayroll = {
   Status: "",
 };
 
-export default function AddPayrollLayout({ onClose, onAdd }) {
+export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) {
   const [payrollData, setPayrollData] = useState(initialPayroll);
   const [errors, setErrors] = useState({});
   const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [attendanceFetched, setAttendanceFetched] = useState(false);
   const [noAttendanceMsg, setNoAttendanceMsg] = useState("");
 
-  // State for dynamic staff search:
+  // Remove the state and useEffect for fetching suggestions,
+  // since staffOptions is passed directly from the parent.
+  // Instead, we keep local state for the Autocomplete input.
   const [query, setQuery] = useState("");
-  const [suggestions, setSuggestions] = useState([]);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   // ──────────────────────────────────────────────────────────────
-  // 1) Fetch staff suggestions as user types
-  // ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (query.trim() === "") {
-      setSuggestions([]);
-      return;
-    }
-    axios
-      .get("/staff/search", { params: { query } })
-      .then((res) => {
-        // Expected response: array of staff objects { value, label, hourlyRate, overtimeRate, ... }
-        setSuggestions(res.data);
-      })
-      .catch((err) => {
-        console.error("Error fetching staff suggestions:", err);
-        setSuggestions([]);
-      });
-  }, [query]);
-
-  // ──────────────────────────────────────────────────────────────
-  // 2) Fetch attendance when StaffID, StartDate, or EndDate changes
+  // Fetch attendance when StaffID, StartDate, or EndDate changes
   // ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const { StaffID, StartDate, EndDate } = payrollData;
@@ -117,12 +97,12 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
   }, [payrollData.StaffID, payrollData.StartDate, payrollData.EndDate]);
 
   // ──────────────────────────────────────────────────────────────
-  // 3) Recalculate payroll when attendance records or deductions change
+  // Recalculate payroll when attendance records or deductions change
   // ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!attendanceFetched) return;
-    // Look up the selected staff from the suggestions:
-    const selectedStaff = suggestions.find((s) => s.value === payrollData.StaffID);
+    // Find the selected staff from staffOptions (passed as prop)
+    const selectedStaff = staffOptions.find((s) => s.value === payrollData.StaffID);
     if (!selectedStaff) return;
 
     const hourlyRate = selectedStaff.hourlyRate || 0;
@@ -150,10 +130,10 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
       GrossPay: grossPay.toString(),
       NetPay: netPay.toString(),
     }));
-  }, [attendanceRecords, attendanceFetched, payrollData.Deductions, suggestions, payrollData.StaffID]);
+  }, [attendanceRecords, attendanceFetched, payrollData.Deductions, staffOptions, payrollData.StaffID]);
 
   // ──────────────────────────────────────────────────────────────
-  // 4) Generic form handlers
+  // Generic form handlers
   // ──────────────────────────────────────────────────────────────
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -163,8 +143,8 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // Find a matching staff from suggestions based on the selected StaffID
-    const selectedStaff = suggestions.find((s) => s.value === payrollData.StaffID);
+    // Find a matching staff from staffOptions based on the selected StaffID
+    const selectedStaff = staffOptions.find((s) => s.value === payrollData.StaffID);
     if (!selectedStaff) {
       setErrors({ StaffID: "No matching staff found. Please refine your search." });
       return;
@@ -211,7 +191,6 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
         </Box>
       </DialogTitle>
 
-
       {/* Dialog Content */}
       <DialogContent dividers>
         <Box sx={{ p: 2 }}>
@@ -220,18 +199,16 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
           {/* The Form */}
           <Box component="form" noValidate onSubmit={handleSubmit} sx={{ mt: 1 }}>
             <Grid container spacing={2} direction={isMobile ? "column" : "row"}>
-              {/* Staff - using Autocomplete for live search */}
+              {/* Staff - using Autocomplete with staffOptions passed from parent */}
               <Grid item xs={12}>
                 <FormControl fullWidth required error={!!errors.StaffID}>
                   <Autocomplete
-                    freeSolo={false}
-                    options={suggestions}
+                    options={staffOptions}
                     getOptionLabel={(option) => option.label}
                     inputValue={query}
                     onInputChange={(event, newInputValue) => {
                       setQuery(newInputValue);
                     }}
-                    // When an option is selected, update payrollData.StaffID
                     onChange={(event, newValue) => {
                       if (newValue) {
                         setPayrollData((prev) => ({
@@ -241,8 +218,6 @@ export default function AddPayrollLayout({ onClose, onAdd }) {
                         setErrors((prev) => ({ ...prev, StaffID: undefined }));
                       }
                     }}
-                    // Render the TextField without a dropdown arrow (if desired)
-                    popupIcon={null}
                     renderInput={(params) => (
                       <TextField
                         {...params}

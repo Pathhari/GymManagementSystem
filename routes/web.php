@@ -475,6 +475,8 @@ Route::prefix('booking')->group(function() {
 
 use App\Http\Controllers\StaffController;
 
+
+
 // Everything under /staff
 Route::prefix('staff')->group(function () {
 
@@ -488,6 +490,7 @@ Route::prefix('staff')->group(function () {
         // For staff/metrics
         Route::get('/metrics', [StaffController::class, 'getStaffMetrics'])->name('staff.metrics');
         // Attendance
+        Route::post('/attendance', [StaffController::class, 'storeAttendance'])->name('staff.attendance.store');
         Route::get('attendance', [StaffController::class, 'indexAttendance'])->name('staff.attendance.index');
         Route::put('attendance/{id}', [StaffController::class, 'updateAttendance'])->name('staff.attendance.update');
         Route::delete('attendance/{id}', [StaffController::class, 'destroyAttendance'])->name('staff.attendance.destroy');

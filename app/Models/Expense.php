@@ -16,7 +16,8 @@ class Expense extends Model
         'PaymentMethod',
         'StaffID',
         'Notes',
-        'BranchID', // <--- new column
+        'BranchID',
+        'BusinessType', // <--- NEW: add this line
     ];
 
     // Relationship: The expense belongs to a branch

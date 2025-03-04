@@ -97,7 +97,6 @@ export default function MembershipManagement() {
   // Activity Logs
   const [activityLogs, setActivityLogs] = useState([]);
 
-
   // Plans / Statuses / Branches
   const [plans, setPlans] = useState([]);
   const [memberStatuses, setMemberStatuses] = useState([]);
@@ -136,7 +135,7 @@ export default function MembershipManagement() {
   const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteInfo, setDeleteInfo] = useState({ type: "", id: null });
 
-  // Tab-level filters
+  // Tab-level filters (for clickable Expired & Expiring Soon cards)
   const [filterExpiring, setFilterExpiring] = useState(false);
   const [filterExpired, setFilterExpired] = useState(false);
 
@@ -200,7 +199,7 @@ export default function MembershipManagement() {
   const [isViewLogOpen, setViewLogOpen] = useState(false);
 
   // ─────────────────────────────────────────────────────────
-  // Monthly Clients: Add / Edit / View
+  // MONTHLY CLIENTS: Add / Edit / View
   // ─────────────────────────────────────────────────────────
   const [monthlyClientRecords, setMonthlyClientRecords] = useState([]);
   const [isAddMonthlyClientOpen, setAddMonthlyClientOpen] = useState(false);
@@ -213,13 +212,13 @@ export default function MembershipManagement() {
     MonthsToPayUpfront: 1,
   });
   const [monthlyClientPayments, setMonthlyClientPayments] = useState([
-    { PaymentMethod: "", PaymentAmount: "" }
+    { PaymentMethod: "", PaymentAmount: "" },
   ]);
-  
+
   const [selectedMonthlyClient, setSelectedMonthlyClient] = useState(null);
   const [isViewMonthlyClientOpen, setViewMonthlyClientOpen] = useState(false);
   const [isEditMonthlyClientOpen, setEditMonthlyClientOpen] = useState(false);
-  
+
   // ─────────────────────────────────────────────────────────
   // Lifecycle: Fetch data on mount
   // ─────────────────────────────────────────────────────────
@@ -473,7 +472,6 @@ export default function MembershipManagement() {
     }
   }
 
-
   // ─────────────────────────────────────────────────────────
   // WALK‐IN CRUD
   // ─────────────────────────────────────────────────────────
@@ -604,13 +602,6 @@ export default function MembershipManagement() {
       console.error("Error creating walk-in:", err);
       alert("Create error. Check console for details.");
     }
-  };
-  const getTodayWalkIns = () => {
-    const todayDate = new Date().toISOString().split("T")[0];
-    return walkInRecords.filter((walkIn) => {
-      const walkInDate = new Date(walkIn.VisitDate).toISOString().split("T")[0];
-      return walkInDate === todayDate;
-    }).length;
   };
 
   // ─────────────────────────────────────────────────────────
@@ -876,52 +867,6 @@ export default function MembershipManagement() {
   // ─────────────────────────────────────────────────────────
   // MONTHLY CLIENTS: Add / View / Edit / Delete
   // ─────────────────────────────────────────────────────────
-  async function handleAddMonthlyClient() {
-    try {
-      // Basic client-side validation
-      if (
-        !newMonthlyClient.FullName.trim() ||
-        !newMonthlyClient.VisitDate ||
-        !newMonthlyClient.MonthlyFee
-      ) {
-        alert("Please fill in required fields (Name, VisitDate, MonthlyFee).");
-        return;
-      }
-
-      // POST to your backend
-      const res = await axios.post("/monthly-clients", newMonthlyClient);
-      const savedClient = res.data;
-
-      // Add to local state
-      setMonthlyClientRecords((prev) => [...prev, savedClient]);
-
-      setAddMonthlyClientOpen(false);
-      setSnackMessage("Monthly Client Added Successfully!");
-      setSnackOpen(true);
-
-      // Reset form
-      setNewMonthlyClient({
-        FullName: "",
-        VisitDate: "",
-        MonthlyFee: "",
-        Notes: "",
-      });
-    } catch (err) {
-      console.error("Error adding monthly client:", err);
-      alert("Error. Check console for details.");
-    }
-  }
-
-  function handleViewMonthlyClient(row) {
-    setSelectedMonthlyClient(row);
-    setViewMonthlyClientOpen(true);
-  }
-
-  function handleEditMonthlyClient(row) {
-    setSelectedMonthlyClient({ ...row });
-    setEditMonthlyClientOpen(true);
-  }
-
   async function handleAddMonthlyClientSubmit() {
     try {
       if (!newMonthlyClient.FullName.trim()) {
@@ -936,10 +881,10 @@ export default function MembershipManagement() {
           PaymentAmount: Number(p.PaymentAmount) || 0,
         })),
       };
-  
+
       const res = await axios.post("/monthly-clients", payload);
       const created = res.data.monthlyClient || res.data;
-  
+
       setMonthlyClientRecords((prev) => [created, ...prev]);
       // Reset form
       setNewMonthlyClient({
@@ -952,48 +897,23 @@ export default function MembershipManagement() {
       });
       setMonthlyClientPayments([{ PaymentMethod: "", PaymentAmount: "" }]);
       setAddMonthlyClientOpen(false);
-  
+
       showSuccessMessage("Monthly client created successfully!");
     } catch (err) {
       console.error("Error creating monthly client:", err);
       alert("Error creating monthly client. Check console for details.");
     }
   }
-  
+
   function handleViewMonthlyClient(row) {
     setSelectedMonthlyClient(row);
     setViewMonthlyClientOpen(true);
   }
-  
+
   function handleEditMonthlyClient(row) {
     setSelectedMonthlyClient({ ...row });
     setEditMonthlyClientOpen(true);
   }
-  
-  async function handleEditMonthlyClientSubmit() {
-    if (!selectedMonthlyClient) return;
-    try {
-      const id = selectedMonthlyClient.MonthlyClientID;
-      await axios.put(`/monthly-clients/${id}`, {
-        FullName: selectedMonthlyClient.FullName,
-        Email: selectedMonthlyClient.Email,
-        Phone: selectedMonthlyClient.Phone,
-        StartDate: selectedMonthlyClient.StartDate,
-        EndDate: selectedMonthlyClient.EndDate,
-        IsActive: selectedMonthlyClient.IsActive,
-      });
-  
-      setMonthlyClientRecords((prev) =>
-        prev.map((c) => (c.MonthlyClientID === id ? selectedMonthlyClient : c))
-      );
-      setEditMonthlyClientOpen(false);
-      showSuccessMessage("Monthly client updated!");
-    } catch (err) {
-      console.error("Error updating monthly client:", err);
-      alert("Update error. See console.");
-    }
-  }
-  
 
   async function handleEditMonthlyClientSubmit() {
     if (!selectedMonthlyClient) return;
@@ -1029,25 +949,50 @@ export default function MembershipManagement() {
   }
 
   // ─────────────────────────────────────────────────────────
-  // Key Metrics
+  // 1) HELPER: Filter membership by branch
   // ─────────────────────────────────────────────────────────
-  const totalMembers = membershipRecords.length;
-  const activeCount = membershipRecords.filter((m) => m.MemberStatusID === 1).length;
-  const frozenCount = membershipRecords.filter((m) => m.MemberStatusID === 2).length;
-  const onHoldCount = membershipRecords.filter((m) => m.MemberStatusID === 3).length;
-  const terminatedCount = membershipRecords.filter((m) => m.MemberStatusID === 4).length;
-  const newCount = membershipRecords.filter((m) => m.MemberStatusID === 6).length;
-  const expiredMemberships = membershipRecords.filter(
+  function getMembershipRecordsByBranch() {
+    if (branchFilter === "all") return membershipRecords;
+    return membershipRecords.filter((m) => String(m.StartedBranchID) === branchFilter);
+  }
+
+  // 2) HELPER: Filter walk-ins by branch (assuming we store BranchID in each walk-in)
+  function getWalkInRecordsByBranch() {
+    if (branchFilter === "all") return walkInRecords;
+    // Adjust if your walkInRecords have a field name other than BranchID:
+    return walkInRecords.filter((w) => String(w.BranchID) === branchFilter);
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // Key Metrics (branch-filtered)
+  // ─────────────────────────────────────────────────────────
+  const filteredMemberships = getMembershipRecordsByBranch();
+  const filteredWalkIns = getWalkInRecordsByBranch();
+
+  const totalMembers = filteredMemberships.length;
+
+  // "Today's Walk-Ins"
+  function getTodayWalkIns() {
+    const todayDate = new Date().toISOString().split("T")[0];
+    return filteredWalkIns.filter((walkIn) => {
+      const walkInDate = new Date(walkIn.VisitDate).toISOString().split("T")[0];
+      return walkInDate === todayDate;
+    }).length;
+  }
+
+  // Expired
+  const expiredMemberships = filteredMemberships.filter(
     (m) => getStatusNameByID(m.MemberStatusID)?.toLowerCase() === "expired"
   ).length;
 
+  // Expiring Soon (next 7 days)
   const today = new Date();
-  const next30 = new Date();
-  next30.setDate(today.getDate() + 7);
-  const upcomingExpirations = membershipRecords.filter((m) => {
+  const next7 = new Date();
+  next7.setDate(today.getDate() + 7);
+  const upcomingExpirations = filteredMemberships.filter((m) => {
     if (!m?.MembershipEndDate) return false;
     const endDate = new Date(m.MembershipEndDate);
-    return endDate > today && endDate <= next30;
+    return endDate > today && endDate <= next7;
   }).length;
 
   // ─────────────────────────────────────────────────────────
@@ -1501,15 +1446,18 @@ export default function MembershipManagement() {
       ),
     },
   ];
-  
+
   // ─────────────────────────────────────────────────────────
-  // getFilteredData
+  // getFilteredData (for the DataGrid below)
   // ─────────────────────────────────────────────────────────
   function getFilteredData() {
     const applyBranchAndSearch = (arr) =>
       arr.filter((item) => {
         const branchMatches =
-          branchFilter === "all" || String(item.StartedBranchID) === branchFilter;
+          branchFilter === "all" ||
+          String(item.StartedBranchID) === branchFilter ||
+          // If your walk-in has .BranchID:
+          String(item.BranchID) === branchFilter;
         const searchMatches = Object.values(item).some((val) =>
           String(val).toLowerCase().includes(searchTerm)
         );
@@ -1939,7 +1887,7 @@ export default function MembershipManagement() {
         break;
     }
   };
-
+  
   return (
     <Box sx={{ p: 4 }}>
       {/* Key Metrics Section */}
@@ -2008,7 +1956,7 @@ export default function MembershipManagement() {
               <Typography variant="body2">Expired</Typography>
               <Typography variant="h6" sx={{ fontWeight: "bold" }}>
                 {
-                  membershipRecords.filter(
+                  filteredMemberships.filter(
                     (m) => getStatusNameByID(m.MemberStatusID)?.toLowerCase() === "expired"
                   ).length
                 }
@@ -4211,240 +4159,263 @@ export default function MembershipManagement() {
         </Dialog>
 
 
-      {/* ADD Renewal Dialog (Manual End Date) */}
-      <Dialog
-        open={isAddRenewalOpen}
-        onClose={() => setAddRenewalOpen(false)}
-        fullWidth
-        maxWidth="sm"
-        sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3, overflow: "hidden" } }}
-      >
-        <DialogTitle sx={{ p: 2 }}>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box display="flex" alignItems="center" gap={1}>
-              <AutorenewIcon sx={{ fontSize: 32, color: "primary.main" }} />
-              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                Add New Renewal
-              </Typography>
-            </Box>
-            <IconButton
-              onClick={() => setAddRenewalOpen(false)}
-              sx={{ "&:hover": { color: "red" } }}
+        <Dialog
+      open={isAddRenewalOpen}
+      onClose={() => setAddRenewalOpen(false)}
+      fullWidth
+      maxWidth="sm"
+      sx={{
+        "& .MuiDialog-paper": {
+          borderRadius: 3,
+          boxShadow: 6,
+          p: 3,
+          overflow: "hidden",
+          backgroundColor: theme.palette.background.paper,
+        },
+      }}
+    >
+      <DialogTitle sx={{ p: 2 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box display="flex" alignItems="center" gap={1}>
+            <AutorenewIcon sx={{ fontSize: 32, color: "primary.main" }} />
+            <Typography
+              variant="h6"
+              sx={{ fontWeight: "bold", color: theme.palette.text.primary }}
             >
-              <CloseIcon />
-            </IconButton>
+              Add New Renewal
+            </Typography>
           </Box>
-        </DialogTitle>
+          <IconButton onClick={() => setAddRenewalOpen(false)} sx={{ "&:hover": { color: "red" } }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
+      </DialogTitle>
 
-        <DialogContent dividers>
-          {/* (A) Member Name */}
-          <TextField
-            label="Member Name"
-            fullWidth
-            variant="outlined"
-            margin="normal"
-            value={
-              membershipRecords.find((m) => m.MemberID === newRenewal.MemberID)?.FullName
-              || "Unknown Member"
-            }
-            InputProps={{
-              readOnly: true,
-              startAdornment: (
-                <InputAdornment position="start">
-                  <PersonIcon />
-                </InputAdornment>
-              ),
+      <DialogContent
+        dividers
+        sx={{
+          backgroundColor: theme.palette.background.default,
+          color: theme.palette.text.primary,
+        }}
+      >
+        {/* (A) Member Name */}
+        <TextField
+          label="Member Name"
+          fullWidth
+          variant="outlined"
+          margin="normal"
+          value={
+            membershipRecords.find((m) => m.MemberID === newRenewal.MemberID)?.FullName ||
+            "Unknown Member"
+          }
+          InputProps={{
+            readOnly: true,
+            startAdornment: (
+              <InputAdornment position="start">
+                <PersonIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        {/* (B) New Membership End Date */}
+        <TextField
+          label="New Membership End Date"
+          name="NewEndDate"
+          type="date"
+          fullWidth
+          margin="normal"
+          variant="outlined"
+          value={newRenewal.NewEndDate}
+          onChange={(e) =>
+            setNewRenewal((prev) => ({ ...prev, NewEndDate: e.target.value }))
+          }
+          InputLabelProps={{ shrink: true }}
+          error={!!validationErrors.NewEndDate}
+          helperText={validationErrors.NewEndDate}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <EventIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        {/* Renewal Amount */}
+        <TextField
+          label="Renewal Amount"
+          name="RenewalAmount"
+          type="number"
+          fullWidth
+          margin="dense"
+          value={newRenewal.RenewalAmount}
+          onChange={(e) =>
+            setNewRenewal((prev) => ({ ...prev, RenewalAmount: e.target.value }))
+          }
+          variant="outlined"
+          error={!!validationErrors.RenewalAmount}
+          helperText={validationErrors.RenewalAmount}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        {/* Payment Splits */}
+        <Typography variant="subtitle2" sx={{ mt: 2, color: theme.palette.text.primary }}>
+          Payments (Split Allowed)
+        </Typography>
+        {renewalPayments.map((payment, index) => (
+          <Box
+            key={index}
+            sx={{
+              display: "flex",
+              gap: 2,
+              mb: 1,
+              mt: 1,
+              flexWrap: "wrap",
+              alignItems: "center",
+              backgroundColor:
+                theme.palette.mode === "dark" ? theme.palette.grey[800] : "#f9f9f9",
+              p: 1,
+              borderRadius: 1,
             }}
-          />
-
-          {/* (B) New Membership End Date */}
-          <TextField
-            label="New Membership End Date"
-            name="NewEndDate"
-            type="date"
-            fullWidth
-            margin="normal"
-            variant="outlined"
-            value={newRenewal.NewEndDate}
-            onChange={(e) =>
-              setNewRenewal((prev) => ({ ...prev, NewEndDate: e.target.value }))
-            }
-            InputLabelProps={{ shrink: true }}
-            error={!!validationErrors.NewEndDate}
-            helperText={validationErrors.NewEndDate}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <EventIcon />
-                </InputAdornment>
-              ),
-            }}
-          />
-
-          {/* Renewal Amount (auto-filled by the useEffect) */}
-          <TextField
-            label="Renewal Amount"
-            name="RenewalAmount"
-            type="number"
-            fullWidth
-            margin="dense"
-            value={newRenewal.RenewalAmount}
-            onChange={(e) =>
-              setNewRenewal((prev) => ({
-                ...prev,
-                RenewalAmount: e.target.value,
-              }))
-            }
-            variant="outlined"
-            error={!!validationErrors.RenewalAmount}
-            helperText={validationErrors.RenewalAmount}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
-                </InputAdornment>
-              ),
-            }}
-          />
-
-          {/* Payment Splits */}
-          <Typography variant="subtitle2" sx={{ mt: 2 }}>
-            Payments (Split Allowed)
-          </Typography>
-          {renewalPayments.map((payment, index) => (
-            <Box
-              key={index}
-              sx={{
-                display: "flex",
-                gap: 2,
-                mb: 1,
-                mt: 1,
-                flexWrap: "wrap",
-                alignItems: "center",
-                backgroundColor: "#f9f9f9",
-                p: 1,
-                borderRadius: 1,
-              }}
+          >
+            <FormControl
+              sx={{ minWidth: 120 }}
+              error={!!validationErrors[`Payments.${index}.PaymentMethod`]}
             >
-              <FormControl
-                sx={{ minWidth: 120 }}
-                error={!!validationErrors[`Payments.${index}.PaymentMethod`]}
-              >
-                <InputLabel>Method</InputLabel>
-                <Select
-                  label="Method"
-                  value={payment.PaymentMethod}
-                  onChange={(e) =>
-                    setRenewalPayments((prev) =>
-                      prev.map((p, i) =>
-                        i === index ? { ...p, PaymentMethod: e.target.value } : p
-                      )
-                    )
-                  }
-                  startAdornment={
-                    <InputAdornment position="start">
-                      <PaymentIcon />
-                    </InputAdornment>
-                  }
-                >
-                  <MenuItem value="">-- Select --</MenuItem>
-                  <MenuItem value="Cash">Cash</MenuItem>
-                  <MenuItem value="BDO">BDO</MenuItem>
-                  <MenuItem value="BPI">BPI</MenuItem>
-                  <MenuItem value="GCash">GCash</MenuItem>
-                </Select>
-                {validationErrors[`Payments.${index}.PaymentMethod`] && (
-                  <FormHelperText>
-                    {validationErrors[`Payments.${index}.PaymentMethod`]}
-                  </FormHelperText>
-                )}
-              </FormControl>
-
-              <TextField
-                label="Amount"
-                type="number"
-                value={payment.PaymentAmount}
+              <InputLabel sx={{ color: theme.palette.text.primary }}>Method</InputLabel>
+              <Select
+                label="Method"
+                value={payment.PaymentMethod}
                 onChange={(e) =>
                   setRenewalPayments((prev) =>
                     prev.map((p, i) =>
-                      i === index
-                        ? { ...p, PaymentAmount: e.target.value }
-                        : p
+                      i === index ? { ...p, PaymentMethod: e.target.value } : p
                     )
                   )
                 }
-                error={!!validationErrors[`Payments.${index}.PaymentAmount`]}
-                helperText={validationErrors[`Payments.${index}.PaymentAmount`]}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">₱</InputAdornment>
-                  ),
+                startAdornment={
+                  <InputAdornment position="start">
+                    <PaymentIcon sx={{ color: theme.palette.text.primary }} />
+                  </InputAdornment>
+                }
+                sx={{
+                  color: theme.palette.text.primary,
+                  "& .MuiOutlinedInput-notchedOutline": {
+                    borderColor: theme.palette.divider,
+                  },
                 }}
-                sx={{ width: 150 }}
-              />
-
-              {renewalPayments.length > 1 && (
-                <IconButton
-                  onClick={() =>
-                    setRenewalPayments((prev) => prev.filter((_, i) => i !== index))
-                  }
-                  color="error"
-                >
-                  <CloseIcon />
-                </IconButton>
+              >
+                <MenuItem value="">-- Select --</MenuItem>
+                <MenuItem value="Cash">Cash</MenuItem>
+                <MenuItem value="BDO">BDO</MenuItem>
+                <MenuItem value="BPI">BPI</MenuItem>
+                <MenuItem value="GCash">GCash</MenuItem>
+              </Select>
+              {validationErrors[`Payments.${index}.PaymentMethod`] && (
+                <FormHelperText>
+                  {validationErrors[`Payments.${index}.PaymentMethod`]}
+                </FormHelperText>
               )}
-            </Box>
-          ))}
+            </FormControl>
 
-          <Button
-            variant="outlined"
-            onClick={() =>
-              setRenewalPayments((prev) => [...prev, { PaymentMethod: "", PaymentAmount: "" }])
-            }
-            sx={{ mt: 1 }}
-          >
-            Add Payment
-          </Button>
+            <TextField
+              label="Amount"
+              type="number"
+              value={payment.PaymentAmount}
+              onChange={(e) =>
+                setRenewalPayments((prev) =>
+                  prev.map((p, i) =>
+                    i === index ? { ...p, PaymentAmount: e.target.value } : p
+                  )
+                )
+              }
+              error={!!validationErrors[`Payments.${index}.PaymentAmount`]}
+              helperText={validationErrors[`Payments.${index}.PaymentAmount`]}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">₱</InputAdornment>
+                ),
+              }}
+              sx={{
+                width: 150,
+                color: theme.palette.text.primary,
+                "& .MuiOutlinedInput-notchedOutline": {
+                  borderColor: theme.palette.divider,
+                },
+              }}
+            />
 
-          {/* PaymentFor (read-only) */}
-          <TextField
-            label="Payment For"
-            name="PaymentFor"
-            fullWidth
-            margin="dense"
-            value={newRenewal.PaymentFor.replace(/^\["|"\]$/g, "")}
-            variant="outlined"
-            disabled
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <DescriptionIcon />
-                </InputAdornment>
-              ),
-            }}
-            sx={{ mt: 2 }}
-          />
+            {renewalPayments.length > 1 && (
+              <IconButton
+                onClick={() =>
+                  setRenewalPayments((prev) => prev.filter((_, i) => i !== index))
+                }
+                color="error"
+              >
+                <CloseIcon />
+              </IconButton>
+            )}
+          </Box>
+        ))}
 
-          {/* Show sum-of-payments error if any */}
-          {validationErrors.totalPaid && (
-            <Typography color="error" sx={{ mt: 1 }}>
-              {validationErrors.totalPaid}
-            </Typography>
-          )}
-        </DialogContent>
+        <Button
+          variant="outlined"
+          onClick={() =>
+            setRenewalPayments((prev) => [
+              ...prev,
+              { PaymentMethod: "", PaymentAmount: "" },
+            ])
+          }
+          sx={{ mt: 1 }}
+        >
+          Add Payment
+        </Button>
 
-        <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
-          <Button
-            variant="contained"
-            onClick={handleAddRenewal}
-            sx={{ px: 4, py: 1, textTransform: "none" }}
-            startIcon={<SaveIcon />}
-          >
-            SAVE RENEWAL
-          </Button>
-        </DialogActions>
-      </Dialog>
+        {/* PaymentFor (read-only) */}
+        <TextField
+          label="Payment For"
+          name="PaymentFor"
+          fullWidth
+          margin="dense"
+          value={newRenewal.PaymentFor.replace(/^\["|"\]$/g, "")}
+          variant="outlined"
+          disabled
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <DescriptionIcon />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ mt: 2 }}
+        />
 
+        {/* Show sum-of-payments error if any */}
+        {validationErrors.totalPaid && (
+          <Typography color="error" sx={{ mt: 1 }}>
+            {validationErrors.totalPaid}
+          </Typography>
+        )}
+      </DialogContent>
+
+      <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+        <Button
+          variant="contained"
+          onClick={handleAddRenewal}
+          sx={{ px: 4, py: 1, textTransform: "none" }}
+          startIcon={<SaveIcon />}
+        >
+          SAVE RENEWAL
+        </Button>
+      </DialogActions>
+    </Dialog>
 
      {/* EDIT Renewal */}
       <Dialog

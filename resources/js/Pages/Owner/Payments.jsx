@@ -238,6 +238,11 @@ export default function PaymentsAndInvoices() {
     fetchUnpaidInvoices();
   }, []);
 
+  useEffect(() => {
+    handleFilterData();
+  }, [searchTerm, dateFrom, dateTo, branch]);
+  
+
   // 1) MEMBERS
   const fetchMembers = async () => {
     try {
@@ -978,18 +983,6 @@ export default function PaymentsAndInvoices() {
               </Select>
             </FormControl>
           </Grid>
-          {/* FILTER BUTTON */}
-          <Grid
-            item
-            xs={12}
-            sm={6}
-            md={3}
-            sx={{ display: "flex", alignItems: "center", gap: 1 }}
-          >
-            <Button variant="contained" onClick={handleFilterData}>
-              Filter
-            </Button>
-          </Grid>
         </Grid>
       </Paper>
 
@@ -1014,7 +1007,9 @@ export default function PaymentsAndInvoices() {
               size="small"
               placeholder="Search..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value.toLowerCase())}
+              onChange={(e) => {
+                setSearchTerm(e.target.value); // or e.target.value.toLowerCase()
+              }}
               fullWidth
               sx={{ maxWidth: 350 }}
             />
