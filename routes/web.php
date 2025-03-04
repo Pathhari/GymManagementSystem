@@ -553,6 +553,10 @@ Route::prefix('staff')->group(function () {
     });
 });
 
+Route::middleware('auth:admin')->prefix('admin')->group(function () {
+    Route::get('staff', [StaffController::class, 'indexStaffJson'])->name('admin.staff');
+});
+
 /*
 
 |--------------------------------------------------------------------------
@@ -701,6 +705,10 @@ Route::prefix('system')->group(function() {
 |--------------------------------------------------------------------------
 */
 use App\Http\Controllers\BranchController;
+
+Route::middleware('auth:admin')->prefix('admin')->group(function () {
+    Route::get('branches', [BranchController::class, 'indexJson'])->name('admin.branches');
+});
 
 Route::prefix('owner/branches')->name('branches.')->group(function() {
     // Accessible by owner, admin, staff

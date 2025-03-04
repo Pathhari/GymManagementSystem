@@ -21,10 +21,14 @@ class StaffController extends Controller
 // In StaffController:
 public function staffDashboardInfo()
 {
+    $admin = auth('admin')->user();
+    $assignedBranchIDs = $admin->branches()->pluck('branches.BranchID')->toArray();
     $staff = auth('staff')->user();
     if (!$staff) {
         return response()->json(['error' => 'Not logged in'], 401);
     }
+
+    $staff = Staff::whereIn('BranchID', $assignedBranchIDs)->get();
 
     // Return only tasks for this staff
     $tasks = StaffTask::with('staff')
