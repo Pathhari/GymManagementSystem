@@ -665,6 +665,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                         />
                       )}
 
+                      {/* Payment Rows */}
                       <Box>
                         {payments.map((payment, index) => (
                           <Box
@@ -675,9 +676,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                               mb: 1,
                               flexWrap: "wrap",
                               alignItems: "center",
-                              backgroundColor: mode === "dark"
-                                ? theme.palette.grey[800]
-                                : "#f9f9f9",
+                              backgroundColor: "#f9f9f9",
                               p: 1,
                               borderRadius: 1,
                             }}
@@ -691,7 +690,11 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                                 label="Method"
                                 value={payment.PaymentMethod}
                                 onChange={(e) =>
-                                  handlePaymentChange(index, "PaymentMethod", e.target.value)
+                                  handlePaymentChange(
+                                    index,
+                                    "PaymentMethod",
+                                    e.target.value
+                                  )
                                 }
                                 startAdornment={
                                   <InputAdornment position="start">
@@ -707,7 +710,9 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                               </Select>
                               {errors[`Payments_${index}_PaymentMethod`] && (
                                 <FormHelperText>
-                                  {errors[`Payments_${index}_PaymentMethod`][0]}
+                                  {
+                                    errors[`Payments_${index}_PaymentMethod`][0]
+                                  }
                                 </FormHelperText>
                               )}
                             </FormControl>
@@ -717,10 +722,16 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                               type="number"
                               value={payment.PaymentAmount}
                               onChange={(e) =>
-                                handlePaymentChange(index, "PaymentAmount", e.target.value)
+                                handlePaymentChange(
+                                  index,
+                                  "PaymentAmount",
+                                  e.target.value
+                                )
                               }
                               error={!!errors[`Payments_${index}_PaymentAmount`]}
-                              helperText={errors[`Payments_${index}_PaymentAmount`]?.[0]}
+                              helperText={
+                                errors[`Payments_${index}_PaymentAmount`]?.[0]
+                              }
                               InputProps={{
                                 startAdornment: (
                                   <InputAdornment position="start">₱</InputAdornment>
@@ -729,6 +740,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                               sx={{ width: 150 }}
                             />
 
+                            {/* Remove row if we have more than 1 payment */}
                             {payments.length > 1 && (
                               <IconButton
                                 onClick={() => handleRemovePaymentRow(index)}

@@ -23,8 +23,14 @@ import {
   TableCell,
   TableBody,
   TablePagination,
+  TableSortLabel,
 } from "@mui/material";
-import { styled, useTheme } from "@mui/material/styles";
+import {
+  styled,
+  useTheme,
+  createTheme,
+  ThemeProvider,
+} from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import LockIcon from "@mui/icons-material/Lock";
@@ -34,36 +40,114 @@ import { ClockIcon } from "@mui/x-date-pickers";
 import VpnKeyIcon from "@mui/icons-material/VpnKey";
 import SaveIcon from "@mui/icons-material/Save";
 import RestoreIcon from "@mui/icons-material/Restore";
+import Brightness4Icon from "@mui/icons-material/Brightness4";
+import Brightness7Icon from "@mui/icons-material/Brightness7";
 
-// Gradients for each status
+// Gradients for each status (used for the status badge)
 const statusGradients = {
   Available: "linear-gradient(135deg, #4caf50 0%, #66bb6a 100%)",
   Occupied: "linear-gradient(135deg, #f44336 0%, #ef5350 100%)",
   OutOfService: "linear-gradient(135deg, #9e9e9e 0%, #bdbdbd 100%)",
 };
 
-// Styled card with hover scale/shadow
+// Styled card to mimic a locker door look with light/dark mode support
 const LockerCard = styled(Paper)(({ theme }) => ({
-  borderRadius: theme.shape.borderRadius * 2,
+  borderRadius: theme.shape.borderRadius,
+  position: "relative",
   overflow: "hidden",
-  color: "#fff",
+  background: theme.palette.mode === "dark" ? "#424242" : "#e0e0e0",
+  border:
+    theme.palette.mode === "dark" ? "2px solid #666" : "2px solid #bbb",
+  boxShadow:
+    theme.palette.mode === "dark"
+      ? "inset 0 0 10px rgba(255,255,255,0.1)"
+      : "inset 0 0 10px rgba(0,0,0,0.2)",
   padding: theme.spacing(2),
   textAlign: "center",
-  height: "100%",
   cursor: "pointer",
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "space-between",
-  boxShadow: theme.shadows[4],
   transition: "transform 0.3s ease, box-shadow 0.3s ease",
   "&:hover": {
     transform: "scale(1.03)",
-    boxShadow: theme.shadows[8],
+    boxShadow:
+      theme.palette.mode === "dark"
+        ? "0 4px 12px rgba(255,255,255,0.3)"
+        : "0 4px 12px rgba(0,0,0,0.3)",
+  },
+  "&::after": {
+    content: '""',
+    position: "absolute",
+    width: "24px",
+    height: "40px",
+    right: "10px",
+    top: "50%",
+    transform: "translateY(-50%)",
+    background: theme.palette.mode === "dark" ? "#777" : "#aaa",
+    borderRadius: "4px",
+    boxShadow:
+      theme.palette.mode === "dark"
+        ? "0 2px 4px rgba(255,255,255,0.2)"
+        : "0 2px 4px rgba(0,0,0,0.3)",
   },
 }));
 
+// A small badge to display the locker status
+const StatusBadge = styled(Box)(({ theme, status }) => ({
+  position: "absolute",
+  top: theme.spacing(1),
+  left: theme.spacing(1),
+  padding: theme.spacing(0.5, 1),
+  borderRadius: theme.shape.borderRadius,
+  background: statusGradients[status] || statusGradients.OutOfService,
+  color: "#fff",
+  fontWeight: "bold",
+  fontSize: "0.75rem",
+}));
+
 export default function LockerManagement() {
-  const theme = useTheme();
+  // Local mode state and theme
+  const [mode, setMode] = useState("light");
+  const customTheme = createTheme({
+    palette: {
+      mode: mode,
+    },
+  });
+  const theme = customTheme; // Use our custom theme
+
+  // -------------- ACTIVITY LOG SORTING --------------
+  const [order, setOrder] = useState("asc");
+  const [orderBy, setOrderBy] = useState("UsageID");
+
+  const handleRequestSort = (event, property) => {
+    const isAsc = orderBy === property && order === "asc";
+    setOrder(isAsc ? "desc" : "asc");
+    setOrderBy(property);
+  };
+
+  function descendingComparator(a, b, orderBy) {
+    if (b[orderBy] < a[orderBy]) {
+      return -1;
+    }
+    if (b[orderBy] > a[orderBy]) {
+      return 1;
+    }
+    return 0;
+  }
+
+  function getComparator(order, orderBy) {
+    return order === "desc"
+      ? (a, b) => descendingComparator(a, b, orderBy)
+      : (a, b) => -descendingComparator(a, b, orderBy);
+  }
+
+  function stableSort(array, comparator) {
+    const stabilizedThis = array.map((el, index) => [el, index]);
+    stabilizedThis.sort((a, b) => {
+      const orderVal = comparator(a[0], b[0]);
+      if (orderVal !== 0) return orderVal;
+      return a[1] - b[1];
+    });
+    return stabilizedThis.map((el) => el[0]);
+  }
 
   // ----------------- 1) CLOCK ------------------
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -94,11 +178,14 @@ export default function LockerManagement() {
   const filteredLockers =
     selectedBranch === "All Branches"
       ? lockers
-      : lockers.filter((lk) => String(lk.BranchID) === String(selectedBranch));
+      : lockers.filter(
+          (lk) => String(lk.BranchID) === String(selectedBranch)
+        );
 
-  // ----------------- 4) SORT & CHUNK LOCKERS  ------------------
+  // ----------------- 4) SORT & CHUNK LOCKERS ------------------
   const sortedLockers = filteredLockers.slice().sort(
-    (a, b) => parseInt(a.LockerNumber, 10) - parseInt(b.LockerNumber, 10)
+    (a, b) =>
+      parseInt(a.LockerNumber, 10) - parseInt(b.LockerNumber, 10)
   );
 
   const maxColumns = sortedLockers.length
@@ -110,6 +197,7 @@ export default function LockerManagement() {
   const chunkedLockers = [row1, row2, row3];
 
   const cardWidth = 200;
+  const cardHeight = 250; // Fixed height for each locker card
   const gap = 16;
   const containerWidth = maxColumns * (cardWidth + gap);
 
@@ -286,7 +374,6 @@ export default function LockerManagement() {
   const handleOpenLog = () => {
     setLogOpen(true);
     setLogPage(0);
-    // Example endpoint => /operations/lockers/activity-log
     axios
       .get("/operations/lockers/activity-log")
       .then((res) => setUsageHistory(res.data.usages || []))
@@ -298,79 +385,105 @@ export default function LockerManagement() {
     setUsageHistory([]);
   };
 
+  // Columns configuration for sorting
+  const headCells = [
+    { id: "UsageID", label: "Usage ID" },
+    { id: "LockerID", label: "Locker ID" },
+    { id: "Member", label: "Member" },
+    { id: "BorrowDate", label: "Borrow Date" },
+    { id: "ReturnDate", label: "Return Date" },
+    { id: "Returned", label: "Returned?" },
+    { id: "Notes", label: "Notes" },
+  ];
+
   return (
-    <Box sx={{ p: 4 }}>
-      {/* Clock */}
-      <Paper
-        sx={{
-          p: 2,
-          mb: 3,
-          backgroundColor: "#424242",
-          color: "#fff",
-          textAlign: "center",
-          borderRadius: 2,
-        }}
-        elevation={4}
-      >
-        <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-          <ClockIcon sx={{ verticalAlign: "middle", mr: 1 }} />
-          {clockString}
-        </Typography>
-      </Paper>
-
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
-        Locker Management
-      </Typography>
-      <Divider sx={{ mb: 2 }} />
-
-      {/* Header: Branch Filter & Add Locker & Activity Log */}
-      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
-        <FormControl sx={{ minWidth: 180 }}>
-          <InputLabel>Filter by Branch</InputLabel>
-          <Select
-            label="Filter by Branch"
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
+    <ThemeProvider theme={customTheme}>
+      <Box sx={{ p: 4 }}>
+        {/* Toggle Light/Dark Mode Button */}
+        <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setMode(mode === "light" ? "dark" : "light")}
+            startIcon={
+              mode === "light" ? <Brightness4Icon /> : <Brightness7Icon />
+            }
           >
-            <MenuItem value="All Branches">All Branches</MenuItem>
-            {branches.map((branch) => (
-              <MenuItem key={branch.BranchID} value={branch.BranchID}>
-                {branch.BranchName}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+            {mode === "light" ? "Dark Mode" : "Light Mode"}
+          </Button>
+        </Box>
 
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleAddLockerOpen}
-          sx={{ minWidth: 150 }}
+        {/* Clock */}
+        <Paper
+          sx={{
+            p: 2,
+            mb: 3,
+            backgroundColor: "#424242",
+            color: "#fff",
+            textAlign: "center",
+            borderRadius: 2,
+          }}
+          elevation={4}
         >
-          Add Locker
-        </Button>
+          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+            <ClockIcon sx={{ verticalAlign: "middle", mr: 1 }} />
+            {clockString}
+          </Typography>
+        </Paper>
 
-        <Button variant="outlined" startIcon={<RestoreIcon />} onClick={handleOpenLog}>
-          View Activity Log
-        </Button>
-      </Box>
+        <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
+          Locker Management
+        </Typography>
+        <Divider sx={{ mb: 2 }} />
 
-      {/* Outer container with horizontal scroll */}
-      <Box sx={{ overflowX: "auto", mb: 3 }}>
-        {/* Inner container: 3 rows using row slicing */}
-        <Box sx={{ display: "flex", flexDirection: "column", minWidth: containerWidth }}>
-          {chunkedLockers.map((rowLockers, rowIndex) => (
-            <Box key={rowIndex} sx={{ display: "flex", gap: 2, mb: 2 }}>
-              {rowLockers.map((locker) => {
-                const gradient =
-                  statusGradients[locker.Status] || statusGradients.OutOfService;
+        {/* Header: Branch Filter, Add Locker, Activity Log */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
+          <FormControl sx={{ minWidth: 180 }}>
+            <InputLabel>Filter by Branch</InputLabel>
+            <Select
+              label="Filter by Branch"
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+            >
+              <MenuItem value="All Branches">All Branches</MenuItem>
+              {branches.map((branch) => (
+                <MenuItem key={branch.BranchID} value={branch.BranchID}>
+                  {branch.BranchName}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
-                return (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleAddLockerOpen}
+            sx={{ minWidth: 150 }}
+          >
+            Add Locker
+          </Button>
+
+          <Button
+            variant="outlined"
+            startIcon={<RestoreIcon />}
+            onClick={handleOpenLog}
+          >
+            View Activity Log
+          </Button>
+        </Box>
+
+        {/* Outer container with horizontal scroll */}
+        <Box sx={{ overflowX: "auto", mb: 3 }}>
+          {/* Inner container: 3 rows using row slicing */}
+          <Box
+            sx={{ display: "flex", flexDirection: "column", minWidth: containerWidth }}
+          >
+            {chunkedLockers.map((rowLockers, rowIndex) => (
+              <Box key={rowIndex} sx={{ display: "flex", gap: 2, mb: 2 }}>
+                {rowLockers.map((locker) => (
                   <Box key={locker.LockerID} sx={{ flex: "0 0 auto" }}>
                     <LockerCard
-                      sx={{ background: gradient, width: cardWidth }}
+                      sx={{ width: cardWidth, height: cardHeight }}
                       onClick={() => {
-                        // Borrow if Available, Return if Occupied
                         if (locker.Status === "Available") {
                           openBorrowForm(locker);
                         } else if (locker.Status === "Occupied") {
@@ -380,362 +493,399 @@ export default function LockerManagement() {
                         }
                       }}
                     >
-                      <Box>
-                        <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
-                          Locker #{locker.LockerNumber}
+                      {/* Status badge */}
+                      <StatusBadge status={locker.Status}>
+                        {locker.Status}
+                      </StatusBadge>
+                      {/* Delete Button in top-right */}
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteClick(locker.LockerID);
+                        }}
+                        sx={{
+                          position: "absolute",
+                          top: theme.spacing(1),
+                          right: theme.spacing(1),
+                          color:
+                            theme.palette.mode === "dark" ? "#fff" : "#000",
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                      {/* Locker Number displayed prominently */}
+                      <Box
+                        sx={{
+                          height: "100%",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "center",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Typography
+                          variant="h4"
+                          sx={{
+                            fontWeight: "bold",
+                            color:
+                              theme.palette.mode === "dark" ? "#fff" : "#333",
+                            textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
+                            letterSpacing: "2px",
+                          }}
+                        >
+                          {locker.LockerNumber}
                         </Typography>
-                        <Typography variant="body1">{locker.Status}</Typography>
                         {locker.Status === "Occupied" && locker.occupant && (
                           <Typography variant="subtitle2" sx={{ mt: 1 }}>
-                            Occupied by: {locker.occupant.FullName}
+                            {locker.occupant.FullName}
                           </Typography>
                         )}
                         <Typography variant="caption" sx={{ mt: 1, display: "block" }}>
                           Branch: {locker.BranchID}
                         </Typography>
                       </Box>
-                      <Box sx={{ mt: 1, textAlign: "right" }}>
-                        {/* Delete Icon triggers the delete dialog */}
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation(); // Avoid triggering Borrow/Return
-                            handleDeleteClick(locker.LockerID);
-                          }}
-                          sx={{ color: "#fff" }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
                     </LockerCard>
                   </Box>
-                );
-              })}
-            </Box>
-          ))}
+                ))}
+              </Box>
+            ))}
+          </Box>
         </Box>
-      </Box>
 
-      {/* ADD LOCKER DIALOG */}
-      <Dialog
-        open={isAddLockerOpen}
-        onClose={() => setAddLockerOpen(false)}
-        fullWidth
-        maxWidth="xs"
-        sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3 } }}
-      >
-        <DialogTitle>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <LockIcon sx={{ fontSize: 32, color: "primary.main" }} />
-              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                Add New Locker
-              </Typography>
-            </Box>
-            <IconButton
-              onClick={() => setAddLockerOpen(false)}
-              sx={{ "&:hover": { color: theme.palette.error.main } }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent dividers>
-          <TextField
-            label="Locker Number"
-            fullWidth
-            margin="normal"
-            value={newLockerNumber}
-            onChange={(e) => setNewLockerNumber(e.target.value)}
-            error={!!addError}
-            helperText={addError}
-          />
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Select Branch</InputLabel>
-            <Select
-              value={newLockerBranch || ""}
-              onChange={(e) => setNewLockerBranch(e.target.value)}
-              label="Select Branch"
-            >
-              <MenuItem value="">No Branch</MenuItem>
-              {branches.map((b) => (
-                <MenuItem key={b.BranchID} value={b.BranchID}>
-                  {b.BranchName}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: "flex-end" }}>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleAddLocker}
-            disabled={!newLockerNumber.trim() || !newLockerBranch}
-          >
-            <AddIcon sx={{ mr: 1 }} />
-            Add Locker
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* BORROW LOCKER DIALOG */}
-      <Dialog
-        open={borrowOpen}
-        onClose={() => setBorrowOpen(false)}
-        fullWidth
-        maxWidth="sm"
-        sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3 } }}
-      >
-        <DialogTitle>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <VpnKeyIcon sx={{ fontSize: 32, color: "primary.main" }} />
-              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                Borrow Locker
-              </Typography>
-            </Box>
-            <IconButton
-              onClick={() => setBorrowOpen(false)}
-              sx={{ "&:hover": { color: theme.palette.error.main } }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-
-        <DialogContent dividers>
-          <TextField
-            label="Locker ID"
-            name="LockerID"
-            margin="normal"
-            fullWidth
-            variant="filled"
-            value={borrowData.LockerID}
-            disabled
-          />
-
-          <Autocomplete
-            options={memberOptions}
-            getOptionLabel={(option) => option.FullName}
-            onInputChange={(event, newInputValue) => setMemberSearch(newInputValue)}
-            onChange={(event, newValue) => {
-              setBorrowData((prev) => ({
-                ...prev,
-                MemberID: newValue ? newValue.MemberID : "",
-              }));
-            }}
-            renderInput={(params) => (
-              <TextField {...params} label="Search Member" margin="normal" fullWidth />
-            )}
-          />
-
-          <TextField
-            label="Notes"
-            name="Notes"
-            margin="normal"
-            fullWidth
-            multiline
-            rows={2}
-            value={borrowData.Notes}
-            onChange={handleBorrowChange}
-          />
-        </DialogContent>
-
-        <DialogActions>
-          <Button variant="contained" color="primary" onClick={handleBorrowSubmit}>
-            <SaveIcon sx={{ mr: 1 }} />
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* RETURN LOCKER DIALOG */}
-      <Dialog
-        open={returnOpen}
-        onClose={() => setReturnOpen(false)}
-        fullWidth
-        maxWidth="xs"
-        sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3 } }}
-      >
-        <DialogTitle>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <VpnKeyIcon sx={{ fontSize: 32, color: "#ff9800" }} />
-              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                Return Locker
-              </Typography>
-            </Box>
-            <IconButton
-              onClick={() => setReturnOpen(false)}
-              sx={{ "&:hover": { color: theme.palette.error.main } }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-
-        <DialogContent dividers>
-          <Typography variant="body1" sx={{ mb: 2 }}>
-            Occupant: <strong>{returnData.occupantName}</strong>
-          </Typography>
-
-          <TextField
-            label="Usage ID"
-            fullWidth
-            variant="filled"
-            value={returnData.usageId}
-            disabled
-            sx={{ mb: 2 }}
-          />
-
-          <TextField
-            label="Notes (optional)"
-            name="notes"
-            fullWidth
-            multiline
-            rows={2}
-            value={returnData.notes}
-            onChange={handleReturnChange}
-          />
-        </DialogContent>
-
-        <DialogActions sx={{ justifyContent: "flex-end" }}>
-          <Button variant="contained" color="primary" onClick={handleReturnSubmit}>
-            <SaveIcon sx={{ mr: 1 }} />
-            Confirm Return
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* DELETE CONFIRMATION DIALOG */}
-      <Dialog
-        open={isDeleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        fullWidth
-        maxWidth="xs"
-      >
-        <DialogTitle
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 1,
-            fontWeight: "bold",
-          }}
+        {/* ADD LOCKER DIALOG */}
+        <Dialog
+          open={isAddLockerOpen}
+          onClose={() => setAddLockerOpen(false)}
+          fullWidth
+          maxWidth="xs"
+          sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3 } }}
         >
-          <DeleteForeverIcon color="error" />
-          Confirm Deletion
-        </DialogTitle>
-        <DialogContent dividers>
-          <Typography>
-            Are you sure you want to delete this record? This action cannot be undone.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: "gray" }}>
-            Cancel
-          </Button>
-          <Button variant="contained" color="error" onClick={confirmDelete}>
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
+          <DialogTitle>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <LockIcon sx={{ fontSize: 32, color: "primary.main" }} />
+                <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                  Add New Locker
+                </Typography>
+              </Box>
+              <IconButton
+                onClick={() => setAddLockerOpen(false)}
+                sx={{ "&:hover": { color: theme.palette.error.main } }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+          <DialogContent dividers>
+            <TextField
+              label="Locker Number"
+              fullWidth
+              margin="normal"
+              value={newLockerNumber}
+              onChange={(e) => setNewLockerNumber(e.target.value)}
+              error={!!addError}
+              helperText={addError}
+            />
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Select Branch</InputLabel>
+              <Select
+                value={newLockerBranch || ""}
+                onChange={(e) => setNewLockerBranch(e.target.value)}
+                label="Select Branch"
+              >
+                <MenuItem value="">No Branch</MenuItem>
+                {branches.map((b) => (
+                  <MenuItem key={b.BranchID} value={b.BranchID}>
+                    {b.BranchName}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </DialogContent>
+          <DialogActions sx={{ justifyContent: "flex-end" }}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleAddLocker}
+              disabled={!newLockerNumber.trim() || !newLockerBranch}
+            >
+              <AddIcon sx={{ mr: 1 }} />
+              Add Locker
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-      {/* ACTIVITY LOG DIALOG */}
-      <Dialog
-        open={logOpen}
-        onClose={handleCloseLog}
-        fullWidth
-        maxWidth="lg"
-        PaperProps={{
-          sx: { borderRadius: 3, boxShadow: 6, p: 2 },
-        }}
-      >
-        <DialogTitle
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            borderBottom: "1px solid #eee",
-            pb: 1,
-          }}
+        {/* BORROW LOCKER DIALOG */}
+        <Dialog
+          open={borrowOpen}
+          onClose={() => setBorrowOpen(false)}
+          fullWidth
+          maxWidth="sm"
+          sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3 } }}
         >
-          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-            Locker Activity Log
-          </Typography>
-          <IconButton onClick={handleCloseLog} sx={{ "&:hover": { color: "red" } }}>
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
+          <DialogTitle>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <VpnKeyIcon sx={{ fontSize: 32, color: "primary.main" }} />
+                <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                  Borrow Locker
+                </Typography>
+              </Box>
+              <IconButton
+                onClick={() => setBorrowOpen(false)}
+                sx={{ "&:hover": { color: theme.palette.error.main } }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          </DialogTitle>
 
-        <DialogContent dividers sx={{ p: 2 }}>
-          {usageHistory.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              No usage records found.
+          <DialogContent dividers>
+            <TextField
+              label="Locker ID"
+              name="LockerID"
+              margin="normal"
+              fullWidth
+              variant="filled"
+              value={borrowData.LockerID}
+              disabled
+            />
+
+            <Autocomplete
+              options={memberOptions}
+              getOptionLabel={(option) => option.FullName}
+              onInputChange={(event, newInputValue) =>
+                setMemberSearch(newInputValue)
+              }
+              onChange={(event, newValue) => {
+                setBorrowData((prev) => ({
+                  ...prev,
+                  MemberID: newValue ? newValue.MemberID : "",
+                }));
+              }}
+              renderInput={(params) => (
+                <TextField {...params} label="Search Member" margin="normal" fullWidth />
+              )}
+            />
+
+            <TextField
+              label="Notes"
+              name="Notes"
+              margin="normal"
+              fullWidth
+              multiline
+              rows={2}
+              value={borrowData.Notes}
+              onChange={handleBorrowChange}
+            />
+          </DialogContent>
+
+          <DialogActions>
+            <Button variant="contained" color="primary" onClick={handleBorrowSubmit}>
+              <SaveIcon sx={{ mr: 1 }} />
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* RETURN LOCKER DIALOG */}
+        <Dialog
+          open={returnOpen}
+          onClose={() => setReturnOpen(false)}
+          fullWidth
+          maxWidth="xs"
+          sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3 } }}
+        >
+          <DialogTitle>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <VpnKeyIcon sx={{ fontSize: 32, color: "#ff9800" }} />
+                <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                  Return Locker
+                </Typography>
+              </Box>
+              <IconButton
+                onClick={() => setReturnOpen(false)}
+                sx={{ "&:hover": { color: theme.palette.error.main } }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+
+          <DialogContent dividers>
+            <Typography variant="body1" sx={{ mb: 2 }}>
+              Occupant: <strong>{returnData.occupantName}</strong>
             </Typography>
-          ) : (
-            <Paper sx={{ maxHeight: 450, overflow: "auto" }}>
-              <Table stickyHeader size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell align="center">Usage ID</TableCell>
-                    <TableCell align="center">Locker ID</TableCell>
-                    <TableCell>Member</TableCell>
-                    <TableCell>Borrow Date</TableCell>
-                    <TableCell>Return Date</TableCell>
-                    <TableCell align="center">Returned?</TableCell>
-                    <TableCell>Notes</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {usageHistory
-                    .slice(logPage * rowsPerPage, logPage * rowsPerPage + rowsPerPage)
-                    .map((usage) => (
-                      <TableRow key={usage.UsageID} hover>
-                        <TableCell align="center">{usage.UsageID}</TableCell>
-                        <TableCell align="center">{usage.LockerID}</TableCell>
-                        <TableCell>{usage.member?.FullName || "—"}</TableCell>
-                        <TableCell>
-                          {usage.BorrowDate
-                            ? new Date(usage.BorrowDate).toLocaleString()
-                            : "—"}
-                        </TableCell>
-                        <TableCell>
-                          {usage.ReturnDate
-                            ? new Date(usage.ReturnDate).toLocaleString()
-                            : "—"}
-                        </TableCell>
-                        <TableCell align="center">
-                          {usage.Returned ? "Yes" : "No"}
-                        </TableCell>
-                        <TableCell>{usage.Notes || "—"}</TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-              <TablePagination
-                component="div"
-                count={usageHistory.length}
-                page={logPage}
-                onPageChange={(event, newPage) => setLogPage(newPage)}
-                rowsPerPage={rowsPerPage}
-                rowsPerPageOptions={[]}
-              />
-            </Paper>
-          )}
-        </DialogContent>
 
-        <DialogActions sx={{ justifyContent: "flex-end", p: 2 }}>
-          <Button
-            onClick={handleCloseLog}
-            variant="contained"
-            color="primary"
-            sx={{ textTransform: "none" }}
+            <TextField
+              label="Usage ID"
+              fullWidth
+              variant="filled"
+              value={returnData.usageId}
+              disabled
+              sx={{ mb: 2 }}
+            />
+
+            <TextField
+              label="Notes (optional)"
+              name="notes"
+              fullWidth
+              multiline
+              rows={2}
+              value={returnData.notes}
+              onChange={handleReturnChange}
+            />
+          </DialogContent>
+
+          <DialogActions sx={{ justifyContent: "flex-end" }}>
+            <Button variant="contained" color="primary" onClick={handleReturnSubmit}>
+              <SaveIcon sx={{ mr: 1 }} />
+              Confirm Return
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* DELETE CONFIRMATION DIALOG */}
+        <Dialog
+          open={isDeleteDialogOpen}
+          onClose={() => setDeleteDialogOpen(false)}
+          fullWidth
+          maxWidth="xs"
+        >
+          <DialogTitle
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              fontWeight: "bold",
+            }}
           >
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+            <DeleteForeverIcon color="error" />
+            Confirm Deletion
+          </DialogTitle>
+          <DialogContent dividers>
+            <Typography>
+              Are you sure you want to delete this record? This action cannot be undone.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: "gray" }}>
+              Cancel
+            </Button>
+            <Button variant="contained" color="error" onClick={confirmDelete}>
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* ACTIVITY LOG DIALOG */}
+        <Dialog
+          open={logOpen}
+          onClose={handleCloseLog}
+          fullWidth
+          maxWidth="lg"
+          PaperProps={{
+            sx: { borderRadius: 3, boxShadow: 6, p: 2 },
+          }}
+        >
+          <DialogTitle
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderBottom: "1px solid #eee",
+              pb: 1,
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              Locker Activity Log
+            </Typography>
+            <IconButton onClick={handleCloseLog} sx={{ "&:hover": { color: "red" } }}>
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+
+          <DialogContent dividers sx={{ p: 2 }}>
+            {usageHistory.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No usage records found.
+              </Typography>
+            ) : (
+              <Paper sx={{ maxHeight: 450, overflow: "auto" }}>
+                <Table stickyHeader size="small">
+                  <TableHead>
+                    <TableRow>
+                      {headCells.map((headCell) => (
+                        <TableCell
+                          key={headCell.id}
+                          sortDirection={orderBy === headCell.id ? order : false}
+                          align={headCell.id === "Member" || headCell.id === "Notes" ? "left" : "center"}
+                        >
+                          <TableSortLabel
+                            active={orderBy === headCell.id}
+                            direction={orderBy === headCell.id ? order : "asc"}
+                            onClick={(event) => handleRequestSort(event, headCell.id)}
+                          >
+                            {headCell.label}
+                          </TableSortLabel>
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {stableSort(usageHistory, getComparator(order, orderBy))
+                      .slice(logPage * rowsPerPage, logPage * rowsPerPage + rowsPerPage)
+                      .map((usage) => (
+                        <TableRow key={usage.UsageID} hover>
+                          <TableCell align="center">{usage.UsageID}</TableCell>
+                          <TableCell align="center">{usage.LockerID}</TableCell>
+                          <TableCell>
+                            {usage.member?.FullName || "—"}
+                          </TableCell>
+                          <TableCell align="center">
+                            {usage.BorrowDate
+                              ? new Date(usage.BorrowDate).toLocaleString()
+                              : "—"}
+                          </TableCell>
+                          <TableCell align="center">
+                            {usage.ReturnDate
+                              ? new Date(usage.ReturnDate).toLocaleString()
+                              : "—"}
+                          </TableCell>
+                          <TableCell align="center">
+                            {usage.Returned ? "Yes" : "No"}
+                          </TableCell>
+                          <TableCell>{usage.Notes || "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+                <TablePagination
+                  component="div"
+                  count={usageHistory.length}
+                  page={logPage}
+                  onPageChange={(event, newPage) => setLogPage(newPage)}
+                  rowsPerPage={rowsPerPage}
+                  rowsPerPageOptions={[]}
+                />
+              </Paper>
+            )}
+          </DialogContent>
+
+          <DialogActions sx={{ justifyContent: "flex-end", p: 2 }}>
+            <Button
+              onClick={handleCloseLog}
+              variant="contained"
+              color="primary"
+              sx={{ textTransform: "none" }}
+            >
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Box>
+    </ThemeProvider>
   );
 }

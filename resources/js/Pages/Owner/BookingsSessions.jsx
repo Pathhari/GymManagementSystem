@@ -1230,25 +1230,40 @@ export default function BookingsSessions() {
             <Card sx={{ minHeight: 763 }}>
               <CardHeader title="Calendar" />
               <CardContent>
-                <BigCalendarWrapper>
-                  <DnDCalendar
-                    localizer={localizer}
-                    events={bigCalendarEvents}
-                    defaultView="month"
-                    style={calendarStyle}
-                    selectable
-                    defaultDate={new Date()}
-                    onSelectSlot={(slotInfo) => {
-                      if (new Date(slotInfo.start) < new Date()) return;
-                      handleDateClick({ dateStr: slotInfo.start.toISOString() });
-                    }}
-                    onEventDrop={({ event, start, end }) =>
-                      handleEventDrop({
-                        event: { id: event.id, startStr: start.toISOString() },
-                      })
-                    }
-                  />
-                </BigCalendarWrapper>
+              <BigCalendarWrapper>
+              <DnDCalendar
+                localizer={localizer}
+                events={bigCalendarEvents}
+                defaultView="month"
+                style={calendarStyle}
+                selectable
+                defaultDate={new Date()}
+                dayPropGetter={(date) => {
+                  // Reset today's time to compare only dates.
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  if (date < today) {
+                    return {
+                      style: {
+                        backgroundColor: "#f0f0f0",
+                        color: "#888",
+                      },
+                    };
+                  }
+                  return {};
+                }}
+                onSelectSlot={(slotInfo) => {
+                  if (new Date(slotInfo.start) < new Date()) return;
+                  handleDateClick({ dateStr: slotInfo.start.toISOString() });
+                }}
+                onEventDrop={({ event, start, end }) =>
+                  handleEventDrop({
+                    event: { id: event.id, startStr: start.toISOString() },
+                  })
+                }
+              />
+            </BigCalendarWrapper>
+
                 <Typography variant="body2" color="text.secondary" mt={1}>
                   Drag events to reschedule; cannot schedule on past dates.
                 </Typography>

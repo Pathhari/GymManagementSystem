@@ -200,34 +200,41 @@ export default function PaymentsAndInvoices() {
   const handleFilterData = () => {
     // 1) Filter payments by PaymentDate
     const dateFilteredPayments = filterPaymentsByDate(allPayments, dateFrom, dateTo);
-
+  
     // 2) Filter invoices by InvoiceDate
     const dateFilteredInvoices = filterInvoicesByDate(allInvoices, dateFrom, dateTo);
-
+  
     // 3) Then filter by branch
     const branchFilteredPayments =
       branch === "all"
         ? dateFilteredPayments
         : dateFilteredPayments.filter((p) => p.branchId === branch);
-
+  
     const branchFilteredInvoices =
       branch === "all"
         ? dateFilteredInvoices
         : dateFilteredInvoices.filter((inv) => inv.branchId === branch);
-
-    // 4) Then filter by searchTerm
-    const searchStr = searchTerm.toLowerCase();
+  
+    // 4) Then filter by searchTerm using Object.values similar to StaffManagement code
+    const searchStr = searchTerm.toLowerCase().trim();
+  
     const textFilteredPayments = branchFilteredPayments.filter((item) =>
-      JSON.stringify(item).toLowerCase().includes(searchStr)
+      Object.values(item).some((val) =>
+        String(val).toLowerCase().includes(searchStr)
+      )
     );
+  
     const textFilteredInvoices = branchFilteredInvoices.filter((item) =>
-      JSON.stringify(item).toLowerCase().includes(searchStr)
+      Object.values(item).some((val) =>
+        String(val).toLowerCase().includes(searchStr)
+      )
     );
-
+  
     // 5) Set final arrays
     setFilteredPayments(textFilteredPayments);
     setFilteredInvoices(textFilteredInvoices);
   };
+  
 
   // ==================== useEffect Fetch Calls ====================
   useEffect(() => {
@@ -236,7 +243,8 @@ export default function PaymentsAndInvoices() {
     fetchAllPayments();
     fetchAllInvoices();
     fetchUnpaidInvoices();
-  }, []);
+    handleFilterData();
+  }, [searchTerm, dateFrom, dateTo, branch, allPayments, allInvoices]);
 
   useEffect(() => {
     handleFilterData();

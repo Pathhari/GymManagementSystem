@@ -118,7 +118,7 @@ export default function OwnerDashboard(onClose) {
     setSnackOpen(true);
   };
 
-  // Date/Time Helpers
+  // Date translator
   const formatDate = (dateString) => {
     if (!dateString) return '—';
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -142,7 +142,6 @@ export default function OwnerDashboard(onClose) {
     });
   };
 
-  // CSV/PDF Exports
   const handleExportCSV = () => {
     handleExportMenuClose();
   };
@@ -158,7 +157,7 @@ export default function OwnerDashboard(onClose) {
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     
-    // Load images from public folder (example only)
+    // Load images from public folder
     const coverPage = '/imgs/coverpage.png';
     
     // Add Cover Page Background and header text
@@ -211,7 +210,8 @@ export default function OwnerDashboard(onClose) {
       Remarks: row.Remarks || '—',
     }));
     
-    // Generate Table
+    // Removed extra page addition and didDrawPage callback
+    // Generate Table starting at a Y position that doesn't overlap the header
     doc.autoTable({
       startY: 80,
       head: [columns.map((col) => col.title)],
@@ -241,6 +241,7 @@ export default function OwnerDashboard(onClose) {
     // Save the PDF
     doc.save('CashFlowReport.pdf');
   };
+  
 
   // Export logic
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
@@ -251,7 +252,6 @@ export default function OwnerDashboard(onClose) {
   // Tabs
   const [selectedTab, setSelectedTab] = useState(0);
   const [activeTab, setActiveTab] = useState(0);
-  const handleTabChange = (event, newValue) => setActiveTab(newValue);
 
   // Loading / Error
   const [loading, setLoading] = useState(true);
@@ -418,33 +418,23 @@ export default function OwnerDashboard(onClose) {
       try {
         setLoading(true);
         setError(null);
-
         // 1. branches & staff
-        const [branchRes, staffRes] = await Promise.all([
-          axios.get('/owner/branches'),
-          axios.get('/staff'),
-        ]);
+        const [branchRes, staffRes] = await Promise.all([axios.get('/owner/branches'), axios.get('/staff')]);
         const bOptions = branchRes.data.branches.map((b) => ({
           value: b.BranchID.toString(),
           label: b.BranchName,
         }));
         setBranchOptions([{ value: 'all', label: 'All Branches' }, ...bOptions]);
         setStaff(staffRes.data.staff || staffRes.data || []);
-
         // 2. key metrics
         const metricsRes = await axios.get(
           `/owner/dashboard-metrics?period=${timePeriod}&dateFrom=${dateFrom}&dateTo=${dateTo}&branch=all`
         );
         setKeyMetrics(metricsRes.data.metrics);
-
         // 3. promos & logs
-        const [promoRes, logsRes] = await Promise.all([
-          axios.get('/finance/promotions'),
-          axios.get('/system/logs'),
-        ]);
+        const [promoRes, logsRes] = await Promise.all([axios.get('/finance/promotions'), axios.get('/system/logs')]);
         setCurrentPromotions(promoRes.data.promos);
         setSystemLogs(logsRes.data.logs);
-
         // 4. recent transactions
         const paymentsRes = await axios.get('/payments');
         const transactions = paymentsRes.data.map((p) => ({
@@ -456,25 +446,21 @@ export default function OwnerDashboard(onClose) {
           status: p.Status,
         }));
         setRecentTransactions(transactions);
-
         // 5. flows & expenses
-        const [cashflowRes, expRes] = await Promise.all([
-          axios.get('/finance/cashflow'),
-          axios.get('/finance/expenses'),
-        ]);
+        const [cashflowRes, expRes] = await Promise.all([axios.get('/finance/cashflow'), axios.get('/finance/expenses')]);
         const flows = cashflowRes.data.flows || [];
         const allExp = expRes.data.expenses || [];
         setAllFlows(flows);
         setFilteredFlows(flows);
         setAllExpenses(allExp);
         setFilteredExpenses(allExp);
-
         // 6. build charts
         buildRevenueTrends(flows);
         buildPaymentPie(flows);
         buildBusinessCharts(flows);
         buildExpenseChart(allExp);
-        buildConsolidatedRows(flows, allExp, paymentFilter);
+        // consolidated
+        buildConsolidatedRows(flows, allExp);
 
         setLoading(false);
       } catch (err) {
@@ -486,13 +472,13 @@ export default function OwnerDashboard(onClose) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Rebuild consolidated if flows/expenses/paymentFilter change
+  // Rebuild consolidated if filtered flows or expenses change
   useEffect(() => {
     buildConsolidatedRows(filteredFlows, filteredExpenses, paymentFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredFlows, filteredExpenses, paymentFilter]);
 
-  // ======================== Chart Builders ========================
+  // Chart building
   const buildRevenueTrends = (flows) => {
     const sorted = [...flows].sort((a, b) => new Date(a.Date) - new Date(b.Date));
     setCashFlows(sorted);
@@ -510,6 +496,7 @@ export default function OwnerDashboard(onClose) {
     });
   };
 
+  // Currency Format
   const formatCurrency = (value) => {
     if (value == null || value === '') return '—';
     return `${parseInt(value).toLocaleString('en-PH')}`;
@@ -1522,7 +1509,7 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
         </Box>
       </Box>
 
-      {/* Main Tabs */}
+      {/* Tabs moved to the right */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-center' }}>
         <Tabs
           value={activeTab}
@@ -1545,6 +1532,7 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           {error}
         </Typography>
       )}
+
       {loading ? (
         <Box sx={{ textAlign: 'center' }}>
           <CircularProgress />
@@ -1682,7 +1670,6 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                     </CardContent>
                   </Card>
                 </Grid>
-
                 {/* Revenue Trends Chart */}
                 <Grid item xs={12} md={8}>
                   <Paper sx={{ p: 2, height: 400, boxShadow: 3 }}>
@@ -1704,7 +1691,6 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                     </Box>
                   </Paper>
                 </Grid>
-
                 {/* Payment Method Pie */}
                 <Grid item xs={12} md={4}>
                   <Paper sx={{ p: 2, height: 400, boxShadow: 3 }}>
@@ -1727,7 +1713,6 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                     </Box>
                   </Paper>
                 </Grid>
-
                 {/* Daily Expenses Trend */}
                 <Grid item xs={12}>
                   <Paper sx={{ p: 2, height: 400, boxShadow: 3 }}>
@@ -1750,7 +1735,6 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                     </Box>
                   </Paper>
                 </Grid>
-
                 {/* Payment Breakdown by Biz */}
                 <Grid item xs={12}>
                   <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
@@ -1821,27 +1805,28 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                     </Box>
                   </Paper>
                 </Grid>
-                <Grid item xs={12} md={6}>
-                  <Paper sx={{ p: 2, height: 280, boxShadow: 3, display: 'flex', flexDirection: 'column' }}>
-                    <Typography variant="subtitle1" gutterBottom>
-                      Yogurt Cafe
-                    </Typography>
-                    <Box sx={{ flexGrow: 1, height: '100%', minHeight: 0 }}>
-                      {yogurtCafeChartData ? (
-                        <Line
-                          data={yogurtCafeChartData}
-                          options={{
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: { legend: { position: 'bottom' } },
-                          }}
-                        />
-                      ) : (
-                        <Typography>Loading Yogurt Cafe chart...</Typography>
-                      )}
-                    </Box>
-                  </Paper>
-                </Grid>
+                <Grid item xs={12} md={12}>
+                <Paper sx={{ p: 2, height: 280, boxShadow: 3, display: 'flex', flexDirection: 'column' }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Yogurt Cafe
+                  </Typography>
+                  <Box sx={{ flexGrow: 1, height: '100%', minHeight: 0 }}>
+                    {yogurtCafeChartData ? (
+                      <Line
+                        data={yogurtCafeChartData}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: { legend: { position: 'bottom' } },
+                        }}
+                      />
+                    ) : (
+                      <Typography>Loading Yogurt Cafe chart...</Typography>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+
 
                 <Grid item xs={12} md={12}>
                   <Paper
@@ -1901,8 +1886,8 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                             align: 'center',
                             renderCell: (params) => {
                               const status = params.value;
-                              const getStatusColor = (stat) => {
-                                switch (stat) {
+                              const getStatusColor = (status) => {
+                                switch (status) {
                                   case 'Completed':
                                     return '#4caf50';
                                   case 'Pending':
@@ -1923,7 +1908,7 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                         rowsPerPageOptions={[5, 10]}
                         disableSelectionOnClick
                         autoHeight
-                        density="compact"
+                        density='compact'
                         disableColumnMenu
                       />
                     </Box>
@@ -1937,16 +1922,16 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           {activeTab === 1 && (
             <Box sx={{ mt: 1 }}>
               <Paper sx={{ p: 3, mb: 2, boxShadow: 3, borderRadius: 2 }}>
-                <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
+                <Typography variant='h6' gutterBottom sx={{ mb: 3 }}>
                   Filter Cash Flow & Expenses By Date
                 </Typography>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6} md={3}>
                     <TextField
-                      label="From Date"
-                      type="date"
+                      label='From Date'
+                      type='date'
                       fullWidth
-                      size="small"
+                      size='small'
                       value={dateFrom}
                       onChange={(e) => setDateFrom(e.target.value)}
                       InputLabelProps={{ shrink: true }}
@@ -1954,20 +1939,20 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <TextField
-                      label="To Date"
-                      type="date"
+                      label='To Date'
+                      type='date'
                       fullWidth
-                      size="small"
+                      size='small'
                       value={dateTo}
                       onChange={(e) => setDateTo(e.target.value)}
                       InputLabelProps={{ shrink: true }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Button variant="contained" onClick={handleFilterCashFlow}>
+                    <Button variant='contained' onClick={handleFilterCashFlow}>
                       Filter
                     </Button>
-                    <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={(e) => setExportAnchorEl(e.currentTarget)}>
+                    <Button variant='outlined' startIcon={<FileDownloadIcon />} onClick={(e) => setExportAnchorEl(e.currentTarget)}>
                       Export
                     </Button>
                     <Menu
@@ -1983,7 +1968,7 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                             label: col.headerName,
                             key: col.field,
                           }))}
-                          filename="CashFlowData.csv"
+                          filename='CashFlowData.csv'
                           style={{ textDecoration: 'none', color: 'inherit' }}
                         >
                           Export CSV
@@ -1999,104 +1984,106 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                     md={3}
                     sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}
                   >
-                    <Button variant="contained" color="primary" onClick={handleOpenCashFlowDialog} startIcon={<AddIcon />}>
+                    <Button variant='contained' color='primary' onClick={handleOpenCashFlowDialog} startIcon={<AddIcon />}>
                       Add Good One Cash Flow Entry
                     </Button>
                   </Grid>
                 </Grid>
               </Paper>
 
-              <Paper sx={{ p: 3, boxShadow: 4, borderRadius: 2 }}>
-                <Tabs
-                  value={selectedTab}
-                  onChange={(e, newValue) => setSelectedTab(newValue)}
-                  variant="fullWidth"
-                >
-                  <Tab icon={<FitnessCenter />} iconPosition="start" label="Gym" />
-                  <Tab icon={<LocalCafe />} iconPosition="start" label="Café" />
-                  <Tab icon={<Icecream />} iconPosition="start" label="Yogurt" />
-                  <Tab icon={<LocalCafe />} iconPosition="start" label="Yogurt Cafe" />
+              <Paper
+                sx={{
+                  p: 3,
+                  boxShadow: 4,
+                  borderRadius: 2,
+                }}
+              >
+                <Tabs value={selectedTab} onChange={(e, newValue) => setSelectedTab(newValue)} variant='fullWidth'>
+                  <Tab icon={<FitnessCenter />} iconPosition='start' label='Gym Cash Flow' />
+                  <Tab icon={<LocalCafe />} iconPosition='start' label='Café Cash Flow' />
+                  <Tab icon={<Icecream />} iconPosition='start' label='Yogurt Cash Flow' />
+                  <Tab icon={<LocalCafe />} iconPosition='start' label='Yogurt Cafe Cash Flow' />
                 </Tabs>
-
                 {selectedTab === 0 && (
-                  <>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
-                      Gym Cash Flow
-                    </Typography>
-                    <Box sx={{ height: 400 }}>
-                      <DataGrid
-                        rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Gym')}
-                        columns={flowColumns}
-                        pageSize={5}
-                        rowsPerPageOptions={[5, 10]}
-                        disableSelectionOnClick
-                        autoHeight
-                        density="compact"
-                        disableColumnMenu
-                      />
-                    </Box>
-                  </>
-                )}
-                {selectedTab === 1 && (
-                  <>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
-                      Café Cash Flow
-                    </Typography>
-                    <Box sx={{ height: 400 }}>
-                      <DataGrid
-                        rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Cafe')}
-                        columns={flowColumns}
-                        pageSize={5}
-                        rowsPerPageOptions={[5, 10]}
-                        disableSelectionOnClick
-                        autoHeight
-                        density="compact"
-                        disableColumnMenu
-                      />
-                    </Box>
-                  </>
-                )}
-                {selectedTab === 2 && (
-                  <>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
-                      Yogurt Cash Flow
-                    </Typography>
-                    <Box sx={{ height: 400 }}>
-                      <DataGrid
-                        rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Yogurt')}
-                        columns={flowColumns}
-                        pageSize={5}
-                        rowsPerPageOptions={[5, 10]}
-                        disableSelectionOnClick
-                        autoHeight
-                        density="compact"
-                        disableColumnMenu
-                      />
-                    </Box>
-                  </>
-                )}
-                {selectedTab === 3 && (
-                  <>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
-                      Yogurt Cafe Cash Flow
-                    </Typography>
-                    <Box sx={{ height: 400 }}>
-                      <DataGrid
-                        rows={filteredFlows
-                          .map((f, i) => flowRows[i])
-                          .filter((r) => r.BusinessType === 'Yogurt Cafe')
-                        }
-                        columns={flowColumns}
-                        pageSize={5}
-                        rowsPerPageOptions={[5, 10]}
-                        disableSelectionOnClick
-                        autoHeight
-                        density="compact"
-                        disableColumnMenu
-                      />
-                    </Box>
-                  </>
-                )}
+                <>
+                  <Typography variant='h6' sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
+                    Gym Cash Flow
+                  </Typography>
+                  <Box sx={{ height: 400 }}>
+                    <DataGrid
+                      rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Gym')}
+                      columns={flowColumns} // Gym shows all columns
+                      pageSize={5}
+                      rowsPerPageOptions={[5, 10]}
+                      disableSelectionOnClick
+                      autoHeight
+                      density='compact'
+                      disableColumnMenu
+                    />
+                  </Box>
+                </>
+              )}
+
+              {selectedTab === 1 && (
+                <>
+                  <Typography variant='h6' sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
+                    Café Cash Flow
+                  </Typography>
+                  <Box sx={{ height: 400 }}>
+                    <DataGrid
+                      rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Cafe')}
+                      columns={nonWInFlowColumns} // removed W-In columns for Cafe
+                      pageSize={5}
+                      rowsPerPageOptions={[5, 10]}
+                      disableSelectionOnClick
+                      autoHeight
+                      density='compact'
+                      disableColumnMenu
+                    />
+                  </Box>
+                </>
+              )}
+
+              {selectedTab === 2 && (
+                <>
+                  <Typography variant='h6' sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
+                    Yogurt Cash Flow
+                  </Typography>
+                  <Box sx={{ height: 400 }}>
+                    <DataGrid
+                      rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Yogurt')}
+                      columns={nonWInFlowColumns} // removed W-In columns for Yogurt
+                      pageSize={5}
+                      rowsPerPageOptions={[5, 10]}
+                      disableSelectionOnClick
+                      autoHeight
+                      density='compact'
+                      disableColumnMenu
+                    />
+                  </Box>
+                </>
+              )}
+
+              {selectedTab === 3 && (
+                <>
+                  <Typography variant='h6' sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
+                    Yogurt Cafe Cash Flow
+                  </Typography>
+                  <Box sx={{ height: 400 }}>
+                    <DataGrid
+                      rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Yogurt Cafe')}
+                      columns={nonWInFlowColumns} // removed W-In columns for Yogurt Cafe
+                      pageSize={5}
+                      rowsPerPageOptions={[5, 10]}
+                      disableSelectionOnClick
+                      autoHeight
+                      density='compact'
+                      disableColumnMenu
+                    />
+                  </Box>
+                </>
+              )}
+
               </Paper>
             </Box>
           )}
@@ -2105,16 +2092,16 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           {activeTab === 2 && (
             <Box sx={{ mt: 1 }}>
               <Paper sx={{ p: 3, mb: 2, boxShadow: 3, borderRadius: 2 }}>
-                <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
+                <Typography variant='h6' gutterBottom sx={{ mb: 3 }}>
                   Filter Expenses By Date
                 </Typography>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6} md={3}>
                     <TextField
-                      label="From Date"
-                      type="date"
+                      label='From Date'
+                      type='date'
                       fullWidth
-                      size="small"
+                      size='small'
                       value={dateFrom}
                       onChange={(e) => setDateFrom(e.target.value)}
                       InputLabelProps={{ shrink: true }}
@@ -2122,17 +2109,17 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <TextField
-                      label="To Date"
-                      type="date"
+                      label='To Date'
+                      type='date'
                       fullWidth
-                      size="small"
+                      size='small'
                       value={dateTo}
                       onChange={(e) => setDateTo(e.target.value)}
                       InputLabelProps={{ shrink: true }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Button variant="contained" onClick={handleFilterExpenses}>
+                    <Button variant='contained' onClick={handleFilterExpenses}>
                       Filter
                     </Button>
                   </Grid>
@@ -2147,19 +2134,14 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                       alignItems: 'center',
                     }}
                   >
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      startIcon={<AddIcon />}
-                      onClick={() => setExpenseFormOpen(true)}
-                    >
+                    <Button variant='contained' color='primary' startIcon={<AddIcon />} onClick={() => setExpenseFormOpen(true)}>
                       Add New Expense
                     </Button>
                   </Grid>
                 </Grid>
               </Paper>
               <Paper sx={{ p: 3, boxShadow: 4, borderRadius: 2 }}>
-                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
+                <Typography variant='h6' sx={{ fontWeight: 'bold', mb: 2 }}>
                   Expenses List
                 </Typography>
                 <Box sx={{ height: 400, mt: 2 }}>
@@ -2170,7 +2152,7 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                     rowsPerPageOptions={[5, 10]}
                     disableSelectionOnClick
                     autoHeight
-                    density="compact"
+                    density='compact'
                     disableColumnMenu
                   />
                 </Box>
@@ -2312,7 +2294,7 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
         open={openOverallDialog}
         onClose={handleCloseOverallDialog}
         fullWidth
-        maxWidth="sm"
+        maxWidth='sm'
         sx={{
           '& .MuiDialog-paper': {
             borderRadius: 3,
@@ -2323,14 +2305,14 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
         }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 'bold' }}>
-          <AccountBalance color="primary" /> Generate Overall Daily Cash Flow
+          <AccountBalance color='primary' /> Generate Overall Daily Cash Flow
         </DialogTitle>
         <DialogContent dividers sx={{ p: 3 }}>
           <Typography
-            variant="h6"
+            variant='h6'
             sx={{ mb: 2, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}
           >
-            <Typography component="span" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+            <Typography component='span' sx={{ fontWeight: 'bold', color: 'success.main' }}>
               ₱
             </Typography>
             Computed Overall Total (Gym + Cafe + Yogurt):
@@ -2340,22 +2322,22 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           </Typography>
           <TextField
             fullWidth
-            label="Petty Cash Deduction"
-            name="pettyDeduction"
-            type="number"
+            label='Petty Cash Deduction'
+            name='pettyDeduction'
+            type='number'
             value={overallInput.pettyDeduction}
             onChange={handleOverallInputChange}
-            margin="dense"
-            variant="outlined"
+            margin='dense'
+            variant='outlined'
             InputProps={{
               startAdornment: <AccountBalance sx={{ color: 'primary.main', mr: 1 }} />,
             }}
           />
           <FormControlLabel
             control={
-              <Checkbox checked={overallInput.deposited} onChange={handleOverallInputChange} name="deposited" />
+              <Checkbox checked={overallInput.deposited} onChange={handleOverallInputChange} name='deposited' />
             }
-            label="Deposited to owner"
+            label='Deposited to owner'
             sx={{ mt: 2 }}
           />
         </DialogContent>
@@ -2363,18 +2345,18 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           <Button onClick={handleCloseOverallDialog} sx={{ color: 'red' }} startIcon={<Cancel />}>
             Cancel
           </Button>
-          <Button variant="contained" color="primary" onClick={handleSubmitOverallFlow} startIcon={<Save />}>
+          <Button variant='contained' color='primary' onClick={handleSubmitOverallFlow} startIcon={<Save />}>
             Submit Overall Flow
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Petty Cash Dialog (Consolidated) */}
+      {/* Petty Cash Dialog */}
       <Dialog
         open={pettyDialogOpen}
         onClose={closeConsolidatedPettyDialog}
         fullWidth
-        maxWidth="sm"
+        maxWidth='sm'
         sx={{
           '& .MuiDialog-paper': {
             borderRadius: 3,
@@ -2384,11 +2366,12 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           },
         }}
       >
+        {/* Dialog Title with Close Button */}
         <DialogTitle sx={{ p: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <AccountBalanceWallet sx={{ fontSize: 32, color: 'primary.main' }} />
-              <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+              <Typography variant='h6' sx={{ fontWeight: 'bold' }}>
                 Set Petty Cash for{' '}
                 {selectedConsolidatedRow?.Date ? formatDate(selectedConsolidatedRow.Date) : ''}
               </Typography>
@@ -2404,14 +2387,15 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           </Box>
         </DialogTitle>
 
+        {/* Dialog Content */}
         <DialogContent dividers sx={{ p: 3 }}>
           {selectedConsolidatedRow && (
             <>
               <Typography
-                variant="h6"
+                variant='h6'
                 sx={{ mb: 1, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}
               >
-                <Typography component="span" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                <Typography component='span' sx={{ fontWeight: 'bold', color: 'success.main' }}>
                   ₱
                 </Typography>
                 Net Profit:{' '}
@@ -2419,8 +2403,8 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                   ₱{Number(selectedConsolidatedRow.NetProfit || 0).toLocaleString()}
                 </span>
               </Typography>
-              <Typography variant="body1" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Savings color="action" />
+              <Typography variant='body1' sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Savings color='action' />
                 Take Home before petty:{' '}
                 <strong>₱{Number(selectedConsolidatedRow.TakeHome || 0).toLocaleString()}</strong>
               </Typography>
@@ -2428,20 +2412,20 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           )}
 
           {/* Branch Selection */}
-          <FormControl fullWidth size="medium" sx={{ mt: 2, mb: 2 }}>
+          <FormControl fullWidth size='medium' sx={{ mt: 2, mb: 2 }}>
             <InputLabel>Branch</InputLabel>
             <Select
-              label="Branch"
-              name="branchSelection"
+              label='Branch'
+              name='branchSelection'
               value={pettyForm.branchSelection}
               onChange={handlePettyFormChange}
               startAdornment={
-                <InputAdornment position="start">
+                <InputAdornment position='start'>
                   <StoreIcon />
                 </InputAdornment>
               }
             >
-              <MenuItem value="all">All / Overall</MenuItem>
+              <MenuItem value='all'>All / Overall</MenuItem>
               {branchOptions
                 .filter((b) => b.value !== 'all')
                 .map((b) => (
@@ -2452,55 +2436,58 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
             </Select>
           </FormControl>
 
+          {/* Petty Cash Input */}
           <TextField
-            label="Petty Cash Deduction"
-            name="pettyCash"
-            type="number"
+            label='Petty Cash Deduction'
+            name='pettyCash'
+            type='number'
             value={pettyForm.pettyCash}
             onChange={handlePettyFormChange}
             fullWidth
-            margin="normal"
-            variant="outlined"
+            margin='normal'
+            variant='outlined'
             InputProps={{
               startAdornment: (
-                <InputAdornment position="start">
+                <InputAdornment position='start'>
                   <AccountBalanceWallet />
                 </InputAdornment>
               ),
             }}
           />
 
+          {/* Deposited Amount (Read-Only) */}
           <TextField
-            label="Deposited Amount"
-            name="depositedAmount"
-            type="number"
+            label='Deposited Amount'
+            name='depositedAmount'
+            type='number'
             value={pettyForm.depositedAmount}
             InputProps={{
               readOnly: true,
               startAdornment: (
-                <InputAdornment position="start">
+                <InputAdornment position='start'>
                   <Savings />
                 </InputAdornment>
               ),
             }}
             fullWidth
-            margin="normal"
-            variant="outlined"
+            margin='normal'
+            variant='outlined'
           />
 
+          {/* Remarks */}
           <TextField
-            label="Remarks"
-            name="remarks"
+            label='Remarks'
+            name='remarks'
             value={pettyForm.remarks}
             onChange={handlePettyFormChange}
             fullWidth
             multiline
             rows={3}
-            margin="normal"
-            variant="outlined"
+            margin='normal'
+            variant='outlined'
             InputProps={{
               startAdornment: (
-                <InputAdornment position="start">
+                <InputAdornment position='start'>
                   <EditNote />
                 </InputAdornment>
               ),
@@ -2508,10 +2495,11 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           />
         </DialogContent>
 
+        {/* Dialog Actions */}
         <DialogActions sx={{ justifyContent: 'flex-end', p: 3 }}>
           <Button
-            variant="contained"
-            color="primary"
+            variant='contained'
+            color='primary'
             onClick={handleSubmitConsolidatedPetty}
             disabled={!pettyForm.pettyCash || pettyForm.pettyCash <= 0}
             startIcon={<Save />}
@@ -2526,7 +2514,7 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
         open={expenseFormOpen}
         onClose={() => setExpenseFormOpen(false)}
         fullWidth
-        maxWidth="sm"
+        maxWidth='sm'
         sx={{
           '& .MuiDialog-paper': {
             borderRadius: 3,
@@ -2540,7 +2528,7 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <ReceiptLongIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-              <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+              <Typography variant='h6' sx={{ fontWeight: 'bold' }}>
                 Add New Expense
               </Typography>
             </Box>
@@ -2552,15 +2540,15 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
         <DialogContent dividers sx={{ p: 4 }}>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth size="small">
+              <FormControl fullWidth size='small'>
                 <InputLabel>Branch</InputLabel>
                 <Select
-                  name="BranchID"
+                  name='BranchID'
                   value={expenseForm.BranchID}
                   onChange={handleExpenseChange}
                   startAdornment={<StoreIcon sx={{ mr: 1 }} />}
                 >
-                  <MenuItem value="">
+                  <MenuItem value=''>
                     <em>-- Select Branch --</em>
                   </MenuItem>
                   {branchOptions
@@ -2595,17 +2583,17 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Expense Date"
-                type="date"
+                label='Expense Date'
+                type='date'
                 fullWidth
-                name="ExpenseDate"
+                name='ExpenseDate'
                 value={expenseForm.ExpenseDate}
                 onChange={handleExpenseChange}
                 InputLabelProps={{ shrink: true }}
-                size="small"
+                size='small'
                 InputProps={{
                   startAdornment: (
-                    <InputAdornment position="start">
+                    <InputAdornment position='start'>
                       <HistoryIcon />
                     </InputAdornment>
                   ),
@@ -2614,15 +2602,15 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Category"
+                label='Category'
                 fullWidth
-                name="ExpenseCategory"
+                name='ExpenseCategory'
                 value={expenseForm.ExpenseCategory}
                 onChange={handleExpenseChange}
-                size="small"
+                size='small'
                 InputProps={{
                   startAdornment: (
-                    <InputAdornment position="start">
+                    <InputAdornment position='start'>
                       <MiscellaneousServices />
                     </InputAdornment>
                   ),
@@ -2631,16 +2619,16 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Amount"
-                type="number"
+                label='Amount'
+                type='number'
                 fullWidth
-                name="Amount"
+                name='Amount'
                 value={expenseForm.Amount}
                 onChange={handleExpenseChange}
-                size="small"
+                size='small'
                 InputProps={{
                   startAdornment: (
-                    <InputAdornment position="start">
+                    <InputAdornment position='start'>
                       <Typography sx={{ fontWeight: 'bold' }}>₱</Typography>
                     </InputAdornment>
                   ),
@@ -2649,15 +2637,15 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Payment Method"
+                label='Payment Method'
                 fullWidth
-                name="PaymentMethod"
+                name='PaymentMethod'
                 value={expenseForm.PaymentMethod}
                 onChange={handleExpenseChange}
-                size="small"
+                size='small'
                 InputProps={{
                   startAdornment: (
-                    <InputAdornment position="start">
+                    <InputAdornment position='start'>
                       <CreditCardIcon />
                     </InputAdornment>
                   ),
@@ -2666,15 +2654,15 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Staff ID (optional)"
+                label='Staff ID (optional)'
                 fullWidth
-                name="StaffID"
+                name='StaffID'
                 value={expenseForm.StaffID}
                 onChange={handleExpenseChange}
-                size="small"
+                size='small'
                 InputProps={{
                   startAdornment: (
-                    <InputAdornment position="start">
+                    <InputAdornment position='start'>
                       <PersonIcon />
                     </InputAdornment>
                   ),
@@ -2683,17 +2671,17 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
             </Grid>
             <Grid item xs={12}>
               <TextField
-                label="Notes"
+                label='Notes'
                 fullWidth
-                name="Notes"
+                name='Notes'
                 value={expenseForm.Notes}
                 onChange={handleExpenseChange}
-                size="small"
+                size='small'
                 multiline
                 rows={2}
                 InputProps={{
                   startAdornment: (
-                    <InputAdornment position="start">
+                    <InputAdornment position='start'>
                       <EditNoteIcon />
                     </InputAdornment>
                   ),
@@ -2703,31 +2691,31 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           </Grid>
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'flex-end', py: 2 }}>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleSubmitExpense}
-            disabled={
-              !expenseForm.BranchID ||
-              !expenseForm.ExpenseDate ||
-              !expenseForm.ExpenseCategory ||
-              parseFloat(expenseForm.Amount) <= 0 ||
-              !expenseForm.PaymentMethod
-            }
-            sx={{ textTransform: 'none' }}
-          >
-            <SaveIcon sx={{ mr: 1 }} />
-            Save Expense
-          </Button>
-        </DialogActions>
+        <Button
+          variant='contained'
+          color='primary'
+          onClick={handleSubmitExpense}
+          disabled={
+            !expenseForm.BranchID ||
+            !expenseForm.ExpenseDate ||
+            !expenseForm.ExpenseCategory ||
+            parseFloat(expenseForm.Amount) <= 0 ||
+            !expenseForm.PaymentMethod
+          }
+          sx={{ textTransform: 'none' }}
+        >
+          <SaveIcon sx={{ mr: 1 }} />
+          Save Expense
+        </Button>
+      </DialogActions>
+
       </Dialog>
 
-      {/* Create Cash Flow Dialog */}
       <Dialog
         open={cashFlowDialogOpen}
         onClose={handleCloseCashFlowDialog}
         fullWidth
-        maxWidth="md"
+        maxWidth='md'
         sx={{
           '& .MuiDialog-paper': {
             borderRadius: 3,
@@ -2741,7 +2729,7 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <CreditCardIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-              <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+              <Typography variant='h6' sx={{ fontWeight: 'bold' }}>
                 Record Yogurt/Cafe Daily Cash Flow Entry
               </Typography>
             </Box>
@@ -2754,15 +2742,15 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
               <Typography
-                variant="h6"
+                variant='h6'
                 sx={{ fontWeight: 'bold', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}
               >
                 <StoreIcon /> Yogurt or Cafe?
               </Typography>
-              <FormControl fullWidth size="medium" sx={{ mb: 2 }}>
+              <FormControl fullWidth size='medium' sx={{ mb: 2 }}>
                 <InputLabel>Branch</InputLabel>
-                <Select name="BranchID" value={cashFlowForm.BranchID} onChange={handleCashFlowChange}>
-                  <MenuItem value="">
+                <Select name='BranchID' value={cashFlowForm.BranchID} onChange={handleCashFlowChange}>
+                  <MenuItem value=''>
                     <em>-- Select Branch --</em>
                   </MenuItem>
                   {branchOptions.map((option) => (
@@ -2772,97 +2760,97 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                   ))}
                 </Select>
               </FormControl>
-              <FormControl fullWidth size="medium" sx={{ mb: 2 }}>
+              <FormControl fullWidth size='medium' sx={{ mb: 2 }}>
                 <InputLabel>Business Type</InputLabel>
-                <Select name="BusinessType" value={cashFlowForm.BusinessType} onChange={handleCashFlowChange}>
-                  <MenuItem value="">
+                <Select name='BusinessType' value={cashFlowForm.BusinessType} onChange={handleCashFlowChange}>
+                  <MenuItem value=''>
                     <em>-- Select --</em>
                   </MenuItem>
-                  <MenuItem value="Cafe">Cafe</MenuItem>
-                  <MenuItem value="Yogurt">Yogurt</MenuItem>
-                  <MenuItem value="Yogurt Cafe">Yogurt Cafe</MenuItem>
+                  <MenuItem value='Cafe'>Cafe</MenuItem>
+                  <MenuItem value='Yogurt'>Yogurt</MenuItem>
+                  <MenuItem value='Yogurt Cafe'>Yogurt Cafe</MenuItem>
                 </Select>
               </FormControl>
               <TextField
                 fullWidth
-                type="date"
-                label="Date"
-                name="Date"
+                type='date'
+                label='Date'
+                name='Date'
                 value={cashFlowForm.Date}
                 onChange={handleCashFlowChange}
                 InputLabelProps={{ shrink: true }}
-                variant="outlined"
-                size="medium"
+                variant='outlined'
+                size='medium'
                 sx={{ mb: 2 }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <Typography
-                variant="h6"
+                variant='h6'
                 sx={{ fontWeight: 'bold', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}
               >
-                <Typography component="span" sx={{ fontWeight: 'bold' }}>
+                <Typography component='span' sx={{ fontWeight: 'bold' }}>
                   ₱
                 </Typography>{' '}
                 Sales Breakdown
               </Typography>
               <TextField
                 fullWidth
-                type="number"
-                label="Cash Sales"
-                name="CashSales"
+                type='number'
+                label='Cash Sales'
+                name='CashSales'
                 value={cashFlowForm.CashSales}
                 onChange={handleCashFlowChange}
-                variant="outlined"
-                size="medium"
+                variant='outlined'
+                size='medium'
                 sx={{ mb: 2 }}
               />
               <TextField
                 fullWidth
-                type="number"
-                label="GCash Sales"
-                name="GCashSales"
+                type='number'
+                label='GCash Sales'
+                name='GCashSales'
                 value={cashFlowForm.GCashSales}
                 onChange={handleCashFlowChange}
-                variant="outlined"
-                size="medium"
+                variant='outlined'
+                size='medium'
                 sx={{ mb: 2 }}
               />
               <TextField
                 fullWidth
-                type="number"
-                label="BPI Sales"
-                name="BPISales"
+                type='number'
+                label='BPI Sales'
+                name='BPISales'
                 value={cashFlowForm.BPISales}
                 onChange={handleCashFlowChange}
-                variant="outlined"
-                size="medium"
+                variant='outlined'
+                size='medium'
                 sx={{ mb: 2 }}
               />
               <TextField
                 fullWidth
-                type="number"
-                label="BDO Sales"
-                name="BDOSales"
+                type='number'
+                label='BDO Sales'
+                name='BDOSales'
                 value={cashFlowForm.BDOSales}
                 onChange={handleCashFlowChange}
-                variant="outlined"
-                size="medium"
+                variant='outlined'
+                size='medium'
                 sx={{ mb: 2 }}
               />
             </Grid>
             <Grid item xs={12}>
-              <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant='h6' sx={{ fontWeight: 'bold', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <NotesIcon /> Remarks
               </Typography>
               <TextField
                 fullWidth
-                label="Remarks"
-                name="Remarks"
+                label='Remarks'
+                name='Remarks'
                 value={cashFlowForm.Remarks}
                 onChange={handleCashFlowChange}
-                variant="outlined"
-                size="medium"
+                variant='outlined'
+                size='medium'
                 multiline
                 rows={3}
               />
@@ -2870,87 +2858,38 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           </Grid>
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'flex-end', py: 2 }}>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleCashFlowSubmit}
-            disabled={
-              !cashFlowForm.BranchID ||
-              !cashFlowForm.BusinessType ||
-              !cashFlowForm.Date ||
-              (
-                parseFloat(cashFlowForm.CashSales) <= 0 &&
-                parseFloat(cashFlowForm.GCashSales) <= 0 &&
-                parseFloat(cashFlowForm.BPISales) <= 0 &&
-                parseFloat(cashFlowForm.BDOSales) <= 0
-              )
-            }
-            sx={{ textTransform: 'none' }}
-          >
-            <SaveIcon sx={{ mr: 1 }} />
-            Submit Cash Flow
-          </Button>
-        </DialogActions>
+        <Button
+          variant='contained'
+          color='primary'
+          onClick={handleCashFlowSubmit}
+          // The disabled logic:
+          disabled={
+            !cashFlowForm.BranchID ||
+            !cashFlowForm.BusinessType ||
+            !cashFlowForm.Date ||
+            (
+              parseFloat(cashFlowForm.CashSales) <= 0 &&
+              parseFloat(cashFlowForm.GCashSales) <= 0 &&
+              parseFloat(cashFlowForm.BPISales) <= 0 &&
+              parseFloat(cashFlowForm.BDOSales) <= 0
+            )
+          }
+          sx={{ textTransform: 'none' }}
+        >
+          <SaveIcon sx={{ mr: 1 }} />
+          Submit Cash Flow
+        </Button>
+      </DialogActions>
+
       </Dialog>
 
-      {/* [ADDED] Daily Petty Dialog (for each flow row) */}
-      <Dialog
-        open={dailyPettyOpen}
-        onClose={closeDailyPettyDialog}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Set Petty Cash (Daily)</DialogTitle>
-        <DialogContent dividers>
-          {selectedDailyFlow && (
-            <>
-              <Typography variant="body1" sx={{ mb: 1 }}>
-                <strong>Date:</strong> {formatDate(selectedDailyFlow.Date)}
-              </Typography>
-              <Typography variant="body1" sx={{ mb: 1 }}>
-                <strong>Business:</strong> {selectedDailyFlow.BusinessType}
-              </Typography>
-              <Typography variant="body1" sx={{ mb: 1 }}>
-                <strong>Net Profit:</strong> ₱{Number(selectedDailyFlow.NetProfit || 0).toLocaleString()}
-              </Typography>
-            </>
-          )}
-          <TextField
-            label="Petty Cash"
-            name="pettyCash"
-            type="number"
-            value={dailyPettyForm.pettyCash}
-            onChange={handleDailyPettyChange}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Remarks"
-            name="remarks"
-            value={dailyPettyForm.remarks}
-            onChange={handleDailyPettyChange}
-            fullWidth
-            multiline
-            rows={2}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeDailyPettyDialog} color="error" startIcon={<Cancel />}>
-            Cancel
-          </Button>
-          <Button variant="contained" onClick={handleSubmitDailyPetty} startIcon={<Save />}>
-            Save Petty
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* SNACKBAR FOR SUCCESS MESSAGES */}
-      <Snackbar
-        open={snackOpen}
-        autoHideDuration={3000}
-        onClose={() => setSnackOpen(false)}
-        message={snackMessage}
-      />
+      {/* ----------------- SNACKBAR FOR SUCCESS MESSAGES ----------------- */}
+     <Snackbar
+                   open={snackOpen}
+                   autoHideDuration={3000}
+                   onClose={() => setSnackOpen(false)}
+                   message={snackMessage}
+                 />
     </Box>
   );
 }
