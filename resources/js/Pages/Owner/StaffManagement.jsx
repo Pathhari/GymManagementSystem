@@ -66,6 +66,8 @@ import AddNewStaffLayout from "../../Layouts/AddNewStaffLayout";
 import AddPayrollLayout from "../../Layouts/AddPayrollLayout";
 import AddStaffTaskLayout from "../../Layouts/AddStaffTaskLayout";
 import AddAttendanceLayout from '../../Layouts/AddAttendanceLayout';
+import AddScheduleLayout from "../../Layouts/AddScheduleLayout";
+
 
 
 export default function StaffManagement({ staff = [], attendance = [], payroll = [], tasks = [], schedules = [], staffData, payrollData }) {
@@ -87,7 +89,6 @@ export default function StaffManagement({ staff = [], attendance = [], payroll =
     setSnackOpen(true);
   };
 
-
   const formatTime = (timeString) => {
     if (!timeString) return "—";
     const date = new Date(`1970-01-01T${timeString}`);
@@ -97,6 +98,7 @@ export default function StaffManagement({ staff = [], attendance = [], payroll =
       hour12: true,
     });
   };
+
   const theme = useTheme();
   // -------------- STAFF STATES -------------------
   const [staffRecords, setStaffRecords] = useState(staff);
@@ -123,10 +125,43 @@ export default function StaffManagement({ staff = [], attendance = [], payroll =
   const handleAddPayroll = () => {
     setAddPayrollOpen(true);
   };
-
   const handleClosePayrollDialog = () => {
     setAddPayrollOpen(false);
   };
+  const [payrollFilterStart, setPayrollFilterStart] = useState("");
+  const [payrollFilterEnd, setPayrollFilterEnd] = useState("");
+
+      // Filter payroll records based on GeneratedDate
+    const handleFilterPayroll = () => {
+      if (!payrollFilterStart || !payrollFilterEnd) {
+        alert("Please select both start and end dates for filtering.");
+        return;
+      }
+      const start = new Date(payrollFilterStart);
+      const end = new Date(payrollFilterEnd);
+      // Filter the full payrollRecords list (or your current filteredPayroll) based on GeneratedDate
+      const filtered = payrollRecords.filter((p) => {
+        // Make sure p.GeneratedDate exists and is a valid date string.
+        const generated = new Date(p.GeneratedDate);
+        return generated >= start && generated <= end;
+      });
+      setFilteredPayroll(filtered);
+    };
+
+    const handleResetPayrollFilter = () => {
+      setPayrollFilterStart("");
+      setPayrollFilterEnd("");
+      setFilteredPayroll(payrollRecords);
+    };
+
+    // Calculate total Net Pay from the currently filtered payroll records
+    const handleCalculateTotalNetPay = () => {
+      const total = filteredPayroll.reduce((sum, p) => {
+        return sum + Number(p.NetPay || 0);
+      }, 0);
+      alert(`Total Net Pay for the selected period: ₱${total.toFixed(2)}`);
+    };
+
 
 
   // -------------- TASK STATES -------------------
@@ -143,6 +178,10 @@ export default function StaffManagement({ staff = [], attendance = [], payroll =
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [isViewScheduleOpen, setViewScheduleOpen] = useState(false);
   const [isEditScheduleOpen, setEditScheduleOpen] = useState(false);
+
+  // Add this new one to open the "Add Schedule" dialog
+  const [isAddScheduleOpen, setAddScheduleOpen] = useState(false);
+
   // -------------- TABS & FILTERS -------------------
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
@@ -276,23 +315,64 @@ function handleNewPayrollCreated(resData) {
       })
       .catch((err) => console.error("Error fetching tasks:", err));
 
-  }, []);
+      // 5. Schedules
+      axios.get(route('staff.schedules.index'))
+        .then((res) => {
+          setScheduleRecords(res.data);
+          setFilteredSchedule(res.data);
+        })
+        .catch((err) => console.error("Error fetching schedules:", err));
+    }, []);
 
-
-  function handleBranchChange(e) {
-    const selected = e.target.value;
-    setBranch(selected);
-
-    if (selected === "all") {
-      setFilteredStaff(staffRecords);
-    } else {
-      const branchID = Number(selected);
-      const filtered = staffRecords.filter((st) => {
-        return st.branches.some((b) => b.BranchID === branchID);
-      });
-      setFilteredStaff(filtered);
+    function handleBranchChange(e) {
+      const selected = e.target.value;
+      setBranch(selected);
+    
+      if (selected === "all") {
+        // If "all", revert everything to the original arrays
+        setFilteredStaff(staffRecords);
+        setFilteredAttendance(attendanceRecords);
+        setFilteredPayroll(payrollRecords);
+        setFilteredTasks(taskRecords);
+        setFilteredSchedule(scheduleRecords);
+      } else {
+        const branchID = Number(selected);
+    
+        // 1) Filter staff by branch
+        const filteredStaffByBranch = staffRecords.filter((st) =>
+          st.branches && st.branches.some((b) => b.BranchID === branchID)
+        );
+        setFilteredStaff(filteredStaffByBranch);
+    
+        // 2) Collect the StaffIDs for those staff
+        const staffIDs = filteredStaffByBranch.map((st) => st.StaffID);
+    
+        // 3) Filter attendance where StaffID is in that staffIDs array
+        const filteredAttend = attendanceRecords.filter((a) =>
+          staffIDs.includes(a.StaffID)
+        );
+        setFilteredAttendance(filteredAttend);
+    
+        // 4) Filter payroll
+        const filteredPay = payrollRecords.filter((p) =>
+          staffIDs.includes(p.StaffID)
+        );
+        setFilteredPayroll(filteredPay);
+    
+        // 5) Filter tasks
+        const filteredT = taskRecords.filter((t) =>
+          staffIDs.includes(t.StaffID)
+        );
+        setFilteredTasks(filteredT);
+    
+        // 6) Filter schedules
+        const filteredSch = scheduleRecords.filter((sc) =>
+          staffIDs.includes(sc.StaffID)
+        );
+        setFilteredSchedule(filteredSch);
+      }
     }
-  }
+    
 
   // -------------- STAFF CRUD --------------
   const handleViewStaff = (record) => {
@@ -531,15 +611,16 @@ function handleNewPayrollCreated(resData) {
     }
   };
 
-  const handleTabChange = (e, newValue) => {
-    setActiveTab(newValue);
-    setSearchTerm("");
-    if (newValue === 0) setFilteredStaff(staffRecords);
-    else if (newValue === 1) setFilteredAttendance(attendanceRecords);
-    else if (newValue === 2) setFilteredPayroll(payrollRecords);
-    else if (newValue === 3) setFilteredTasks(taskRecords);
-    else setFilteredSchedule(scheduleRecords);
-  };
+// if newValue === 4 => show schedules
+const handleTabChange = (e, newValue) => {
+  setActiveTab(newValue);
+  setSearchTerm("");
+  if (newValue === 0) setFilteredStaff(staffRecords);
+  else if (newValue === 1) setFilteredAttendance(attendanceRecords);
+  else if (newValue === 2) setFilteredPayroll(payrollRecords);
+  else if (newValue === 3) setFilteredTasks(taskRecords);
+  else setFilteredSchedule(scheduleRecords); // This is for tab #4 (Schedules)
+};
 
 
         // ------------------- COLUMNS: TABLES -------------------
@@ -671,12 +752,6 @@ function handleNewPayrollCreated(resData) {
       ];
 
       const attendanceColumns = [
-        { 
-          field: "AttendanceID", 
-          headerName: "Attendance ID", 
-          width: 110, 
-          renderCell: (params) => params.value ?? "—" 
-        },
         {
           field: "StaffID",
           headerName: "Staff Name",
@@ -778,7 +853,6 @@ function handleNewPayrollCreated(resData) {
     
 
   const payrollColumns = [
-    { field: "PayrollID", headerName: "Payroll ID", width: 90 },
     {
       field: "StaffID",
       headerName: "Staff Name",
@@ -869,7 +943,6 @@ function handleNewPayrollCreated(resData) {
   ];
 
   const taskColumns = [
-    { field: "TaskID", headerName: "Task ID", width: 80 },
     {
       field: "StaffID",
       headerName: "Staff Name",
@@ -948,7 +1021,8 @@ function handleNewPayrollCreated(resData) {
   ];
 
   const scheduleColumns = [
-    { field: "ScheduleID", headerName: "Schedule ID", width: 100 },
+    { field: "ShiftDate", headerName: "Date", width: 110 },
+
     {
       field: "StaffID",
       headerName: "Staff Name",
@@ -957,7 +1031,6 @@ function handleNewPayrollCreated(resData) {
         return params.row.staff ? params.row.staff.FullName : "N/A";
       },
     },
-    { field: "ShiftDate", headerName: "Date", width: 110 },
     { field: "ShiftStart", headerName: "Start", width: 90 },
     { field: "ShiftEnd", headerName: "End", width: 90 },
     { field: "RoleOverride", headerName: "Override", width: 100 },
@@ -1400,6 +1473,7 @@ function handleNewPayrollCreated(resData) {
           <Tab icon={<EmojiPeopleIcon />} label="Attendance" />
           <Tab icon={<ReceiptIcon />} label="Payroll" />
           <Tab icon={<AssignmentIcon />} label="Task" />
+          <Tab icon={<CalendarMonthIcon />} label="Schedules" />
         </Tabs>
       </Box>
 
@@ -1477,13 +1551,48 @@ function handleNewPayrollCreated(resData) {
               </Button>
             )}
             {activeTab === 2 && (
-              <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddPayrollOpen(true)}>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, mb: 2, alignItems: "center" }}>
+                <TextField
+                  label="Generated Start"
+                  type="date"
+                  value={payrollFilterStart}
+                  onChange={(e) => setPayrollFilterStart(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <TextField
+                  label="Generated End"
+                  type="date"
+                  value={payrollFilterEnd}
+                  onChange={(e) => setPayrollFilterEnd(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <Button variant="contained" onClick={handleFilterPayroll}>
+                  Filter
+                </Button>
+                <Button variant="outlined" onClick={handleResetPayrollFilter}>
+                  Reset
+                </Button>
+                <Button variant="contained" color="secondary" onClick={handleCalculateTotalNetPay}>
+                  Total Net Pay
+                </Button>
+                <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddPayrollOpen(true)}>
                 Add Payroll
               </Button>
+              </Box>
             )}
             {activeTab === 3 && (
               <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddTaskOpen(true)}>
                 Add Task
+              </Button>
+            )}
+            {activeTab === 4 && (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={() => setAddScheduleOpen(true)}
+              >
+                Add Schedule
               </Button>
             )}
           </Box>
@@ -1519,9 +1628,10 @@ function handleNewPayrollCreated(resData) {
             <AddPayrollLayout
               onClose={() => setAddPayrollOpen(false)}
               onAdd={(newPayroll) => {
-                axios.post(route('staff.payroll.store'), newPayroll)
-                  .then(res => handleNewPayrollCreated(res.data))
-                  .catch(err => console.error('Error adding payroll:', err));
+                // Now do axios => POST /staff/payroll with the final data
+                axios.post(route("staff.payroll.store"), newPayroll)
+                  .then((res) => handleNewPayrollCreated(res.data))
+                  .catch((err) => console.error("Error adding payroll:", err));
               }}
               staffOptions={staffRecords.map((s) => ({
                 value: s.StaffID,
@@ -1567,6 +1677,25 @@ function handleNewPayrollCreated(resData) {
             }))}
           />
         )}
+
+      {isAddScheduleOpen && (
+        <AddScheduleLayout
+          onClose={() => setAddScheduleOpen(false)}
+          onSchedulesCreated={(resData) => {
+            const newSchedules = resData.schedules; 
+            setScheduleRecords(prev => [...newSchedules, ...prev]);
+            setFilteredSchedule(prev => [...newSchedules, ...prev]);
+            showSuccessMessage("New schedules created!");
+            setAddScheduleOpen(false);
+          }}
+          staffOptions={staffRecords.map((s) => ({
+            value: s.StaffID,
+            label: s.FullName,
+          }))}
+        />
+      )}
+
+
 
       {/* ------------------- VIEW & EDIT DIALOGS ------------------- */}
 
@@ -3079,6 +3208,5 @@ function handleNewPayrollCreated(resData) {
               message={snackMessage}
             />
     </Box>
-
   );
 }

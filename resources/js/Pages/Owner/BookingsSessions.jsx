@@ -139,6 +139,13 @@ function formatTime(timeString) {
 }
 
 function createCalendarEvents(bookings, sessions, sessionBookings) {
+  // Build a quick lookup (SessionID -> sessionObj).
+  const sessionMap = {};
+  sessions.forEach((s) => {
+    sessionMap[s.SessionID] = s;
+  });
+
+  // 1) Convert facility bookings to events
   const bookingEvents = bookings.map((b) => ({
     id: `booking-${b.BookingID}`,
     date: b.BookingDate,
@@ -146,26 +153,37 @@ function createCalendarEvents(bookings, sessions, sessionBookings) {
     type: "booking",
   }));
 
-// Build a lookup object from sessions keyed by SessionID
-const sessionMap = sessions.reduce((acc, session) => {
-  acc[session.SessionID] = session;
-  return acc;
-}, {});
+  // 2) Convert session bookings to events
+  const sessionBookingEvents = sessionBookings.map((sb) => {
+    // find the session this booking is for
+    const sessionObj = sessionMap[sb.SessionID];
 
-// Map session bookings and include the session's StartTime and EndTime
-const sessionBookingEvents = sessionBookings.map((sb) => {
-  const session = sessionMap[sb.SessionID];
-  const timeFrame = session
-    ? ` (${dayjs(session.StartTime).format("h:mm A")} - ${dayjs(session.EndTime).format("h:mm A")})`
-    : "";
-  return {
-    id: `sb-${sb.SessionBookingID}`,
-    date: sb.BookingDate,
-    title: `${sb.SessionName}${timeFrame}: (Member: ${sb.MemberName})`,
-    type: "sessionBooking",
-  };
-});
+    // fallback if not found
+    if (!sessionObj) {
+      return {
+        id: `sb-${sb.SessionBookingID}`,
+        date: sb.BookingDate,
+        title: `Session Booking (Missing Session Data) - (Member: ${sb.MemberName})`,
+        type: "sessionBooking",
+      };
+    }
 
+    // we have the session; let's build a nice label
+    const timeFrame = sessionObj.StartTime && sessionObj.EndTime
+      ? `(${dayjs(sessionObj.StartTime).format("h:mm A")} - ${dayjs(sessionObj.EndTime).format("h:mm A")})`
+      : "";
+    const coachName = sessionObj.CoachName || "Unassigned";  // might be empty
+    const sessionName = sessionObj.SessionName || "Unknown Session";
+
+    return {
+      id: `sb-${sb.SessionBookingID}`,
+      date: sb.BookingDate,  // or you can treat it as an allDay event
+      title: `Session: ${sessionName} w/ Coach: ${coachName} → Booked by ${sb.MemberName} ${timeFrame}`,
+      type: "sessionBooking",
+    };
+  });
+
+  // 3) Return everything
   return [...bookingEvents, ...sessionBookingEvents];
 }
 
@@ -228,6 +246,56 @@ export default function BookingsSessions() {
     useState("Cash");
   const [sessionBookingPaymentAmount, setSessionBookingPaymentAmount] =
     useState("");
+
+  const [isGenerateModalOpen, setGenerateModalOpen] = useState(false);
+  const [generateForm, setGenerateForm] = useState({
+  coachId: "",
+  startDate: "",
+  endDate: "",
+  branchId: "",
+  location: "",
+  sessionType: "Regular",
+  fee: 0,
+  });
+
+  // 2. A helper to open the modal for a specific coach
+function handleGenerateTimeslotsClick(coachId) {
+  setGenerateForm({
+    coachId: coachId,
+    startDate: dayjs().format("YYYY-MM-DD"),         // default
+    endDate: dayjs().add(7, "day").format("YYYY-MM-DD"), // default
+    branchId: "",       // or your default branch
+    location: "",       // optional
+    sessionType: "Regular",
+    fee: 0,
+  });
+  setGenerateModalOpen(true);
+}
+
+// 3. The actual function to do the POST
+async function generateTimeslots() {
+  if (!generateForm.coachId) {
+    showSnack("No coach selected!", "error");
+    return;
+  }
+  try {
+    const payload = {
+      start_date: generateForm.startDate,
+      end_date: generateForm.endDate,
+      branch_id: generateForm.branchId,
+      location: generateForm.location,
+      session_type: generateForm.sessionType,
+      fee: Number(generateForm.fee),
+    };
+    await axios.post(`/coaches/${generateForm.coachId}/generate-timeslots`, payload);
+    showSnack("Timeslots generated successfully!", "success");
+    setGenerateModalOpen(false);
+    fetchAllData(); // refresh your sessions list, etc.
+  } catch (err) {
+    console.error("Error generating timeslots:", err);
+    showSnack("Failed to generate timeslots. Check console.", "error");
+  }
+}
 
   // Coach dialogs
   const [isAddCoachOpen, setAddCoachOpen] = useState(false);
@@ -395,26 +463,68 @@ export default function BookingsSessions() {
     return parsed.isValid() ? parsed.format("MMM D, YYYY h:mm A") : "Invalid DateTime";
   };
 
+  function getBranchLabel(value) {
+    if (value === "all") return null;
+    const found = branches.find((b) => b.value === value);
+    return found ? found.label : null;
+  }
+
   // ---------- FILTERS ----------
-  const filteredBookings = bookings.filter((b) => {
-    const branchMatches =
-      branchFilter === "all" || Number(b.BranchID) === Number(branchFilter);
-    const searchMatches = Object.values(b).some((val) =>
-      String(val).toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    return branchMatches && searchMatches;
-  });
+    // Filtered Bookings
+    const filteredBookings = React.useMemo(() => {
+      const lowerSearch = searchTerm.toLowerCase();
+      const selectedBranchLabel = getBranchLabel(branchFilter); // e.g. "Contnental Branch 1"
 
-  const filteredSessions = sessions.filter((s) => {
-    // We assume the backend includes "BranchID" (number) *and* "Branch" (string).
-    const branchMatches =
-      branchFilter === "all" || Number(s.BranchID) === Number(branchFilter);
-    const searchMatches = Object.values(s).some((val) =>
-      String(val).toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    return branchMatches && searchMatches;
-  });
+      return bookings.filter((b) => {
+        // Branch
+        const branchMatches =
+          branchFilter === "all" || (b.Branch === selectedBranchLabel);
 
+        // Search
+        const textFields = [b.MemberName, b.FacilityName, b.Status].join(" ");
+        const searchMatches = textFields.toLowerCase().includes(lowerSearch);
+
+        return branchMatches && searchMatches;
+      });
+    }, [bookings, branchFilter, searchTerm]);
+
+    // Filtered Sessions
+    const filteredSessions = React.useMemo(() => {
+      const lowerSearch = searchTerm.toLowerCase();
+      const selectedBranchLabel = getBranchLabel(branchFilter);
+
+      return sessions.filter((s) => {
+        const branchMatches =
+          branchFilter === "all" || (s.Branch === selectedBranchLabel);
+
+        // We only search certain fields
+        const textFields = [s.SessionName, s.CoachName, s.Location, s.Status].join(" ");
+        const searchMatches = textFields.toLowerCase().includes(lowerSearch);
+
+        return branchMatches && searchMatches;
+      });
+    }, [sessions, branchFilter, searchTerm]);
+
+    // Filtered Coaches
+    const filteredCoaches = React.useMemo(() => {
+      const lowerSearch = searchTerm.toLowerCase();
+
+      return coaches.filter((c) => {
+        // For coaches, there's no branch logic in your data. (If you had c.Branch?)
+        // If you had c.Branch or c.BranchID, you'd check it here, too.
+        // But your snippet shows "BranchID": null, so you might skip branch filtering.
+
+        // Just do the search
+        const textFields = [
+          c.FullName || "",
+          c.Specialty || "",
+          c.ContactInfo || "",
+        ].join(" ");
+        const searchMatches = textFields.toLowerCase().includes(lowerSearch);
+
+        return searchMatches;
+      });
+    }, [coaches, searchTerm]);
 
   // ---------- CALENDAR EVENTS ----------
   const bigCalendarEvents = calendarEvents.map((event) => {
@@ -678,30 +788,60 @@ export default function BookingsSessions() {
       setBookSessionOpen(true);
     }
   }
+// Inside your BookingsSessions component
+async function handleBookSessionConfirm() {
+  if (!sessionToBook) return;
+  try {
+    // Step 1) Create the booking on backend
+    await axios.post("/booking/sessions/book", {
+      SessionID: sessionToBook.SessionID,
+      MemberID: sessionBookingMemberID,
+      BookingDate: dayjs(sessionBookingDate).format("YYYY-MM-DD"),
+      Status: sessionBookingStatus,
+      PaymentMethod: sessionBookingPaymentMethod,
+      Amount: Number(sessionBookingPaymentAmount) || 0,
+    });
 
-  async function handleBookSessionConfirm() {
-    if (!sessionToBook) return;
-    try {
-      await axios.post("/booking/sessions/book", {
-        SessionID: sessionToBook.SessionID,
-        MemberID: sessionBookingMemberID,
-        BookingDate: dayjs(sessionBookingDate).format("YYYY-MM-DD"),
-        Status: sessionBookingStatus,
-        PaymentMethod: sessionBookingPaymentMethod,
-        Amount: Number(sessionBookingPaymentAmount) || 0,
-      });
-      setBookSessionOpen(false);
-      fetchAllData();
-      showSnack("Session booked successfully!", "success");
-    } catch (err) {
-      console.error("Failed to book session:", err);
-      if (err.response && err.response.status === 422) {
-        showSnack(err.response.data.message || "Capacity reached!", "warning");
-      } else {
-        showSnack("Error booking session. Check console for details.", "error");
+    // Step 2) Immediately notify the coach (Mailjet) if the session has a valid coach
+    if (sessionToBook.CoachID) {
+      // 2a) Find coach data from your coaches array
+      const foundCoach = coaches.find(c => c.CoachID === sessionToBook.CoachID);
+      if (foundCoach && foundCoach.ContactInfo && foundCoach.ContactInfo.includes("@")) {
+        // We'll assume 'ContactInfo' = "coach@example.com"
+        // or you might have a separate field 'Email' in the coach model
+
+        // 2b) Find the member for a nice name display
+        const foundMember = members.find(m => m.MemberID === Number(sessionBookingMemberID));
+        const memberName = foundMember ? foundMember.FullName : "Unknown Member";
+
+        // 2c) Post to your new notify endpoint
+        await axios.post("/notifications/notify-coach-booking-mailjet", {
+          coach_id:     foundCoach.CoachID,
+          coach_name:   foundCoach.FullName,
+          coach_email:  foundCoach.ContactInfo,   // or foundCoach.Email if your DB has it
+          member_name:  memberName,
+          session_name: sessionToBook.SessionName,
+          start_time:   sessionToBook.StartTime,  // "YYYY-MM-DD HH:mm:ss"
+          end_time:     sessionToBook.EndTime,
+        });
       }
     }
+
+    // Step 3) Wrap up
+    setBookSessionOpen(false);
+    fetchAllData();
+    showSnack("Session booked successfully, coach notified by Mailjet!", "success");
+
+  } catch (err) {
+    console.error("Failed to book session or notify coach:", err);
+    if (err.response && err.response.status === 422) {
+      showSnack(err.response.data.message || "Capacity reached!", "warning");
+    } else {
+      showSnack("Error booking session. Check console for details.", "error");
+    }
   }
+}
+
 
   // Coaches
   const handleViewCoach = (coachId) => {
@@ -933,7 +1073,7 @@ export default function BookingsSessions() {
     {
       field: "Actions",
       headerName: "Actions",
-      width: 300,
+      width: 410,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
@@ -973,6 +1113,15 @@ export default function BookingsSessions() {
               <DeleteIcon fontSize="small" />
             </Button>
           </Tooltip>
+          <Tooltip title="Generate Timeslots">
+          <Button
+            variant="contained"
+            color="info"
+            onClick={() => handleGenerateTimeslotsClick(params.row.CoachID)}
+          >
+          Timeslots
+        </Button>
+      </Tooltip>
         </Box>
       ),
     },
@@ -985,12 +1134,10 @@ export default function BookingsSessions() {
     ? sessionColumns
     : coachesColumns;
 
-  const rows =
-    activeTab === 0
-      ? filteredBookings
-      : activeTab === 1
-      ? filteredSessions
-      : coaches;
+    let rows = [];
+    if (activeTab === 0) rows = filteredBookings;
+    else if (activeTab === 1) rows = filteredSessions;
+    else rows = filteredCoaches;
 
   const getRowId = (row) =>
     activeTab === 0 ? row.BookingID : activeTab === 1 ? row.SessionID : row.CoachID;
@@ -3220,6 +3367,108 @@ export default function BookingsSessions() {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* Generate Timeslots Dialog */}
+          <Dialog
+            open={isGenerateModalOpen}
+            onClose={() => setGenerateModalOpen(false)}
+            fullWidth
+            maxWidth="sm"
+          >
+            <DialogTitle>
+              Generate Timeslots for Coach
+            </DialogTitle>
+            <DialogContent dividers>
+              <Typography variant="body2" gutterBottom>
+                Select date range, branch, location, etc., and we'll auto-create 1-hour
+                sessions for each available slot within that range.
+              </Typography>
+              <Grid container spacing={2} sx={{ mt: 1 }}>
+                <Grid item xs={6}>
+                  <TextField
+                    label="Start Date"
+                    type="date"
+                    fullWidth
+                    value={generateForm.startDate}
+                    onChange={(e) =>
+                      setGenerateForm({ ...generateForm, startDate: e.target.value })
+                    }
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    label="End Date"
+                    type="date"
+                    fullWidth
+                    value={generateForm.endDate}
+                    onChange={(e) =>
+                      setGenerateForm({ ...generateForm, endDate: e.target.value })
+                    }
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Branch</InputLabel>
+                    <Select
+                      label="Branch"
+                      value={generateForm.branchId}
+                      onChange={(e) =>
+                        setGenerateForm({ ...generateForm, branchId: e.target.value })
+                      }
+                    >
+                      <MenuItem value="">-- Select Branch --</MenuItem>
+                      {branches.map((b) => (
+                        <MenuItem key={b.value} value={b.value}>
+                          {b.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12}>
+                  <TextField
+                    label="Location (Optional)"
+                    fullWidth
+                    value={generateForm.location}
+                    onChange={(e) =>
+                      setGenerateForm({ ...generateForm, location: e.target.value })
+                    }
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    label="Session Type"
+                    fullWidth
+                    value={generateForm.sessionType}
+                    onChange={(e) =>
+                      setGenerateForm({ ...generateForm, sessionType: e.target.value })
+                    }
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    label="Fee"
+                    type="number"
+                    fullWidth
+                    value={generateForm.fee}
+                    onChange={(e) =>
+                      setGenerateForm({ ...generateForm, fee: e.target.value })
+                    }
+                  />
+                </Grid>
+              </Grid>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setGenerateModalOpen(false)}>Cancel</Button>
+              <Button variant="contained" onClick={generateTimeslots}>
+                Generate
+              </Button>
+            </DialogActions>
+          </Dialog>
 
         {/* SNACKBAR MESSAGES */}
         <Snackbar

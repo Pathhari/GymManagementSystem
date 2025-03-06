@@ -218,4 +218,64 @@ class MonthlyClientController extends Controller
         $client->delete();
         return response()->json(['message' => 'MonthlyClient deleted']);
     }
+
+    public function indexAttendances($monthlyClientID)
+    {
+        $client = MonthlyClient::findOrFail($monthlyClientID);
+
+        // Staff branch check, if needed
+        $staff = auth('staff')->user();
+        if ($staff && $client->BranchID != $staff->BranchID) {
+            abort(403, 'Not your branch');
+        }
+
+        // Eager-load or just get them
+        $attendances = $client->attendances()
+            ->orderBy('VisitDateTime', 'desc')
+            ->get();
+
+        return response()->json($attendances, 200);
+    }
+
+    // E.g. in MonthlyClientController
+    public function indexAllAttendances()
+    {
+        // You can do a join or eager load:
+        $attendances = MonthlyClientAttendance::with('monthlyClient')->get();
+
+        return response()->json([
+        'attendances' => $attendances
+        ]);
+    }
+
+
+    /**
+     * POST /monthly-clients/{monthlyClientID}/attendances
+     * Create a new attendance record (like "Check-In").
+     */
+    public function storeAttendance(Request $request, $monthlyClientID)
+    {
+        $client = MonthlyClient::findOrFail($monthlyClientID);
+
+        // Staff branch check
+        $staff = auth('staff')->user();
+        if ($staff && $client->BranchID != $staff->BranchID) {
+            abort(403, 'Not your branch');
+        }
+
+        // Validate
+        $data = $request->validate([
+            'VisitDateTime' => 'required|date',
+            'Notes'         => 'nullable|string|max:255',
+        ]);
+
+        // Create the attendance record
+        $attendance = MonthlyClientAttendance::create([
+            'MonthlyClientID' => $client->MonthlyClientID,
+            'VisitDateTime'   => $data['VisitDateTime'],
+            'Notes'           => $data['Notes'] ?? null,
+        ]);
+
+        return response()->json($attendance, 201);
+    }
 }

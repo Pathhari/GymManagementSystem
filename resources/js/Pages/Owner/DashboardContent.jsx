@@ -301,6 +301,10 @@ export default function OwnerDashboard(onClose) {
     PettyCash: '',
     Remarks: '',
   });
+    // [NEW] Track whether we are editing or adding
+  const [isEditingFlow, setIsEditingFlow] = useState(false);
+  // [NEW] Store the ID of the flow we are editing (or null if creating)
+  const [editingFlowId, setEditingFlowId] = useState(null);
 
   // Generate Gym daily flow
   const [selectedBranchId, setSelectedBranchId] = useState('');
@@ -322,6 +326,45 @@ export default function OwnerDashboard(onClose) {
     StaffID: '',
     Notes: '',
   });
+  const [isEditingExpense, setIsEditingExpense] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState(null);
+
+  function openAddExpenseDialog() {
+    setExpenseForm({
+      BranchID: '',
+      ExpenseDate: '',
+      ExpenseCategory: '',
+      Amount: '',
+      PaymentMethod: '',
+      StaffID: '',
+      Notes: '',
+      BusinessType: '',
+    });
+    setIsEditingExpense(false);
+    setEditingExpenseId(null);
+    setExpenseFormOpen(true);
+  }
+
+  function openEditExpenseDialog(row) {
+    setIsEditingExpense(true);
+    setEditingExpenseId(row.ExpenseID);
+  
+    setExpenseForm({
+      BranchID: row.BranchID?.toString() || '',
+      ExpenseDate: row.ExpenseDate || '',
+      ExpenseCategory: row.ExpenseCategory || '',
+      Amount: String(row.Amount || ''),
+      PaymentMethod: row.PaymentMethod || '',
+      StaffID: row.StaffID || '',
+      Notes: row.Notes || '',
+      BusinessType: row.BusinessType || '',
+    });
+  
+    setExpenseFormOpen(true);
+  }
+  
+  
+
 
   // Consolidated
   const [consolidatedRows, setConsolidatedRows] = useState([]);
@@ -365,6 +408,11 @@ export default function OwnerDashboard(onClose) {
     pettyCash: '',
     remarks: ''
   });
+  // 1) A new piece of state for the sum of grandNet
+  const [sumGrandNet, setSumGrandNet] = useState(0);
+  const [sumGrandPetty, setSumGrandPetty] = useState(0);
+  const [sumGrandExpenses, setSumGrandExpenses] = useState(0);
+  
   const openDailyPettyDialog = (row) => {
     setSelectedDailyFlow(row);
     setDailyPettyForm({
@@ -663,41 +711,137 @@ export default function OwnerDashboard(onClose) {
         headerName: 'Notes',
         width: 160,
       },
+      {
+        field: 'actions',
+        headerName: 'Actions',
+        width: 180,
+        renderCell: (params) => {
+          const row = params.row;
+          return (
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button variant="outlined" size="small" onClick={() => openEditExpenseDialog(row)}>
+                Edit
+              </Button>
+              <Button
+                variant="contained"
+                color="error"
+                size="small"
+                onClick={() => handleDeleteExpense(row)}
+              >
+                Delete
+              </Button>
+            </Box>
+          );
+        },
+      },
     ];
   
-    const expenseRows = filteredExpenses.map((exp, i) => ({
-      id: exp.ExpenseID || `temp-${i}`,
+    const expenseRows = filteredExpenses.map((exp) => ({
+      // Use the DB’s ExpenseID as the unique key in DataGrid
+      id: exp.ExpenseID,
+      ExpenseID: exp.ExpenseID, // store it explicitly if you like
       ExpenseDate: exp.ExpenseDate || '',
       BranchID: exp.BranchID || '',
-      BusinessType: exp.BusinessType || '',   // <--- new
+      BusinessType: exp.BusinessType || '',
       ExpenseCategory: exp.ExpenseCategory || '',
       Amount: parseFloat(exp.Amount || 0),
       PaymentMethod: exp.PaymentMethod || '',
       StaffID: exp.StaffID || '',
       Notes: exp.Notes || '',
     }));
-  
+      
     const handleExpenseChange = (e) => {
       const { name, value } = e.target;
       setExpenseForm((prev) => ({ ...prev, [name]: value }));
     };
+
     const handleSubmitExpense = async () => {
       try {
-        await axios.post('/finance/expenses', { ...expenseForm });
-        showSuccessMessage('Expense created successfully!');
-        setExpenseFormOpen(false);
+        if (!isEditingExpense) {
+          // 1) CREATE
+          await axios.post('/finance/expenses', {
+            ...expenseForm,
+            Amount: parseFloat(expenseForm.Amount || 0),
+          });
+          showSuccessMessage('Expense created successfully!');
+        } else {
+          // 2) EDIT/UPDATE
+          const payload = {
+            ...expenseForm,
+            Amount: parseFloat(expenseForm.Amount || 0),
+          };
+          await axios.put(`/finance/expenses/${editingExpenseId}`, payload);
+          showSuccessMessage('Expense updated successfully!');
+        }
+
+        // Refresh from server
         const expRes = await axios.get('/finance/expenses');
         const allExp = expRes.data.expenses || [];
         setAllExpenses(allExp);
+
+        // Filter + rebuild chart
+        const newFiltered = applyDateFilter(allExp, dateFrom, dateTo);
+        setFilteredExpenses(newFiltered);
+        buildExpenseChart(allExp);
+
+        // Close form & reset
+        setExpenseFormOpen(false);
+        setIsEditingExpense(false);
+        setEditingExpenseId(null);
+      } catch (err) {
+        console.error(err);
+        alert(isEditingExpense ? 'Error updating expense.' : 'Error creating expense.');
+      }
+    };
+
+    async function handleDeleteExpense(row) {
+      const confirmed = window.confirm('Are you sure you want to delete this expense?');
+      if (!confirmed) return;
+    
+      try {
+        await axios.delete(`/finance/expenses/${row.ExpenseID}`);
+        showSuccessMessage('Expense deleted successfully!');
+    
+        // Refresh from server
+        const expRes = await axios.get('/finance/expenses');
+        const allExp = expRes.data.expenses || [];
+        setAllExpenses(allExp);
+    
+        // Filter + rebuild chart
         const newFiltered = applyDateFilter(allExp, dateFrom, dateTo);
         setFilteredExpenses(newFiltered);
         buildExpenseChart(allExp);
       } catch (err) {
         console.error(err);
-        alert('Error creating expense. Check console.');
+        alert('Error deleting expense. Check console.');
       }
-    };
-  
+    }
+    
+
+    async function handleDeleteFlow(row) {
+      const confirm = window.confirm('Are you sure you want to delete this entry?');
+      if (!confirm) return;
+    
+      try {
+        // row.CashFlowID (or row.id if you used that)
+        await axios.delete(`/finance/cashflow/${row.CashFlowID}`);
+        showSuccessMessage('Cash flow entry deleted!');
+    
+        // Re-fetch & refresh UI
+        const cfRes = await axios.get('/finance/cashflow');
+        const flows = cfRes.data.flows || [];
+        setAllFlows(flows);
+        const newFiltered = applyDateFilter(flows, dateFrom, dateTo);
+        setFilteredFlows(newFiltered);
+        buildRevenueTrends(newFiltered);
+        buildPaymentPie(newFiltered);
+        buildBusinessCharts(newFiltered);
+      } catch (err) {
+        console.error(err);
+        alert('Failed to delete the entry.');
+      }
+    }
+    
     const flowColumns = [
       {
         field: 'Date',
@@ -739,9 +883,6 @@ export default function OwnerDashboard(onClose) {
         width: 80,
         renderCell: (params) => formatCurrency(params.value),
       },
-      ////////////////////////////////////////////////
-      // NEW COLUMNS the client specifically requested:
-      ////////////////////////////////////////////////
       {
         field: 'TotalGross',
         headerName: 'Total Gross',
@@ -780,20 +921,51 @@ export default function OwnerDashboard(onClose) {
       {
         field: 'actions',
         headerName: 'Actions',
-        width: 120,
+        width: 210,
         renderCell: (params) => {
           const row = params.row;
           return (
-            <Button variant="contained" size="small" onClick={() => openDailyPettyDialog(row)}>
-              Add Petty
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button variant="contained" size="small" onClick={() => openDailyPettyDialog(row)}>
+                Add Petty
+              </Button>
+              <Button variant="outlined" size="small" onClick={() => openEditFlowDialog(row)}>
+                Edit
+              </Button>
+              <Button
+                variant="contained"
+                color="error"
+                size="small"
+                onClick={() => handleDeleteFlow(row)}
+              >
+                Delete
+              </Button>
+            </Box>
           );
         },
-      },
-    ];
-  // In place of your current flowRows definition:
-  const flowRows = filteredFlows.map((flow, i) => {
-    // All inflows
+      },    ];
+
+    function openEditFlowDialog(row) {
+      setIsEditingFlow(true);
+      setEditingFlowId(row.CashFlowID);
+    
+      setCashFlowForm({
+        BranchID: row.BranchID?.toString() || '',
+        BusinessType: row.BusinessType || '',
+        Date: row.Date || '',
+        CashSales: String(row.CashSales || ''),
+        GCashSales: String(row.GCashSales || ''),
+        BPISales: String(row.BPISales || ''),
+        BDOSales: String(row.BDOSales || ''),
+        // etc ...
+        PettyCash: String(row.PettyCash || ''),
+        Remarks: row.Remarks || '',
+      });
+    
+      setCashFlowDialogOpen(true);
+    }
+      // In place of your current flowRows definition:
+  const flowRows = filteredFlows.map((flow) => {    // All inflows
     const flowCash  = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
     const flowGCash = parseFloat(flow.GCashSales || 0) + parseFloat(flow.WalkInGCashSales || 0);
     const flowBPI   = parseFloat(flow.BPISales || 0) + parseFloat(flow.WalkInBPISales || 0);
@@ -836,19 +1008,16 @@ export default function OwnerDashboard(onClose) {
       )
       .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
   
-    // Sum of all expenses for the day, for this business
     const totalExpenses = dailyCashExpenses + dailyGCashExpenses + dailyBPIExpenses + dailyBDOExpenses;
-    // Petty
     const pettyCash = parseFloat(flow.PettyCash || 0);
-    // The "Total Gross" = sum of all Payment Methods
     const totalGross = flowCash + flowGCash + flowBPI + flowBDO;
-    // Then the requested breakdown
     const TotalGrossMinusPetty    = totalGross - pettyCash;
     const TotalGrossMinusExpenses = totalGross - totalExpenses;
     const takeHome = totalGross - pettyCash - totalExpenses;
   
     return {
-      id: i,
+      id: flow.CashFlowID,        // <--- critical for DataGrid uniqueness
+      CashFlowID: flow.CashFlowID, 
       Date: flow.Date || '',
       BranchID: flow.BranchID || '',
       BusinessType: flow.BusinessType || '',
@@ -856,16 +1025,10 @@ export default function OwnerDashboard(onClose) {
       GCashSales: flowGCash,
       BPISales: flowBPI,
       BDOSales: flowBDO,
-  
-      //////////////////////////////////////////////////
-      // The 4 new fields your client wants to see
-      //////////////////////////////////////////////////
       TotalGross: totalGross,
       TotalGrossMinusPetty,
       TotalGrossMinusExpenses,
       TakeHome: takeHome,
-  
-      // Keep the existing fields
       PettyCash: pettyCash,
       Remarks: flow.Remarks || '',
     };
@@ -890,26 +1053,81 @@ export default function OwnerDashboard(onClose) {
         PettyCash: '',
         Remarks: '',
       });
+        // Mark that we are NOT editing an existing record
+        setIsEditingFlow(false);
+        setEditingFlowId(null);
+        // Show dialog
       setCashFlowDialogOpen(true);
     };
+    
+    function openEditFlowDialog(row) {
+      setIsEditingFlow(true);
+      setEditingFlowId(row.CashFlowID); // or row.id if you used row.id = flow.CashFlowID
+    
+      // Pre-fill the dialog form with the existing row data
+      setCashFlowForm({
+        BranchID: row.BranchID?.toString() || '',
+        BusinessType: row.BusinessType || '',
+        Date: row.Date || '',
+        CashSales: row.CashSales?.toString() || '',
+        GCashSales: row.GCashSales?.toString() || '',
+        BPISales: row.BPISales?.toString() || '',
+        BDOSales: row.BDOSales?.toString() || '',
+        WalkInCashSales: '0',
+        WalkInGCashSales: '0',
+        WalkInBPISales: '0',
+        WalkInBDOSales: '0',
+        DepositedAmount: '0',
+        PettyCash: '0', // or row.PettyCash?.toString() if you want to allow editing petty
+        Remarks: row.Remarks || '',
+      });
+      // Now open the dialog
+      setCashFlowDialogOpen(true);
+    }
+    
     const handleCloseCashFlowDialog = () => setCashFlowDialogOpen(false);
+
     const handleCashFlowChange = (e) => {
       const { name, value } = e.target;
       setCashFlowForm((prev) => ({ ...prev, [name]: value }));
     };
+
     const handleCashFlowSubmit = async () => {
       try {
-        const payload = {
-          ...cashFlowForm,
-          WalkInCashSales: 0,
-          WalkInGCashSales: 0,
-          WalkInBPISales: 0,
-          WalkInBDOSales: 0,
-          DepositedAmount: 0,
-          PettyCash: 0,
-        };
-        await axios.post('/finance/cashflow', payload);
-        showSuccessMessage('Daily cash flow entry created successfully!');
+        if (!isEditingFlow) {
+          // ================ CREATE Logic ================
+          const payload = {
+            ...cashFlowForm,
+            WalkInCashSales: 0,
+            WalkInGCashSales: 0,
+            WalkInBPISales: 0,
+            WalkInBDOSales: 0,
+            DepositedAmount: 0,
+            PettyCash: 0,
+          };
+          await axios.post('/finance/cashflow', payload);
+          showSuccessMessage('Daily cash flow entry created successfully!');
+        } else {
+          // ================ UPDATE Logic ================
+          // The user is editing an existing record
+          const payload = {
+            // Only the fields you want to allow for editing
+            BranchID: cashFlowForm.BranchID,
+            BusinessType: cashFlowForm.BusinessType,
+            Date: cashFlowForm.Date,
+            CashSales: Number(cashFlowForm.CashSales || 0),
+            GCashSales: Number(cashFlowForm.GCashSales || 0),
+            BPISales: Number(cashFlowForm.BPISales || 0),
+            BDOSales: Number(cashFlowForm.BDOSales || 0),
+            Remarks: cashFlowForm.Remarks,
+            // etc...
+          };
+          // For example, your backend might be `PUT /finance/cashflow/:id`
+          await axios.put(`/finance/cashflow/${editingFlowId}`, payload);
+          showSuccessMessage('Daily cash flow entry updated successfully!');
+        }
+    
+        // Always re-fetch flows & refresh UI
         const cfRes = await axios.get('/finance/cashflow');
         const flows = cfRes.data.flows || [];
         setAllFlows(flows);
@@ -918,12 +1136,17 @@ export default function OwnerDashboard(onClose) {
         buildRevenueTrends(newFiltered);
         buildPaymentPie(newFiltered);
         buildBusinessCharts(newFiltered);
+    
+        // Close dialog & reset state
         setCashFlowDialogOpen(false);
+        setIsEditingFlow(false);
+        setEditingFlowId(null);
       } catch (err) {
         console.error(err);
-        alert('Failed to create daily cash flow entry.');
+        alert(isEditingFlow ? 'Failed to update cash flow entry.' : 'Failed to create daily cash flow entry.');
       }
     };
+    
     const handleGenerateCashFlow = async () => {
       try {
         const formatted = selectedDate.toISOString().substring(0, 10);
@@ -1357,8 +1580,7 @@ export default function OwnerDashboard(onClose) {
       });
     }
 
-  // 1) A new piece of state for the sum of grandNet
-  const [sumGrandNet, setSumGrandNet] = useState(0);
+
 
   // 2) A function to sum up displayedConsolidated.reduce((acc, r) => ...
   function handleSumGrandNet() {
@@ -1366,6 +1588,14 @@ export default function OwnerDashboard(onClose) {
     setSumGrandNet(sum);
   }
 
+  function handleSumGrandPettyExpenses() {
+    const pettyTotal = displayedConsolidated.reduce((acc, row) => acc + (row.grandPetty || 0), 0);
+    const expenseTotal = displayedConsolidated.reduce((acc, row) => acc + (row.grandExpenses || 0), 0);
+  
+    setSumGrandPetty(pettyTotal);
+    setSumGrandExpenses(expenseTotal);
+  }
+  
   // We'll create the displayed rows for netProfit chart & table
   const displayedConsolidated = filterByDateRange(consolidatedRows, dateFrom, dateTo);
   useEffect(() => {
@@ -1494,8 +1724,6 @@ useEffect(() => {
   allExpenses,
   staff
 ]);
-
-const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
 
   return (
     <Box sx={{ minHeight: '100vh', p: 2 }}>
@@ -2271,37 +2499,27 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                   />
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-              <Button variant="contained" onClick={handleSumGrandNet}>
-                Sum Grand Net
-              </Button>
+                <Button variant="contained" onClick={handleSumGrandNet}>
+                  Sum Grand Net
+                </Button>
 
-              {sumGrandNet !== 0 && (
-                <Typography variant="body1">
-                  Grand Net: <strong>{formatCurrency(sumGrandNet)}</strong>
-                </Typography>
-              )}
-            </Box>
-
-              </Paper>
-
-              <Paper sx={{ p: 2 }}>
-                <Typography variant="h6" sx={{ mb: 1 }}>
-                  Daily Net Profit Trend
-                </Typography>
-                <Box sx={{ height: 300 }}>
-                  {netProfitChart ? (
-                    <Line
-                      data={netProfitChart}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                      }}
-                    />
-                  ) : (
-                    <Typography>No chart data available</Typography>
+                {sumGrandNet !== 0 && (
+                  <Typography variant="body1">
+                    Grand Net: <strong>{formatCurrency(sumGrandNet)}</strong>
+                  </Typography>
+                )}
+               {/* [NEW] Button and display for Petty & Expenses */}
+                  <Button variant="contained" onClick={handleSumGrandPettyExpenses}>
+                    Sum Petty & Expenses
+                  </Button>
+                  {(sumGrandPetty !== 0 || sumGrandExpenses !== 0) && (
+                    <Typography variant="body1">
+                      Petty: <strong>{formatCurrency(sumGrandPetty)}</strong> | 
+                      Expenses: <strong>{formatCurrency(sumGrandExpenses)}</strong>
+                    </Typography>
                   )}
-                </Box>
-              </Paper>
+              </Box>
+            </Paper>
             </Box>
           )}
         </>

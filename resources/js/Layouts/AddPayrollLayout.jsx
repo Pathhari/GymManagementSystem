@@ -1,32 +1,16 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import {
-  Box,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Grid,
-  TextField,
-  FormControl,
-  IconButton,
-  Typography,
-  Divider,
-  useMediaQuery,
-  useTheme,
-  InputAdornment,
+  Box, Button, Dialog, DialogTitle, DialogContent, DialogActions,
+  Grid, TextField, FormControl, IconButton, Typography, Divider,
+  useMediaQuery, useTheme, InputAdornment
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
-
-// ICON IMPORTS
 import CloseIcon from "@mui/icons-material/Close";
 import PersonIcon from "@mui/icons-material/Person";
 import DateRangeIcon from "@mui/icons-material/DateRange";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import SaveIcon from "@mui/icons-material/Save";
-
-import { route } from "ziggy-js";
 
 const initialPayroll = {
   StaffID: "",
@@ -42,21 +26,22 @@ const initialPayroll = {
 export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) {
   const [payrollData, setPayrollData] = useState(initialPayroll);
   const [errors, setErrors] = useState({});
+
+  // Attendance & Schedules
   const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [scheduleRecords, setScheduleRecords] = useState([]);
   const [attendanceFetched, setAttendanceFetched] = useState(false);
   const [noAttendanceMsg, setNoAttendanceMsg] = useState("");
 
-  // Remove the state and useEffect for fetching suggestions,
-  // since staffOptions is passed directly from the parent.
-  // Instead, we keep local state for the Autocomplete input.
+  // For Autocomplete
   const [query, setQuery] = useState("");
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
-  // ──────────────────────────────────────────────────────────────
-  // Fetch attendance when StaffID, StartDate, or EndDate changes
-  // ──────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────
+  // A) Fetch Attendance
+  // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const { StaffID, StartDate, EndDate } = payrollData;
     setAttendanceFetched(false);
@@ -67,14 +52,17 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
       return;
     }
 
-    const startDateObj = new Date(StartDate);
-    const endDateObj = new Date(EndDate);
-    if (endDateObj < startDateObj) {
+    const startObj = new Date(StartDate);
+    const endObj = new Date(EndDate);
+    if (endObj < startObj) {
       setAttendanceRecords([]);
       setNoAttendanceMsg("End date cannot be before start date.");
       return;
     }
 
+    // *** Make sure your URL matches the route definition:
+    // e.g. GET /staff/{staffID}/attendance-range
+    // Here we do `/staff/${StaffID}/attendance-range`
     axios
       .get(`/staff/${StaffID}/attendance-range`, {
         params: { start: StartDate, end: EndDate },
@@ -83,26 +71,56 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
         const data = res.data;
         setAttendanceRecords(data);
         setAttendanceFetched(true);
+
         if (!data.length) {
-          setNoAttendanceMsg("No attendance found for this staff in the selected date range.");
+          setNoAttendanceMsg("No attendance found in that date range.");
         } else {
           setNoAttendanceMsg("");
         }
       })
       .catch((err) => {
         console.error("Error fetching attendance range:", err);
-        setNoAttendanceMsg("Error fetching attendance. Check console.");
+        setNoAttendanceMsg("Error fetching attendance. See console.");
         setAttendanceRecords([]);
       });
   }, [payrollData.StaffID, payrollData.StartDate, payrollData.EndDate]);
 
-  // ──────────────────────────────────────────────────────────────
-  // Recalculate payroll when attendance records or deductions change
-  // ──────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────
+  // B) Fetch Schedules
+  // ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const { StaffID, StartDate, EndDate } = payrollData;
+
+    if (!StaffID || !StartDate || !EndDate) {
+      setScheduleRecords([]);
+      return;
+    }
+
+    // *** Adjust the URL to your actual route
+    // e.g. GET /staff/schedules/{StaffID}/schedule-range
+    axios
+      .get(`/staff/schedules/${StaffID}/schedule-range`, {
+        params: { start: StartDate, end: EndDate },
+      })
+      .then((res) => {
+        setScheduleRecords(res.data);
+      })
+      .catch((err) => {
+        console.error("Error fetching schedule range:", err);
+        setScheduleRecords([]);
+      });
+  }, [payrollData.StaffID, payrollData.StartDate, payrollData.EndDate]);
+
+  // ─────────────────────────────────────────────────────────────────
+  // C) Calculate Late Deduction + Net Pay
+  // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!attendanceFetched) return;
-    // Find the selected staff from staffOptions (passed as prop)
-    const selectedStaff = staffOptions.find((s) => s.value === payrollData.StaffID);
+
+    // 1) Identify staff => get rates
+    const selectedStaff = staffOptions.find(
+      (s) => s.value === payrollData.StaffID
+    );
     if (!selectedStaff) return;
 
     const hourlyRate = selectedStaff.hourlyRate || 0;
@@ -110,31 +128,73 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
 
     let totalRegularHours = 0;
     let totalOTHours = 0;
+    let totalLateDeductions = 0; // in pesos
 
+    // 2) For each attendance
     attendanceRecords.forEach((att) => {
       const hrs = att.HoursWorked || 0;
+
+      // Regular vs OT
       if (hrs > 8) {
         totalRegularHours += 8;
         totalOTHours += hrs - 8;
       } else {
         totalRegularHours += hrs;
       }
+
+      // Check schedule for that day
+      const schedule = scheduleRecords.find(
+        (sc) => sc.ShiftDate === att.Date
+      );
+      if (!schedule || !att.TimeIn) return;
+
+      try {
+        const shiftStart = new Date(
+          `${schedule.ShiftDate}T${schedule.ShiftStart}`
+        );
+        const timeIn = new Date(`${att.Date}T${att.TimeIn}`);
+
+        // 10-min grace
+        const graceEnds = new Date(shiftStart.getTime() + 10 * 60000);
+        if (timeIn > graceEnds) {
+          const diffMs = timeIn - graceEnds;
+          const lateMins = Math.floor(diffMs / 60000);
+          totalLateDeductions += lateMins; // 1 peso per minute
+        }
+      } catch (err) {
+        console.warn("Error computing late deduction:", err);
+      }
     });
 
-    const grossPay = totalRegularHours * hourlyRate + totalOTHours * overtimeRate;
-    const deduc = Number(payrollData.Deductions) || 0;
-    const netPay = grossPay - deduc;
+    // 3) Compute gross
+    const grossPay =
+      totalRegularHours * hourlyRate + totalOTHours * overtimeRate;
 
+    // Combine user-typed + lateness
+    const userDeductions = Number(payrollData.Deductions) || 0;
+    const combined = userDeductions + totalLateDeductions;
+    const netPay = grossPay - combined;
+
+    // Update state
     setPayrollData((prev) => ({
       ...prev,
-      GrossPay: grossPay.toString(),
-      NetPay: netPay.toString(),
+      GrossPay: String(grossPay),
+      // If you want to store final total in "Deductions", do it here
+      // Deductions: combined,
+      NetPay: String(netPay),
     }));
-  }, [attendanceRecords, attendanceFetched, payrollData.Deductions, staffOptions, payrollData.StaffID]);
+  }, [
+    attendanceRecords,
+    scheduleRecords,
+    attendanceFetched,
+    payrollData.Deductions,
+    payrollData.StaffID,
+    staffOptions,
+  ]);
 
-  // ──────────────────────────────────────────────────────────────
-  // Generic form handlers
-  // ──────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────
+  // D) Submit
+  // ─────────────────────────────────────────────────────────────────
   const handleChange = (e) => {
     const { name, value } = e.target;
     setPayrollData((prev) => ({ ...prev, [name]: value }));
@@ -142,23 +202,29 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setErrors({});
 
-    // Find a matching staff from staffOptions based on the selected StaffID
-    const selectedStaff = staffOptions.find((s) => s.value === payrollData.StaffID);
+    // Must have staff
+    const selectedStaff = staffOptions.find(
+      (s) => s.value === payrollData.StaffID
+    );
     if (!selectedStaff) {
-      setErrors({ StaffID: "No matching staff found. Please refine your search." });
+      setErrors({ StaffID: "No matching staff found." });
       return;
     }
 
+    // Must have attendance
     if (!attendanceRecords.length) {
-      alert("Cannot create payroll with no attendance in the selected range.");
+      alert("Cannot create payroll: No attendance in this range.");
       return;
     }
 
+    // Final payload
     const payload = {
       StaffID: selectedStaff.value,
       StartDate: payrollData.StartDate,
       EndDate: payrollData.EndDate,
+      // Only the user-typed deduction (not the lateness)
       Deductions: Number(payrollData.Deductions) || 0,
       GrossPay: Number(payrollData.GrossPay) || 0,
       NetPay: Number(payrollData.NetPay) || 0,
@@ -166,54 +232,53 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
       Status: payrollData.Status || "Pending",
       staff: {
         StaffID: selectedStaff.value,
-        FullName: selectedStaff.label || "N/A",
+        FullName: selectedStaff.label,
       },
     };
 
+    // Let the parent do axios.post(route('staff.payroll.store'), payload)
     onAdd(payload);
     onClose();
   };
 
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm">
-      {/* Dialog Title */}
-      <DialogTitle sx={{ pb: 1 }}>
+      <DialogTitle>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h5">
-            <Typography component="span" sx={{ fontWeight: "bold", verticalAlign: "middle", mr: 1 }}>
+            <Typography
+              component="span"
+              sx={{ fontWeight: "bold", verticalAlign: "middle", mr: 1 }}
+            >
               ₱
             </Typography>
             Add Payroll
           </Typography>
-          <IconButton onClick={onClose} sx={{ "&:hover": { color: "red" } }}>
+          <IconButton onClick={onClose}>
             <CloseIcon />
           </IconButton>
         </Box>
       </DialogTitle>
 
-      {/* Dialog Content */}
       <DialogContent dividers>
         <Box sx={{ p: 2 }}>
           <Divider sx={{ mb: 3 }} />
 
-          {/* The Form */}
-          <Box component="form" noValidate onSubmit={handleSubmit} sx={{ mt: 1 }}>
+          <Box component="form" noValidate onSubmit={handleSubmit}>
             <Grid container spacing={2} direction={isMobile ? "column" : "row"}>
-              {/* Staff - using Autocomplete with staffOptions passed from parent */}
+              {/* Staff Autocomplete */}
               <Grid item xs={12}>
                 <FormControl fullWidth required error={!!errors.StaffID}>
                   <Autocomplete
                     options={staffOptions}
-                    getOptionLabel={(option) => option.label}
+                    getOptionLabel={(opt) => opt.label}
                     inputValue={query}
-                    onInputChange={(event, newInputValue) => {
-                      setQuery(newInputValue);
-                    }}
-                    onChange={(event, newValue) => {
-                      if (newValue) {
+                    onInputChange={(e, val) => setQuery(val)}
+                    onChange={(e, val) => {
+                      if (val) {
                         setPayrollData((prev) => ({
                           ...prev,
-                          StaffID: newValue.value,
+                          StaffID: val.value,
                         }));
                         setErrors((prev) => ({ ...prev, StaffID: undefined }));
                       }
@@ -239,16 +304,16 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
                 </FormControl>
               </Grid>
 
-              {/* Start Date */}
+              {/* Start/End Date */}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
-                  label="Start Date"
                   name="StartDate"
+                  label="Start Date"
                   type="date"
-                  InputLabelProps={{ shrink: true }}
                   value={payrollData.StartDate}
                   onChange={handleChange}
+                  InputLabelProps={{ shrink: true }}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -258,17 +323,15 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
                   }}
                 />
               </Grid>
-
-              {/* End Date */}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
-                  label="End Date"
                   name="EndDate"
+                  label="End Date"
                   type="date"
-                  InputLabelProps={{ shrink: true }}
                   value={payrollData.EndDate}
                   onChange={handleChange}
+                  InputLabelProps={{ shrink: true }}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -290,15 +353,13 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
                   onChange={handleChange}
                   InputProps={{
                     startAdornment: (
-                      <InputAdornment position="start">
-                        <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
-                      </InputAdornment>
+                      <InputAdornment position="start">₱</InputAdornment>
                     ),
                   }}
                 />
               </Grid>
 
-              {/* Gross Pay */}
+              {/* Gross / Net (auto) */}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -309,15 +370,11 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
                   onChange={handleChange}
                   InputProps={{
                     startAdornment: (
-                      <InputAdornment position="start">
-                        <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
-                      </InputAdornment>
+                      <InputAdornment position="start">₱</InputAdornment>
                     ),
                   }}
                 />
               </Grid>
-
-              {/* Net Pay */}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -328,24 +385,22 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
                   onChange={handleChange}
                   InputProps={{
                     startAdornment: (
-                      <InputAdornment position="start">
-                        <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
-                      </InputAdornment>
+                      <InputAdornment position="start">₱</InputAdornment>
                     ),
                   }}
                 />
               </Grid>
 
-              {/* Generated Date */}
+              {/* GeneratedDate */}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="Generated Date"
                   name="GeneratedDate"
                   type="date"
-                  InputLabelProps={{ shrink: true }}
                   value={payrollData.GeneratedDate}
                   onChange={handleChange}
+                  InputLabelProps={{ shrink: true }}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -375,18 +430,15 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
               </Grid>
             </Grid>
 
+            {/* If no attendance in range */}
             {noAttendanceMsg && (
               <Typography variant="body2" color="error" sx={{ mt: 2 }}>
                 {noAttendanceMsg}
               </Typography>
             )}
+
             <Box
-              sx={{
-                mt: 4,
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 2,
-              }}
+              sx={{ mt: 4, display: "flex", justifyContent: "flex-end", gap: 2 }}
             >
               <Button
                 type="submit"

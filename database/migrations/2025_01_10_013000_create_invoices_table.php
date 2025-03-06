@@ -16,8 +16,12 @@ return new class extends Migration
             $table->unsignedBigInteger('BranchID')->nullable(); 
             $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->unsignedBigInteger('MemberID')->nullable();
-            $table->unsignedBigInteger('MonthlyClientID')->nullable();
-            $table->foreign('MonthlyClientID')->references('MonthlyClientID')->on('monthly_clients')->onDelete('cascade'); // or set null
+            $table->unsignedInteger('MonthlyClientID')->nullable();
+            $table
+              ->foreign('MonthlyClientID')
+              ->references('MonthlyClientID')
+              ->on('monthly_clients')
+              ->onDelete('cascade');            
             $table->unsignedBigInteger('PromotionID')->nullable();
             $table->dateTime('InvoiceDate')->nullable();
             $table->date('DueDate')->nullable();

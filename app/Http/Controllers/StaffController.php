@@ -549,7 +549,6 @@ public function indexTasks()
         return response()->json($schedules);
     }
     
-
     /**
      * (Optional) Return any needed data for creating a schedule.
      */
@@ -564,25 +563,153 @@ public function indexTasks()
      */
     public function storeSchedule(Request $request)
     {
+        // We'll grab today's date in 'Y-m-d' format
+        $today = now()->format('Y-m-d');
+    
         $data = $request->validate([
-            'StaffID'     => 'required|exists:staff,StaffID',
-            'ShiftDate'   => 'required|date',
-            'ShiftStart'  => 'required|date_format:H:i',
-            'ShiftEnd'    => 'nullable|date_format:H:i|after:ShiftStart',
-            'RoleOverride'=> 'nullable|string|max:50',
+            'StaffID'   => 'required|exists:staff,StaffID',
+            // date must be "today or after" => so we do after_or_equal:$today
+            'dateFrom'  => "required|date|after_or_equal:$today",
+            'dateTo'    => 'required|date|after_or_equal:dateFrom',
+            'shiftType' => 'required|string|in:morning,mid,evening,dynamic',
+            'startTime' => 'nullable|date_format:H:i', // used if dynamic
+            'endTime'   => 'nullable|date_format:H:i|after:startTime'
         ]);
     
-        $schedule = StaffSchedule::create($data);
-        
-        // Reload with relationships
-        $scheduleWithStaff = StaffSchedule::with(['staff' => function($query) {
-            $query->select('StaffID', 'FullName');
-        }])->find($schedule->ScheduleID);
+        // map shiftType -> default times, if not dynamic
+        $shiftStart = null;
+        $shiftEnd   = null;
+        switch ($data['shiftType']) {
+            case 'morning':
+                $shiftStart = '05:30';
+                $shiftEnd   = '14:30';
+                break;
+            case 'mid':
+                $shiftStart = '10:00';
+                $shiftEnd   = '19:00';
+                break;
+            case 'evening':
+                $shiftStart = '15:00';
+                $shiftEnd   = '23:59';  // or '00:00' if you want the shift to cross midnight
+                break;
+            case 'dynamic':
+                $shiftStart = $data['startTime'];
+                $shiftEnd   = $data['endTime'];
+                break;
+        }
     
+        // Loop from dateFrom to dateTo
+        $period = \Carbon\CarbonPeriod::create($data['dateFrom'], $data['dateTo']);
+        $records = [];
+        foreach ($period as $date) {
+            // For extra safety, skip if somehow it's before 'today'
+            if ($date->isBefore(now()->startOfDay())) {
+                continue; // or throw an exception if you want
+            }
+    
+            $records[] = [
+                'StaffID'    => $data['StaffID'],
+                'ShiftDate'  => $date->format('Y-m-d'),
+                'ShiftStart' => $shiftStart,
+                'ShiftEnd'   => $shiftEnd,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+    
+        // Bulk insert
+        StaffSchedule::insert($records);
+        $created = StaffSchedule::with('staff')
+        ->where('StaffID', $data['StaffID'])
+        ->whereBetween('ShiftDate', [$data['dateFrom'], $data['dateTo']])
+        ->orderBy('ShiftDate','asc')
+        ->get();
+  
+      return response()->json([
+          'message'   => 'Schedules created',
+          'schedules' => $created,
+      ], 201);
+    }
+    
+    
+    public function scheduleRange($staffID, Request $request)
+    {
+        $start = $request->query('start');
+        $end   = $request->query('end');
+
+        $request->validate([
+            'start' => 'required|date',
+            'end'   => 'required|date|after_or_equal:start'
+        ]);
+
+        $schedules = StaffSchedule::where('StaffID', $staffID)
+            ->whereBetween('ShiftDate', [$start, $end])
+            ->orderBy('ShiftDate')
+            ->get();
+
+        return response()->json($schedules);
+    }
+
+    public function bulkStoreSchedules(Request $request)
+    {
+        $today = now()->format('Y-m-d');
+    
+        $data = $request->validate([
+            'StaffID'   => 'required|exists:staff,StaffID',
+            'dateFrom'  => "required|date|after_or_equal:$today",
+            'dateTo'    => 'required|date|after_or_equal:dateFrom',
+            'shiftType' => 'required|string|in:morning,mid,evening,dynamic',
+            'startTime' => 'nullable|date_format:H:i',
+            'endTime'   => 'nullable|date_format:H:i|after:startTime',
+        ]);
+
+        // convert shiftType -> start/end times if not dynamic
+        $shiftStart = null;
+        $shiftEnd   = null;
+        switch ($data['shiftType']) {
+            case 'morning':
+                $shiftStart = '05:30';
+                $shiftEnd   = '14:30';
+                break;
+            case 'mid':
+                $shiftStart = '10:00';
+                $shiftEnd   = '19:00';
+                break;
+            case 'evening':
+                $shiftStart = '15:00';
+                $shiftEnd   = '00:00'; // or '23:59' if you prefer
+                break;
+            case 'dynamic':
+                $shiftStart = $data['startTime'];
+                $shiftEnd   = $data['endTime'];
+                break;
+        }
+
+        $period = \Carbon\CarbonPeriod::create($data['dateFrom'], $data['dateTo']);
+        $records = [];
+        foreach ($period as $date) {
+            $records[] = [
+                'StaffID'    => $data['StaffID'],
+                'ShiftDate'  => $date->format('Y-m-d'),
+                'ShiftStart' => $shiftStart,
+                'ShiftEnd'   => $shiftEnd,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+        StaffSchedule::insert($records);
+
+        // If you want to load them again from the DB
+        $created = StaffSchedule::with('staff')
+            ->where('StaffID', $data['StaffID'])
+            ->whereBetween('ShiftDate', [$data['dateFrom'], $data['dateTo']])
+            ->orderBy('ShiftDate','asc')
+            ->get();
+
         return response()->json([
-            'message'  => 'Schedule created.',
-            'schedule' => $scheduleWithStaff
-        ], 201);
+            'message'   => 'Schedules created',
+            'schedules' => $created,
+        ]);
     }
 
     /**
@@ -613,38 +740,44 @@ public function indexTasks()
      */
     public function storePayroll(Request $request)
     {
-        // Validate basic fields
         $data = $request->validate([
             'StaffID'       => 'required|exists:staff,StaffID',
             'StartDate'     => 'required|date',
             'EndDate'       => 'required|date|after_or_equal:StartDate',
-            'Deductions'    => 'nullable|numeric|min:0',
+            'Deductions'    => 'nullable|numeric|min:0',  // user typed
             'GeneratedDate' => 'nullable|date',
             'Status'        => 'nullable|string|max:50',
         ]);
-
-        // Find the staff record to pull rates
+    
+        // 1) Basic staff/rate info
         $staff = Staff::findOrFail($data['StaffID']);
         $hourlyRate   = $staff->HourlyRate ?? 0;
         $overtimeRate = $staff->OvertimeRate ?? 0;
-
-        // Query attendance in the date range
+    
+        // 2) Fetch Attendance for date range
         $attendances = Attendance::where('StaffID', $staff->StaffID)
             ->whereBetween('Date', [$data['StartDate'], $data['EndDate']])
             ->get();
-
-        // If no attendance, you may want to block or just store zero pay
+    
         if ($attendances->isEmpty()) {
             return response()->json([
                 'message' => 'No attendance found in the specified date range.',
             ], 422);
         }
-
-        // Summation of hours
-        $totalRegularHours = 0;
+    
+        // 3) Fetch Schedules for date range (to check lateness)
+        //    If you only store 1 schedule per day, a simple match on date can work.
+        $schedules = StaffSchedule::where('StaffID', $staff->StaffID)
+            ->whereBetween('ShiftDate', [$data['StartDate'], $data['EndDate']])
+            ->get()
+            ->keyBy('ShiftDate'); // so we can quickly do $schedules[$attendance->Date]
+    
+        $totalRegularHours  = 0;
         $totalOvertimeHours = 0;
-
+        $totalLateDeductions = 0; // We'll accumulate the tardiness penalty here
+    
         foreach ($attendances as $att) {
+            // a) Regular + Overtime
             $hrs = $att->HoursWorked ?: 0;
             if ($hrs > 8) {
                 $totalRegularHours += 8;
@@ -652,34 +785,62 @@ public function indexTasks()
             } else {
                 $totalRegularHours += $hrs;
             }
+    
+            // b) Check if staff was late
+            //    10-min grace => 1 peso/min after that
+            //    We only do this if there's a matching schedule for that date
+            $schedule = $schedules->get($att->Date); // or format to 'Y-m-d' if needed
+            if ($schedule && $att->TimeIn) {
+                // SHIFT START
+                // e.g. 2025-03-10 + '05:30'
+                $shiftStartStr = $schedule->ShiftDate . ' ' . $schedule->ShiftStart; 
+                $shiftStart    = strtotime($shiftStartStr);
+    
+                $timeInStr = $att->Date . ' ' . $att->TimeIn;
+                $timeIn    = strtotime($timeInStr);
+    
+                // Grace period => shiftStart + 10 min
+                $graceEnd = $shiftStart + (10 * 60); // in seconds
+    
+                if ($timeIn > $graceEnd) {
+                    $diffSec = $timeIn - $graceEnd;
+                    $lateMinutes = (int) floor($diffSec / 60);
+                    $penalty = $lateMinutes * 1; // 1 peso per minute
+                    $totalLateDeductions += $penalty;
+                }
+            }
         }
-
-        // Calculate gross
-        $grossPay = $totalRegularHours * $hourlyRate
-                  + $totalOvertimeHours * $overtimeRate;
-
-        $deductions = $request->input('Deductions', 0);
-        $netPay = $grossPay - $deductions;
-
-        // Create the payroll record
+    
+        // c) Now we have total hours + totalLateDeductions
+        $grossPay = ($totalRegularHours * $hourlyRate)
+                  + ($totalOvertimeHours * $overtimeRate);
+    
+        // 4) Combine user’s typed "Deductions" + computed late penalty
+        $userDeductions   = $request->input('Deductions', 0);
+        $combinedDeductions = $userDeductions + $totalLateDeductions;
+    
+        $netPay = $grossPay - $combinedDeductions;
+    
+        // 5) Create the payroll record
         $payroll = Payroll::create([
             'StaffID'       => $staff->StaffID,
             'StartDate'     => $data['StartDate'],
             'EndDate'       => $data['EndDate'],
             'GrossPay'      => $grossPay,
-            'Deductions'    => $deductions,
+            'Deductions'    => $combinedDeductions, // store total in DB
             'NetPay'        => $netPay,
             'GeneratedDate' => $request->input('GeneratedDate') ?: now(),
             'Status'        => $request->input('Status', 'Pending'),
         ]);
-
-        // Return with the related staff
-        $payroll->load('staff'); // so we have staff info
+    
+        // Return with staff
+        $payroll->load('staff');
         return response()->json([
-            'message' => 'Payroll created successfully.',
+            'message' => 'Payroll created successfully (with late deductions).',
             'payroll' => $payroll
         ], 201);
     }
+    
     
     
     /**

@@ -48,6 +48,8 @@ class BookingController extends Controller
         $data = $bookings->map(function($b) {
             return [
                 'BookingID'    => $b->BookingID,
+                'BranchID'     => optional(optional($b->facility)->branch)->BranchID ?? null,
+                'Branch'       => optional(optional($b->facility)->branch)->BranchName ?? '',
                 'MemberName'   => optional($b->member)->FullName ?? '',
                 'FacilityID'   => optional($b->facility)->FacilityID ?? null,
                 'FacilityName' => optional($b->facility)->FacilityName ?? '', 
@@ -55,8 +57,6 @@ class BookingController extends Controller
                 'BookingTime'  => $b->BookingTime,
                 'Duration'     => $b->Duration,
                 'Status'       => $b->Status ?? '',
-                'Branch'       => optional(optional($b->facility)->branch)->BranchName ?? '',
-                'BranchID'     => optional(optional($b->facility)->branch)->BranchID ?? null,
             ];
         });
 

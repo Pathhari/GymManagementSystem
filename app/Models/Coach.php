@@ -14,6 +14,7 @@ class Coach extends Model
         'FullName',
         'Specialty',
         'ContactInfo',
+        'Email', 
     ];
 
     // A coach can have many sessions

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import dayjs from "dayjs";
 import axios from "axios";
 import {
   Box,
@@ -15,6 +16,7 @@ import {
   Tooltip,
   Divider,
   Checkbox,
+  FormControlLabel,
   MenuItem,
   FormControl,
   Select,
@@ -26,21 +28,23 @@ import {
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 
-// ===== MUI Icons =====
-import CampaignIcon from "@mui/icons-material/Campaign"; // For Announcements tab
-import EmailIcon from "@mui/icons-material/Email";       // For Mailjet tab
-import ForumIcon from "@mui/icons-material/Forum";       // For Semaphore tab
+// MUI Icons
+import CampaignIcon from "@mui/icons-material/Campaign";
+import EmailIcon from "@mui/icons-material/Email";
+import ForumIcon from "@mui/icons-material/Forum";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import SendIcon from "@mui/icons-material/Send";
 
-// ---------- DataGrid columns ----------
+// DataGrid columns
 const mailjetColumns = [
   { field: "MemberID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Email", headerName: "Email", width: 200 },
   { field: "MemberStatusID", headerName: "StatusID", width: 100 },
+  // If you want to see the date in the grid:
+  // { field: "MembershipEndDate", headerName: "Ends On", width: 140 },
 ];
 
 const semaphoreColumns = [
@@ -51,29 +55,27 @@ const semaphoreColumns = [
 ];
 
 export default function Notifications() {
-  // -------------------------------------------------------------------
-  //                         STATE & HOOKS
-  // -------------------------------------------------------------------
-  // Tabs: 0 => Announcements, 1 => Mailjet, 2 => Semaphore
+  // Tabs
   const [activeTab, setActiveTab] = useState(0);
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
   };
 
-  // ------------------ A) Announcements ------------------
+  // Announcements
   const [announcements, setAnnouncements] = useState([]);
   const [isEditOpen, setEditOpen] = useState(false);
   const [editData, setEditData] = useState(null);
   const [newTopic, setNewTopic] = useState("");
   const [newMessage, setNewMessage] = useState("");
 
-  // ------------------ B) Mailjet Templated Email ------------------
+  // Mailjet Templated Email
   const [allMembers, setAllMembers] = useState([]);
   const [selectedMailjetIDs, setSelectedMailjetIDs] = useState([]);
   const [templateId, setTemplateId] = useState("");
   const [mailjetFilterStatus, setMailjetFilterStatus] = useState("All");
+  const [mailjetShowExpiring, setMailjetShowExpiring] = useState(false);
 
-  // ------------------ C) Semaphore SMS ------------------
+  // Semaphore
   const [semaphoreMembers, setSemaphoreMembers] = useState([]);
   const [selectedSemaphoreIDs, setSelectedSemaphoreIDs] = useState([]);
   const [semaphoreNumbers, setSemaphoreNumbers] = useState("");
@@ -81,14 +83,9 @@ export default function Notifications() {
   const [semaphoreSenderName, setSemaphoreSenderName] = useState("");
   const [semaphoreFilterStatus, setSemaphoreFilterStatus] = useState("All");
 
-  // ------------------ Member Statuses ------------------
-  // Hard-coded or from an API for: 
-  // 1=ACTIVE, 2=FROZEN, 3=ON-HOLD, 4=TERMINATED, 5=EXPIRED, 6=NEW MEMBER
+  // Hard-coded statuses
   const [memberStatuses, setMemberStatuses] = useState([]);
 
-  // -------------------------------------------------------------------
-  //                   USE EFFECT: LOAD DATA
-  // -------------------------------------------------------------------
   useEffect(() => {
     loadAnnouncements();
     loadAllMembersMailjet();
@@ -102,7 +99,7 @@ export default function Notifications() {
       setAnnouncements(res.data || []);
     } catch (error) {
       console.error("Error loading announcements:", error);
-      alert("Failed to load announcements from server.");
+      alert("Failed to load announcements.");
     }
   };
 
@@ -111,7 +108,7 @@ export default function Notifications() {
       const res = await axios.get("/membership/members");
       setAllMembers(res.data.members || []);
     } catch (error) {
-      console.error("Failed to load members for Mailjet:", error);
+      console.error("Failed to load mailjet members:", error);
     }
   };
 
@@ -120,13 +117,11 @@ export default function Notifications() {
       const res = await axios.get("/membership/members");
       setSemaphoreMembers(res.data.members || []);
     } catch (error) {
-      console.error("Failed to load members for Semaphore:", error);
+      console.error("Failed to load semaphore members:", error);
     }
   };
 
   const loadMemberStatuses = async () => {
-    // Hard-code the required statuses
-    // 1 ACTIVE, 2 FROZEN, 3 ON-HOLD, 4 TERMINATED, 5 EXPIRED, 6 NEW MEMBER
     const statuses = [
       { id: "All", name: "All" },
       { id: "1", name: "ACTIVE" },
@@ -139,9 +134,7 @@ export default function Notifications() {
     setMemberStatuses(statuses);
   };
 
-  // -------------------------------------------------------------------
-  //                   A) ANNOUNCEMENTS LOGIC
-  // -------------------------------------------------------------------
+  // ===================== ANNOUNCEMENTS =====================
   const handleAddAnnouncement = async () => {
     if (!newTopic.trim() || !newMessage.trim()) {
       alert("Please fill out both Topic and Message.");
@@ -162,7 +155,6 @@ export default function Notifications() {
   };
 
   const handleEditOpen = (announcement) => {
-    // "Topic: XYZ\nRest of message"
     const lines = announcement.Message.split("\n");
     const rawTopic = lines[0].replace("Topic: ", "").trim();
     const rawMsg = lines.slice(1).join("\n").trim();
@@ -176,8 +168,7 @@ export default function Notifications() {
   };
 
   const handleEditChange = (e) => {
-    const { name, value } = e.target;
-    setEditData((prev) => ({ ...prev, [name]: value }));
+    setEditData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleEditSave = async () => {
@@ -208,18 +199,14 @@ export default function Notifications() {
     }
     try {
       await axios.delete(`/notifications/announcements/${notifId}`);
-      setAnnouncements((prev) =>
-        prev.filter((a) => a.NotificationID !== notifId)
-      );
+      setAnnouncements((prev) => prev.filter((a) => a.NotificationID !== notifId));
     } catch (error) {
       console.error("Delete announcement failed:", error);
       alert("Failed to delete announcement.");
     }
   };
 
-  // -------------------------------------------------------------------
-  //                   B) MAILJET TEMPLATED EMAIL
-  // -------------------------------------------------------------------
+  // ===================== MAILJET =====================
   const handleMailjetSelection = (ids) => {
     setSelectedMailjetIDs(ids);
   };
@@ -243,7 +230,7 @@ export default function Notifications() {
 
     try {
       const response = await axios.post("/notifications/send-mailjet-template", {
-        templateId: parseInt(templateId, 10),
+        templateId: Number(templateId),
         memberIds: selectedMailjetIDs,
       });
       if (response.data.status === "success") {
@@ -260,15 +247,36 @@ export default function Notifications() {
     }
   };
 
-  // Filter for Mailjet tab
-  const filteredMailjetMembers = allMembers.filter((m) => {
-    if (mailjetFilterStatus === "All") return true;
-    return String(m.MemberStatusID) === mailjetFilterStatus;
-  });
+  // ---- Filter logic for Mailjet members ----
+  const filteredMailjetMembers = React.useMemo(() => {
+    const today = new Date();
+    const next7 = new Date();
+    next7.setDate(next7.getDate() + 7); // 7 days from now, same time
 
-  // -------------------------------------------------------------------
-  //                   C) SEMAPHORE SMS
-  // -------------------------------------------------------------------
+    return allMembers.filter((m) => {
+      // 1) Check status
+      if (
+        mailjetFilterStatus !== "All" &&
+        String(m.MemberStatusID) !== mailjetFilterStatus
+      ) {
+        return false;
+      }
+
+      // 2) Check if “Expiring in 7 days” is toggled
+      if (mailjetShowExpiring) {
+        // We want: endDate > today && endDate <= next7
+        if (!m.MembershipEndDate) return false;
+        const endDateObj = new Date(m.MembershipEndDate);
+        // Ensure we only take those strictly after "today" but on/before "next7"
+        if (endDateObj <= today) return false;
+        if (endDateObj > next7) return false;
+      }
+
+      return true;
+    });
+  }, [allMembers, mailjetFilterStatus, mailjetShowExpiring]);
+
+  // ===================== SEMAPHORE =====================
   const handleSemaphoreSelection = (ids) => {
     setSelectedSemaphoreIDs(ids);
   };
@@ -313,7 +321,6 @@ export default function Notifications() {
       } else {
         alert("Something went wrong. Check logs or details.");
       }
-      // Clear fields
       setSemaphoreNumbers("");
       setSemaphoreMessage("");
       setSemaphoreSenderName("");
@@ -323,15 +330,12 @@ export default function Notifications() {
     }
   };
 
-  // Filter for Semaphore tab
   const filteredSemaphoreMembers = semaphoreMembers.filter((m) => {
     if (semaphoreFilterStatus === "All") return true;
     return String(m.MemberStatusID) === semaphoreFilterStatus;
   });
 
-  // -------------------------------------------------------------------
-  //                          RENDER
-  // -------------------------------------------------------------------
+  // ===================== RENDER =====================
   return (
     <Box sx={{ p: 4 }}>
       <Typography variant="h4" gutterBottom>
@@ -339,17 +343,15 @@ export default function Notifications() {
       </Typography>
       <Divider sx={{ mb: 3 }} />
 
-      {/* TABS: [0] Announcements, [1] Mailjet, [2] Semaphore */}
       <Tabs value={activeTab} onChange={handleTabChange} sx={{ mb: 2 }}>
         <Tab icon={<CampaignIcon />} label="Announcements" />
         <Tab icon={<EmailIcon />} label="Mailjet" />
         <Tab icon={<ForumIcon />} label="Semaphore" />
       </Tabs>
 
-      {/* ==================== TAB 0: ANNOUNCEMENTS ==================== */}
+      {/* ---------------------- TAB 0: Announcements ---------------------- */}
       {activeTab === 0 && (
         <Grid container spacing={3}>
-          {/* A) Add Announcement */}
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 2 }}>
               <Typography variant="h6">Add Announcement</Typography>
@@ -386,7 +388,6 @@ export default function Notifications() {
             </Paper>
           </Grid>
 
-          {/* B) Recent Announcements */}
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 2, height: "100%" }}>
               <Typography variant="h6" gutterBottom>
@@ -418,10 +419,7 @@ export default function Notifications() {
                       </Typography>
                       <Box sx={{ mt: 1 }}>
                         <Tooltip title="Edit">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleEditOpen(ann)}
-                          >
+                          <IconButton size="small" onClick={() => handleEditOpen(ann)}>
                             <EditIcon fontSize="inherit" />
                           </IconButton>
                         </Tooltip>
@@ -429,9 +427,7 @@ export default function Notifications() {
                           <IconButton
                             size="small"
                             sx={{ color: "red", ml: 1 }}
-                            onClick={() =>
-                              handleDeleteAnnouncement(ann.NotificationID)
-                            }
+                            onClick={() => handleDeleteAnnouncement(ann.NotificationID)}
                           >
                             <DeleteIcon fontSize="inherit" />
                           </IconButton>
@@ -446,7 +442,7 @@ export default function Notifications() {
         </Grid>
       )}
 
-      {/* ==================== TAB 1: MAILJET ==================== */}
+      {/* ---------------------- TAB 1: Mailjet ---------------------- */}
       {activeTab === 1 && (
         <Paper sx={{ p: 2 }}>
           <Typography variant="h6" gutterBottom>
@@ -464,7 +460,6 @@ export default function Notifications() {
             </a>
           </Typography>
 
-          {/* 1) Template ID */}
           <Stack spacing={2} sx={{ mb: 2, maxWidth: 400 }}>
             <TextField
               label="Mailjet Template ID"
@@ -481,25 +476,36 @@ export default function Notifications() {
             />
           </Stack>
 
-          {/* 2) Filter by MemberStatusID */}
-          <Box sx={{ mb: 2, maxWidth: 300 }}>
-            <FormControl fullWidth>
-              <InputLabel>Filter by Status</InputLabel>
-              <Select
-                value={mailjetFilterStatus}
-                label="Filter by Status"
-                onChange={(e) => setMailjetFilterStatus(e.target.value)}
-              >
-                {memberStatuses.map((st) => (
-                  <MenuItem key={st.id} value={st.id}>
-                    {st.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+          {/* Filter UI: status + “expiring soon” checkbox */}
+          <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
+            <Box sx={{ minWidth: 200 }}>
+              <FormControl fullWidth>
+                <InputLabel>Filter by Status</InputLabel>
+                <Select
+                  value={mailjetFilterStatus}
+                  label="Filter by Status"
+                  onChange={(e) => setMailjetFilterStatus(e.target.value)}
+                >
+                  {memberStatuses.map((st) => (
+                    <MenuItem key={st.id} value={st.id}>
+                      {st.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={mailjetShowExpiring}
+                  onChange={(e) => setMailjetShowExpiring(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label="Expiring in 7 days"
+            />
           </Box>
 
-          {/* 3) DataGrid with filtered members */}
           <Typography variant="subtitle1" sx={{ mb: 1 }}>
             Select Members to Receive the Template
           </Typography>
@@ -529,14 +535,13 @@ export default function Notifications() {
         </Paper>
       )}
 
-      {/* ==================== TAB 2: SEMAPHORE ==================== */}
+      {/* ---------------------- TAB 2: Semaphore ---------------------- */}
       {activeTab === 2 && (
         <Paper sx={{ p: 2 }}>
           <Typography variant="h6" gutterBottom>
             Send SMS via Semaphore
           </Typography>
 
-          {/* 1) Filter by MemberStatusID */}
           <Box sx={{ mb: 2, maxWidth: 300 }}>
             <FormControl fullWidth>
               <InputLabel>Filter by Status</InputLabel>
@@ -554,17 +559,12 @@ export default function Notifications() {
             </FormControl>
           </Box>
 
-          {/* 2) DataGrid with filtered members to pick phone numbers */}
           <Typography variant="subtitle1" sx={{ mb: 1 }}>
             (Optional) Select members to pull their phone numbers
           </Typography>
           <div style={{ width: "100%", height: 300, marginBottom: 16 }}>
             <DataGrid
-              rows={semaphoreMembers.filter((m) =>
-                semaphoreFilterStatus === "All"
-                  ? true
-                  : String(m.MemberStatusID) === semaphoreFilterStatus
-              )}
+              rows={filteredSemaphoreMembers}
               columns={semaphoreColumns}
               getRowId={(row) => row.MemberID}
               checkboxSelection
@@ -585,7 +585,6 @@ export default function Notifications() {
             Auto-Fill from Selected
           </Button>
 
-          {/* 3) Manual fields for phone, message, sendername */}
           <Stack spacing={2} sx={{ maxWidth: 600 }}>
             <TextField
               label='Recipient Number(s)'

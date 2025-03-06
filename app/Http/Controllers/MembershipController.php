@@ -498,33 +498,34 @@ class MembershipController extends Controller
     public function storeRenewal(Request $request)
     {
         $data = $request->validate([
-            'MemberID'           => 'required|exists:members,MemberID',
-            'NewEndDate'         => 'required|date|after_or_equal:today', 
-            'RenewalAmount'      => 'required|numeric|min:0',
-            'Payments'           => 'array',
-            'Payments.*.PaymentMethod' => 'string|max:50',
-            'Payments.*.PaymentAmount' => 'numeric|min:0',
-            'PaymentFor'         => 'nullable|string',
+            'MemberID'                => 'required|exists:members,MemberID',
+            'NewEndDate'              => 'required|date|after_or_equal:today',
+            'RenewalAmount'           => 'required|numeric|min:0',
+            'Payments'                => 'array',
+            'Payments.*.PaymentMethod'=> 'string|max:50',
+            'Payments.*.PaymentAmount'=> 'numeric|min:0',
+            'PaymentFor'              => 'nullable|string',
         ]);
-
+    
         // 1) Fetch the member
         $member = Member::findOrFail($data['MemberID']);
     
-        // 2) Update membership end date to the user-chosen date
+        // 2) Update membership end date to the user-selected date
         $member->MembershipEndDate = $data['NewEndDate'];
-        $member->MemberStatusID    = 1; // e.g. "Active"
+    
+        // DON’T immediately set to Active here. We handle status after we do the invoice, etc.
+    
         $member->save();
     
         // 3) Create a renewal record
-        //    (Note that we do not need PlanID if we’re just keeping the existing plan)
         $renewal = MembershipRenewal::create([
             'MemberID'      => $member->MemberID,
-            'PlanID'        => $member->PlanID,      // keep the same plan, if needed
+            'PlanID'        => $member->PlanID, // keep existing plan if needed
             'RenewalAmount' => $data['RenewalAmount'],
             'RenewalDate'   => now(),
         ]);
     
-        // 4) Optionally create an invoice + line item
+        // 4) Create an invoice + line item
         $invoice = Invoice::create([
             'BranchID'     => $member->StartedBranchID,
             'MemberID'     => $member->MemberID,
@@ -536,66 +537,71 @@ class MembershipController extends Controller
         InvoiceLineItem::create([
             'InvoiceID'   => $invoice->InvoiceID,
             'ItemType'    => 'Renewal',
-            'ItemID'      => $member->PlanID, // or null, if no plan
+            'ItemID'      => $member->PlanID, // or null
             'Description' => 'Manual Renewal',
             'Quantity'    => 1,
             'UnitPrice'   => $data['RenewalAmount'],
             'Subtotal'    => $data['RenewalAmount'],
         ]);
     
-// 5) Payment logic using the 'Payments' array
-$paymentsData = $data['Payments'] ?? [];
-$payment = null;  // optional if you want to store the last Payment created
-
-if (!empty($paymentsData)) {
-    $allocatedSoFar = 0;
-
-    foreach ($paymentsData as $payItem) {
-        if (empty($payItem['PaymentMethod']) || empty($payItem['PaymentAmount'])) {
-            // skip or handle the error
-            continue;
-        }
-
-        // Create the Payment
-        $paymentFor = !empty($data['PaymentFor'])
-            ? json_decode($data['PaymentFor'], true)
-            : ["Manual Membership Renewal"];
-
-        $payment = Payment::create([
-            'MemberID'      => $member->MemberID,
-            'BranchID'      => $member->StartedBranchID,
-            'PaymentMethod' => $payItem['PaymentMethod'],
-            'Amount'        => $payItem['PaymentAmount'],
-            'PaymentDate'   => now(),
-            'PaymentFor'    => $paymentFor,
-            'Status'        => 'Completed',
-        ]);
-
-        // Allocate to invoice
-        PaymentInvoice::create([
-            'PaymentID'       => $payment->PaymentID,
-            'InvoiceID'       => $invoice->InvoiceID,
-            'AmountAllocated' => $payItem['PaymentAmount'],
-        ]);
-
-        $allocatedSoFar += $payItem['PaymentAmount'];
-    }
-
-    // Mark invoice PaymentStatus
-    if ($allocatedSoFar >= $data['RenewalAmount']) {
-        $invoice->update(['PaymentStatus' => 'Paid']);
-    } elseif ($allocatedSoFar > 0) {
-        $invoice->update(['PaymentStatus' => 'Partially Paid']);
-    } else {
-        $invoice->update(['PaymentStatus' => 'Unpaid']);
-    }
-
-} else {
-    // No payments => invoice is Unpaid
-    $invoice->update(['PaymentStatus' => 'Unpaid']);
-}
+        // 5) Payment logic
+        $paymentsData   = $data['Payments'] ?? [];
+        $allocatedSoFar = 0;
+        $payment        = null;
     
-        // 6) Return data
+        foreach ($paymentsData as $payItem) {
+            if (empty($payItem['PaymentMethod']) || empty($payItem['PaymentAmount'])) {
+                continue;
+            }
+    
+            $paymentFor = !empty($data['PaymentFor'])
+                ? json_decode($data['PaymentFor'], true)
+                : ["Membership Renewal"];
+    
+            $payment = Payment::create([
+                'MemberID'      => $member->MemberID,
+                'BranchID'      => $member->StartedBranchID,
+                'PaymentMethod' => $payItem['PaymentMethod'],
+                'Amount'        => $payItem['PaymentAmount'],
+                'PaymentDate'   => now(),
+                'PaymentFor'    => $paymentFor,
+                'Status'        => 'Completed',
+            ]);
+    
+            PaymentInvoice::create([
+                'PaymentID'       => $payment->PaymentID,
+                'InvoiceID'       => $invoice->InvoiceID,
+                'AmountAllocated' => $payItem['PaymentAmount'],
+            ]);
+    
+            $allocatedSoFar += $payItem['PaymentAmount'];
+        }
+    
+        // Update the invoice payment status
+        if ($allocatedSoFar >= $data['RenewalAmount']) {
+            $invoice->update(['PaymentStatus' => 'Paid']);
+        } elseif ($allocatedSoFar > 0) {
+            $invoice->update(['PaymentStatus' => 'Partially Paid']);
+        } else {
+            $invoice->update(['PaymentStatus' => 'Unpaid']);
+        }
+    
+        // 6) Decide if the member can become Active
+        // We check how many months total from the membership's start date to the new end date:
+        $monthsPaidSoFar = $this->calculateMonthsPaidSoFar($member);
+    
+        // Example rule: if they've effectively paid for >= 3 months, set to Active
+        // and the invoice is fully paid
+        if ($monthsPaidSoFar >= 3 && $invoice->PaymentStatus === 'Paid') {
+            $member->MemberStatusID = 1; // 1 = ACTIVE
+        } else {
+            // Otherwise, stay NEW (ID=6) or keep their existing status
+            // if you prefer to force it to remain "NEW MEMBER" if <3 months:
+            $member->MemberStatusID = 6; // "NEW MEMBER"
+        }
+        $member->save();
+    
+        // 7) Return everything
         return response()->json([
             'renewal' => $renewal,
             'invoice' => $invoice,
@@ -768,6 +774,32 @@ public function getLatestCardNumber()
 
     return response()->json(['latestCardNumber' => $latestCardNumber]);
 }
+
+
+    /**
+     * Calculate how many whole months the member has paid for so far
+     * by comparing MembershipStartDate and MembershipEndDate.
+     */
+    private function calculateMonthsPaidSoFar(Member $member)
+    {
+        // If start/end dates are missing, return 0
+        if (empty($member->MembershipStartDate) || empty($member->MembershipEndDate)) {
+            return 0;
+        }
+
+        $start = \Carbon\Carbon::parse($member->MembershipStartDate);
+        $end   = \Carbon\Carbon::parse($member->MembershipEndDate);
+
+        // Use diffInMonths for whole months difference
+        // e.g. if start=Mar 5, end=Jun 4 => 2 months
+        //      if start=Mar 5, end=Jun 5 => 3 months
+        // If you want partial months to count, you can use floatDiffInMonths()
+        // and do floor/ceil. For example:
+        //   $months = floor($start->floatDiffInMonths($end));
+        $months = $start->diffInMonths($end);
+
+        return $months;
+    }
 
 
 }

@@ -48,6 +48,7 @@ import GroupsIcon from "@mui/icons-material/Groups";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import HistoryIcon from "@mui/icons-material/History";
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import DirectionsWalkIcon from "@mui/icons-material/DirectionsWalk";
 import WarningIcon from "@mui/icons-material/Warning";
 import BadgeIcon from "@mui/icons-material/Badge";
@@ -66,6 +67,8 @@ import SaveIcon from '@mui/icons-material/Save';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import DescriptionIcon from '@mui/icons-material/Description';
 import ListAltIcon from '@mui/icons-material/ListAlt';
+import { format } from "date-fns"; // or however you usually format dates
+
 
 import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
@@ -218,6 +221,11 @@ export default function MembershipManagement() {
   const [selectedMonthlyClient, setSelectedMonthlyClient] = useState(null);
   const [isViewMonthlyClientOpen, setViewMonthlyClientOpen] = useState(false);
   const [isEditMonthlyClientOpen, setEditMonthlyClientOpen] = useState(false);
+    // For Member Visit Logs
+  const [memberVisitLogs, setMemberVisitLogs] = useState([]);
+
+  // For Monthly Client Attendance
+  const [monthlyClientAttendances, setMonthlyClientAttendances] = useState([]);
 
   // ─────────────────────────────────────────────────────────
   // Lifecycle: Fetch data on mount
@@ -280,6 +288,32 @@ export default function MembershipManagement() {
 
     return () => clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    const fetchDataForTab = async () => {
+      try {
+        if (activeTab === 5) {
+          // Member Visit Logs => GET /operations/visits
+          // (assuming your route is /operations/visits -> indexVisits)
+          const res = await axios.get("/operations/visits");
+          // returns { visits: [ ... ] }
+          setMemberVisitLogs(res.data.visits || []);
+        } else if (activeTab === 6) {
+          // Monthly Client Attendance => you need an endpoint that returns
+          // either a global list or you can fetch them per client. Example:
+          const res = await axios.get("/monthly-clients/attendances-all");
+          // or a custom route you wrote => setMonthlyClientAttendances(res.data.attendances || []);
+          setMonthlyClientAttendances(res.data.attendances || []);
+        }
+      } catch (error) {
+        console.error("Error fetching tab data:", error);
+      }
+    };
+  
+    fetchDataForTab();
+  }, [activeTab]);
+  
+  
 
   // ─────────────────────────────────────────────────────────
   // Snack helper
@@ -1447,6 +1481,29 @@ export default function MembershipManagement() {
     },
   ];
 
+  const memberVisitLogColumns = [
+    { field: "MemberVisitID", headerName: "Visit ID", width: 120 },
+    { field: "FullName", headerName: "Member Name", flex: 1 },
+    { field: "VisitDate", headerName: "Date", width: 140,
+      valueFormatter: ({ value }) => new Date(value).toLocaleDateString() },
+    { field: "VisitTime", headerName: "Time", width: 120,
+      valueFormatter: ({ value }) => new Date(`1970-01-01T${value}`).toLocaleTimeString() },
+    { field: "CheckInMethod", headerName: "Check-in Method", width: 180 },
+    { field: "BranchName", headerName: "Branch", width: 150 },
+    { field: "Remarks", headerName: "Remarks", width: 250 },
+  ];
+  
+  
+  const monthlyAttendanceColumns = [
+    { field: "MonthlyClientAttendanceID", headerName: "ID", width: 100 },
+    { field: "FullName", headerName: "Monthly Client", width: 200 },
+    { field: "VisitDateTime", headerName: "Visit Date & Time", width: 200,
+      valueFormatter: ({ value }) => new Date(value).toLocaleString() },
+    { field: "Notes", headerName: "Notes", width: 250 },
+  ];
+  
+  
+
   // ─────────────────────────────────────────────────────────
   // getFilteredData (for the DataGrid below)
   // ─────────────────────────────────────────────────────────
@@ -1508,19 +1565,23 @@ export default function MembershipManagement() {
 
     if (activeTab === 1) {
       // Walk-Ins
-      return walkInRecords.filter((item) =>
-        Object.values(item).some((val) =>
-          String(val).toLowerCase().includes(searchTerm)
-        )
-      );
+      let data = walkInRecords.slice();
+      data = applyBranchAndSearch(data);
+      return data;
     }
     if (activeTab === 2) {
       // Renewals
-      return renewalRecords.filter((item) =>
-        Object.values(item).some((val) =>
-          String(val).toLowerCase().includes(searchTerm)
-        )
-      );
+      let data = renewalRecords.map((r) => {
+        // find membership
+        const m = membershipRecords.find((mem) => mem.MemberID === r.MemberID);
+        return {
+          ...r,
+          // So applyBranchAndSearch sees a branch ID:
+          StartedBranchID: m?.StartedBranchID
+        };
+      });
+      data = applyBranchAndSearch(data);
+      return data;
     }
     if (activeTab === 3) {
       // Freezes
@@ -1562,9 +1623,10 @@ export default function MembershipManagement() {
     if (activeTab === 2) return row.RenewalID;
     if (activeTab === 3) return row.FreezeID;
     if (activeTab === 4) return row.MonthlyClientID;
+    if (activeTab === 5) return row.MemberVisitID;         // new
+    if (activeTab === 6) return row.MonthlyClientAttendanceID; // new
     return row.LogID;
   };
-
   // ─────────────────────────────────────────────────────────
   // Export logic
   // ─────────────────────────────────────────────────────────
@@ -1887,7 +1949,51 @@ export default function MembershipManagement() {
         break;
     }
   };
-  
+  // Within your component:
+  const memberObject = membershipRecords.find((m) => m.MemberID === newRenewal.MemberID);
+
+  const currentEndDateRaw = memberObject?.MembershipEndDate || "";
+  // For display in an MUI TextField, you can convert it to "YYYY-MM-DD" 
+  // or a readable format:
+  const currentEndDateDisplay = currentEndDateRaw
+    ? format(new Date(currentEndDateRaw), "yyyy-MM-dd")
+    : "No End Date Set";
+
+    const getColumnsForTab = () => {
+      switch (activeTab) {
+        case 5: // Member Visit Logs
+          return memberVisitLogColumns;
+        case 6: // Monthly Client Attendance
+          return monthlyAttendanceColumns;
+        default:
+          return columns; // existing columns
+      }
+    };
+    
+    const getRowsForTab = () => {
+      if (activeTab === 5) { // Member Visit Logs
+        let data = memberVisitLogs.slice();
+        if (branchFilter !== "all") {
+          data = data.filter(item => String(item.BranchID) === branchFilter);
+        }
+        // Optionally, also apply the search filter
+        return data.filter(item =>
+          Object.values(item).some(val => String(val).toLowerCase().includes(searchTerm))
+        );
+      } else if (activeTab === 6) { // Monthly Client Attendance
+        let data = monthlyClientAttendances.slice();
+        if (branchFilter !== "all") {
+          data = data.filter(item => String(item.BranchID) === branchFilter);
+        }
+        return data.filter(item =>
+          Object.values(item).some(val => String(val).toLowerCase().includes(searchTerm))
+        );
+      } else {
+        return rows; // your existing filtered data for other tabs
+      }
+    };
+    
+
   return (
     <Box sx={{ p: 4 }}>
       {/* Key Metrics Section */}
@@ -2002,6 +2108,8 @@ export default function MembershipManagement() {
           <Tab icon={<AutorenewIcon />} label="Renewals" />
           <Tab icon={<AcUnitIcon />} label="Freezes" />
           <Tab icon={<GroupsIcon />} label="Monthly Clients" />
+          <Tab icon={<HistoryIcon />} label="Member Visit Logs" />  {/* NEW */}
+          <Tab icon={<AssignmentTurnedInIcon />} label="Monthly Client Attendance" /> {/* NEW */}
         </Tabs>
       </Box>
 
@@ -2138,9 +2246,9 @@ export default function MembershipManagement() {
           </Grid>
         </Box>
         <Box style={{ height: 510, width: "100%", mt: 2 }}>
-          <DataGrid
-            rows={rows}
-            columns={columns}
+        <DataGrid
+            rows={getRowsForTab()}
+            columns={getColumnsForTab()}
             getRowId={getRowId}
             pageSize={5}
             rowsPerPageOptions={[5, 10]}
@@ -4160,20 +4268,20 @@ export default function MembershipManagement() {
 
 
         <Dialog
-      open={isAddRenewalOpen}
-      onClose={() => setAddRenewalOpen(false)}
-      fullWidth
-      maxWidth="sm"
-      sx={{
-        "& .MuiDialog-paper": {
-          borderRadius: 3,
-          boxShadow: 6,
-          p: 3,
-          overflow: "hidden",
-          backgroundColor: theme.palette.background.paper,
-        },
-      }}
-    >
+          open={isAddRenewalOpen}
+          onClose={() => setAddRenewalOpen(false)}
+          fullWidth
+          maxWidth="sm"
+          sx={{
+            "& .MuiDialog-paper": {
+              borderRadius: 3,
+              boxShadow: 6,
+              p: 3,
+              overflow: "hidden",
+              backgroundColor: theme.palette.background.paper,
+            },
+          }}
+        >
       <DialogTitle sx={{ p: 2 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Box display="flex" alignItems="center" gap={1}>
@@ -4218,7 +4326,24 @@ export default function MembershipManagement() {
           }}
         />
 
-        {/* (B) New Membership End Date */}
+        {/* (B) CURRENT MEMBERSHIP END DATE (READ-ONLY) */}
+        <TextField
+          label="Current End Date"
+          fullWidth
+          variant="outlined"
+          margin="normal"
+          value={currentEndDateDisplay}
+          InputProps={{
+            readOnly: true,
+            startAdornment: (
+              <InputAdornment position="start">
+                <EventIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        {/* (C) NEW MEMBERSHIP END DATE */}
         <TextField
           label="New Membership End Date"
           name="NewEndDate"

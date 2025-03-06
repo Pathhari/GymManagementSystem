@@ -463,121 +463,369 @@ public function sendStaffNotification(Request $request)
 
 
     public function sendMailjetTemplate(Request $request)
-{
-    $data = $request->validate([
-        'templateId' => 'required|integer',
-        'memberIds'  => 'required|array',
-    ]);
-
-    // 1) Fetch the members
-    $members = Member::whereIn('MemberID', $data['memberIds'])->get();
-
-    // 2) Prepare Mailjet Client and messages
-    $mj = new \Mailjet\Client(
-        config('services.mailjet.key'),
-        config('services.mailjet.secret'),
-        true,
-        ['version' => 'v3.1']
-    );
-
-    $messages = [];
-    foreach ($members as $member) {
-        // Only if the member has a valid email
-        if ($member->Email) {
+    {
+        $data = $request->validate([
+            'templateId' => 'required|integer',
+            'memberIds'  => 'required|array',
+        ]);
+    
+        // 1) Fetch the members
+        $members = Member::whereIn('MemberID', $data['memberIds'])->get();
+    
+        // 2) We’ll create a Notification row for each email we want to send,
+        //    marking them "Queued" or "Pending" initially.
+        //    We'll store them in $localNotifs so we can reference them later.
+        $localNotifs = [];
+        foreach ($members as $member) {
+            // Only if the member has a valid email
+            if (!empty($member->Email)) {
+                $notif = Notification::create([
+                    'MemberID'           => $member->MemberID,
+                    'EventTrigger'       => 'MailjetBatch',
+                    // We'll store a placeholder message for now. Or you might store e.g. 'Template: X'
+                    'Message'            => "Mailjet template #{$data['templateId']} queued.",
+                    'NotificationMethod' => 'Email',
+                    'SentDate'           => null,    // not sent yet
+                    'Status'             => 'Queued',
+                ]);
+    
+                // Keep references to update them after the API call
+                $localNotifs[$member->Email] = $notif; 
+            }
+        }
+    
+        // If we have no valid emails, we can short-circuit:
+        if (count($localNotifs) === 0) {
+            return response()->json([
+                'status'  => 'no-action',
+                'message' => 'No valid members or emails.',
+            ]);
+        }
+    
+        // 3) Prepare Mailjet client
+        $mj = new \Mailjet\Client(
+            config('services.mailjet.key'),
+            config('services.mailjet.secret'),
+            true,
+            ['version' => 'v3.1']
+        );
+    
+        // 4) Build the array of messages (only for valid emails)
+        $messages = [];
+        foreach ($localNotifs as $email => $notif) {
+            // Use the member we stored in each Notification, or separate map if needed
+            $memberId = $notif->MemberID;
+            $member   = $members->firstWhere('MemberID', $memberId);
+    
             $messages[] = [
                 'From' => [
                     'Email' => config('services.mailjet.from.address'),
                     'Name'  => config('services.mailjet.from.name'),
                 ],
                 'To' => [
-                    ['Email' => $member->Email, 'Name' => $member->FullName],
+                    ['Email' => $email, 'Name' => $member->FullName],
                 ],
                 'TemplateID'      => $data['templateId'],
                 'TemplateLanguage' => true,
                 'Subject'         => 'Gym Notification',
-                'Variables' => [
+                'Variables'       => [
                     'member_name' => $member->FullName,
-                    // Add more placeholders if your template uses them
                 ],
             ];
         }
-    }
-
-    if (!empty($messages)) {
+    
+        // 5) Call the Mailjet API
         $body = ['Messages' => $messages];
         $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
-
-        if ($response->success()) {
-            return response()->json(['status'=>'success', 'message'=>'Template emails sent.']);
+    
+        if (!$response->success()) {
+            // If the entire request failed (e.g. invalid API key),
+            // we might mark them all as failed, or store the error
+            foreach ($localNotifs as $notif) {
+                $notif->update([
+                    'Status'  => 'Failed',
+                    'Message' => 'Mailjet request error. Could not send batch.',
+                    'SentDate'=> now(), // or null
+                ]);
+            }
+    
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Mailjet API error on the entire request.',
+                'data'    => $response->getData(),
+            ], 500);
         }
+    
+        // 6) Parse partial results from Mailjet
+        // Typically you get something like:
+        //  { "Messages":[ { "Status":"success",
+        //      "To":[ {"Email":"someone@example.com","MessageUUID":"abc","MessageID":...} ],
+        //      "Errors":[] 
+        //    }, ... ] }
+        $responseData = $response->getData();
+        $allMessages  = $responseData['Messages'] ?? [];
+    
+        foreach ($allMessages as $msg) {
+            $msgStatus = $msg['Status']; // e.g. "success" or "error"
+            $msgTo     = $msg['To'];
+    
+            // $msgTo might be an array of recipients - we handle each
+            foreach ($msgTo as $rcpt) {
+                $rcptEmail = $rcpt['Email'];
+                $messageId = $rcpt['MessageUUID'] ?? null;
+    
+                // We can find the local Notification by email
+                if (isset($localNotifs[$rcptEmail])) {
+                    $notif = $localNotifs[$rcptEmail];
+    
+                    // Decide the final status
+                    $finalStatus = ($msgStatus === 'success') ? 'Sent' : 'Failed';
+    
+                    $notif->update([
+                        'Status'  => $finalStatus,
+                        'Message' => ($finalStatus === 'Sent')
+                            ? "Mailjet Template #{$data['templateId']} delivered. (MsgID: $messageId)"
+                            : "Mailjet Template #{$data['templateId']} failed.",
+                        'SentDate' => ($finalStatus === 'Sent') ? now() : now(), 
+                    ]);
+                }
+            }
+        }
+    
+        // Now we check if at least one was "Sent":
+        $successCount = Notification::whereIn('NotificationID', array_values(array_map(fn($n) => $n->NotificationID, $localNotifs)))
+            ->where('Status','Sent')
+            ->count();
+    
+        // Also check how many are 'Failed'
+        $failCount = count($localNotifs) - $successCount;
+    
+        // Return a summary
+        return response()->json([
+            'status'         => 'partial',
+            'message'        => "Mailjet sending complete. Success: {$successCount}, Failed: {$failCount}",
+            'success_count'  => $successCount,
+            'failed_count'   => $failCount,
+            // You could include the entire response if needed:
+            'mailjet_detail' => $responseData,
+        ]);
+    }
+    
+
+    public function sendSemaphoreSMS(Request $request)
+    {
+        $data = $request->validate([
+            'numbers'    => 'required|string', // "09998887777,09171234567"
+            'message'    => 'required|string',
+            'senderName' => 'nullable|string',
+        ]);
+    
+        // Convert comma-separated to array:
+        $numbersArray = array_filter(array_map('trim', explode(',', $data['numbers'])));
+        if (empty($numbersArray)) {
+            return response()->json(['status'=>'error','message'=>'No valid phone numbers provided'], 422);
+        }
+    
+        // 1) Insert a local Notification row for each phone number
+        //    (We do not have direct "MemberID" unless we do advanced matching. Up to you.)
+        $notifs = [];
+        foreach ($numbersArray as $phone) {
+            $notifs[$phone] = Notification::create([
+                'MemberID'          => null,  // or link if known
+                'EventTrigger'      => 'SemaphoreBatch',
+                'Message'           => 'Queued SMS to ' . $phone,
+                'NotificationMethod'=> 'SMS',
+                'SentDate'          => null,
+                'Status'            => 'Queued',
+            ]);
+        }
+    
+        // 2) Send the request to Semaphore
+        $apiKey = config('services.semaphore.key');
+        if (!$apiKey) {
+            // Mark all as failed
+            foreach ($notifs as $phone => $row) {
+                $row->update([
+                    'Status'  => 'Failed',
+                    'Message' => "Missing SEMAPHORE_KEY in config!",
+                    'SentDate'=> now(),
+                ]);
+            }
+    
+            return response()->json(['status'=>'error','message'=>'Missing Semaphore API Key'], 500);
+        }
+    
+        $postData = [
+            'apikey'     => $apiKey,
+            'number'     => implode(',', $numbersArray),  // Comma separated
+            'message'    => $data['message'],
+            'sendername' => $data['senderName'] ?? 'SEMAPHORE'
+        ];
+    
+        try {
+            $client = new \GuzzleHttp\Client();
+            $response = $client->post('https://api.semaphore.co/api/v4/messages', [
+                'form_params' => $postData,
+            ]);
+    
+            $json = json_decode($response->getBody()->getContents(), true);
+    
+            if (!is_array($json)) {
+                // We have no structured data, so let's fail everything
+                foreach ($notifs as $phone => $row) {
+                    $row->update([
+                        'Status' => 'Failed',
+                        'Message' => "No valid JSON from Semaphore",
+                        'SentDate'=> now(),
+                    ]);
+                }
+    
+                return response()->json([
+                    'status'=>'error',
+                    'message'=>'Unexpected Semaphore response format.',
+                    'raw' => $json
+                ], 500);
+            }
+    
+            // 3) Partial results from Semaphore. Example response might be:
+            //  [
+            //    {"message_id":12345,"user_id":678,"account_id":111,"recipient":"09998887777","status":"Queued"...},
+            //    {"message_id":12346,"user_id":678,"account_id":111,"recipient":"09171234567","status":"Failed"...}
+            //  ]
+            // We loop each item and update the local row
+            foreach ($json as $item) {
+                $recipient = $item['recipient'];
+                $status    = $item['status'] ?? 'Unknown';
+    
+                if (isset($notifs[$recipient])) {
+                    $row = $notifs[$recipient];
+                    $finalStatus = ($status === 'Queued' || $status === 'Pending')
+                        ? 'Sent'    // or "Delivered" if you want to unify
+                        : 'Failed'; // or "Error"
+    
+                    $row->update([
+                        'Status'  => $finalStatus,
+                        'Message' => "Semaphore: $status for {$recipient}",
+                        'SentDate'=> now(),
+                    ]);
+                }
+            }
+    
+            // 4) Summarize
+            $successCount = Notification::whereIn(
+                'NotificationID', 
+                array_values(array_map(fn($n) => $n->NotificationID, $notifs))
+            )->where('Status','Sent')
+             ->count();
+            $failCount = count($notifs) - $successCount;
+    
+            return response()->json([
+                'status'       => 'partial',
+                'message'      => "Semaphore request done. Success: $successCount, Failed: $failCount",
+                'successCount' => $successCount,
+                'failCount'    => $failCount,
+                'response'     => $json,
+            ]);
+    
+        } catch (\Exception $ex) {
+            // If the entire call failed (e.g. network error)
+            foreach ($notifs as $row) {
+                $row->update([
+                    'Status'  => 'Failed',
+                    'Message' => $ex->getMessage(),
+                    'SentDate'=> now(),
+                ]);
+            }
+    
+            return response()->json([
+                'status'  => 'error',
+                'message' => $ex->getMessage(),
+            ], 500);
+        }
+    }
+    
+    public function notifyCoachOfBookingMailjet(Request $request)
+    {
+        $data = $request->validate([
+            'coach_id'      => 'required|exists:coaches,CoachID',
+            'coach_name'    => 'required|string|max:255',
+            'coach_email'   => 'required|email',
+            'member_name'   => 'required|string|max:255',
+            'session_name'  => 'required|string|max:255',
+            'start_time'    => 'required|date_format:Y-m-d H:i:s',
+            'end_time'      => 'required|date_format:Y-m-d H:i:s',
+        ]);
+    
+        // 1) Prepare a Mailjet Client
+        $mj = new Client(
+            config('services.mailjet.key'),      // or .env: MAILJET_API_KEY
+            config('services.mailjet.secret'),   // or .env: MAILJET_SECRET_KEY
+            true,
+            ['version' => 'v3.1']
+        );
+    
+        // 2) Build the message array
+        //    If you already have a dedicated “Coach Booking” Template in Mailjet,
+        //    set its ID and pass placeholders in `Variables`.
+        $templateID = 9999999; // <--- put your actual Mailjet template ID here
+    
+        $body = [
+            'Messages' => [
+                [
+                    'From' => [
+                        'Email' => config('services.mailjet.from.address'), // e.g. "no-reply@yourdomain.com"
+                        'Name'  => config('services.mailjet.from.name'),    // e.g. "Gym Booking"
+                    ],
+                    'To' => [
+                        [
+                            'Email' => $data['coach_email'],
+                            'Name'  => $data['coach_name'],
+                        ]
+                    ],
+                    'TemplateID'      => $templateID,
+                    'TemplateLanguage' => true,
+                    'Subject'         => 'New Booking For You',
+                    'Variables' => [
+                        // These correspond to placeholders in your Mailjet template,
+                        // like {{var:coach_name}}, {{var:member_name}}, etc.
+                        'coach_name'   => $data['coach_name'],
+                        'member_name'  => $data['member_name'],
+                        'session_name' => $data['session_name'],
+                        'start_time'   => $data['start_time'],
+                        'end_time'     => $data['end_time'],
+                    ],
+                ]
+            ]
+        ];
+    
+        // 3) Send request
+        $response = $mj->post(Resources::$Email, ['body' => $body]);
+    
+        // 4) Evaluate response
+        if ($response->success()) {
+            // Optionally store a row in your notifications table
+            // so you have a log that the coach was notified by email.
+            \App\Models\Notification::create([
+                'MemberID'           => null, // or store the coach if you want
+                'EventTrigger'       => 'CoachBookedMailjet',
+                'Message'            => "Coach #{$data['coach_id']} => Booked email sent to {$data['coach_email']}",
+                'NotificationMethod' => 'Email',
+                'SentDate'           => now(),
+                'Status'             => 'Sent',
+            ]);
+    
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Coach booking email sent via Mailjet.',
+            ]);
+        }
+    
+        // If the response is not successful, handle it:
         return response()->json([
             'status'  => 'error',
-            'message' => 'Mailjet error',
+            'message' => 'Mailjet error when sending to coach.',
             'data'    => $response->getData(),
         ], 500);
     }
-
-    return response()->json([
-        'status'=>'no-action',
-        'message'=>'No valid members or emails.'
-    ]);
-}
-
-public function sendSemaphoreSMS(Request $request)
-{
-    $data = $request->validate([
-        'numbers'    => 'required|string', // e.g. "09998887777,09171234567"
-        'message'    => 'required|string',
-        'senderName' => 'nullable|string',
-    ]);
-
-    // Grab from .env or config (e.g. config('services.semaphore.key'))
-    $apiKey = config('services.semaphore.key'); 
-    if (!$apiKey) {
-        return response()->json(['status'=>'error','message'=>'Missing Semaphore API Key'], 500);
-    }
-
-    // Build POST fields
-    // If user entered multiple numbers, we pass them as "number=0999...,0917..."
-    // or we can just do string replacement if needed.
-    $postData = [
-        'apikey'     => $apiKey,
-        'number'     => $data['numbers'],   // comma-separated
-        'message'    => $data['message'],
-        'sendername' => $data['senderName'] ?? 'SEMAPHORE'
-    ];
-
-    // Now we send cURL or Guzzle POST to https://api.semaphore.co/api/v4/messages
-    try {
-        $client = new \GuzzleHttp\Client();
-        $response = $client->post('https://api.semaphore.co/api/v4/messages', [
-            'form_params' => $postData,
-        ]);
-
-        $json = json_decode($response->getBody()->getContents(), true);
-
-        // The Semaphore API typically returns an array of message objects.
-        // If $json is not empty, we can check or log it
-        if (is_array($json)) {
-            // You can do extra checks here for status, e.g. "Queued", "Pending", etc.
-            return response()->json([
-                'status'   => 'success',
-                'response' => $json,
-            ]);
-        } else {
-            return response()->json([
-                'status'=>'error',
-                'message'=>'Unexpected Semaphore response format.',
-                'raw' => $json
-            ], 500);
-        }
-    } catch (\Exception $ex) {
-        return response()->json([
-            'status'  => 'error',
-            'message' => $ex->getMessage(),
-        ], 500);
-    }
-}
-
 
 }

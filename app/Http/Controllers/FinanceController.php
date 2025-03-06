@@ -225,6 +225,44 @@ class FinanceController extends Controller
         return response()->json(['flows' => $flows]);
     }
 
+        public function updateCashFlow(Request $request, $id)
+    {
+        // Validate the incoming request data
+        $data = $request->validate([
+            'BranchID'     => 'required|exists:branches,BranchID',
+            'Date'         => 'required|date',
+            'BusinessType' => 'required|string|max:100',
+            'CashSales'    => 'nullable|numeric|min:0',
+            'GCashSales'   => 'nullable|numeric|min:0',
+            'BPISales'     => 'nullable|numeric|min:0',
+            'BDOSales'     => 'nullable|numeric|min:0',
+            // Add other fields as necessary
+            'PettyCash'    => 'nullable|numeric|min:0',
+            'DepositedAmount' => 'nullable|numeric|min:0',
+            'Remarks'      => 'nullable|string',
+        ]);
+
+        $cashflow = DailyCashFlow::findOrFail($id);
+        $cashflow->update($data);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cash flow updated successfully.',
+            'data'    => $cashflow,
+        ], 200);
+    }
+
+    public function destroyCashFlow($id)
+    {
+        $cashflow = DailyCashFlow::findOrFail($id);
+        $cashflow->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cash flow deleted successfully.',
+        ], 200);
+    }
+
     /* ------------------------------------------------------------------
      * EXPENSES
      * ------------------------------------------------------------------ */

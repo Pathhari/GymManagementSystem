@@ -338,8 +338,8 @@ Route::prefix('notifications')->group(function() {
     Route::post('/notifications/send-semaphore-sms', [NotificationController::class, 'sendSemaphoreSMS'])
     ->middleware('auth:owner,admin,staff');
 
-    
-        
+    Route::post('/notifications/notify-coach-booking-mailjet', [NotificationController::class, 'notifyCoachOfBookingMailjet'])
+    ->middleware('multiGuard:owner,admin,staff');
 /*
 |--------------------------------------------------------------------------
 | MembershipController
@@ -468,6 +468,7 @@ Route::prefix('booking')->group(function() {
         Route::post('/coaches/{coachId}/availabilities', [CoachController::class, 'storeAvailability']);
         Route::put('/coaches/{coachId}/availabilities/{availabilityId}', [CoachController::class, 'updateAvailability']);
         Route::delete('/coaches/{coachId}/availabilities/{availabilityId}', [CoachController::class, 'destroyAvailability']);
+        Route::post('/coaches/{coachId}/generate-timeslots', [CoachController::class, 'generateTimeslots']);
     });
     
 
@@ -512,6 +513,8 @@ Route::prefix('staff')->group(function () {
             Route::post('/', [StaffController::class, 'storeSchedule'])->name('staff.schedules.store');
             Route::put('/{id}', [StaffController::class, 'updateSchedule'])->name('staff.schedules.update');
             Route::delete('/{id}', [StaffController::class, 'destroySchedule'])->name('staff.schedules.destroy');
+            Route::get('/{id}/schedule-range', [StaffController::class, 'scheduleRange']);
+            Route::post('/bulk-store', [StaffController::class, 'bulkStoreSchedules'])->name('staff.schedules.bulkStore');
         });
 
         // Additional
@@ -660,6 +663,9 @@ Route::prefix('finance')->group(function() {
 
         Route::get('cashflow/create', [FinanceController::class, 'createCashFlow'])->name('finance.cashflow.create');
         Route::post('cashflow', [FinanceController::class, 'storeCashFlow'])->name('finance.cashflow.store');
+        Route::put('cashflow/{id}', [FinanceController::class, 'updateCashFlow'])->name('finance.cashflow.update');
+        Route::delete('cashflow/{id}', [FinanceController::class, 'destroyCashFlow'])->name('finance.cashflow.destroy');
+
         Route::get('expenses/create', [FinanceController::class, 'createExpense'])->name('finance.expenses.create');
         Route::post('expenses', [FinanceController::class, 'storeExpense'])->name('finance.expenses.store');
         Route::get('expenses/{id}/edit', [FinanceController::class, 'editExpense'])->name('finance.expenses.edit');
@@ -765,5 +771,8 @@ use App\Http\Controllers\FacilityController;
         Route::post('/',       [MonthlyClientController::class, 'store']);
         Route::put('/{id}',    [MonthlyClientController::class, 'update']);
         Route::delete('/{id}', [MonthlyClientController::class, 'destroy']);
+        Route::get('monthly-clients/{id}/attendances', [MonthlyClientController::class, 'indexAttendances']);
+        Route::get('attendances-all', [MonthlyClientController::class, 'indexAllAttendances']);
+        Route::post('monthly-clients/{id}/attendances', [MonthlyClientController::class, 'storeAttendance']);
     });
     
