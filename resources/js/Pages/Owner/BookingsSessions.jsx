@@ -46,6 +46,7 @@ import GroupIcon from "@mui/icons-material/Group";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import BusinessIcon from "@mui/icons-material/Business";
 import HourglassBottomIcon from "@mui/icons-material/HourglassBottom";
+import EmailIcon from '@mui/icons-material/Email';
 import EventIcon from "@mui/icons-material/Event";
 import CategoryIcon from "@mui/icons-material/Category";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
@@ -424,7 +425,7 @@ async function generateTimeslots() {
       const loadedFacilities = facRes.data.facilities || [];
 
       // 6) Coaches
-      const coachesRes = await axios.get("/coaches");
+      const coachesRes = await axios.get("/coaches?with=availabilities");
       const loadedCoaches = coachesRes.data.coaches || [];
 
       // Set them
@@ -806,9 +807,7 @@ async function handleBookSessionConfirm() {
     if (sessionToBook.CoachID) {
       // 2a) Find coach data from your coaches array
       const foundCoach = coaches.find(c => c.CoachID === sessionToBook.CoachID);
-      if (foundCoach && foundCoach.ContactInfo && foundCoach.ContactInfo.includes("@")) {
-        // We'll assume 'ContactInfo' = "coach@example.com"
-        // or you might have a separate field 'Email' in the coach model
+      if (foundCoach && foundCoach.ContactInfo && foundCoach.Email.includes("@")) {
 
         // 2b) Find the member for a nice name display
         const foundMember = members.find(m => m.MemberID === Number(sessionBookingMemberID));
@@ -818,7 +817,7 @@ async function handleBookSessionConfirm() {
         await axios.post("/notifications/notify-coach-booking-mailjet", {
           coach_id:     foundCoach.CoachID,
           coach_name:   foundCoach.FullName,
-          coach_email:  foundCoach.ContactInfo,   // or foundCoach.Email if your DB has it
+          coach_email:  foundCoach.Email,   // or foundCoach.Email if your DB has it
           member_name:  memberName,
           session_name: sessionToBook.SessionName,
           start_time:   sessionToBook.StartTime,  // "YYYY-MM-DD HH:mm:ss"
@@ -874,6 +873,7 @@ async function handleBookSessionConfirm() {
         FullName: newCoach.FullName,
         Specialty: newCoach.Specialty,
         ContactInfo: newCoach.ContactInfo,
+        Email: newCoach.Email,
       });
       setAddCoachOpen(false);
       fetchAllData();
@@ -890,6 +890,7 @@ async function handleBookSessionConfirm() {
         FullName: selectedCoach.FullName,
         Specialty: selectedCoach.Specialty,
         ContactInfo: selectedCoach.ContactInfo,
+        Email: newCoach.Email,
       });
       setEditCoachModal(false);
       fetchAllData();
@@ -1316,13 +1317,18 @@ async function handleBookSessionConfirm() {
   const [manageAvailOpen, setManageAvailOpen] = useState(false);
   const [coachToManage, setCoachToManage] = useState(null);
 
-  function openManageAvailability(coachId) {
-    const found = coaches.find((c) => c.CoachID === coachId);
-    if (found) {
-      setCoachToManage(found);
+  async function openManageAvailability(coachId) {
+    try {
+      // fetch a single coach (with availabilities)
+      const res = await axios.get(`/coaches/${coachId}?include=availabilities`);
+      setCoachToManage(res.data.coach);  // or however your API returns it
       setManageAvailOpen(true);
+    } catch (err) {
+      console.error("Error fetching coach + availabilities", err);
+      alert("Failed to fetch coach. See console.");
     }
   }
+  
   function closeManageAvailability() {
     setManageAvailOpen(false);
     setCoachToManage(null);
@@ -2997,13 +3003,18 @@ async function handleBookSessionConfirm() {
                   Add New Coach
                 </Typography>
               </Box>
-              <IconButton onClick={() => setAddCoachOpen(false)} sx={{ "&:hover": { color: "error.main" } }}>
+              <IconButton 
+                onClick={() => setAddCoachOpen(false)}
+                sx={{ "&:hover": { color: "error.main" } }}
+              >
                 <CloseIcon />
               </IconButton>
             </Box>
           </DialogTitle>
+
           <DialogContent dividers sx={{ p: 3 }}>
             <Grid container spacing={2}>
+              {/* Full Name */}
               <Grid item xs={12}>
                 <TextField
                   label="Full Name"
@@ -3020,6 +3031,8 @@ async function handleBookSessionConfirm() {
                   }}
                 />
               </Grid>
+
+              {/* Specialty */}
               <Grid item xs={12}>
                 <TextField
                   label="Specialty"
@@ -3036,9 +3049,30 @@ async function handleBookSessionConfirm() {
                   }}
                 />
               </Grid>
+
+              {/* Email */}
               <Grid item xs={12}>
                 <TextField
-                  label="Contact Info"
+                  label="Email Address"
+                  type="email"
+                  fullWidth
+                  required
+                  value={newCoach.Email || ""}
+                  onChange={(e) => setNewCoach({ ...newCoach, Email: e.target.value })}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <EmailIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+
+              {/* Contact Info (Phone) */}
+              <Grid item xs={12}>
+                <TextField
+                  label="Contact Info (Phone)"
                   fullWidth
                   required
                   value={newCoach.ContactInfo}
@@ -3054,6 +3088,7 @@ async function handleBookSessionConfirm() {
               </Grid>
             </Grid>
           </DialogContent>
+
           <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
             <Button
               variant="contained"
@@ -3101,6 +3136,7 @@ async function handleBookSessionConfirm() {
               </IconButton>
             </Box>
           </DialogTitle>
+
           <DialogContent dividers sx={{ p: 4 }}>
             {selectedCoach && (
               <Grid container spacing={2}>
@@ -3114,6 +3150,7 @@ async function handleBookSessionConfirm() {
                     sx={{ mb: 2 }}
                   />
                 </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -3124,6 +3161,7 @@ async function handleBookSessionConfirm() {
                     sx={{ mb: 2 }}
                   />
                 </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -3134,16 +3172,18 @@ async function handleBookSessionConfirm() {
                     sx={{ mb: 2 }}
                   />
                 </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="Availability"
+                    label="Email Address"
                     variant="filled"
                     InputProps={{ readOnly: true }}
-                    value={selectedCoach.Availability || "—"}
+                    value={selectedCoach.Email || "—"}
                     sx={{ mb: 2 }}
                   />
                 </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -3190,6 +3230,7 @@ async function handleBookSessionConfirm() {
               </IconButton>
             </Box>
           </DialogTitle>
+
           <DialogContent dividers sx={{ p: 4 }}>
             {selectedCoach && (
               <Grid container spacing={2}>
@@ -3204,6 +3245,7 @@ async function handleBookSessionConfirm() {
                     }
                   />
                 </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -3215,10 +3257,24 @@ async function handleBookSessionConfirm() {
                     }
                   />
                 </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="Contact Info"
+                    label="Email Address"
+                    type="email"
+                    size="small"
+                    value={selectedCoach.Email || ""}
+                    onChange={(e) =>
+                      setSelectedCoach({ ...selectedCoach, Email: e.target.value })
+                    }
+                  />
+                </Grid>
+
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Contact Info (Phone)"
                     size="small"
                     value={selectedCoach.ContactInfo || ""}
                     onChange={(e) =>
@@ -3229,6 +3285,7 @@ async function handleBookSessionConfirm() {
               </Grid>
             )}
           </DialogContent>
+
           <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
             <Button
               variant="contained"

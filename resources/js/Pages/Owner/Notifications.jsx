@@ -282,18 +282,21 @@ export default function Notifications() {
   };
 
   const handleAutoFillSemaphoreNumbers = () => {
+    // Here selectedSemaphoreIDs should be numeric if we mapped them:
     const selectedRows = semaphoreMembers.filter((m) =>
       selectedSemaphoreIDs.includes(m.MemberID)
     );
     const phones = selectedRows
       .map((m) => m.Phone)
       .filter((p) => p && p.trim() !== "");
+  
     if (phones.length === 0) {
       alert("No valid phone numbers among selected members.");
       return;
     }
     setSemaphoreNumbers(phones.join(","));
   };
+  
 
   const handleSendSemaphoreSMS = async () => {
     if (!semaphoreNumbers.trim()) {
@@ -334,6 +337,23 @@ export default function Notifications() {
     if (semaphoreFilterStatus === "All") return true;
     return String(m.MemberStatusID) === semaphoreFilterStatus;
   });
+
+  const handleSendExpiringReminder = async () => {
+    try {
+      const res = await axios.get("/notifications/send-expiring-reminder");
+      if (res.data.status === "success") {
+        alert("Expiry reminder emails sent!");
+      } else if (res.data.status === "no-action") {
+        alert("No members expiring in 7 days.");
+      } else {
+        alert("An error occurred. Please check the logs.");
+      }
+    } catch (error) {
+      console.error("Failed to send expiring reminder:", error);
+      alert("Failed to send expiry reminder.");
+    }
+  };
+  
 
   // ===================== RENDER =====================
   return (
@@ -444,96 +464,106 @@ export default function Notifications() {
 
       {/* ---------------------- TAB 1: Mailjet ---------------------- */}
       {activeTab === 1 && (
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" gutterBottom>
-            Mailjet Templated Email
-          </Typography>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            Need to create or edit a new template?{" "}
-            <a
-              href="https://app.mailjet.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "blue", textDecoration: "underline" }}
-            >
-              Go to Mailjet Dashboard
-            </a>
-          </Typography>
+  <Paper sx={{ p: 2 }}>
+    <Typography variant="h6" gutterBottom>
+      Mailjet Templated Email
+    </Typography>
+    <Typography variant="body2" sx={{ mb: 2 }}>
+      Need to create or edit a new template?{" "}
+      <a
+        href="https://app.mailjet.com/"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: "blue", textDecoration: "underline" }}
+      >
+        Go to Mailjet Dashboard
+      </a>
+    </Typography>
 
-          <Stack spacing={2} sx={{ mb: 2, maxWidth: 400 }}>
-            <TextField
-              label="Mailjet Template ID"
-              fullWidth
-              value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <EmailIcon />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Stack>
+    {/* Only show the template ID input when NOT sending expiry reminders */}
+    {!mailjetShowExpiring && (
+      <Stack spacing={2} sx={{ mb: 2, maxWidth: 400 }}>
+        <TextField
+          label="Mailjet Template ID"
+          fullWidth
+          value={templateId}
+          onChange={(e) => setTemplateId(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <EmailIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Stack>
+    )}
 
-          {/* Filter UI: status + “expiring soon” checkbox */}
-          <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
-            <Box sx={{ minWidth: 200 }}>
-              <FormControl fullWidth>
-                <InputLabel>Filter by Status</InputLabel>
-                <Select
-                  value={mailjetFilterStatus}
-                  label="Filter by Status"
-                  onChange={(e) => setMailjetFilterStatus(e.target.value)}
-                >
-                  {memberStatuses.map((st) => (
-                    <MenuItem key={st.id} value={st.id}>
-                      {st.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={mailjetShowExpiring}
-                  onChange={(e) => setMailjetShowExpiring(e.target.checked)}
-                  color="primary"
-                />
-              }
-              label="Expiring in 7 days"
-            />
-          </Box>
+    {/* Filter UI: status + “expiring soon” checkbox */}
+    <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
+      <Box sx={{ minWidth: 200 }}>
+        <FormControl fullWidth>
+          <InputLabel>Filter by Status</InputLabel>
+          <Select
+            value={mailjetFilterStatus}
+            label="Filter by Status"
+            onChange={(e) => setMailjetFilterStatus(e.target.value)}
+          >
+            {memberStatuses.map((st) => (
+              <MenuItem key={st.id} value={st.id}>
+                {st.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Box>
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={mailjetShowExpiring}
+            onChange={(e) => setMailjetShowExpiring(e.target.checked)}
+            color="primary"
+          />
+        }
+        label="Expiring in 7 days"
+      />
+    </Box>
 
-          <Typography variant="subtitle1" sx={{ mb: 1 }}>
-            Select Members to Receive the Template
-          </Typography>
-          <div style={{ width: "100%", height: 400 }}>
-            <DataGrid
-              rows={filteredMailjetMembers}
-              columns={mailjetColumns}
-              getRowId={(row) => row.MemberID}
-              checkboxSelection
-              onSelectionModelChange={(newSelection) => {
-                handleMailjetSelection(newSelection);
-              }}
-              pageSize={5}
-              rowsPerPageOptions={[5, 10]}
-            />
-          </div>
+    <Typography variant="subtitle1" sx={{ mb: 1 }}>
+      Select Members to Receive the Template
+    </Typography>
+    <div style={{ width: "100%", height: 400 }}>
+      <DataGrid
+        rows={filteredMailjetMembers}
+        columns={mailjetColumns}
+        getRowId={(row) => row.MemberID}
+        checkboxSelection
+        onSelectionModelChange={(newSelection) => {
+          handleMailjetSelection(newSelection);
+        }}
+        pageSize={5}
+        rowsPerPageOptions={[5, 10]}
+      />
+    </div>
 
-          <Box sx={{ mt: 2 }}>
-            <Button
-              variant="contained"
-              startIcon={<SendIcon />}
-              onClick={handleSendMailjetTemplate}
-            >
-              Send Templated Email
-            </Button>
-          </Box>
-        </Paper>
-      )}
+    <Box sx={{ mt: 2 }}>
+      <Button
+        variant="contained"
+        startIcon={<SendIcon />}
+        onClick={
+          mailjetShowExpiring
+            ? handleSendExpiringReminder
+            : handleSendMailjetTemplate
+        }
+      >
+        {mailjetShowExpiring
+          ? "Send Expiry Reminders"
+          : "Send Templated Email"}
+      </Button>
+    </Box>
+  </Paper>
+)}
+
 
       {/* ---------------------- TAB 2: Semaphore ---------------------- */}
       {activeTab === 2 && (
@@ -563,13 +593,15 @@ export default function Notifications() {
             (Optional) Select members to pull their phone numbers
           </Typography>
           <div style={{ width: "100%", height: 300, marginBottom: 16 }}>
-            <DataGrid
+          <DataGrid
               rows={filteredSemaphoreMembers}
               columns={semaphoreColumns}
               getRowId={(row) => row.MemberID}
               checkboxSelection
-              onSelectionModelChange={(newSelection) => {
-                handleSemaphoreSelection(newSelection);
+              rowSelectionModel={selectedSemaphoreIDs}
+              onRowSelectionModelChange={(newSelection) => {
+                // newSelection might be ["1201", "1202"], so convert to number if needed
+                setSelectedSemaphoreIDs(newSelection.map(Number));
               }}
               pageSize={5}
               rowsPerPageOptions={[5, 10]}

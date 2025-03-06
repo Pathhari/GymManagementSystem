@@ -921,7 +921,7 @@ export default function OwnerDashboard(onClose) {
       {
         field: 'actions',
         headerName: 'Actions',
-        width: 210,
+        width: 250,
         renderCell: (params) => {
           const row = params.row;
           return (

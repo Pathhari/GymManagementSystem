@@ -425,7 +425,7 @@ public function sendStaffNotification(Request $request)
                     // Pass dynamic variables to match placeholders like {{var:member_name}} etc.
                     'Variables' => [
                         'member_name' => $member->name,
-                        'expiry_date' => $member->expiry_date->format('F j, Y'),
+                        'expiry_date' => \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y'),
                     ],
                 ];
             }
