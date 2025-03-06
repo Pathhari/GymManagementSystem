@@ -460,10 +460,57 @@ function handleNewPayrollCreated(resData) {
   }
 
   // -------------- PAYROLL CRUD --------------
-  const handleViewPayroll = (record) => {
-    setSelectedPayroll(record);
-    setViewPayrollOpen(true);
+  const handleViewPayroll = async (record) => {
+    try {
+      const staffID = record.StaffID;
+      const start   = record.StartDate; // "YYYY-MM-DD"
+      const end     = record.EndDate;
+  
+      // 1) Fetch attendance + schedules
+      const { attendance, schedules } = await fetchAttendanceAndSchedules(staffID, start, end);
+  
+      // 2) Grab staff’s rates from record.staff if it’s loaded,
+      //    or from your staffRecords array.
+      //    record.staff is from the backend load('staff').
+      const hourlyRate   = parseFloat(record.staff?.HourlyRate ?? 0);
+      const overtimeRate = parseFloat(record.staff?.OvertimeRate ?? 0);
+  
+      // 3) Compute the same logic as storePayroll
+      const stats = computePayrollFromSchedules(
+        attendance,
+        schedules,
+        hourlyRate,
+        overtimeRate,
+        start,
+        end
+      );
+      // stats = { totalRegularHours, totalOvertimeHours, totalLateDeductions, daysAbsent, grossPay }
+  
+      // 4) Attach them to the record for printing in the payslip
+      record.TotalRegularHours = stats.totalRegularHours;
+      record.TotalOvertimeHours = stats.totalOvertimeHours;
+      record.LateDeductions = stats.totalLateDeductions;
+      record.DaysAbsent = stats.daysAbsent;
+      record.ComputedGross = stats.grossPay; // This is the fresh gross from the attendance
+  
+      // If the DB’s stored NetPay is different, you can keep that or override
+      // If you want to re-compute net on the front-end:
+      const combinedDeductions = (parseFloat(record.Deductions) || 0) + stats.totalLateDeductions;
+      const net = stats.grossPay - combinedDeductions;
+      record.ComputedNet = net;
+  
+      // 5) Save as selected & open
+      setSelectedPayroll(record);
+      setViewPayrollOpen(true);
+  
+    } catch (error) {
+      console.error("Error loading payroll details:", error);
+      // fallback
+      setSelectedPayroll(record);
+      setViewPayrollOpen(true);
+    }
   };
+  
 
   const handleEditPayroll = (record) => {
     setSelectedPayroll(record);
@@ -753,16 +800,16 @@ const handleTabChange = (e, newValue) => {
 
       const attendanceColumns = [
         {
-          field: "StaffID",
-          headerName: "Staff Name",
-          width: 150,
-          renderCell: (params) => params.row.staff?.FullName ?? "—",
-        },
-        {
           field: "Date",
           headerName: "Date",
           width: 180,
           renderCell: (params) => params.value ? formatDate(params.value) : "—",
+        },
+        {
+          field: "StaffID",
+          headerName: "Staff Name",
+          width: 150,
+          renderCell: (params) => params.row.staff?.FullName ?? "—",
         },
         {
           field: "TimeIn",
@@ -853,6 +900,7 @@ const handleTabChange = (e, newValue) => {
     
 
   const payrollColumns = [
+    { field: "GeneratedDate", headerName: "Date", width: 180, renderCell: (params) => params.value ? formatDate(params.value) : "—",},
     {
       field: "StaffID",
       headerName: "Staff Name",
@@ -861,8 +909,8 @@ const handleTabChange = (e, newValue) => {
         return params.row.staff ? params.row.staff.FullName : "N/A";
       },
     },
-    { field: "StartDate", headerName: "Start", width: 180, renderCell: (params) => params.value ? formatDate(params.value) : "—",},
-    { field: "EndDate", headerName: "End", width: 180, renderCell: (params) => params.value ? formatDate(params.value) : "—", },
+    { field: "StartDate", headerName: "Cycle Start", width: 180, renderCell: (params) => params.value ? formatDate(params.value) : "—",},
+    { field: "EndDate", headerName: "Cycle End", width: 180, renderCell: (params) => params.value ? formatDate(params.value) : "—", },
     { 
       field: "GrossPay", 
       headerName: "Gross", 
@@ -882,9 +930,7 @@ const handleTabChange = (e, newValue) => {
       width: 90,
       renderCell: (params) => `₱${params.value ? parseFloat(params.value).toFixed(2) : "0.00"}`
     },
-    
-    { field: "GeneratedDate", headerName: "Generated", width: 180, renderCell: (params) => params.value ? formatDate(params.value) : "—",},
-    { field: "Status", headerName: "Status", width: 90 },
+    { field: "Status", headerName: "Status", width: 200 },
     {
       field: "Actions",
       headerName: "Actions",
@@ -943,6 +989,8 @@ const handleTabChange = (e, newValue) => {
   ];
 
   const taskColumns = [
+    { field: "TaskDate", headerName: "Date", width: 180, renderCell: (params) => params.value ? formatDate(params.value) : "—",},
+    { field: "TaskDescription", headerName: "Description", width: 350 },
     {
       field: "StaffID",
       headerName: "Staff Name",
@@ -951,12 +999,10 @@ const handleTabChange = (e, newValue) => {
         return params.row.staff ? params.row.staff.FullName : "N/A";
       },
     },
-    { field: "TaskDescription", headerName: "Description", width: 200 },
-    { field: "TaskDate", headerName: "Date", width: 180, renderCell: (params) => params.value ? formatDate(params.value) : "—",},
     {
       field: "Status",
       headerName: "Status",
-      width: 110,
+      width: 200,
       renderCell: (params) => (
         <span style={{ color: params.value === "Completed" ? "limegreen" : "orange" }}>
           {params.value}
@@ -1021,8 +1067,7 @@ const handleTabChange = (e, newValue) => {
   ];
 
   const scheduleColumns = [
-    { field: "ShiftDate", headerName: "Date", width: 110 },
-
+    { field: "ShiftDate", headerName: "Date", width: 150 },
     {
       field: "StaffID",
       headerName: "Staff Name",
@@ -1031,9 +1076,8 @@ const handleTabChange = (e, newValue) => {
         return params.row.staff ? params.row.staff.FullName : "N/A";
       },
     },
-    { field: "ShiftStart", headerName: "Start", width: 90 },
-    { field: "ShiftEnd", headerName: "End", width: 90 },
-    { field: "RoleOverride", headerName: "Override", width: 100 },
+    { field: "ShiftStart", headerName: "Start", width: 150 },
+    { field: "ShiftEnd", headerName: "End", width: 150 },
     {
       field: "Actions",
       headerName: "Actions",
@@ -1369,96 +1413,185 @@ const handleTabChange = (e, newValue) => {
         };
         
 
+        async function fetchAttendanceAndSchedules(staffId, start, end) {
+          // 1) Fetch attendance
+          const attendanceUrl =
+            route("staff.attendance.range", staffId) + `?start=${start}&end=${end}`;
+          const attRes = await axios.get(attendanceUrl);
+          const attendance = attRes.data; // array
+        
+          // 2) Fetch schedules
+          // If you have a route named staff.schedules.range, do:
+          const scheduleUrl =
+            route("staff.schedules.range", staffId) + `?start=${start}&end=${end}`;
+          const schRes = await axios.get(scheduleUrl);
+          const schedules = schRes.data; // array of { ShiftDate, ShiftStart, ... }
+        
+          return { attendance, schedules };
+        }
+        
+        function computePayrollFromSchedules(attendance, schedules, hourlyRate, overtimeRate, startDate, endDate) {
+          let totalRegularHours = 0;
+          let totalOvertimeHours = 0;
+          let totalLateDeductions = 0;
+        
+          // Convert schedules into a dictionary keyed by date => { ShiftStart, ShiftEnd }
+          // so we can quickly find the schedule for each attendance date
+          const scheduleMap = {};
+          schedules.forEach((sch) => {
+            scheduleMap[sch.ShiftDate] = {
+              ShiftStart: sch.ShiftStart,
+              ShiftEnd: sch.ShiftEnd,
+            };
+          });
+        
+          // For each attendance record:
+          attendance.forEach((att) => {
+            const hrs = Number(att.HoursWorked || 0);
+            if (hrs > 8) {
+              totalRegularHours += 8;
+              totalOvertimeHours += (hrs - 8);
+            } else {
+              totalRegularHours += hrs;
+            }
+        
+            // Lateness check
+            const dateStr = att.Date; // "YYYY-MM-DD"
+            const sch = scheduleMap[dateStr];
+            if (sch && att.TimeIn) {
+              // Example: "2025-03-10 05:30" for shift start
+              const shiftStartSec = new Date(`${dateStr}T${sch.ShiftStart}:00`).getTime() / 1000;
+              const timeInSec     = new Date(`${dateStr}T${att.TimeIn}:00`).getTime() / 1000;
+        
+              // Grace = shiftStart + 10 min => shiftStartSec + 600
+              const graceEndSec = shiftStartSec + 10 * 60;
+              if (timeInSec > graceEndSec) {
+                const lateSeconds = timeInSec - graceEndSec;
+                const lateMinutes = Math.floor(lateSeconds / 60);
+                // 1 peso per minute
+                totalLateDeductions += lateMinutes;
+              }
+            }
+          });
+        
+          // If you want days absent:
+          // 1) Put all attendance dates in a set
+          const attendedDates = new Set(attendance.map((a) => a.Date));
+          // 2) Generate each day from start to end
+          let dayCursor = new Date(startDate);
+          const endD = new Date(endDate);
+          endD.setHours(23, 59, 59, 999);
+          let daysAbsent = 0;
+          while (dayCursor <= endD) {
+            const iso = dayCursor.toISOString().split("T")[0];
+            // If there's a schedule but no attendance for that day => absent
+            if (scheduleMap[iso] && !attendedDates.has(iso)) {
+              daysAbsent++;
+            }
+            dayCursor.setDate(dayCursor.getDate() + 1);
+          }
+        
+          // Calculate gross pay from hours
+          const grossPay = (totalRegularHours * (hourlyRate || 0)) + (totalOvertimeHours * (overtimeRate || 0));
+        
+          return {
+            totalRegularHours,
+            totalOvertimeHours,
+            totalLateDeductions,
+            daysAbsent,
+            grossPay,
+          };
+        }
+        
          // ======================= PRINT PAYSLIP ======================
          const handlePrintPayslip = () => {
-          if (!selectedStaff) return;
+          if (!selectedPayroll) return;
         
-          // Fetch dynamic data from your current state
-          const dateIssued = new Date().toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-          });
-          const staffName = selectedStaff.FullName || "—";
-          const dailyRate = selectedStaff.DailyRate || 0;
+          const {
+            StaffID,
+            StartDate,
+            EndDate,
+            GrossPay,
+            Deductions,
+            NetPay,
+            GeneratedDate,
+            staff,
+          } = selectedPayroll;
         
-          // Find the payroll record for the selected staff (if available)
-          const payroll = payrollRecords.find((p) => p.StaffID === selectedStaff.StaffID) || {};
+          const staffName = staff ? staff.FullName : "—";
+          // Ensure dailyRate is a number
+          const dailyRate = staff ? parseFloat(staff.DailyRate) || 0 : 0;
         
-          // For "Salary for the month of", display month and year from payroll.StartDate if available
-          const monthLabel = payroll.StartDate
-            ? new Date(payroll.StartDate).toLocaleString("default", {
-                month: "long",
-                year: "numeric",
-              })
+          const periodMonth = StartDate
+            ? new Date(StartDate).toLocaleDateString("en-US", { month: "long", year: "numeric" })
             : "—";
         
-          // Use payroll data if available; otherwise, fallback to placeholders or computed values.
-          // Ensure numeric values are available for calculations.
-          const hoursWorked =
-            typeof payroll.HoursWorked === "number" ? payroll.HoursWorked : 0;
-          const daysAbsent =
-            typeof payroll.DaysAbsent === "number" ? payroll.DaysAbsent : 0;
-          const tardinessCount =
-            typeof payroll.Tardiness === "number" ? payroll.Tardiness : 0;
-          const deductions =
-            typeof payroll.Deductions === "number" ? payroll.Deductions : 0;
+          const generated = GeneratedDate
+            ? new Date(GeneratedDate).toLocaleDateString("en-US")
+            : new Date().toLocaleDateString("en-US");
         
-          // Use payroll.GrossPay if available; otherwise, compute from dailyRate and hoursWorked.
-          const computedSalary =
-            hoursWorked > 0 ? dailyRate * hoursWorked : 0;
-          const computationOfSalary =
-            typeof payroll.GrossPay === "number" ? payroll.GrossPay : computedSalary;
+          // Convert GrossPay and Deductions to numbers safely
+          const grossPayNum = parseFloat(GrossPay) || 0;
+          const deductionsNum = parseFloat(Deductions) || 0;
         
-          // Subtotal from payroll.NetPay if available; otherwise, compute it.
-          const subtotal =
-            typeof payroll.NetPay === "number"
-              ? payroll.NetPay
-              : computationOfSalary - deductions;
-        
-          // Create the PDF document using jsPDF
-          const doc = new jsPDF({
-            orientation: "portrait",
-            unit: "pt",
-            format: "A4",
-          });
+          // Create PDF
+          const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "A4" });
           const pageWidth = doc.internal.pageSize.getWidth();
           const pageHeight = doc.internal.pageSize.getHeight();
         
+          // Add your payslip template background image
           doc.addImage("/imgs/payslip.png", "PNG", 0, 0, pageWidth, pageHeight);
         
-
-          doc.setFont("courier", "normal");
-          doc.setFontSize(18);
+          doc.setFont("Helvetica", "normal");
+          doc.setFontSize(12);
         
-          doc.text(`${dateIssued}`, 140, 160);
-          
-          doc.text(`${staffName}`, 90,195);
+          // Place texts according to your template coordinates (unchanged)
+          doc.text(generated, 140, 160); // Date Issued
+          doc.text(staffName, 100, 195); // Staff Name
         
-          doc.text(`${monthLabel}`, 220, 260);
-         
-          doc.text(`${dailyRate}`, 130, 314);
-          doc.text(`${hoursWorked}`, 215, 345);
-          doc.text(`${daysAbsent}`, 200, 377 );
-          doc.text(` ${tardinessCount}`, 165, 406);
-          doc.text(` ${deductions}`, 130, 439);
-          doc.text(`${computationOfSalary}`, 450, 330);
-          
-      
-          doc.text(`${subtotal}`, 420, 523);
-
-          doc.save(`${staffName}-Payslip.pdf`);
+          doc.text(periodMonth, 215, 260); // Salary Month
+        
+          doc.text(`₱${dailyRate.toFixed(2)}`, 140, 315); // Daily Rate
+          doc.text(`₱${grossPayNum.toFixed(2)}`, 450, 350, { align: "right" }); // Computation of Salary
+        
+          // Pull front-end computed fields (or 0 if undefined)
+          const hoursWorked = selectedPayroll.HoursWorked || 0;
+          const daysAbsent = selectedPayroll.DaysAbsent || 0;
+          const lateDeductions = selectedPayroll.LateDeductions || 0;
+        
+          // Print them at the same coordinates you used
+          doc.text(`${hoursWorked}`, 240, 345);    // No. of hours worked
+          doc.text(`${daysAbsent}`, 240, 375);    // No. of days absent
+          doc.text(`${lateDeductions}`, 240, 408); // Tardiness (or penalty)  
+        
+          // Print standard deductions from DB
+          doc.text(`₱${deductionsNum.toFixed(2)}`, 230, 440); // Deductions
+        
+          const subtotal = grossPayNum - deductionsNum;
+          const tax = 0; // Adjust tax logic if applicable
+          const totalPay = subtotal - tax;
+        
+          doc.text(`₱${subtotal.toFixed(2)}`, 470, 522, { align: "right" }); // Subtotal
+          doc.text(`₱${tax.toFixed(2)}`, 470, 558, { align: "right" }); // Tax
+          doc.text(`₱${totalPay.toFixed(2)}`, 470, 603, { align: "right" }); // Total
+        
+          doc.text(staffName, 330, 740);  // Certification Name
+          doc.text(periodMonth, 205, 792); // Certification Month
+        
+          doc.save(`Payslip-${staffName}-${periodMonth}.pdf`);
         };
-
+        
+        
         const [isAddAttendanceOpen, setAddAttendanceOpen] = useState(false);
-
-        // 2) Add a helper to handle newly created attendance
+        
+        // Helper function to handle newly created attendance records
         function handleNewAttendanceCreated(resData) {
           const newAttendance = resData.attendance;
           setAttendanceRecords((prev) => [newAttendance, ...prev]);
           setFilteredAttendance((prev) => [newAttendance, ...prev]);
           showSuccessMessage("New attendance record added successfully!");
         }
+        
         
   return (
     <Box sx={{ p: 4 }}>
@@ -1888,17 +2021,6 @@ const handleTabChange = (e, newValue) => {
           </Box>
         )}
       </DialogContent>
-      <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2 }}>
-      <Button
-        variant="contained"
-        color="primary"
-        onClick={() => handlePrintPayslip(true)}
-        sx={{ textTransform: "none" }}
-      >
-        <PrintIcon sx={{ mr: 1 }} /> Print Payslip
-      </Button>
-    </DialogActions>
-
     </Dialog>
       {/* EDIT STAFF */}
       <Dialog
@@ -2565,173 +2687,55 @@ const handleTabChange = (e, newValue) => {
           <ReceiptLongIcon sx={{ fontSize: 32, color: "primary.main" }} />
           Payroll Details
         </DialogTitle>
-        <DialogContent dividers sx={{ p: 4 }}>
-          {selectedPayroll && (
-            <Box sx={{ display: "flex", flexDirection: "row", gap: 4 }}>
-              <Grid container spacing={3}>
-                <Grid item xs={6}>
-                  <Typography
-                    variant="h5"
-                    sx={{
-                      fontWeight: "bold",
-                      mb: 2,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 1,
-                    }}
-                  >
-                    <BadgeIcon color="primary" /> Payroll Info
-                  </Typography>
-                  <TextField
-                    fullWidth
-                    label="Staff Name"
-                    variant="filled"
-                    InputProps={{ readOnly: true }}
-                    value={
-                      selectedPayroll.staff?.FullName || 
-                      staffRecords.find((s) => s.StaffID === selectedPayroll.StaffID)?.FullName || 
-                      "—"
-                    }
-                    sx={{ mb: 2 }}
-                  />
-
-                  <TextField
-                    fullWidth
-                    label="Payroll ID"
-                    variant="filled"
-                    InputProps={{ readOnly: true }}
-                    value={selectedPayroll.PayrollID || "—"}
-                    sx={{ mb: 2 }}
-                  />
-                  <TextField
-                    fullWidth
-                    label="Staff ID"
-                    variant="filled"
-                    InputProps={{ readOnly: true }}
-                    value={selectedPayroll.StaffID || "—"}
-                    sx={{ mb: 2 }}
-                  />
-                 <TextField
-                    fullWidth
-                    label="Start Date"
-                    variant="filled"
-                    InputProps={{ readOnly: true }}
-                    value={selectedPayroll.StartDate ? formatDate(selectedPayroll.StartDate) : "—"}
-                    sx={{ mb: 2 }}
-                  />
-                  <TextField
-                    fullWidth
-                    label="End Date"
-                    variant="filled"
-                    InputProps={{ readOnly: true }}
-                    value={selectedPayroll.EndDate ? formatDate(selectedPayroll.EndDate) : "—"}
-                    sx={{ mb: 2 }}
-                  />
-                </Grid>
-
-                <Grid item xs={6}>
-                  <Typography
-                    variant="h5"
-                    sx={{
-                      fontWeight: "bold",
-                      mb: 2,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 1,
-                    }}
-                  >
-                    <MonetizationOnIcon color="primary" /> Salary Breakdown
-                  </Typography>
-                  <TextField
-                    fullWidth
-                    label="Gross Pay"
-                    variant="filled"
-                    InputProps={{ readOnly: true }}
-                    value={
-                      selectedPayroll.GrossPay
-                        ? `₱${parseFloat(selectedPayroll.GrossPay).toFixed(2)}`
-                        : "—"
-                    }
-                    sx={{ mb: 2 }}
-                  />
-                  <TextField
-                    fullWidth
-                    label="Deductions"
-                    variant="filled"
-                    InputProps={{ readOnly: true }}
-                    value={
-                      selectedPayroll.Deductions
-                        ? `₱${parseFloat(selectedPayroll.Deductions).toFixed(2)}`
-                        : "—"
-                    }
-                    sx={{ mb: 2 }}
-                  />
-                  <TextField
-                    fullWidth
-                    label="Net Pay"
-                    variant="filled"
-                    InputProps={{ readOnly: true }}
-                    value={
-                      selectedPayroll.NetPay
-                        ? `₱${parseFloat(selectedPayroll.NetPay).toFixed(2)}`
-                        : "—"
-                    }
-                    sx={{ mb: 2 }}
-                  />
-
-                  <Typography
-                    variant="h5"
-                    sx={{
-                      fontWeight: "bold",
-                      mt: 3,
-                      mb: 2,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 1,
-                    }}
-                  >
-                    <EventIcon color="primary" /> Status & Date
-                  </Typography>
-                  <TextField
-                    fullWidth
-                    label="Generated Date"
-                    variant="filled"
-                    InputProps={{ readOnly: true }}
-                    value={selectedPayroll.GeneratedDate ? formatDate(selectedPayroll.GeneratedDate) : "—"}
-                    sx={{ mb: 2 }}
-                  />
-                  <TextField
-                    fullWidth
-                    label="Status"
-                    variant="filled"
-                    InputProps={{ readOnly: true }}
-                    value={selectedPayroll.Status || "—"}
-                    sx={{ mb: 2 }}
-                  />
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: "center", p: 3 }}>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => setViewPayrollOpen(false)}
-            sx={{
-              px: 5,
-              py: 1.5,
-              fontSize: "1.1rem",
-              fontWeight: "bold",
-              borderRadius: 2,
-              textTransform: "none",
-              boxShadow: 1,
-            }}
-          >
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
+        <DialogContent dividers>
+            {selectedPayroll && (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <TextField
+                  label="Staff Name"
+                  InputProps={{ readOnly: true }}
+                  value={
+                    selectedPayroll.staff?.FullName
+                      ? selectedPayroll.staff.FullName
+                      : "—"
+                  }
+                />
+                <TextField
+                  label="Pay Period"
+                  InputProps={{ readOnly: true }}
+                  value={`${formatDate(selectedPayroll.StartDate)} - ${formatDate(selectedPayroll.EndDate)}`}
+                />
+                <TextField
+                  label="Gross Pay"
+                  value={`₱${parseFloat(selectedPayroll.GrossPay || 0).toFixed(2)}`}
+                  InputProps={{ readOnly: true }}
+                />
+                <TextField
+                  label="Deductions"
+                  value={`₱${parseFloat(selectedPayroll.Deductions || 0).toFixed(2)}`}
+                  InputProps={{ readOnly: true }}
+                />
+                <TextField
+                  label="Net Pay"
+                  value={`₱${parseFloat(selectedPayroll.NetPay || 0).toFixed(2)}`}
+                  InputProps={{ readOnly: true }}
+                />
+                <TextField
+                  label="Status"
+                  value={selectedPayroll.Status || "—"}
+                  InputProps={{ readOnly: true }}
+                />
+              </Box>
+            )}
+          </DialogContent>        
+          <DialogActions>
+            <Button variant="contained" onClick={handlePrintPayslip}>
+              Print Payslip
+            </Button>
+            <Button variant="outlined" onClick={() => setViewPayrollOpen(false)}>
+              Close
+            </Button>
+          </DialogActions>      
+          </Dialog>
 
       {/* EDIT PAYROLL */}
       <Dialog

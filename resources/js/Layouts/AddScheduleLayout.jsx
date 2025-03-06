@@ -1,5 +1,4 @@
-// File: AddScheduleLayout.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Button,
@@ -18,17 +17,23 @@ import {
   useTheme,
   useMediaQuery,
   Alert,
+  Checkbox,
+  FormControlLabel,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import AddIcon from "@mui/icons-material/Add";
 import axios from "axios";
 import { route } from "ziggy-js";
 
-export default function AddScheduleLayout({ onClose, staffOptions = [], onSchedulesCreated }) {
+export default function AddScheduleLayout({
+  onClose,
+  staffOptions = [],
+  onSchedulesCreated,
+}) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
-  // Form state
+  // Basic form state
   const [staffID, setStaffID] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -36,14 +41,63 @@ export default function AddScheduleLayout({ onClose, staffOptions = [], onSchedu
   const [dynamicStart, setDynamicStart] = useState("");
   const [dynamicEnd, setDynamicEnd] = useState("");
 
+  // Toggles for auto-exclusion
+  const [excludeSaturdays, setExcludeSaturdays] = useState(false);
+  const [excludeSundays, setExcludeSundays] = useState(false);
+  const [excludeHolidays, setExcludeHolidays] = useState(false);
+
+  // Final date list => array of { date: 'YYYY-MM-DD', checked: true/false }
+  const [scheduleDates, setScheduleDates] = useState([]);
+
   // For server validation errors
   const [errors, setErrors] = useState({});
 
+  // 1) Generate the date list whenever date range or toggles change
+  useEffect(() => {
+    if (!dateFrom || !dateTo) {
+      setScheduleDates([]);
+      return;
+    }
+
+    const start = new Date(dateFrom);
+    const end = new Date(dateTo);
+    if (end < start) {
+      setScheduleDates([]);
+      return;
+    }
+
+    // Example "holiday" list. In real usage, you might fetch from your back end
+    const holidaySet = new Set(["2025-04-09", "2025-04-10"]);
+    // ^ Sample. Replace with your actual holiday data. Or fetch from an API.
+
+    const newDates = [];
+    let cursor = new Date(start);
+    while (cursor <= end) {
+      const iso = cursor.toISOString().split("T")[0];
+      const dayOfWeek = cursor.getDay(); // 0=Sun, 1=Mon,...6=Sat
+
+      // Check weekend skip
+      if (excludeSaturdays && dayOfWeek === 6) {
+        // skip
+      } else if (excludeSundays && dayOfWeek === 0) {
+        // skip
+      } else if (excludeHolidays && holidaySet.has(iso)) {
+        // skip
+      } else {
+        // include by default => checked = true
+        newDates.push({ date: iso, checked: true });
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    setScheduleDates(newDates);
+  }, [dateFrom, dateTo, excludeSaturdays, excludeSundays, excludeHolidays]);
+
+  // 2) handleSubmit => only send the final “checked” dates
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrors({}); // clear old errors
 
-    // Basic client checks
     if (!staffID || !dateFrom || !dateTo || !shiftType) {
       alert("Please fill in all required fields.");
       return;
@@ -53,30 +107,39 @@ export default function AddScheduleLayout({ onClose, staffOptions = [], onSchedu
       return;
     }
 
+    // Filter to only the dates the user left checked
+    const selectedDates = scheduleDates
+      .filter((dObj) => dObj.checked)
+      .map((dObj) => dObj.date);
+
+    if (!selectedDates.length) {
+      alert("No days selected — nothing to schedule!");
+      return;
+    }
+
     // Build the payload
     const payload = {
       StaffID: staffID,
-      dateFrom,
-      dateTo,
       shiftType,
+      // For dynamic shift
       startTime: dynamicStart,
       endTime: dynamicEnd,
+      // Instead of dateFrom/dateTo, we specifically pass the final chosen date array
+      selectedDates,
     };
 
     try {
-      // POST directly here => you can call your storeSchedules or bulkStoreSchedules
-      // For example: route('staff.schedules.bulkStore')
-      const response = await axios.post(route("staff.schedules.bulkStore"), payload);
+      // Suppose your back end has an endpoint that accepts `selectedDates` as an array
+      const response = await axios.post(route("staff.schedules.bulkStoreCustom"), payload);
 
       // If success => maybe call parent's onSchedulesCreated to refresh
       if (onSchedulesCreated) {
         onSchedulesCreated(response.data); // e.g. { message, schedules: [...] }
       }
-
       onClose();
     } catch (err) {
       if (err.response && err.response.status === 422) {
-        // Format: err.response.data.errors => { dateFrom: [...], ... }
+        // Format: err.response.data.errors => { fieldName: [...], ... }
         setErrors(err.response.data.errors || {});
       } else {
         console.error("Error creating schedules:", err);
@@ -86,7 +149,7 @@ export default function AddScheduleLayout({ onClose, staffOptions = [], onSchedu
   };
 
   return (
-    <Dialog open onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle sx={{ pb: 1 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h6" component="div">
@@ -129,10 +192,6 @@ export default function AddScheduleLayout({ onClose, staffOptions = [], onSchedu
                     </MenuItem>
                   ))}
                 </Select>
-                {/* If you wanted a small text below the Select for error: 
-                {errors.StaffID && (
-                  <Typography variant="caption" color="error">{errors.StaffID[0]}</Typography>
-                )} */}
               </FormControl>
             </Grid>
 
@@ -174,15 +233,9 @@ export default function AddScheduleLayout({ onClose, staffOptions = [], onSchedu
                 >
                   <MenuItem value="morning">Morning (5:30 AM - 2:30 PM)</MenuItem>
                   <MenuItem value="mid">Mid (10:00 AM - 7:00 PM)</MenuItem>
-                  <MenuItem value="evening">Evening (3:00 PM - 12:00 MN)</MenuItem>
+                  <MenuItem value="evening">Evening (3:00 PM - 11:59 PM)</MenuItem>
                   <MenuItem value="dynamic">Dynamic (Custom times)</MenuItem>
                 </Select>
-                {/* Optional error text */}
-                {errors.shiftType && (
-                  <Typography variant="caption" color="error">
-                    {errors.shiftType[0]}
-                  </Typography>
-                )}
               </FormControl>
             </Grid>
 
@@ -215,7 +268,69 @@ export default function AddScheduleLayout({ onClose, staffOptions = [], onSchedu
                 </Grid>
               </>
             )}
+
+            {/* Auto-Exclusion Toggles */}
+            <Grid item xs={12}>
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={excludeSaturdays}
+                      onChange={(e) => setExcludeSaturdays(e.target.checked)}
+                    />
+                  }
+                  label="Exclude Saturdays"
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={excludeSundays}
+                      onChange={(e) => setExcludeSundays(e.target.checked)}
+                    />
+                  }
+                  label="Exclude Sundays"
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={excludeHolidays}
+                      onChange={(e) => setExcludeHolidays(e.target.checked)}
+                    />
+                  }
+                  label="Exclude Holidays"
+                />
+              </Box>
+            </Grid>
           </Grid>
+
+          {/* Generated Date List => Let user uncheck single days */}
+          {scheduleDates.length > 0 && (
+            <Box sx={{ mt: 3, p: 2, border: "1px solid #ccc", borderRadius: 2, maxHeight: 300, overflowY: "auto" }}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                Select/Unselect Specific Dates:
+              </Typography>
+              {scheduleDates.map((dObj, idx) => (
+                <FormControlLabel
+                  key={dObj.date}
+                  control={
+                    <Checkbox
+                      checked={dObj.checked}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setScheduleDates((prev) => {
+                          const copy = [...prev];
+                          copy[idx] = { ...copy[idx], checked };
+                          return copy;
+                        });
+                      }}
+                    />
+                  }
+                  label={dObj.date}
+                  sx={{ display: "block" }}
+                />
+              ))}
+            </Box>
+          )}
         </Box>
       </DialogContent>
 

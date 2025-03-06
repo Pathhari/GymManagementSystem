@@ -513,7 +513,7 @@ Route::prefix('staff')->group(function () {
             Route::post('/', [StaffController::class, 'storeSchedule'])->name('staff.schedules.store');
             Route::put('/{id}', [StaffController::class, 'updateSchedule'])->name('staff.schedules.update');
             Route::delete('/{id}', [StaffController::class, 'destroySchedule'])->name('staff.schedules.destroy');
-            Route::get('/{id}/schedule-range', [StaffController::class, 'scheduleRange']);
+            Route::get('/{id}/schedule-range', [StaffController::class, 'scheduleRange'])->name('staff.schedules.range');
             Route::post('/bulk-store', [StaffController::class, 'bulkStoreSchedules'])->name('staff.schedules.bulkStore');
         });
 
@@ -562,6 +562,9 @@ Route::prefix('staff')->group(function () {
 Route::middleware('auth:admin')->prefix('admin')->group(function () {
     Route::get('staff', [StaffController::class, 'indexStaffJson'])->name('admin.staff');
 });
+
+Route::post('/staff/schedules/bulk-store-custom', [StaffController::class, 'bulkStoreCustom'])
+    ->name('staff.schedules.bulkStoreCustom');
 
 /*
 

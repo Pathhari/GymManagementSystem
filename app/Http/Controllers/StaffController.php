@@ -18,42 +18,45 @@ use Illuminate\Support\Arr;
 class StaffController extends Controller
 {   
 
-// In StaffController:
-public function staffDashboardInfo()
-{
-    $admin = auth('admin')->user();
-    $assignedBranchIDs = $admin->branches()->pluck('branches.BranchID')->toArray();
-    $staff = auth('staff')->user();
-    if (!$staff) {
-        return response()->json(['error' => 'Not logged in'], 401);
+    // In StaffController:
+    public function staffDashboardInfo()
+    {
+        $admin = auth('admin')->user();
+        $assignedBranchIDs = $admin->branches()->pluck('branches.BranchID')->toArray();
+        $staffUser = auth('staff')->user();
+        if (!$staffUser) {
+            return response()->json(['error' => 'Not logged in'], 401);
+        }
+
+        // Double check if the staff user’s BranchID is in the $assignedBranchIDs
+        if (! in_array($staffUser->BranchID, $assignedBranchIDs)) {
+            return response()->json(['error' => 'Unauthorized branch'], 403);
+        }
+
+        // Now fetch tasks for this single staff
+        $tasks = StaffTask::with('staff')
+            ->where('StaffID', $staffUser->StaffID)
+            ->orderBy('TaskID','desc')
+            ->get();
+
+        // Similarly for attendance
+        $attendance = Attendance::with('staff')
+            ->where('StaffID', $staffUser->StaffID)
+            ->orderBy('Date','desc')
+            ->get();
+
+        $schedules = StaffSchedule::with('staff')
+            ->where('StaffID', $staffUser->StaffID)
+            ->orderBy('ShiftDate','desc')
+            ->get();
+
+        return response()->json([
+            'staffId'    => $staffUser->StaffID,
+            'tasks'      => $tasks,
+            'attendance' => $attendance,
+            'schedule'   => $schedules,
+        ]);
     }
-
-    $staff = Staff::whereIn('BranchID', $assignedBranchIDs)->get();
-
-    // Return only tasks for this staff
-    $tasks = StaffTask::with('staff')
-        ->where('StaffID', $staff->StaffID)
-        ->orderBy('TaskID','desc')
-        ->get();
-
-    // Similarly filter attendance/schedules
-    $attendance = Attendance::with('staff')
-        ->where('StaffID', $staff->StaffID)
-        ->orderBy('Date','desc')
-        ->get();
-
-    $schedules = StaffSchedule::with('staff')
-        ->where('StaffID', $staff->StaffID)
-        ->orderBy('ShiftDate','desc')
-        ->get();
-
-    return response()->json([
-        'staffId'    => $staff->StaffID,
-        'tasks'      => $tasks,
-        'attendance' => $attendance,
-        'schedule'   => $schedules,
-    ]);
-}
 
     /**
      * Return a JSON list of all staff members,
@@ -243,86 +246,7 @@ public function staffDashboardInfo()
     /* ------------------------------------------------------------------
      * V. ATTENDANCE (Attendance)
      * ------------------------------------------------------------------ */
-
-     public function storeAttendance(Request $request)
-     {
-         // Validation
-         $data = $request->validate([
-             'StaffID'     => 'required|exists:staff,StaffID',
-             'Date'        => 'required|date',
-             'TimeIn'      => 'nullable|date_format:H:i',
-             'TimeOut'     => 'nullable|date_format:H:i|after:TimeIn',
-             'HoursWorked' => 'nullable|numeric|min:0',
-             'OvertimeHours' => 'nullable|numeric|min:0',
-         ]);
-     
-         // Create a new attendance (or optionally firstOrNew if you want to handle upsert logic)
-         $attendance = new Attendance();
-         $attendance->StaffID       = $data['StaffID'];
-         $attendance->Date          = $data['Date'];
-         $attendance->TimeIn        = $data['TimeIn'] ?? null;
-         $attendance->TimeOut       = $data['TimeOut'] ?? null;
-         $attendance->HoursWorked   = $data['HoursWorked'] ?? 0;
-         $attendance->OvertimeHours = $data['OvertimeHours'] ?? 0;
-         // Compute HoursWorked automatically if TimeIn and TimeOut are provided
-         if (!empty($attendance->TimeIn) && !empty($attendance->TimeOut)) {
-             $in  = strtotime($attendance->Date . ' ' . $attendance->TimeIn);
-             $out = strtotime($attendance->Date . ' ' . $attendance->TimeOut);
-             $attendance->HoursWorked = max(($out - $in) / 3600, 0);
-         }
-         $attendance->save();
-     
-         // Return the newly created record with staff relationship
-         $attendance->load('staff');
-     
-         return response()->json([
-             'message'    => 'Attendance created successfully.',
-             'attendance' => $attendance,
-         ], 201);
-     }
-     
-
-    /**
-     * Clock in/out or update an attendance record, return JSON.
-     */
-    public function clockInOut(Request $request)
-    {
-        $data = $request->validate([
-            // Must actually exist in staff table
-            'StaffID' => 'required|exists:staff,StaffID',
-            'Date'    => 'required|date',
-            // Accept "HH:mm:ss"
-            'TimeIn' => 'nullable|date_format:H:i',    // no seconds
-            'TimeOut' => 'nullable|date_format:H:i|after:TimeIn'
-            ]);
-
-        $attendance = Attendance::firstOrNew([
-            'StaffID' => $data['StaffID'],
-            'Date'    => $data['Date'],
-        ]);
-
-        if (isset($data['TimeIn'])) {
-            $attendance->TimeIn = $data['TimeIn'];
-        }
-        if (isset($data['TimeOut'])) {
-            $attendance->TimeOut = $data['TimeOut'];
-        }
-
-        if ($attendance->TimeIn && $attendance->TimeOut) {
-            $in  = strtotime($attendance->Date . ' ' . $attendance->TimeIn);
-            $out = strtotime($attendance->Date . ' ' . $attendance->TimeOut);
-            $attendance->HoursWorked = max(($out - $in) / 3600, 0);
-        }
-
-        $attendance->save();
-
-        return response()->json([
-            'message'    => 'Attendance updated.',
-            'attendance' => $attendance,
-        ]);
-    }
-
-    /**
+        /**
      * Return a JSON list of attendance records, including the staff relationship.
      */
     public function indexAttendance()
@@ -344,6 +268,127 @@ public function staffDashboardInfo()
         return response()->json($attendance);
     }
     
+
+    public function storeAttendance(Request $request)
+    {
+        $data = $request->validate([
+            'StaffID'       => 'required|exists:staff,StaffID',
+            'Date'          => 'required|date',
+            'TimeIn'        => 'nullable|date_format:H:i:s',
+            'TimeOut'       => 'nullable|date_format:H:i:s|after:TimeIn',
+            'HoursWorked'   => 'nullable|numeric|min:0',
+            'OvertimeHours' => 'nullable|numeric|min:0',
+        ]);
+    
+        $attendance = new Attendance();
+        $attendance->StaffID       = $data['StaffID'];
+        $attendance->Date          = $data['Date'];
+        $attendance->TimeIn        = $data['TimeIn'] ?? null;
+        $attendance->TimeOut       = $data['TimeOut'] ?? null;
+        $attendance->HoursWorked   = 0; // Default 0
+        $attendance->OvertimeHours = $data['OvertimeHours'] ?? 0;
+    
+        // If both TimeIn & TimeOut are present, compute raw hours
+        if (!empty($attendance->TimeIn) && !empty($attendance->TimeOut)) {
+            $in  = strtotime($attendance->Date.' '.$attendance->TimeIn);
+            $out = strtotime($attendance->Date.' '.$attendance->TimeOut);
+            $rawHours = max(($out - $in) / 3600, 0);
+    
+            // 1) Subtract break if the scheduled shift is >= 9 hrs
+            $schedule = StaffSchedule::where('StaffID', $attendance->StaffID)
+                ->where('ShiftDate', $attendance->Date)
+                ->first();
+            if ($schedule) {
+                if (in_array($schedule->shiftType, ['morning','mid','evening'])) {
+                    // Always subtract 1 hour
+                    $rawHours = max($rawHours - 1, 0);
+                }
+                else if ($schedule->shiftType === 'dynamic') {
+                    // Check if dynamic shift is ≥ 9 hours
+                    $shiftStart = strtotime($schedule->ShiftDate.' '.$schedule->ShiftStart);
+                    $shiftEnd   = strtotime($schedule->ShiftDate.' '.$schedule->ShiftEnd);
+                    $scheduledHrs = ($shiftEnd - $shiftStart) / 3600;
+                    if ($scheduledHrs >= 9) {
+                        $rawHours = max($rawHours - 1, 0);
+                    }
+                }
+            }
+    
+            // 2) Cap HoursWorked at 8 (no automatic OT)
+            $attendance->HoursWorked = min($rawHours, 8);
+        }
+    
+        $attendance->save();
+        $attendance->load('staff');
+    
+        return response()->json([
+            'message'    => 'Attendance created successfully.',
+            'attendance' => $attendance,
+        ], 201);
+    }
+
+     /**
+     * Clock in/out or update an attendance record, return JSON.
+     */
+    public function clockInOut(Request $request)
+    {
+        $data = $request->validate([
+            'StaffID' => 'required|exists:staff,StaffID',
+            'Date'    => 'required|date',
+            'TimeIn'  => 'nullable|date_format:H:i',
+            'TimeOut' => 'nullable|date_format:H:i|after:TimeIn'
+        ]);
+    
+        $attendance = Attendance::firstOrNew([
+            'StaffID' => $data['StaffID'],
+            'Date'    => $data['Date'],
+        ]);
+    
+        if (isset($data['TimeIn'])) {
+            $attendance->TimeIn = $data['TimeIn'];
+        }
+        if (isset($data['TimeOut'])) {
+            $attendance->TimeOut = $data['TimeOut'];
+        }
+    
+        // If we have both times, compute raw hours
+        if ($attendance->TimeIn && $attendance->TimeOut) {
+            $in  = strtotime($attendance->Date.' '.$attendance->TimeIn);
+            $out = strtotime($attendance->Date.' '.$attendance->TimeOut);
+            $rawHours = max(($out - $in) / 3600, 0);
+    
+            // Subtract break if scheduled shift ≥ 9 hrs
+            $schedule = StaffSchedule::where('StaffID', $attendance->StaffID)
+                ->where('ShiftDate', $attendance->Date)
+                ->first();
+    
+            if ($schedule) {
+                if (in_array($schedule->shiftType, ['morning','mid','evening'])) {
+                    $rawHours = max($rawHours - 1, 0);
+                } 
+                else if ($schedule->shiftType === 'dynamic') {
+                    $shiftStart = strtotime($schedule->ShiftDate.' '.$schedule->ShiftStart);
+                    $shiftEnd   = strtotime($schedule->ShiftDate.' '.$schedule->ShiftEnd);
+                    $scheduledHrs = ($shiftEnd - $shiftStart) / 3600;
+                    if ($scheduledHrs >= 9) {
+                        $rawHours = max($rawHours - 1, 0);
+                    }
+                }
+            }
+    
+            // Cap HoursWorked at 8 by default
+            $attendance->HoursWorked = min($rawHours, 8);
+        }
+    
+        $attendance->save();
+    
+        return response()->json([
+            'message'    => 'Attendance updated (capped at 8 paid hours).',
+            'attendance' => $attendance,
+        ]);
+    }
+    
+
     /**
      * Update attendance and return JSON.
      */
@@ -353,8 +398,8 @@ public function staffDashboardInfo()
 
         $data = $request->validate([
             'Date'          => 'required|date',
-            'TimeIn'        => 'nullable|date_format:H:i',
-            'TimeOut'       => 'nullable|date_format:H:i|after:TimeIn',
+            'TimeIn' => 'nullable|date_format:H:i:s',
+            'TimeOut' => 'nullable|date_format:H:i:s|after:TimeIn',
             'HoursWorked'   => 'nullable|numeric|min:0',
             'OvertimeHours' => 'nullable|numeric|min:0',
         ]);
@@ -422,27 +467,26 @@ public function staffDashboardInfo()
     /**
      * Return a JSON list of tasks, including staff relationship.
      */
-// Existing in StaffController:
-public function indexTasks()
-{
-    // If you're using Laravel’s 'auth:staff' guard, you can get the logged-in staff:
-    $staff = auth('staff')->user();
-    
-    // If staff is authenticated, filter tasks by staff->StaffID
-    // Or handle the case when $staff is null (like if admin is viewing all?)
-    if ($staff) {
-        $tasks = StaffTask::with('staff')
-            ->where('StaffID', $staff->StaffID)
-            ->orderBy('TaskDate','desc')
-            ->get();
-    } else {
-        // If no staff user, or if you allow admin, you can either return all or handle differently
-        $tasks = StaffTask::with('staff')->orderBy('TaskDate','desc')->get();
+    // Existing in StaffController:
+    public function indexTasks()
+    {
+        // If you're using Laravel’s 'auth:staff' guard, you can get the logged-in staff:
+        $staff = auth('staff')->user();
+        
+        // If staff is authenticated, filter tasks by staff->StaffID
+        // Or handle the case when $staff is null (like if admin is viewing all?)
+        if ($staff) {
+            $tasks = StaffTask::with('staff')
+                ->where('StaffID', $staff->StaffID)
+                ->orderBy('TaskDate','desc')
+                ->get();
+        } else {
+            // If no staff user, or if you allow admin, you can either return all or handle differently
+            $tasks = StaffTask::with('staff')->orderBy('TaskDate','desc')->get();
+        }
+
+        return response()->json($tasks);
     }
-
-    return response()->json($tasks);
-}
-
 
     /**
      * Store a new task (POST /staff/tasks), return JSON.
@@ -470,7 +514,7 @@ public function indexTasks()
             ], 201);
         }
 
-        public function updateTask(Request $request, $id)
+    public function updateTask(Request $request, $id)
         {
             $task = StaffTask::findOrFail($id);
             
@@ -677,7 +721,7 @@ public function indexTasks()
                 break;
             case 'evening':
                 $shiftStart = '15:00';
-                $shiftEnd   = '00:00'; // or '23:59' if you prefer
+                $shiftEnd   = '23:59'; 
                 break;
             case 'dynamic':
                 $shiftStart = $data['startTime'];
@@ -711,6 +755,65 @@ public function indexTasks()
             'schedules' => $created,
         ]);
     }
+
+    public function bulkStoreCustom(Request $request)
+    {
+        // 1) Validate the incoming data
+        $data = $request->validate([
+            'StaffID'       => 'required|exists:staff,StaffID',
+            'shiftType'     => 'required|string|in:morning,mid,evening,dynamic',
+            'startTime'     => 'nullable|date_format:H:i',
+            'endTime'       => 'nullable|date_format:H:i|after:startTime',
+            'selectedDates' => 'required|array|min:1',
+            'selectedDates.*' => 'date_format:Y-m-d',
+        ]);
+    
+        // 2) Convert shiftType => $shiftStart/$shiftEnd
+        $shiftStart = null;
+        $shiftEnd   = null;
+        switch ($data['shiftType']) {
+            case 'morning':
+                $shiftStart = '05:30';
+                $shiftEnd   = '14:30';
+                break;
+            case 'mid':
+                $shiftStart = '10:00';
+                $shiftEnd   = '19:00';
+                break;
+            case 'evening':
+                $shiftStart = '15:00';
+                $shiftEnd   = '23:59';
+                break;
+            case 'dynamic':
+                $shiftStart = $data['startTime'];
+                $shiftEnd   = $data['endTime'];
+                break;
+        }
+    
+        // 3) Create each schedule individually
+        $createdRecords = [];
+        foreach ($data['selectedDates'] as $date) {
+            // Use Eloquent create() so we can get the auto-increment ID:
+            $sched = \App\Models\StaffSchedule::create([
+                'StaffID'    => $data['StaffID'],
+                'ShiftDate'  => $date,
+                'ShiftStart' => $shiftStart,
+                'ShiftEnd'   => $shiftEnd,
+            ]);
+    
+            // Optionally load the 'staff' relationship if you want
+            // $sched->load('staff');
+    
+            $createdRecords[] = $sched;
+        }
+    
+        // 4) Return the newly created schedules (each has ScheduleID)
+        return response()->json([
+            'message'   => 'Custom schedules created successfully.',
+            'schedules' => $createdRecords,
+        ], 201);
+    }
+    
 
     /**
      * Delete a schedule, return JSON.
@@ -777,40 +880,41 @@ public function indexTasks()
         $totalLateDeductions = 0; // We'll accumulate the tardiness penalty here
     
         foreach ($attendances as $att) {
-            // a) Regular + Overtime
-            $hrs = $att->HoursWorked ?: 0;
-            if ($hrs > 8) {
-                $totalRegularHours += 8;
-                $totalOvertimeHours += ($hrs - 8);
-            } else {
-                $totalRegularHours += $hrs;
-            }
-    
-            // b) Check if staff was late
-            //    10-min grace => 1 peso/min after that
-            //    We only do this if there's a matching schedule for that date
-            $schedule = $schedules->get($att->Date); // or format to 'Y-m-d' if needed
+            $hrs   = $att->HoursWorked ?: 0;
+            // 1) Regular hours is min(HoursWorked, 8)
+            $regular = min($hrs, 8);
+        
+            // 2) Overtime is attendance->OvertimeHours, which manager sets
+            //    But we also clamp it so it can’t exceed the total hours minus 8
+            //    in case the manager puts something off by mistake.
+            $approvedOT = $att->OvertimeHours ?: 0;
+            // If HoursWorked is only 7, the staff can’t have 3 OT hours
+            // so we clamp it to the portion beyond 8
+            $possibleOT = max($hrs - 8, 0);
+            $ot = min($approvedOT, $possibleOT);
+        
+            $totalRegularHours  += $regular;
+            $totalOvertimeHours += $ot;
+        
+            // 3) Check for lateness (10-min grace, 1 peso per min beyond that)
+            $schedule = $schedules->get($att->Date);
             if ($schedule && $att->TimeIn) {
-                // SHIFT START
-                // e.g. 2025-03-10 + '05:30'
-                $shiftStartStr = $schedule->ShiftDate . ' ' . $schedule->ShiftStart; 
+                $shiftStartStr = $schedule->ShiftDate . ' ' . $schedule->ShiftStart;
                 $shiftStart    = strtotime($shiftStartStr);
-    
+        
                 $timeInStr = $att->Date . ' ' . $att->TimeIn;
                 $timeIn    = strtotime($timeInStr);
-    
+        
                 // Grace period => shiftStart + 10 min
-                $graceEnd = $shiftStart + (10 * 60); // in seconds
-    
+                $graceEnd = $shiftStart + (10 * 60);
                 if ($timeIn > $graceEnd) {
-                    $diffSec = $timeIn - $graceEnd;
+                    $diffSec     = $timeIn - $graceEnd;
                     $lateMinutes = (int) floor($diffSec / 60);
-                    $penalty = $lateMinutes * 1; // 1 peso per minute
+                    $penalty     = $lateMinutes * 1; // 1 peso per minute
                     $totalLateDeductions += $penalty;
                 }
             }
-        }
-    
+        }    
         // c) Now we have total hours + totalLateDeductions
         $grossPay = ($totalRegularHours * $hourlyRate)
                   + ($totalOvertimeHours * $overtimeRate);
@@ -841,9 +945,7 @@ public function indexTasks()
         ], 201);
     }
     
-    
-    
-    /**
+        /**
      * Return JSON list of payrolls, including staff relationship.
      */
     // In StaffController.php (or wherever indexPayroll is defined)

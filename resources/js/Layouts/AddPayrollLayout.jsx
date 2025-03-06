@@ -16,9 +16,9 @@ const initialPayroll = {
   StaffID: "",
   StartDate: "",
   EndDate: "",
-  Deductions: "",
-  GrossPay: "",
-  NetPay: "",
+  Deductions: "",   // user-typed only
+  GrossPay: "",     // computed
+  NetPay: "",       // computed
   GeneratedDate: "",
   Status: "",
 };
@@ -40,18 +40,20 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   // ─────────────────────────────────────────────────────────────────
-  // A) Fetch Attendance
+  // A) Fetch Attendance for Staff + Date Range
   // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const { StaffID, StartDate, EndDate } = payrollData;
     setAttendanceFetched(false);
 
+    // Reset if missing fields
     if (!StaffID || !StartDate || !EndDate) {
       setAttendanceRecords([]);
       setNoAttendanceMsg("");
       return;
     }
 
+    // Validate date order
     const startObj = new Date(StartDate);
     const endObj = new Date(EndDate);
     if (endObj < startObj) {
@@ -60,9 +62,7 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
       return;
     }
 
-    // *** Make sure your URL matches the route definition:
-    // e.g. GET /staff/{staffID}/attendance-range
-    // Here we do `/staff/${StaffID}/attendance-range`
+    // Example: GET /staff/{StaffID}/attendance-range?start=YYYY-MM-DD&end=YYYY-MM-DD
     axios
       .get(`/staff/${StaffID}/attendance-range`, {
         params: { start: StartDate, end: EndDate },
@@ -71,7 +71,6 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
         const data = res.data;
         setAttendanceRecords(data);
         setAttendanceFetched(true);
-
         if (!data.length) {
           setNoAttendanceMsg("No attendance found in that date range.");
         } else {
@@ -86,18 +85,16 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
   }, [payrollData.StaffID, payrollData.StartDate, payrollData.EndDate]);
 
   // ─────────────────────────────────────────────────────────────────
-  // B) Fetch Schedules
+  // B) Fetch Schedules for Staff + Date Range
   // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const { StaffID, StartDate, EndDate } = payrollData;
-
     if (!StaffID || !StartDate || !EndDate) {
       setScheduleRecords([]);
       return;
     }
 
-    // *** Adjust the URL to your actual route
-    // e.g. GET /staff/schedules/{StaffID}/schedule-range
+    // Example: GET /staff/schedules/{StaffID}/schedule-range?start=YYYY-MM-DD&end=YYYY-MM-DD
     axios
       .get(`/staff/schedules/${StaffID}/schedule-range`, {
         params: { start: StartDate, end: EndDate },
@@ -112,76 +109,72 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
   }, [payrollData.StaffID, payrollData.StartDate, payrollData.EndDate]);
 
   // ─────────────────────────────────────────────────────────────────
-  // C) Calculate Late Deduction + Net Pay
+  // C) Compute GrossPay & NetPay once we have attendance & schedules
   // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!attendanceFetched) return;
-
+    console.log("Calculating Net Pay effect fired", {
+      attendanceFetched,
+      scheduleRecords,
+    });
+    if (!attendanceFetched || !scheduleRecords.length) return;
+  
     // 1) Identify staff => get rates
     const selectedStaff = staffOptions.find(
       (s) => s.value === payrollData.StaffID
     );
     if (!selectedStaff) return;
-
+  
     const hourlyRate = selectedStaff.hourlyRate || 0;
     const overtimeRate = selectedStaff.overtimeRate || 0;
-
+  
     let totalRegularHours = 0;
     let totalOTHours = 0;
-    let totalLateDeductions = 0; // in pesos
-
-    // 2) For each attendance
+    let totalLateDeductions = 0;
+  
+    // 2) For each attendance, accumulate hours
     attendanceRecords.forEach((att) => {
-      const hrs = att.HoursWorked || 0;
-
-      // Regular vs OT
-      if (hrs > 8) {
-        totalRegularHours += 8;
-        totalOTHours += hrs - 8;
-      } else {
-        totalRegularHours += hrs;
-      }
-
-      // Check schedule for that day
-      const schedule = scheduleRecords.find(
-        (sc) => sc.ShiftDate === att.Date
-      );
+      // parse the strings
+      const regularHrs = parseFloat(att.HoursWorked) || 0;
+      const otHrs = parseFloat(att.OvertimeHours) || 0;
+    
+      totalRegularHours += regularHrs;
+      totalOTHours += otHrs;
+    
+      // Check lateness if needed
+      const schedule = scheduleRecords.find((sc) => sc.ShiftDate === att.Date);
       if (!schedule || !att.TimeIn) return;
-
+  
       try {
-        const shiftStart = new Date(
-          `${schedule.ShiftDate}T${schedule.ShiftStart}`
-        );
+        const shiftStart = new Date(`${schedule.ShiftDate}T${schedule.ShiftStart}`);
         const timeIn = new Date(`${att.Date}T${att.TimeIn}`);
-
-        // 10-min grace
         const graceEnds = new Date(shiftStart.getTime() + 10 * 60000);
         if (timeIn > graceEnds) {
           const diffMs = timeIn - graceEnds;
           const lateMins = Math.floor(diffMs / 60000);
-          totalLateDeductions += lateMins; // 1 peso per minute
+          totalLateDeductions += lateMins;
         }
       } catch (err) {
         console.warn("Error computing late deduction:", err);
       }
     });
-
-    // 3) Compute gross
-    const grossPay =
-      totalRegularHours * hourlyRate + totalOTHours * overtimeRate;
-
-    // Combine user-typed + lateness
-    const userDeductions = Number(payrollData.Deductions) || 0;
-    const combined = userDeductions + totalLateDeductions;
-    const netPay = grossPay - combined;
-
-    // Update state
+  
+    // 3) Compute gross pay
+    const gross = totalRegularHours * hourlyRate + totalOTHours * overtimeRate;
+  
+    // 4) Deductions
+    let userDeductions = Number(payrollData.Deductions);
+    if (isNaN(userDeductions)) userDeductions = 0; 
+    const net = gross - (userDeductions + totalLateDeductions);
+  
+    // 5) **Safely** convert to string
+    //    Use Number.isFinite(...) to avoid calling .toFixed() on NaN.
+    const safeGross = Number.isFinite(gross) ? gross.toFixed(2) : "0.00";
+    const safeNet = Number.isFinite(net) ? net.toFixed(2) : "0.00";
+  
     setPayrollData((prev) => ({
       ...prev,
-      GrossPay: String(grossPay),
-      // If you want to store final total in "Deductions", do it here
-      // Deductions: combined,
-      NetPay: String(netPay),
+      GrossPay: safeGross,
+      NetPay: safeNet,
     }));
   }, [
     attendanceRecords,
@@ -193,7 +186,7 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
   ]);
 
   // ─────────────────────────────────────────────────────────────────
-  // D) Submit
+  // D) Handlers
   // ─────────────────────────────────────────────────────────────────
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -204,39 +197,40 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
     e.preventDefault();
     setErrors({});
 
-    // Must have staff
+    // 1) Validate staff
     const selectedStaff = staffOptions.find(
       (s) => s.value === payrollData.StaffID
     );
     if (!selectedStaff) {
-      setErrors({ StaffID: "No matching staff found." });
+      setErrors({ StaffID: "No matching staff found or staff is required." });
       return;
     }
 
-    // Must have attendance
+    // 2) Validate attendance
     if (!attendanceRecords.length) {
-      alert("Cannot create payroll: No attendance in this range.");
+      alert("Cannot create payroll: No attendance in this date range.");
       return;
     }
 
-    // Final payload
+    // 3) Final payload
     const payload = {
       StaffID: selectedStaff.value,
       StartDate: payrollData.StartDate,
       EndDate: payrollData.EndDate,
-      // Only the user-typed deduction (not the lateness)
+      // Only the user-typed Deductions
       Deductions: Number(payrollData.Deductions) || 0,
       GrossPay: Number(payrollData.GrossPay) || 0,
       NetPay: Number(payrollData.NetPay) || 0,
       GeneratedDate: payrollData.GeneratedDate || null,
       Status: payrollData.Status || "Pending",
+      // If you want to attach staff info for the store response
       staff: {
         StaffID: selectedStaff.value,
         FullName: selectedStaff.label,
       },
     };
 
-    // Let the parent do axios.post(route('staff.payroll.store'), payload)
+    // Let the parent handle the actual axios POST
     onAdd(payload);
     onClose();
   };
@@ -359,7 +353,7 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
                 />
               </Grid>
 
-              {/* Gross / Net (auto) */}
+              {/* GrossPay (computed) */}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -372,9 +366,12 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
                     startAdornment: (
                       <InputAdornment position="start">₱</InputAdornment>
                     ),
+                    readOnly: true, // If you want to lock it from user editing
                   }}
                 />
               </Grid>
+
+              {/* NetPay (computed) */}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -387,6 +384,7 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
                     startAdornment: (
                       <InputAdornment position="start">₱</InputAdornment>
                     ),
+                    readOnly: true, // If you want to lock it as well
                   }}
                 />
               </Grid>
@@ -454,7 +452,8 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
                   !payrollData.NetPay ||
                   payrollData.NetPay < 0 ||
                   !payrollData.GeneratedDate ||
-                  !payrollData.Status
+                  !payrollData.Status ||
+                  !!noAttendanceMsg // block submit if there's an error msg
                 }
               >
                 Submit Payroll
