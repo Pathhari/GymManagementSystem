@@ -472,11 +472,7 @@ Route::prefix('booking')->group(function() {
     });
     
 
-
-
 use App\Http\Controllers\StaffController;
-
-
 
 // Everything under /staff
 Route::prefix('staff')->group(function () {
@@ -778,4 +774,9 @@ use App\Http\Controllers\FacilityController;
         Route::get('attendances-all', [MonthlyClientController::class, 'indexAllAttendances']);
         Route::post('monthly-clients/{id}/attendances', [MonthlyClientController::class, 'storeAttendance']);
     });
+    
+
+    use App\Http\Controllers\ReportsController;
+
+    Route::get('/reports', [ReportsController::class, 'index']);
     
