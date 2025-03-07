@@ -6,6 +6,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;  // <— instead of Mode
 use Illuminate\Notifications\Notifiable;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Models\Activity as SpatieActivity;
 
 class Staff extends Authenticatable
 {
@@ -35,10 +36,27 @@ class Staff extends Authenticatable
     {
         return LogOptions::defaults()
             ->useLogName('staff')
-            ->setDescriptionForEvent(fn (string $eventName) => "Staff {$eventName}")
+            ->setDescriptionForEvent(fn ($eventName) => "Staff {$eventName}")
             ->logFillable()
             ->logOnlyDirty();
     }
+
+    /**
+     * If staff belongs to multiple branches via pivot, 
+     * pick one or store an array. Example: store the first pivot's ID.
+     */
+    public function tapActivity(SpatieActivity $activity, string $eventName)    
+    {
+        $branchId = null;
+        if ($this->relationLoaded('branches') && $this->branches->count() > 0) {
+            $branchId = $this->branches->first()->BranchID;
+        }
+        // otherwise, if staff has a single 'BranchID' column, do:
+        // $branchId = $this->BranchID;
+
+        $activity->properties = $activity->properties->put('branch_id', $branchId);
+    }
+
     /**
      * The attributes that should be hidden for arrays.
      */

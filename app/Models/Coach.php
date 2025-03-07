@@ -52,4 +52,13 @@ class Coach extends Model
         return false;
     }
 
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('coach')
+            ->setDescriptionForEvent(fn ($eventName) => "Coach {$eventName}")
+            ->logFillable()
+            ->logOnlyDirty();
+    }
+
 }

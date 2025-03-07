@@ -935,12 +935,9 @@ export default function PaymentsAndInvoices() {
   
   // ==================== JSX Return ====================
   return (
-    <Box sx={{ p: 4 }}>
+    <Box sx={{ p: 3 }}>
       {/* Date and Branch Filter Section */}
       <Paper sx={{ p: 3, mb: 2, boxShadow: 3, borderRadius: 2 }}>
-        <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
-          Filter Records By Date
-        </Typography>
         <Grid container spacing={2}>
           {/* FROM DATE */}
           <Grid item xs={12} sm={6} md={3}>

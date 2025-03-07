@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Models\Activity as SpatieActivity;
 
 class Member extends Model
 {   
@@ -30,24 +31,34 @@ class Member extends Model
         'MemberStatusID',
     ];
 
+        // Relationship: A member started at one branch
+        public function startedBranch()
+        {
+            // references: 'StartedBranchID' on this model => 'BranchID' on branches table
+            return $this->belongsTo(Branch::class, 'StartedBranchID', 'BranchID');
+        }
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->useLogName('member')                    // or "Membership"
-            ->setDescriptionForEvent(function(string $eventName) {
-                return "Member record has been {$eventName}";
-            })
-            ->logFillable()                           // logs changes to fillable attributes
-            ->logOnlyDirty();                         // only store changed attributes
+            ->useLogName('member')
+            ->setDescriptionForEvent(fn ($eventName) => "Member record has been {$eventName}")
+            ->logFillable()
+            ->logOnlyDirty();
     }
 
-
-    // Relationship: A member started at one branch
-    public function startedBranch()
+    /**
+     * This is called right before the activity record is saved.
+     * We add 'branch_id' into properties from $this->StartedBranchID.
+     */
+    public function tapActivity(SpatieActivity $activity, string $eventName)    
     {
-        // references: 'StartedBranchID' on this model => 'BranchID' on branches table
-        return $this->belongsTo(Branch::class, 'StartedBranchID', 'BranchID');
+        $branchId = $this->StartedBranchID ?? null; 
+        // Put it in the properties JSON
+        $activity->properties = $activity->properties->put('branch_id', $branchId);
     }
+
+
     // Relationship: A member belongs to a membership plan
     public function plan()
     {

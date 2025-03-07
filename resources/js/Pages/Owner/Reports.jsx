@@ -491,7 +491,7 @@ const Reports = () => {
           >
             <PersonAddIcon sx={{ fontSize: 40, color: "#e53935", mr: 2 }} />
             <CardContent>
-              <Typography variant="h6">New Members</Typography>
+              <Typography variant="h6">Total Members</Typography>
               <Typography variant="h5">
                 {membershipGrowth.reduce((sum, item) => sum + item.count, 0)}
               </Typography>
@@ -512,7 +512,7 @@ const Reports = () => {
           >
             <FavoriteIcon sx={{ fontSize: 40, color: "#43a047", mr: 2 }} />
             <CardContent>
-              <Typography variant="h6">Attendance Rate</Typography>
+              <Typography variant="h6">Staff Attendance Rate</Typography>
               <Typography variant="h5">{attendanceRate}</Typography>
             </CardContent>
           </Card>

@@ -1744,7 +1744,7 @@ useEffect(() => {
         </IconButton>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
-            Owner Dashboard
+            Dashboard
           </Typography>
           <Typography variant="body2">Key performance overview and quick actions</Typography>
         </Box>
