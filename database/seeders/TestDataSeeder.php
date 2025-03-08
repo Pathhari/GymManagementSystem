@@ -69,7 +69,7 @@ class TestDataSeeder extends Seeder
         }
         // 2) Owners 
         Owner::create([
-            'name'     => 'Juan dela Cruz (Owner)',
+            'name'     => 'Owner',
             'email'    => 'owner@example.com',
             'password' => Hash::make('owner123'),
         ]);

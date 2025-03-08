@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('member_visits', function (Blueprint $table) {
             $table->id('VisitID');
-            $table->unsignedBigInteger('BranchID')->nullable(); 
+            $table->unsignedBigInteger('BranchID');
             $table->foreign('BranchID')->references('BranchID')->on('branches');
             $table->unsignedBigInteger('MemberID');
             $table->date('VisitDate');

@@ -26,23 +26,26 @@ import {
   Tab,
   InputAdornment,
 } from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
 import { DataGrid } from "@mui/x-data-grid";
 
-// MUI Icons
-import CampaignIcon from "@mui/icons-material/Campaign";
-import EmailIcon from "@mui/icons-material/Email";
-import ForumIcon from "@mui/icons-material/Forum";
+// ===== MUI Icons =====
+import CampaignIcon from "@mui/icons-material/Campaign"; // Announcements
+import EmailIcon from "@mui/icons-material/Email";       // Mailjet
+import ForumIcon from "@mui/icons-material/Forum";       // Semaphore
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import SendIcon from "@mui/icons-material/Send";
 
-// DataGrid columns
+// ---------- DataGrid columns for Mailjet and Semaphore ----------
 const mailjetColumns = [
   { field: "MemberID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Email", headerName: "Email", width: 200 },
   { field: "MemberStatusID", headerName: "StatusID", width: 100 },
+  // If you want to see the date in the grid:
+  // { field: "MembershipEndDate", headerName: "Ends On", width: 140 },
 ];
 
 const semaphoreColumns = [
@@ -96,7 +99,15 @@ export default function Notifications() {
   const [semaphoreSenderName, setSemaphoreSenderName] = useState("");
   const [semaphoreFilterStatus, setSemaphoreFilterStatus] = useState("All");
 
-  // Hard-coded statuses
+  // Staff Personal Notification
+  const [staffMembers, setStaffMembers] = useState([]);
+  const [selectedStaffIDs, setSelectedStaffIDs] = useState([]);
+  const [staffNotificationSubject, setStaffNotificationSubject] = useState("");
+  const [staffNotificationMessage, setStaffNotificationMessage] = useState("");
+  const [staffSender, setStaffSender] = useState("admin");
+  const [staffNotifications, setStaffNotifications] = useState([]);
+
+  // Member Statuses (Hard-coded statuses: 1=ACTIVE, 2=FROZEN, 3=ON-HOLD, 4=TERMINATED, 5=EXPIRED, 6=NEW MEMBER)
   const [memberStatuses, setMemberStatuses] = useState([]);
 
   useEffect(() => {
@@ -104,7 +115,6 @@ export default function Notifications() {
     loadAllMembersMailjet();
     loadAllMembersSemaphore();
     loadMemberStatuses();
-    loadStaffList(); // <--- Load staff for staff-specific announcements
   }, []);
 
   const loadAnnouncements = async () => {
@@ -148,18 +158,6 @@ export default function Notifications() {
     setMemberStatuses(statuses);
   };
 
-  // ---------------- LOAD STAFF LIST FOR STAFF ANNOUNCEMENTS ---------------
-  const loadStaffList = async () => {
-    try {
-      // Adjust this endpoint if necessary
-      const response = await axios.get("/staff");
-      // e.g. if response.data is an array of staff, set it:
-      setStaffList(response.data || []);
-    } catch (error) {
-      console.error("Failed to load staff list:", error);
-    }
-  };
-
   // ===================== ANNOUNCEMENTS =====================
   const handleAddAnnouncement = async () => {
     if (!newTopic.trim() || !newMessage.trim()) {
@@ -184,7 +182,6 @@ export default function Notifications() {
     const lines = announcement.Message.split("\n");
     const rawTopic = lines[0].replace("Topic: ", "").trim();
     const rawMsg = lines.slice(1).join("\n").trim();
-
     setEditData({
       id: announcement.NotificationID,
       topic: rawTopic,
@@ -287,7 +284,6 @@ export default function Notifications() {
     ) {
       return;
     }
-
     try {
       const response = await axios.post("/notifications/send-mailjet-template", {
         templateId: Number(templateId),
@@ -313,17 +309,19 @@ export default function Notifications() {
     next7.setDate(next7.getDate() + 7); // 7 days from now
 
     return allMembers.filter((m) => {
-      // Filter by status
+      // 1) Check status
       if (
         mailjetFilterStatus !== "All" &&
         String(m.MemberStatusID) !== mailjetFilterStatus
       ) {
         return false;
       }
-      // Filter by “Expiring in 7 days”
+
+      // 2) Check if “Expiring in 7 days” is toggled
       if (mailjetShowExpiring) {
         if (!m.MembershipEndDate) return false;
         const endDateObj = new Date(m.MembershipEndDate);
+        // Ensure we only take those strictly after "today" but on/before "next7"
         if (endDateObj <= today) return false;
         if (endDateObj > next7) return false;
       }
@@ -388,22 +386,6 @@ export default function Notifications() {
     return String(m.MemberStatusID) === semaphoreFilterStatus;
   });
 
-  const handleSendExpiringReminder = async () => {
-    try {
-      const res = await axios.get("/notifications/send-expiring-reminder");
-      if (res.data.status === "success") {
-        alert("Expiry reminder emails sent!");
-      } else if (res.data.status === "no-action") {
-        alert("No members expiring in 7 days.");
-      } else {
-        alert("An error occurred. Please check the logs.");
-      }
-    } catch (error) {
-      console.error("Failed to send expiring reminder:", error);
-      alert("Failed to send expiry reminder.");
-    }
-  };
-
   // ===================== RENDER =====================
   return (
     <Box sx={{ p: 4 }}>
@@ -418,12 +400,11 @@ export default function Notifications() {
         <Tab icon={<ForumIcon />} label="Semaphore" />
       </Tabs>
 
-      {/* ---------------------- TAB 0: Announcements ---------------------- */}
+      {/* ---------------------- TAB 0: Announcements & Staff Notifications ---------------------- */}
       {activeTab === 0 && (
         <Grid container spacing={3}>
-          {/* ==================== Add a General Announcement ==================== */}
           <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2, mb: 2 }}>
+            <Paper sx={{ p: 2 }}>
               <Typography variant="h6">Add Announcement</Typography>
               <Stack spacing={2} sx={{ mt: 1 }}>
                 <TextField
@@ -456,64 +437,8 @@ export default function Notifications() {
                 </Button>
               </Stack>
             </Paper>
-            {/* =============== STAFF-SPECIFIC ANNOUNCEMENT MODULE =============== */}
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                Send Announcement to Specific Staff
-              </Typography>
-              <Stack spacing={2} sx={{ mb: 2 }}>
-                <TextField
-                  label="Subject"
-                  fullWidth
-                  value={staffSubject}
-                  onChange={(e) => setStaffSubject(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <CampaignIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <TextField
-                  label="Message"
-                  fullWidth
-                  multiline
-                  rows={2}
-                  value={staffMessage}
-                  onChange={(e) => setStaffMessage(e.target.value)}
-                />
-              </Stack>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Select Staff to Receive This Announcement
-              </Typography>
-              <div style={{ width: "100%", height: 300, marginBottom: 16 }}>
-              <DataGrid
-                  rows={staffList}
-                  columns={staffColumns}
-                  getRowId={(row) => row.StaffID}
-                  checkboxSelection
-                  rowSelectionModel={selectedStaff} // <-- add this
-                  onRowSelectionModelChange={(newSelection) => {
-                    const numericIDs = newSelection.map(Number);
-                    handleStaffSelection(numericIDs);
-                  }}
-                  pageSize={5}
-                  rowsPerPageOptions={[5, 10]}
-                />
-              </div>
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<SendIcon />}
-                onClick={handleSendStaffAnnouncement}
-              >
-                Send to Staff
-              </Button>
-            </Paper>
           </Grid>
 
-          {/* ==================== Display Recent Announcements ==================== */}
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 2, height: "100%" }}>
               <Typography variant="h6" gutterBottom>
@@ -586,24 +511,23 @@ export default function Notifications() {
             </a>
           </Typography>
 
-          {!mailjetShowExpiring && (
-            <Stack spacing={2} sx={{ mb: 2, maxWidth: 400 }}>
-              <TextField
-                label="Mailjet Template ID"
-                fullWidth
-                value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <EmailIcon />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Stack>
-          )}
+          <Stack spacing={2} sx={{ mb: 2, maxWidth: 400 }}>
+            <TextField
+              label="Mailjet Template ID"
+              fullWidth
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <EmailIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Stack>
 
+          {/* Filter UI: status + “expiring soon” checkbox */}
           <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
             <Box sx={{ minWidth: 200 }}>
               <FormControl fullWidth>
@@ -632,7 +556,6 @@ export default function Notifications() {
               label="Expiring in 7 days"
             />
           </Box>
-
           <Typography variant="subtitle1" sx={{ mb: 1 }}>
             Select Members to Receive the Template
           </Typography>
@@ -649,7 +572,6 @@ export default function Notifications() {
               rowsPerPageOptions={[5, 10]}
             />
           </div>
-
           <Box sx={{ mt: 2 }}>
             <Button
               variant="contained"
@@ -674,7 +596,6 @@ export default function Notifications() {
           <Typography variant="h6" gutterBottom>
             Send SMS via Semaphore
           </Typography>
-
           <Box sx={{ mb: 2, maxWidth: 300 }}>
             <FormControl fullWidth>
               <InputLabel>Filter by Status</InputLabel>
@@ -691,7 +612,6 @@ export default function Notifications() {
               </Select>
             </FormControl>
           </Box>
-
           <Typography variant="subtitle1" sx={{ mb: 1 }}>
             (Optional) Select members to pull their phone numbers
           </Typography>
@@ -710,7 +630,6 @@ export default function Notifications() {
               rowsPerPageOptions={[5, 10]}
             />
           </div>
-
           <Button
             variant="outlined"
             sx={{ mb: 2 }}
@@ -719,7 +638,6 @@ export default function Notifications() {
           >
             Auto-Fill from Selected
           </Button>
-
           <Stack spacing={2} sx={{ maxWidth: 600 }}>
             <TextField
               label='Recipient Number(s)'
@@ -757,7 +675,6 @@ export default function Notifications() {
               value={semaphoreSenderName}
               onChange={(e) => setSemaphoreSenderName(e.target.value)}
             />
-
             <Button
               variant="contained"
               color="primary"

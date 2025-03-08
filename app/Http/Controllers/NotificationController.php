@@ -293,29 +293,42 @@ public function destroyAnnouncement($id)
  */
 public function sendStaffNotification(Request $request)
 {
-    // If you have actual staff records, you'd typically validate staff IDs exist.
-    // We'll keep it direct for now.
     $data = $request->validate([
         'staffIds' => 'required|array',
         'subject'  => 'required|string|max:100',
         'message'  => 'required|string|max:2000',
     ]);
 
-    // For each staff ID, create a notification row
-    // or do email/SMS integration if you prefer
+    // Determine sender's name from authenticated user (adjust logic as needed)
+    $senderName = 'System';
+    if ($user = auth('staff')->user() ?? auth('admin')->user() ?? auth('owner')->user()) {
+        $senderName = $user->name;
+    }
+
     foreach ($data['staffIds'] as $staffId) {
         Notification::create([
             'MemberID'           => null,
             'EventTrigger'       => 'StaffNotice',
-            'Message'            => "Subject: {$data['subject']}\n{$data['message']}",
+            'Subject'            => $data['subject'],           // Save subject
+            'Message'            => $data['message'],           // Save message separately
+            'Sender'             => $senderName,                // Save sender's name
             'NotificationMethod' => 'Internal',
             'SentDate'           => now(),
             'Status'             => 'Sent',
         ]);
     }
 
-    return response()->json(['message' => 'Staff notifications sent.'], 200);
+    return response()->json(['status' => 'success', 'message' => 'Staff notifications sent.'], 200);
 }
+
+public function getStaffNotifications(Request $request)
+{
+    $notifications = Notification::where('EventTrigger', 'StaffNotice')
+                        ->orderBy('NotificationID', 'desc')
+                        ->get();
+    return response()->json($notifications);
+}
+
 
 
 

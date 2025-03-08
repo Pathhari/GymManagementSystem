@@ -18,37 +18,34 @@ use Illuminate\Support\Arr;
 class StaffController extends Controller
 {   
 
-    // In StaffController:
-    public function staffDashboardInfo()
-    {
-        $admin = auth('admin')->user();
-        $assignedBranchIDs = $admin->branches()->pluck('branches.BranchID')->toArray();
-        $staffUser = auth('staff')->user();
-        if (!$staffUser) {
-            return response()->json(['error' => 'Not logged in'], 401);
-        }
+// In StaffController:
+public function staffDashboardInfo()
+{
+    $admin = auth('admin')->user();
+    $assignedBranchIDs = $admin->branches()->pluck('branches.BranchID')->toArray();
+    $staff = auth('staff')->user();
+    if (!$staff) {
+        return response()->json(['error' => 'Not logged in'], 401);
+    }
 
-        // Double check if the staff user’s BranchID is in the $assignedBranchIDs
-        if (! in_array($staffUser->BranchID, $assignedBranchIDs)) {
-            return response()->json(['error' => 'Unauthorized branch'], 403);
-        }
+    $staff = Staff::whereIn('BranchID', $assignedBranchIDs)->get();
 
-        // Now fetch tasks for this single staff
-        $tasks = StaffTask::with('staff')
-            ->where('StaffID', $staffUser->StaffID)
-            ->orderBy('TaskID','desc')
-            ->get();
+    // Return only tasks for this staff
+    $tasks = StaffTask::with('staff')
+        ->where('StaffID', $staff->StaffID)
+        ->orderBy('TaskID','desc')
+        ->get();
 
-        // Similarly for attendance
-        $attendance = Attendance::with('staff')
-            ->where('StaffID', $staffUser->StaffID)
-            ->orderBy('Date','desc')
-            ->get();
+    // Similarly filter attendance/schedules
+    $attendance = Attendance::with('staff')
+        ->where('StaffID', $staff->StaffID)
+        ->orderBy('Date','desc')
+        ->get();
 
-        $schedules = StaffSchedule::with('staff')
-            ->where('StaffID', $staffUser->StaffID)
-            ->orderBy('ShiftDate','desc')
-            ->get();
+    $schedules = StaffSchedule::with('staff')
+        ->where('StaffID', $staff->StaffID)
+        ->orderBy('ShiftDate','desc')
+        ->get();
 
         return response()->json([
             'staffId'    => $staffUser->StaffID,
@@ -242,6 +239,21 @@ class StaffController extends Controller
         'pendingIssues' => $pendingIssues,
     ]);
 }
+public function getLoggedInStaff()
+{
+    $staff = auth('staff')->user(); // Get the authenticated staff
+
+    if (!$staff) {
+        return response()->json(['error' => 'Unauthorized'], 401);
+    }
+
+    return response()->json([
+        'StaffID' => $staff->StaffID,
+        'FullName' => $staff->FullName,
+        'BranchID' => $staff->BranchID, // Ensure Staff table has 'BranchID'
+    ]);
+}
+
 
     /* ------------------------------------------------------------------
      * V. ATTENDANCE (Attendance)
@@ -332,13 +344,20 @@ class StaffController extends Controller
      */
     public function clockInOut(Request $request)
     {
+        $staff = auth('staff')->user();
+        if (!$staff) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+    
+        // Validate only the fields from the request (excluding StaffID)
         $data = $request->validate([
+            // Must actually exist in staff table
             'StaffID' => 'required|exists:staff,StaffID',
             'Date'    => 'required|date',
             'TimeIn'  => 'nullable|date_format:H:i',
             'TimeOut' => 'nullable|date_format:H:i|after:TimeIn'
-        ]);
-    
+            ]);
+
         $attendance = Attendance::firstOrNew([
             'StaffID' => $data['StaffID'],
             'Date'    => $data['Date'],
@@ -350,8 +369,7 @@ class StaffController extends Controller
         if (isset($data['TimeOut'])) {
             $attendance->TimeOut = $data['TimeOut'];
         }
-    
-        // If we have both times, compute raw hours
+
         if ($attendance->TimeIn && $attendance->TimeOut) {
             $in  = strtotime($attendance->Date.' '.$attendance->TimeIn);
             $out = strtotime($attendance->Date.' '.$attendance->TimeOut);
@@ -387,8 +405,29 @@ class StaffController extends Controller
             'attendance' => $attendance,
         ]);
     }
-    
 
+    /**
+     * Return a JSON list of attendance records, including the staff relationship.
+     */
+    public function indexAttendance()
+    {
+        $staff = auth('staff')->user();
+        
+        if ($staff) {
+            $attendance = Attendance::with('staff')
+                ->where('StaffID', $staff->StaffID)
+                ->orderBy('Date','desc')
+                ->get();
+        } else {
+            // If needed, handle admin or non-staff scenario
+            $attendance = Attendance::with('staff')
+                ->orderBy('Date','desc')
+                ->get();
+        }
+    
+        return response()->json($attendance);
+    }
+    
     /**
      * Update attendance and return JSON.
      */

@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
+
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -22,7 +23,6 @@ use Illuminate\Support\Facades\DB;
 
 class OperationsController extends Controller
 {
- 
     // ------------------------------------------------------------
     // A) PRODUCT + INVENTORY
     // ------------------------------------------------------------
@@ -43,7 +43,6 @@ class OperationsController extends Controller
 
         $products = $query->get();
 
-        // Return JSON (or Inertia data if you're using Inertia)
         return response()->json([
             'products' => $products
         ]);
@@ -70,7 +69,6 @@ class OperationsController extends Controller
         ]);
 
         if ($staff) {
-            // Force to staff's branch if creating new
             $branchIDs = $staff->branches->pluck('BranchID');
 
             if (!empty($data['ProductID'])) {
@@ -80,7 +78,6 @@ class OperationsController extends Controller
                 }
                 $product->update($data);
             } else {
-                // If new product but BranchID not in staff's branches => error
                 if (empty($data['BranchID']) || !$branchIDs->contains($data['BranchID'])) {
                     return response()->json([
                         'error' => 'Cannot create product in another branch'
@@ -89,7 +86,6 @@ class OperationsController extends Controller
                 Product::create($data);
             }
         } else {
-            // Admin/Owner => can create or update with any branch
             if (!empty($data['ProductID'])) {
                 $product = Product::findOrFail($data['ProductID']);
                 $product->update($data);
@@ -116,7 +112,6 @@ class OperationsController extends Controller
         ]);
 
         DB::transaction(function () use ($data, $staff) {
-            // Check branch if staff
             $product = Product::lockForUpdate()->findOrFail($data['ProductID']);
 
             if ($staff) {
@@ -126,7 +121,6 @@ class OperationsController extends Controller
                 }
             }
 
-            // Adjust
             $newStock = $product->StockLevel + $data['QuantityChange'];
             if ($newStock < 0) {
                 abort(400, 'Stock cannot go below zero.');
@@ -134,7 +128,6 @@ class OperationsController extends Controller
             $product->StockLevel = $newStock;
             $product->save();
 
-            // Log
             ProductInventoryLog::create([
                 'ProductID'      => $product->ProductID,
                 'ChangeDate'     => now(),
@@ -171,16 +164,17 @@ class OperationsController extends Controller
         return response()->json(['message' => 'Product removed successfully.'], 200);
     }
 
+    /* ------------------------------------------------------------------
+     * P. LOCKER & LOCKER USAGE (JSON Responses)
+     * ------------------------------------------------------------------ */
 
-
-  /* ------------------------------------------------------------------
- * P. LOCKER & LOCKER USAGE (JSON Responses)
- * ------------------------------------------------------------------ */
+    /**
+     * List lockers. Staff sees only lockers from their branches.
+     */
     public function indexLockers()
     {
         $staff = auth('staff')->user();
 
-        // Prepare the locker query
         $query = Locker::with([
             'lockerUsages' => function ($q) {
                 $q->where('Returned', false)
@@ -189,15 +183,12 @@ class OperationsController extends Controller
             }
         ]);
 
-        // If staff is logged in, filter by their branch IDs
         if ($staff) {
             $branchIDs = $staff->branches->pluck('BranchID');
             $query->whereIn('BranchID', $branchIDs);
         }
-
         $lockers = $query->get();
 
-        // Format response data (include occupant info if a usage is active)
         $response = $lockers->map(function ($locker) {
             $activeUsage = $locker->lockerUsages->first();
             return [
@@ -236,8 +227,7 @@ class OperationsController extends Controller
             if ($staff) {
                 $branchIDs = $staff->branches->pluck('BranchID');
 
-                // If new locker (LockerID empty):
-                // - If BranchID is not set or not in staff's branches, return error or pick a default
+                // For new locker: ensure BranchID is provided and valid.
                 if (empty($data['LockerID'])) {
                     if (empty($data['BranchID']) || !$branchIDs->contains($data['BranchID'])) {
                         return response()->json([
@@ -246,8 +236,7 @@ class OperationsController extends Controller
                     }
                 }
 
-                // If updating an existing locker:
-                // - Check if the existing locker’s branch is in staff's branches
+                // For update: ensure the existing locker belongs to a staff branch.
                 if (!empty($data['LockerID'])) {
                     $locker = Locker::findOrFail($data['LockerID']);
                     if (!$branchIDs->contains($locker->BranchID)) {
@@ -258,12 +247,10 @@ class OperationsController extends Controller
                 }
             }
 
-            // If we are updating an existing locker
             if (!empty($data['LockerID'])) {
                 $locker = Locker::findOrFail($data['LockerID']);
                 $locker->update($data);
             } else {
-                // Creating a new locker
                 $locker = Locker::create($data);
             }
 
@@ -299,7 +286,6 @@ class OperationsController extends Controller
                 'Notes'    => 'nullable|string',
             ]);
 
-            // Check staff branch restrictions
             if ($staff) {
                 $branchIDs = $staff->branches->pluck('BranchID');
                 $lockerCheck = Locker::where('LockerID', $data['LockerID'])
@@ -312,7 +298,6 @@ class OperationsController extends Controller
                 }
             }
 
-            // Create locker usage entry
             LockerUsage::create([
                 'LockerID'    => $data['LockerID'],
                 'MemberID'    => $data['MemberID'],
@@ -322,7 +307,6 @@ class OperationsController extends Controller
                 'Notes'       => $data['Notes'] ?? null,
             ]);
 
-            // Mark locker as occupied
             Locker::where('LockerID', $data['LockerID'])->update(['Status' => 'Occupied']);
 
             return response()->json([
@@ -351,7 +335,6 @@ class OperationsController extends Controller
             $staff = auth('staff')->user();
             $usage = LockerUsage::findOrFail($usageId);
 
-            // Enforce staff branch restriction
             if ($staff) {
                 $branchIDs = $staff->branches->pluck('BranchID');
                 if (!$branchIDs->contains($usage->locker->BranchID)) {
@@ -362,19 +345,16 @@ class OperationsController extends Controller
             }
 
             if ($usage->Returned) {
-                // Locker already returned - no further action needed
                 return response()->json([
                     'message' => 'Locker key was already returned.'
                 ], 200);
             }
 
-            // Update locker usage record
             $usage->update([
                 'ReturnDate' => now(),
                 'Returned'   => true,
             ]);
 
-            // Mark locker as available again
             if ($usage->locker) {
                 $usage->locker->update(['Status' => 'Available']);
             }
@@ -395,26 +375,25 @@ class OperationsController extends Controller
         }
     }
 
+    /**
+     * Display locker activity logs. Staff see only logs from their branches.
+     */
     public function lockerActivityLog()
     {
         try {
-            // Get the authenticated staff (if applicable)
             $staff = auth('staff')->user();
-    
-            // Build a query to fetch all locker usage records, including the member and locker details.
+
             $query = LockerUsage::with(['member', 'locker']);
-    
-            // If staff is logged in, restrict to lockers in their branches.
+
             if ($staff) {
                 $branchIDs = $staff->branches->pluck('BranchID');
                 $query->whereHas('locker', function ($q) use ($branchIDs) {
                     $q->whereIn('BranchID', $branchIDs);
                 });
             }
-    
-            // Order by BorrowDate descending so the most recent activities are first.
+
             $usageLogs = $query->orderBy('BorrowDate', 'desc')->get();
-    
+
             return response()->json(['usages' => $usageLogs], 200);
         } catch (\Exception $e) {
             return response()->json([
@@ -423,13 +402,13 @@ class OperationsController extends Controller
             ], 500);
         }
     }
-    
-  /* ------------------------------------------------------------------
+
+    /* ------------------------------------------------------------------
      * Q. EQUIPMENT & MAINTENANCE
      * ------------------------------------------------------------------ */
 
     /**
-     * 46. Equipment => route:All
+     * List equipment. Staff sees only equipment in their branches.
      */
     public function indexEquipment()
     {
@@ -469,7 +448,6 @@ class OperationsController extends Controller
         if ($staff) {
             $branchIDs = $staff->branches->pluck('BranchID');
 
-            // Update
             if (!empty($data['EquipmentID'])) {
                 $eq = Equipment::findOrFail($data['EquipmentID']);
                 if (!$branchIDs->contains($eq->BranchID)) {
@@ -477,7 +455,6 @@ class OperationsController extends Controller
                 }
                 $eq->update($data);
             } else {
-                // Create
                 if (empty($data['BranchID']) || !$branchIDs->contains($data['BranchID'])) {
                     return response()->json([
                         'error' => 'Cannot create equipment for another branch.'
@@ -486,7 +463,6 @@ class OperationsController extends Controller
                 Equipment::create($data);
             }
         } else {
-            // Admin/Owner => any branch
             if (!empty($data['EquipmentID'])) {
                 $eq = Equipment::findOrFail($data['EquipmentID']);
                 $eq->update($data);
@@ -499,7 +475,7 @@ class OperationsController extends Controller
     }
 
     /**
-     * Maintenance logs list, staff => only see logs for eq in their branch(es).
+     * List maintenance logs. Staff see only logs for equipment in their branches.
      */
     public function indexMaintenanceLogs()
     {
@@ -509,7 +485,6 @@ class OperationsController extends Controller
 
         if ($staff) {
             $branchIDs = $staff->branches->pluck('BranchID');
-            // filter logs via equipment’s branch
             $query->whereHas('equipment', function($q) use ($branchIDs) {
                 $q->whereIn('BranchID', $branchIDs);
             });
@@ -551,7 +526,6 @@ class OperationsController extends Controller
             if ($staff) {
                 $data['MaintainedBy'] = $staff->StaffID;
             } else {
-                // Admin/Owner => set null or 0
                 $data['MaintainedBy'] = null;
             }
         }
@@ -566,7 +540,7 @@ class OperationsController extends Controller
     }
 
     /**
-     * Update existing maintenance log (if you allow edits).
+     * Update existing maintenance log.
      */
     public function updateMaintenanceLog(Request $request, $id)
     {
@@ -580,10 +554,8 @@ class OperationsController extends Controller
             'Notes'               => 'nullable|string',
         ]);
 
-        // Check branch if staff
         if ($staff) {
             $branchIDs = $staff->branches->pluck('BranchID');
-            // ensure the equipment’s branch is in staff’s branches
             if (!$branchIDs->contains($log->equipment->BranchID)) {
                 return response()->json(['error' => 'Unauthorized: different branch'], 403);
             }
@@ -599,7 +571,7 @@ class OperationsController extends Controller
     }
 
     /**
-     * Delete MaintenanceLog
+     * Delete MaintenanceLog.
      */
     public function destroyMaintenanceLog($id)
     {
@@ -623,20 +595,17 @@ class OperationsController extends Controller
 
     public function getMaintenanceStats()
     {
-        // Identify the logged-in user from possible guards
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
     
         if ($staff) {
-            // Staff: filter logs by equipment's BranchID matching one of staff's branches
             $branchIDs = $staff->branches->pluck('BranchID');
             $pendingCount = MaintenanceLog::where('Resolution', 'pending')
                 ->whereHas('equipment', function($q) use ($branchIDs) {
                     $q->whereIn('BranchID', $branchIDs);
                 })->count();
         } else {
-            // Admin/Owner: no branch filtering (full access)
             $pendingCount = MaintenanceLog::where('Resolution', 'pending')->count();
         }
     
@@ -644,61 +613,47 @@ class OperationsController extends Controller
             'pending_maintenance' => $pendingCount
         ]);
     }
-    
 
-
-/* ------------------------------------------------------------------
+    /* ------------------------------------------------------------------
      * S. MEMBER VISIT (JSON Endpoints)
      * ------------------------------------------------------------------ */
 
     /**
      * Store a new member visit (check-in).
-     * Accepts biometric or card/manual check-in data.
      */
     public function storeVisit(Request $request)
     {
-        $staff = auth('staff')->user();
-
         $data = $request->validate([
             'MemberID'      => 'required|exists:members,MemberID',
-            'VisitDate'     => 'nullable|date',         // if omitted, defaults to today
-            'VisitTime'     => 'nullable',              // if omitted, defaults to now
-            'CheckInMethod' => 'nullable|string|max:50', // e.g., "biometric", "card", "manual"
-            'Remarks'       => 'nullable|string',
-            'BranchID'      => 'nullable|exists:branches,BranchID',
+            'CheckInMethod' => 'nullable|string',
         ]);
 
-        // Set defaults if not provided.
-        if (empty($data['VisitDate'])) {
-            $data['VisitDate'] = Carbon::today()->toDateString();
-        }
-        if (empty($data['VisitTime'])) {
-            $data['VisitTime'] = Carbon::now()->format('H:i:s');
-        }
-        if (empty($data['CheckInMethod'])) {
-            // Default to "card" check-in if no method provided.
-            $data['CheckInMethod'] = 'card';
+        $staff = auth('staff')->user();
+        if (!$staff) {
+            return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        // If a staff member is logged in, force BranchID to their branch.
-        if ($staff) {
-            $data['BranchID'] = $staff->BranchID;
-        }
+        // Force BranchID to be the staff's branch.
+        $data['BranchID'] = $staff->BranchID;
 
-        // Attempt to create the visit record.
-        try {
-            $visit = MemberVisit::create($data);
-        } catch (\Illuminate\Database\QueryException $e) {
-            // If a duplicate is attempted (e.g., due to unique constraint violation),
-            // return a 409 Conflict response.
+        $today = date('Y-m-d');
+        $existingVisit = MemberVisit::where('MemberID', $data['MemberID'])
+            ->where('VisitDate', $today)
+            ->first();
+        if ($existingVisit) {
             return response()->json([
-                'message' => 'Member is already checked in for today.'
+                'error' => 'Member is already checked in for today.'
             ], 409);
         }
 
+        $data['VisitDate'] = $today;
+        $data['VisitTime'] = date('H:i:s');
+
+        $visit = MemberVisit::create($data);
+
         return response()->json([
-            'message' => 'Visit logged successfully.',
-            'visit'   => $visit
+            'message' => 'Member checked in successfully.',
+            'visit'   => $visit,
         ], 201);
     }
 
@@ -735,7 +690,6 @@ class OperationsController extends Controller
         $staff = auth('staff')->user();
         $visit = MemberVisit::findOrFail($id);
 
-        // Ensure staff can only update visits for their branch.
         if ($staff && $visit->BranchID != $staff->BranchID) {
             return response()->json(['message' => 'Cannot update a visit from another branch.'], 403);
         }
@@ -749,7 +703,6 @@ class OperationsController extends Controller
             'BranchID'      => 'nullable|exists:branches,BranchID',
         ]);
 
-        // Enforce staff branch if applicable.
         if ($staff) {
             $data['BranchID'] = $staff->BranchID;
         }
@@ -763,7 +716,7 @@ class OperationsController extends Controller
     }
 
     /**
-     * (Optional) Delete a visit log.
+     * Delete a visit log.
      */
     public function destroyVisit($id)
     {
@@ -783,128 +736,82 @@ class OperationsController extends Controller
     
     public function historyVisits()
     {
-        // Example: Fetch recent visits
-        $visits = Visit::orderBy('VisitTime', 'desc')
-            ->take(50) // or however many
+        $visits = MemberVisit::orderBy('VisitTime', 'desc')
+            ->take(50)
             ->get();
 
-        // Return JSON
         return response()->json(['visits' => $visits]);
     }
 
+    /* ------------------------------------------------------------------
+     * WALK-INS
+     * ------------------------------------------------------------------ */
 
-       /**
+    /**
      * Display a listing of Walk-In records.
-     * route: operations.walkins.index
      */
-  public function indexWalkIns()
-{
-    // 1) Identify who is logged in (staff/admin/owner).
-    $staff = auth('staff')->user();
+    public function indexWalkIns()
+    {
+        $staff = auth('staff')->user();
     
-    // 2) If we have a staff user, gather all the branches they belong to:
-    // (assuming the staff model has ->branches pivot)
-    if ($staff) {
-        $branchIDs = $staff->branches->pluck('BranchID');
-
-        // 3) If `walk_ins` table has a direct BranchID column:
-        $walkIns = WalkIn::whereIn('BranchID', $branchIDs)
-            ->orderBy('WalkInID','desc')
-            ->get();
-        
-        // Or if `walk_ins` references a member who has `StartedBranchID`:
-        /*
-        $walkIns = WalkIn::whereHas('member', function($q) use ($branchIDs) {
-            $q->whereIn('StartedBranchID', $branchIDs);
-        })
-        ->orderBy('WalkInID','desc')
-        ->get();
-        */
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID');
+            $walkIns = WalkIn::whereIn('BranchID', $branchIDs)
+                ->orderBy('WalkInID','desc')
+                ->get();
+        } else {
+            $walkIns = WalkIn::orderBy('WalkInID','desc')->get();
+        }
+    
+        return response()->json($walkIns);
     }
-    else {
-        // 4) If this request is from admin or owner => show all walk-ins
-        $walkIns = WalkIn::orderBy('WalkInID','desc')->get();
-    }
-
-    // Finally return JSON:
-    return response()->json($walkIns);
-}
 
     /**
      * Show the form to create a new Walk-In record.
-     * route: operations.walkins.create
      */
     public function createWalkIn()
     {
-        // Possibly fetch branch list if Admin/Owner can pick a branch
-        // or auto-assign if staff is logged in.
         $staff = auth('staff')->user();
-        // E.g., staff can only create for their own branch:
         $defaultBranchID = $staff ? $staff->BranchID : null;
 
         return Inertia::render('Operations/WalkIn/Create', [
             'defaultBranchID' => $defaultBranchID,
-            // anything else you want passed to the form
         ]);
     }
 
     /**
-     * Store a new Walk-In record in the database.
-     * route: operations.walkins.store
+     * Store a new Walk-In record.
      */
     public function storeWalkIn(Request $request)
     {
-        // We check which guard is authenticated:
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
     
-        // Validate input
         $data = $request->validate([
             'BranchID'      => 'nullable|exists:branches,BranchID',
             'FullName'      => 'nullable|string|max:255',
             'VisitDate'     => 'required|date',
             'Notes'         => 'nullable|string',
-    
             'PaymentMethod' => 'nullable|string|max:50',
             'PaymentAmount' => 'nullable|numeric|min:0',
-            'PaymentFor'    => 'nullable|string', // possibly a JSON array
+            'PaymentFor'    => 'nullable|string',
         ]);
     
-        /**
-         *  CASE 1: Staff => force BranchID to staff’s single assigned branch
-         */
         if ($staff) {
-            // If staff has a single column `BranchID`
-            // or if staff->BranchID is null, but staff->branches pivot is multiple => pick one
             $data['BranchID'] = $staff->BranchID;
-            // or if staff->branches is a collection:
-            // $data['BranchID'] = $staff->branches->first()->BranchID ?? null;
-        }
-    
-        /**
-         *  CASE 2: Owner/Admin => let them pick from front end
-         *  i.e. if user passes BranchID in the request
-         *  If user doesn’t pass one, we can default to 1 or throw an error
-         */
-        elseif ($admin || $owner) {
-            // If request didn’t supply a BranchID, you can decide to require it:
+        } elseif ($admin || $owner) {
             if (empty($data['BranchID'])) {
-                // e.g. default or throw:
                 $data['BranchID'] = 1; 
             }
         }
     
-        // By now, $data['BranchID'] is set (unless we abort).
         $branchID = $data['BranchID'] ?? null;
     
-        // If still null, daily flow won't update
         if (!$branchID) {
-            // handle it or throw an exception
             abort(422, 'No valid BranchID was set.');
         }
     
-        // 1) Create the WalkIn
         $walkIn = WalkIn::create([
             'BranchID'  => $branchID,
             'FullName'  => $data['FullName'] ?? null,
@@ -912,7 +819,6 @@ class OperationsController extends Controller
             'Notes'     => $data['Notes'] ?? null,
         ]);
     
-        // 2) Create Payment if PaymentMethod & PaymentAmount
         if (!empty($data['PaymentMethod']) && !empty($data['PaymentAmount'])) {
             $paymentFor = ["Walk-In Payment"];
             if (!empty($data['PaymentFor'])) {
@@ -935,7 +841,6 @@ class OperationsController extends Controller
             $walkIn->PaymentID = $payment->PaymentID;
             $walkIn->save();
     
-            // Update daily flow
             $this->updateDailyFlowForWalkIn(
                 $branchID,
                 $data['VisitDate'],
@@ -947,26 +852,21 @@ class OperationsController extends Controller
         return response()->json($walkIn, 201);
     }
     
-
     /**
-     *  Increment the daily cash flow with the correct "WalkIn" field
-     *  based on the PaymentMethod. E.g. "W-In Cash" => WalkInCashSales.
+     * Increment the daily cash flow for a Walk-In.
      */
     protected function updateDailyFlowForWalkIn($branchID, $visitDate, $method, $amount)
     {
         if (!$branchID) {
-            return; // If no branch, skip
+            return;
         }
 
-        // 1) Find or create the daily flow row
-        //    Suppose we put all walk-ins under "Gym" business type, or use "Cafe," etc.
         $flow = DailyCashFlow::firstOrNew([
             'BranchID'     => $branchID,
             'Date'         => date('Y-m-d', strtotime($visitDate)),
             'BusinessType' => 'Gym',
         ]);
 
-        // 2) Figure out which WalkIn column to increment
         $field = null;
         switch ($method) {
             case 'W-In Cash':
@@ -982,18 +882,15 @@ class OperationsController extends Controller
                 $field = 'WalkInBDOSales';
                 break;
             default:
-                // fallback if your PaymentMethod doesn't match these
                 $field = 'WalkInCashSales';
                 break;
         }
 
-        // 3) Increment that field by $amount
         if ($field) {
             $existing = (float) $flow->{$field};
             $flow->{$field} = $existing + (float) $amount;
         }
 
-        // 4) Recalc total
         $flow->TotalSales = (
             (float) $flow->CashSales
             + (float) $flow->GCashSales
@@ -1005,20 +902,17 @@ class OperationsController extends Controller
             + (float) $flow->WalkInBDOSales
         );
 
-        // 5) Save
         $flow->save();
     }
 
     /**
      * Show the edit form for an existing Walk-In.
-     * route: operations.walkins.edit
      */
     public function editWalkIn($id)
     {
         $staff = auth('staff')->user();
         $walkIn = WalkIn::findOrFail($id);
 
-        // If staff => ensure same branch
         if ($staff && $walkIn->BranchID != $staff->BranchID) {
             abort(403, 'Cannot edit a walk-in from another branch.');
         }
@@ -1030,7 +924,6 @@ class OperationsController extends Controller
 
     /**
      * Update the specified Walk-In record.
-     * route: operations.walkins.update
      */
     public function updateWalkIn(Request $request, $id)
     {
@@ -1044,7 +937,7 @@ class OperationsController extends Controller
         $data = $request->validate([
             'FullName'       => 'nullable|string|max:255',
             'VisitDate'      => 'required|date',
-            'PaymentID' => 'nullable|exists:payments,id',
+            'PaymentID'      => 'nullable|exists:payments,id',
             'PaymentMethod'  => 'nullable|string|max:50',
             'AmountPaid'     => 'numeric|min:0',
             'PaymentStatus'  => 'string|in:Pending,Completed,Failed',
@@ -1052,7 +945,6 @@ class OperationsController extends Controller
             'BranchID'       => 'nullable|exists:branches,BranchID',
         ]);
 
-        // staff cannot change BranchID -> enforce staff’s Branch again
         if ($staff) {
             $data['BranchID'] = $staff->BranchID;
         }
@@ -1066,7 +958,6 @@ class OperationsController extends Controller
 
     /**
      * Delete a Walk-In record.
-     * route: operations.walkins.destroy
      */
     public function destroyWalkIn($id)
     {
@@ -1084,4 +975,3 @@ class OperationsController extends Controller
             ->with('success','Walk-In record deleted.');
     }
 }
-

@@ -308,6 +308,9 @@ Route::prefix('notifications')->group(function() {
     Route::post('send-staff', [NotificationController::class, 'sendStaffNotification'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('notifications.send.staff');
+    Route::get('staff', [NotificationController::class, 'getStaffNotifications'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('notifications.staff');
 
     // Templates
     Route::get('templates', [NotificationController::class, 'indexTemplates'])
@@ -516,6 +519,18 @@ Route::prefix('staff')->group(function () {
         // Additional
         Route::get('performance', [StaffController::class, 'performance'])->name('staff.performance');
         Route::get('dashboard-info', [StaffController::class, 'staffDashboardInfo'])->name('staff.dashboard.info');
+        
+        //added looged-in-staff
+        Route::get('/get-logged-in-staff', [\App\Http\Controllers\StaffController::class, 'getLoggedInStaff'])
+        ->name('staff.getLoggedInStaff');
+
+        // Fetching Members Filtered by Staff’s Branch
+        Route::prefix('staff/membership')->middleware('multiGuard:owner,admin,staff')->group(function () {
+            Route::get('members', [MembershipController::class, 'apiIndex'])->name('staff.membership.apiIndex');
+            Route::get('plans', [MembershipController::class, 'indexPlans'])->name('staff.membership.plans');
+            Route::get('statuses', [MembershipController::class, 'indexMemberStatuses'])->name('staff.membership.statuses');
+        });
+        
     });
 
 

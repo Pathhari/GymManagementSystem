@@ -36,24 +36,18 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import GroupIcon from "@mui/icons-material/Group";
 import DirectionsWalkIcon from "@mui/icons-material/DirectionsWalk";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
-import PersonIcon from '@mui/icons-material/Person';
-import CloseIcon from '@mui/icons-material/Close';
-import AutorenewIcon from '@mui/icons-material/Autorenew';
-import GroupsIcon from '@mui/icons-material/Groups';
-import WarningIcon from '@mui/icons-material/Warning';
-import EventAvailableIcon from '@mui/icons-material/EventAvailable';
-import HistoryIcon from '@mui/icons-material/History';
-import CreditCardIcon from '@mui/icons-material/CreditCard';
-import BadgeIcon from '@mui/icons-material/Badge';
-import EventIcon from '@mui/icons-material/Event';
-import NotesIcon from '@mui/icons-material/Notes';
-
-import {
-  AccessTime,
-  AlarmOn,
-  AlarmOff,
-  Schedule as ScheduleIcon
-} from "@mui/icons-material";
+import PersonIcon from "@mui/icons-material/Person";
+import CloseIcon from "@mui/icons-material/Close";
+import AutorenewIcon from "@mui/icons-material/Autorenew";
+import GroupsIcon from "@mui/icons-material/Groups";
+import WarningIcon from "@mui/icons-material/Warning";
+import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import HistoryIcon from "@mui/icons-material/History";
+import CreditCardIcon from "@mui/icons-material/CreditCard";
+import BadgeIcon from "@mui/icons-material/Badge";
+import EventIcon from "@mui/icons-material/Event";
+import NotesIcon from "@mui/icons-material/Notes";
+import { AccessTime, AlarmOn, AlarmOff, Schedule as ScheduleIcon } from "@mui/icons-material";
 import axios from "axios";
 
 export default function StaffDashboard() {
@@ -67,6 +61,7 @@ export default function StaffDashboard() {
     setSnackOpen(true);
   };
 
+  // Formatting helpers
   const formatDate = (dateString) => {
     if (!dateString) return "—";
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -78,26 +73,34 @@ export default function StaffDashboard() {
 
   const formatTime = (timeString) => {
     if (!timeString) return "—";
-    let [hours, minutes, seconds] = timeString.split(":").map(Number);
+    let [hours, minutes] = timeString.split(":").map(Number);
     const period = hours >= 12 ? "PM" : "AM";
-    hours = hours % 12 || 12; // Convert 0 to 12 for 12AM
+    hours = hours % 12 || 12;
     return `${hours}:${minutes.toString().padStart(2, "0")} ${period}`;
   };
 
-  // Dashboard metrics and table states
+
+  // Dashboard state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [checkInsToday, setCheckInsToday] = useState(0);
   const [lockersInUse, setLockersInUse] = useState(0);
-
-  // For walk-ins metrics
   const [walkIns, setWalkIns] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [visits, setVisits] = useState([]);
+  const [attendance, setAttendance] = useState([]);
+  const [schedule, setSchedule] = useState([]);
+  const [staffId, setStaffId] = useState(null);
+  const [staffBranch, setStaffBranch] = useState(null);
+
+  // Instead of using localStorage, we recalc isClockedIn from attendance
+  const [isClockedIn, setIsClockedIn] = useState(false);
+
+  // Derived states
   const walkInsTodayCount = walkIns.filter(
     (w) => w.VisitDate === new Date().toISOString().split("T")[0]
   ).length;
 
-  // Compute expiring soon from member data (within next 7 days)
-  const [members, setMembers] = useState([]);
   const today = new Date();
   const next7 = new Date();
   next7.setDate(today.getDate() + 7);
@@ -111,24 +114,17 @@ export default function StaffDashboard() {
   // Tabs: 0 => Visits, 1 => Walk-Ins, 2 => Expiring Soon
   const [activeTab, setActiveTab] = useState(0);
 
-  // Check-In – using Autocomplete for member search
+  // Check-In and dialog states
   const [checkInMethod, setCheckInMethod] = useState("card");
   const [selectedMember, setSelectedMember] = useState(null);
   const [isCamOpen, setCamOpen] = useState(false);
   const [isBiometricOpen, setBiometricOpen] = useState(false);
-
-  // Visits states
-  const [visits, setVisits] = useState([]);
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [isViewVisitOpen, setViewVisitOpen] = useState(false);
   const [isEditVisitOpen, setEditVisitOpen] = useState(false);
-
-  // Walk-Ins states
   const [selectedWalkIn, setSelectedWalkIn] = useState(null);
   const [isViewWalkInOpen, setViewWalkInOpen] = useState(false);
   const [isEditWalkInOpen, setEditWalkInOpen] = useState(false);
-
-  // Add Walk-In states
   const [isAddWalkInOpen, setAddWalkInOpen] = useState(false);
   const [newWalkIn, setNewWalkIn] = useState({
     FullName: "",
@@ -137,16 +133,10 @@ export default function StaffDashboard() {
     PaymentMethod: "",
     PaymentAmount: ""
   });
-
-  // Clock In/Out states
-  const [staffId, setStaffId] = useState(null);
-  const [attendance, setAttendance] = useState([]);
-  const [schedule, setSchedule] = useState([]);
-  const [isClockedIn, setIsClockedIn] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // ------------------------------------------------------------------
-  // HOOKS: Load dashboard data, staff info, and members on mount
+  // Load initial dashboard data and staff info on mount
   // ------------------------------------------------------------------
   useEffect(() => {
     loadDashboardData();
@@ -162,34 +152,48 @@ export default function StaffDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // Persist clock state via localStorage
-  useEffect(() => {
-    const storedClockState = localStorage.getItem("isClockedIn");
-    if (storedClockState === "true") {
-      setIsClockedIn(true);
-    }
-  }, []);
-  useEffect(() => {
-    localStorage.setItem("isClockedIn", isClockedIn ? "true" : "false");
-  }, [isClockedIn]);
-
   // ------------------------------------------------------------------
-  // API Calls
+  // API Calls (Back end handles branch filtering)
   // ------------------------------------------------------------------
   const loadDashboardData = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Metrics
       const metricsRes = await axios.get("/staff/metrics");
       setCheckInsToday(metricsRes.data.checkInsToday || 0);
       setLockersInUse(metricsRes.data.lockersInUse || 0);
-      // 2) Visits
+  
       const visitsRes = await axios.get("/operations/visits");
-      setVisits(visitsRes.data.visits || []);
-      // 3) Walk-ins
+      const fetchedVisits = visitsRes.data.visits || [];
+      if (staffBranch) {
+        setVisits(fetchedVisits.filter((v) => v.BranchID === staffBranch));
+      } else {
+        setVisits(fetchedVisits);
+      }
+  
       const walkInsRes = await axios.get("/operations/walk-ins");
       setWalkIns(walkInsRes.data || []);
+  
+      // Fetch attendance records to determine clock state
+      const attendRes = await axios.get("/staff/attendance");
+      const fetchedAttendance = Array.isArray(attendRes.data)
+        ? attendRes.data
+        : attendRes.data.attendance || [];
+      setAttendance(fetchedAttendance);
+  
+      // Determine if current staff is clocked in for today
+      const todayDate = new Date().toISOString().split("T")[0];
+      const todaysAttendance = fetchedAttendance.filter(
+        (rec) => rec.Date === todayDate
+      );
+      const clockedInRecord = todaysAttendance.find(
+        (rec) => rec.TimeIn && !rec.TimeOut
+      );
+      setIsClockedIn(!!clockedInRecord);
+  
+      // NEW: Fetch staff schedule from staff controller
+      const scheduleRes = await axios.get("/staff/schedules");
+      setSchedule(scheduleRes.data || []);
     } catch (err) {
       console.error("Error loading data:", err);
       setError("Failed to load staff dashboard data.");
@@ -197,20 +201,22 @@ export default function StaffDashboard() {
       setLoading(false);
     }
   };
+  
 
+  // Fetch logged-in staff info (including BranchID)
   const fetchStaffData = async () => {
     try {
-      const res = await axios.get("/staff/dashboard-info");
+      const res = await axios.get("/staff/get-logged-in-staff");
       const data = res.data;
-      if (data.staffId) setStaffId(data.staffId);
-      if (data.attendance) setAttendance(data.attendance);
-      if (data.schedule) setSchedule(data.schedule);
+      if (data.StaffID) {
+        setStaffId(data.StaffID);
+        setStaffBranch(data.BranchID);
+      }
     } catch (err) {
-      console.error("Failed to load staff dashboard info:", err);
+      console.error("Failed to load staff info:", err);
     }
   };
 
-  // Fetch members for check-in and expiring soon logic
   const fetchMembers = async () => {
     try {
       const res = await axios.get("/membership/members");
@@ -220,15 +226,16 @@ export default function StaffDashboard() {
     }
   };
 
+  
   // ------------------------------------------------------------------
-  // Tabs change handler for the table area
+  // Tabs change handler
   // ------------------------------------------------------------------
   const handleTabChange = (e, val) => {
     setActiveTab(val);
   };
 
   // ------------------------------------------------------------------
-  // Check-In Function using selected member from Autocomplete
+  // Check-In function
   // ------------------------------------------------------------------
   const handleCheckIn = async () => {
     if (!selectedMember) {
@@ -238,11 +245,15 @@ export default function StaffDashboard() {
     try {
       await axios.post("/operations/visits", {
         MemberID: selectedMember.MemberID,
-        CheckInMethod: checkInMethod
+        CheckInMethod: checkInMethod,
+        // Use the staffBranch state (or you could determine it from the member info if available)
+        BranchID: staffBranch,
       });
-      showSuccessMessage(`Member ${selectedMember.FullName} checked in successfully!`);
+      showSuccessMessage(
+        `Member ${selectedMember.FullName} checked in successfully!`
+      );
       setSelectedMember(null);
-      loadDashboardData(); // Refresh metrics & visits
+      loadDashboardData();
     } catch (err) {
       console.error("Check-in error:", err);
       if (err.response && err.response.status === 409) {
@@ -252,21 +263,18 @@ export default function StaffDashboard() {
       }
     }
   };
+  
 
   // ------------------------------------------------------------------
   // Camera & Biometric Dialogs
   // ------------------------------------------------------------------
   const handleOpenCam = () => setCamOpen(true);
   const handleCloseCam = () => setCamOpen(false);
-  const handleSimulateCardScan = () => {
-    setCamOpen(false);
-  };
+  const handleSimulateCardScan = () => setCamOpen(false);
 
   const handleOpenBiometric = () => setBiometricOpen(true);
   const handleCloseBiometric = () => setBiometricOpen(false);
-  const handleSimulateFingerprint = () => {
-    setBiometricOpen(false);
-  };
+  const handleSimulateFingerprint = () => setBiometricOpen(false);
 
   // ------------------------------------------------------------------
   // Visits CRUD
@@ -287,7 +295,7 @@ export default function StaffDashboard() {
         VisitDate: selectedVisit.VisitDate,
         VisitTime: selectedVisit.VisitTime,
         CheckInMethod: selectedVisit.CheckInMethod,
-        Remarks: selectedVisit.Remarks
+        Remarks: selectedVisit.Remarks,
       });
       setEditVisitOpen(false);
       loadDashboardData();
@@ -327,7 +335,7 @@ export default function StaffDashboard() {
         PaymentID: selectedWalkIn.PaymentID || null,
         PaymentMethod: selectedWalkIn.PaymentMethod || "",
         AmountPaid: selectedWalkIn.AmountPaid || 0,
-        Notes: selectedWalkIn.Notes || ""
+        Notes: selectedWalkIn.Notes || "",
       });
       setEditWalkInOpen(false);
       loadDashboardData();
@@ -357,7 +365,7 @@ export default function StaffDashboard() {
         VisitDate: newWalkIn.VisitDate,
         Notes: newWalkIn.Notes || null,
         PaymentMethod: newWalkIn.PaymentMethod || null,
-        PaymentAmount: newWalkIn.PaymentAmount || 0
+        PaymentAmount: newWalkIn.PaymentAmount || 0,
       });
       showSuccessMessage("Walk-In created successfully.");
       setNewWalkIn({
@@ -365,7 +373,7 @@ export default function StaffDashboard() {
         VisitDate: "",
         Notes: "",
         PaymentMethod: "",
-        PaymentAmount: ""
+        PaymentAmount: "",
       });
       setAddWalkInOpen(false);
       loadDashboardData();
@@ -376,44 +384,77 @@ export default function StaffDashboard() {
   };
 
   // ------------------------------------------------------------------
-  // Clock In/Out Logic
+  // Clock In/Out Logic (updated for staff-specific actions)
   // ------------------------------------------------------------------
+  // Helper function to refresh and return the clock state:
+  const refreshClockState = async () => {
+    try {
+      const attendRes = await axios.get("/staff/attendance");
+      const fetchedAttendance = Array.isArray(attendRes.data)
+        ? attendRes.data
+        : attendRes.data.attendance || [];
+      const todayDate = new Date().toISOString().split("T")[0];
+      const clockedInRecord = fetchedAttendance.find(
+        (rec) => rec.Date === todayDate && rec.TimeIn && !rec.TimeOut
+      );
+      const newState = !!clockedInRecord;
+      setIsClockedIn(newState);
+      return newState;
+    } catch (error) {
+      console.error("Error refreshing clock state:", error);
+      return false;
+    }
+  };
+
   const handleClockInOut = async () => {
-    if (!staffId) {
-      console.warn("No staffId available.");
-      return;
+    let currentStaffId = staffId;
+    if (!currentStaffId) {
+      try {
+        const res = await axios.get("/staff/get-logged-in-staff");
+        if (res.data && res.data.StaffID) {
+          currentStaffId = res.data.StaffID;
+          setStaffId(currentStaffId);
+          setStaffBranch(res.data.BranchID);
+        } else {
+          console.warn("No staffId available after refetch.");
+          return;
+        }
+      } catch (err) {
+        console.error("Error refetching staff info:", err);
+        return;
+      }
     }
     const dateStr = new Date().toISOString().split("T")[0];
     const timeStr = currentTime.toLocaleTimeString("it-IT").slice(0, 5);
     const clockData = {
-      StaffID: staffId,
+      StaffID: currentStaffId,
+      BranchID: staffBranch,
       Date: dateStr,
+      // If not clocked in, set TimeIn; if already clocked in, set TimeOut.
       TimeIn: isClockedIn ? null : timeStr,
       TimeOut: isClockedIn ? timeStr : null,
     };
     try {
       await axios.post("/staff/attendance/clock-in-out", clockData);
-      const attendRes = await axios.get("/staff/attendance");
-      setAttendance(
-        Array.isArray(attendRes.data)
-          ? attendRes.data
-          : attendRes.data.attendance || []
+      // Wait for a short delay to allow backend update
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const newClockState = await refreshClockState();
+      showSuccessMessage(
+        newClockState ? "Clocked in successfully." : "Clocked out successfully."
       );
-      setIsClockedIn(!isClockedIn);
-      showSuccessMessage(isClockedIn ? "Clocked out successfully." : "Clocked in successfully.");
     } catch (err) {
       console.error("Failed to record attendance:", err);
     }
   };
 
   // ------------------------------------------------------------------
-  // TABLE COLUMNS (with updated action button colors)
+  // TABLE COLUMNS
   // ------------------------------------------------------------------
   const actionButtonStyles = {
     minWidth: "40px",
     padding: "6px",
     transition: "transform 0.2s",
-    "&:hover": { transform: "scale(1.05)" }
+    "&:hover": { transform: "scale(1.05)" },
   };
 
   const visitColumns = [
@@ -424,11 +465,21 @@ export default function StaffDashboard() {
       renderCell: (params) => {
         const member = members.find((m) => m.MemberID === params.value);
         return member ? member.FullName : params.value;
-      }
+      },
     },
     { field: "VisitID", headerName: "ID", width: 80 },
-    { field: "VisitDate", headerName: "Date", width: 180, renderCell: (params) => params.value ? formatDate(params.value) : "—" },
-    { field: "VisitTime", headerName: "Time", width: 180, renderCell: (params) => params.value ? formatTime(params.value) : "—" },
+    {
+      field: "VisitDate",
+      headerName: "Date",
+      width: 180,
+      renderCell: (params) => (params.value ? formatDate(params.value) : "—"),
+    },
+    {
+      field: "VisitTime",
+      headerName: "Time",
+      width: 180,
+      renderCell: (params) => (params.value ? formatTime(params.value) : "—"),
+    },
     { field: "CheckInMethod", headerName: "Method", width: 100 },
     {
       field: "Actions",
@@ -446,7 +497,7 @@ export default function StaffDashboard() {
                 sx={{
                   ...actionButtonStyles,
                   backgroundColor: "#4caf50",
-                  "&:hover": { backgroundColor: "#43a047" }
+                  "&:hover": { backgroundColor: "#43a047" },
                 }}
               >
                 <VisibilityIcon fontSize="small" />
@@ -460,7 +511,7 @@ export default function StaffDashboard() {
                 sx={{
                   ...actionButtonStyles,
                   backgroundColor: "#2196f3",
-                  "&:hover": { backgroundColor: "#1976d2" }
+                  "&:hover": { backgroundColor: "#1976d2" },
                 }}
               >
                 <EditIcon fontSize="small" />
@@ -474,7 +525,7 @@ export default function StaffDashboard() {
                 sx={{
                   ...actionButtonStyles,
                   backgroundColor: "#f44336",
-                  "&:hover": { backgroundColor: "#d32f2f" }
+                  "&:hover": { backgroundColor: "#d32f2f" },
                 }}
               >
                 <DeleteIcon fontSize="small" />
@@ -482,8 +533,8 @@ export default function StaffDashboard() {
             </Tooltip>
           </Box>
         );
-      }
-    }
+      },
+    },
   ];
 
   const walkInColumns = [
@@ -507,7 +558,7 @@ export default function StaffDashboard() {
                 sx={{
                   ...actionButtonStyles,
                   backgroundColor: "#4caf50",
-                  "&:hover": { backgroundColor: "#43a047" }
+                  "&:hover": { backgroundColor: "#43a047" },
                 }}
               >
                 <VisibilityIcon fontSize="small" />
@@ -521,7 +572,7 @@ export default function StaffDashboard() {
                 sx={{
                   ...actionButtonStyles,
                   backgroundColor: "#2196f3",
-                  "&:hover": { backgroundColor: "#1976d2" }
+                  "&:hover": { backgroundColor: "#1976d2" },
                 }}
               >
                 <EditIcon fontSize="small" />
@@ -535,7 +586,7 @@ export default function StaffDashboard() {
                 sx={{
                   ...actionButtonStyles,
                   backgroundColor: "#f44336",
-                  "&:hover": { backgroundColor: "#d32f2f" }
+                  "&:hover": { backgroundColor: "#d32f2f" },
                 }}
               >
                 <DeleteIcon fontSize="small" />
@@ -543,8 +594,8 @@ export default function StaffDashboard() {
             </Tooltip>
           </Box>
         );
-      }
-    }
+      },
+    },
   ];
 
   const expiringColumns = [
@@ -555,8 +606,8 @@ export default function StaffDashboard() {
       headerName: "Expires On",
       width: 150,
       renderCell: (params) =>
-        params.value ? new Date(params.value).toLocaleDateString() : "—"
-    }
+        params.value ? new Date(params.value).toLocaleDateString() : "—",
+    },
   ];
 
   if (loading) {
@@ -588,7 +639,7 @@ export default function StaffDashboard() {
               mb: 2,
               display: "flex",
               alignItems: "center",
-              boxShadow: 3
+              boxShadow: 3,
             }}
           >
             <IconButton sx={{ color: "#fff", mr: 1 }}>
@@ -617,11 +668,20 @@ export default function StaffDashboard() {
                 boxShadow: activeTab === 0 ? 6 : 2,
                 transition: "box-shadow 0.3s",
                 "&:hover": { boxShadow: 6 },
-                backgroundColor: theme.palette.mode === "dark" ? theme.palette.info.dark : theme.palette.info.light,
-                color: theme.palette.info.contrastText
+                backgroundColor:
+                  theme.palette.mode === "dark"
+                    ? theme.palette.info.dark
+                    : theme.palette.info.light,
+                color: theme.palette.info.contrastText,
               }}
             >
-              <CardContent sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <CardContent
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                }}
+              >
                 <GroupIcon sx={{ fontSize: 40, mb: 1 }} />
                 <Typography variant="subtitle2">Check-ins Today</Typography>
                 <Typography variant="h4" sx={{ fontWeight: "bold" }}>
@@ -640,11 +700,20 @@ export default function StaffDashboard() {
                 boxShadow: activeTab === 1 ? 6 : 2,
                 transition: "box-shadow 0.3s",
                 "&:hover": { boxShadow: 6 },
-                backgroundColor: theme.palette.mode === "dark" ? theme.palette.success.dark : theme.palette.success.light,
-                color: theme.palette.success.contrastText
+                backgroundColor:
+                  theme.palette.mode === "dark"
+                    ? theme.palette.success.dark
+                    : theme.palette.success.light,
+                color: theme.palette.success.contrastText,
               }}
             >
-              <CardContent sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <CardContent
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                }}
+              >
                 <DirectionsWalkIcon sx={{ fontSize: 40, mb: 1 }} />
                 <Typography variant="subtitle2">Walk-ins Today</Typography>
                 <Typography variant="h4" sx={{ fontWeight: "bold" }}>
@@ -662,11 +731,20 @@ export default function StaffDashboard() {
                 boxShadow: 2,
                 transition: "box-shadow 0.3s",
                 "&:hover": { boxShadow: 6 },
-                backgroundColor: theme.palette.mode === "dark" ? theme.palette.secondary.dark : theme.palette.secondary.light,
-                color: theme.palette.secondary.contrastText
+                backgroundColor:
+                  theme.palette.mode === "dark"
+                    ? theme.palette.secondary.dark
+                    : theme.palette.secondary.light,
+                color: theme.palette.secondary.contrastText,
               }}
             >
-              <CardContent sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <CardContent
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                }}
+              >
                 <BadgeIcon sx={{ fontSize: 40, mb: 1 }} />
                 <Typography variant="subtitle2">Lockers In Use</Typography>
                 <Typography variant="h4" sx={{ fontWeight: "bold" }}>
@@ -685,11 +763,20 @@ export default function StaffDashboard() {
                 boxShadow: activeTab === 2 ? 6 : 2,
                 transition: "box-shadow 0.3s",
                 "&:hover": { boxShadow: 6 },
-                backgroundColor: theme.palette.mode === "dark" ? theme.palette.warning.dark : theme.palette.warning.light,
-                color: theme.palette.warning.contrastText
+                backgroundColor:
+                  theme.palette.mode === "dark"
+                    ? theme.palette.warning.dark
+                    : theme.palette.warning.light,
+                color: theme.palette.warning.contrastText,
               }}
             >
-              <CardContent sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <CardContent
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                }}
+              >
                 <WarningAmberIcon sx={{ fontSize: 40, mb: 1 }} />
                 <Typography variant="subtitle2">Expiring Soon</Typography>
                 <Typography variant="h4" sx={{ fontWeight: "bold" }}>
@@ -700,7 +787,7 @@ export default function StaffDashboard() {
           </Grid>
         </Grid>
 
-        {/* Original Left Column: Check-In & Clock In/Out */}
+        {/* Left Column: Check-In & Clock In/Out */}
         <Grid item xs={12} md={4}>
           <Card sx={{ mb: 2, borderRadius: 2, boxShadow: 2 }}>
             <CardHeader title="Check In Member" />
@@ -746,7 +833,7 @@ export default function StaffDashboard() {
               borderRadius: 2,
               boxShadow: 2,
               display: "flex",
-              flexDirection: "column"
+              flexDirection: "column",
             }}
           >
             <CardHeader title="Clock In / Clock Out" />
@@ -762,7 +849,7 @@ export default function StaffDashboard() {
                   sx={{ mt: 2 }}
                   style={{
                     backgroundColor: isClockedIn ? "#f44336" : "#4caf50",
-                    color: "#fff"
+                    color: "#fff",
                   }}
                 >
                   {isClockedIn ? (
@@ -778,28 +865,26 @@ export default function StaffDashboard() {
               </Box>
 
               <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" gutterBottom>
-                <ScheduleIcon /> Work Schedule
+              <Typography variant="h6" gutterBottom sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <ScheduleIcon sx={{ color: "primary.main" }} /> Work Schedule
               </Typography>
+
               {schedule.length === 0 ? (
-                <Typography variant="body2" color="textSecondary">
-                  No schedules found.
+                <Typography variant="body2" color="textSecondary" sx={{ fontStyle: "italic", ml: 2 }}>
+                  No schedules available.
                 </Typography>
               ) : (
                 schedule.map((shift, idx) => (
-                  <Paper key={idx} sx={{ p: 2, mb: 1 }}>
-                    <Typography>
-                      {shift.ShiftDate
-                        ? new Date(shift.ShiftDate).toLocaleDateString()
-                        : "Unknown Date"}
+                  <Paper key={idx} sx={{ p: 2, mb: 1, borderLeft: "5px solid", borderColor: "primary.main" }}>
+                    <Typography variant="body1" sx={{ fontWeight: "bold" }}>
+                      {formatDate(shift.ShiftDate, "date")}
                     </Typography>
-                    <Typography color="textSecondary">
-                      {shift.ShiftStart || "??:??"} - {shift.ShiftEnd || "??:??"}
+                    <Typography variant="body2" color="textSecondary">
+                      {formatTime(shift.ShiftStart, "time")} - {formatTime(shift.ShiftEnd, "time")}
                     </Typography>
                   </Paper>
                 ))
-              )}
-
+)}
               <Divider sx={{ my: 2 }} />
               <Typography variant="h6" gutterBottom>
                 Attendance History
@@ -811,9 +896,7 @@ export default function StaffDashboard() {
               ) : (
                 attendance.map((entry, idx) => (
                   <Box key={idx} display="flex" justifyContent="space-between" p={1}>
-                    <Typography>
-                      {formatDate(entry.Date)}
-                    </Typography>
+                    <Typography>{formatDate(entry.Date)}</Typography>
                     <Typography color="textSecondary">
                       {formatTime(entry.TimeIn)}
                       {entry.TimeOut ? ` - ${formatTime(entry.TimeOut)}` : ""}
@@ -821,14 +904,21 @@ export default function StaffDashboard() {
                   </Box>
                 ))
               )}
-
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Original Right Column: Table with Tabs */}
+        {/* Right Column: Table with Tabs */}
         <Grid item xs={12} md={8}>
-          <Card sx={{ borderRadius: 2, boxShadow: 2, display: "flex", flexDirection: "column", height: "100%" }}>
+          <Card
+            sx={{
+              borderRadius: 2,
+              boxShadow: 2,
+              display: "flex",
+              flexDirection: "column",
+              height: "100%",
+            }}
+          >
             <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
               <Tabs value={activeTab} onChange={handleTabChange} variant="fullWidth">
                 <Tab icon={<GroupIcon />} label="Visits" />
@@ -850,11 +940,11 @@ export default function StaffDashboard() {
                       "& .MuiDataGrid-columnHeaders": {
                         backgroundColor: "#f5f5f5",
                         fontWeight: "bold",
-                        fontSize: "1rem"
+                        fontSize: "1rem",
                       },
                       "& .MuiDataGrid-cell": {
-                        borderBottom: "1px solid #e0e0e0"
-                      }
+                        borderBottom: "1px solid #e0e0e0",
+                      },
                     }}
                   />
                 </Paper>
@@ -878,11 +968,11 @@ export default function StaffDashboard() {
                         "& .MuiDataGrid-columnHeaders": {
                           backgroundColor: "#f5f5f5",
                           fontWeight: "bold",
-                          fontSize: "1rem"
+                          fontSize: "1rem",
                         },
                         "& .MuiDataGrid-cell": {
-                          borderBottom: "1px solid #e0e0e0"
-                        }
+                          borderBottom: "1px solid #e0e0e0",
+                        },
                       }}
                     />
                   </Paper>
@@ -904,11 +994,11 @@ export default function StaffDashboard() {
                       "& .MuiDataGrid-columnHeaders": {
                         backgroundColor: "#f5f5f5",
                         fontWeight: "bold",
-                        fontSize: "1rem"
+                        fontSize: "1rem",
                       },
                       "& .MuiDataGrid-cell": {
-                        borderBottom: "1px solid #e0e0e0"
-                      }
+                        borderBottom: "1px solid #e0e0e0",
+                      },
                     }}
                   />
                 </Paper>
@@ -978,12 +1068,9 @@ export default function StaffDashboard() {
         <DialogContent dividers sx={{ p: 3 }}>
           {selectedVisit &&
             (() => {
-              const member = members.find(
-                (m) => m.MemberID === selectedVisit.MemberID
-              );
+              const member = members.find((m) => m.MemberID === selectedVisit.MemberID);
               return (
                 <Box>
-                  {/* Member Basic Info */}
                   <Box display="flex" alignItems="center" gap={2} mb={2}>
                     <Box
                       sx={{
@@ -998,7 +1085,7 @@ export default function StaffDashboard() {
                       {member && member.PhotoPath ? (
                         <Box
                           component="img"
-                          src={`/storage/${member.PhotoPath}`}
+                          src={`/storage/${selectedMembership.PhotoPath}`}
                           alt="Member"
                           sx={{
                             width: "100%",
@@ -1032,7 +1119,6 @@ export default function StaffDashboard() {
                     </Box>
                   </Box>
                   <Divider sx={{ my: 1 }} />
-                  {/* Membership Information */}
                   <Box mb={1}>
                     <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1 }}>
                       Membership Information
@@ -1078,11 +1164,7 @@ export default function StaffDashboard() {
                             </InputAdornment>
                           ),
                         }}
-                        value={
-                          member && member.MembershipStartDate
-                            ? formatDate(member.MembershipStartDate)
-                            : "—"
-                        }
+                        value={member && member.MembershipStartDate ? formatDate(member.MembershipStartDate) : "—"}
                       />
                       <TextField
                         variant="filled"
@@ -1096,16 +1178,11 @@ export default function StaffDashboard() {
                             </InputAdornment>
                           ),
                         }}
-                        value={
-                          member && member.MembershipEndDate
-                            ? formatDate(member.MembershipEndDate)
-                            : "—"
-                        }
+                        value={member && member.MembershipEndDate ? formatDate(member.MembershipEndDate) : "—"}
                       />
                     </Box>
                   </Box>
                   <Divider sx={{ my: 1 }} />
-                  {/* Visit Information */}
                   <Box mb={1}>
                     <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1 }}>
                       Visit Information
@@ -1116,22 +1193,14 @@ export default function StaffDashboard() {
                         size="small"
                         label="Visit Date"
                         InputProps={{ readOnly: true }}
-                        value={
-                          selectedVisit.VisitDate
-                            ? formatDate(selectedVisit.VisitDate)
-                            : "—"
-                        }
+                        value={selectedVisit.VisitDate ? formatDate(selectedVisit.VisitDate) : "—"}
                       />
                       <TextField
                         variant="filled"
                         size="small"
                         label="Visit Time"
                         InputProps={{ readOnly: true }}
-                        value={
-                          selectedVisit.VisitTime
-                            ? formatTime(selectedVisit.VisitTime)
-                            : "—"
-                        }
+                        value={selectedVisit.VisitTime ? formatTime(selectedVisit.VisitTime) : "—"}
                       />
                       <TextField
                         variant="filled"
@@ -1150,7 +1219,6 @@ export default function StaffDashboard() {
                     </Box>
                   </Box>
                   <Divider sx={{ my: 1 }} />
-                  {/* Notes */}
                   <Box>
                     <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1 }}>
                       Notes
@@ -1162,9 +1230,7 @@ export default function StaffDashboard() {
                       rows={2}
                       size="small"
                       InputProps={{ readOnly: true }}
-                      value={
-                        member && member.Notes ? member.Notes : "No notes available."
-                      }
+                      value={member && member.Notes ? member.Notes : "No notes available."}
                     />
                   </Box>
                 </Box>
