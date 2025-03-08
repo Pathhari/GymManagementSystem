@@ -44,8 +44,6 @@ const mailjetColumns = [
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Email", headerName: "Email", width: 200 },
   { field: "MemberStatusID", headerName: "StatusID", width: 100 },
-  // If you want to see the date in the grid:
-  // { field: "MembershipEndDate", headerName: "Ends On", width: 140 },
 ];
 
 const semaphoreColumns = [
@@ -115,6 +113,7 @@ export default function Notifications() {
     loadAllMembersMailjet();
     loadAllMembersSemaphore();
     loadMemberStatuses();
+    loadStaffList(); // <--- Load staff for staff-specific announcements
   }, []);
 
   const loadAnnouncements = async () => {
@@ -156,6 +155,18 @@ export default function Notifications() {
       { id: "6", name: "NEW MEMBER" },
     ];
     setMemberStatuses(statuses);
+  };
+
+  // ---------------- LOAD STAFF LIST FOR STAFF ANNOUNCEMENTS ---------------
+  const loadStaffList = async () => {
+    try {
+      // Adjust this endpoint if necessary
+      const response = await axios.get("/staff");
+      // e.g. if response.data is an array of staff, set it:
+      setStaffList(response.data || []);
+    } catch (error) {
+      console.error("Failed to load staff list:", error);
+    }
   };
 
   // ===================== ANNOUNCEMENTS =====================
@@ -307,21 +318,20 @@ export default function Notifications() {
     const today = new Date();
     const next7 = new Date();
     next7.setDate(next7.getDate() + 7); // 7 days from now
+    next7.setDate(next7.getDate() + 7); // 7 days from now
 
     return allMembers.filter((m) => {
-      // 1) Check status
+      // Filter by status
       if (
         mailjetFilterStatus !== "All" &&
         String(m.MemberStatusID) !== mailjetFilterStatus
       ) {
         return false;
       }
-
-      // 2) Check if “Expiring in 7 days” is toggled
+      // Filter by “Expiring in 7 days”
       if (mailjetShowExpiring) {
         if (!m.MembershipEndDate) return false;
         const endDateObj = new Date(m.MembershipEndDate);
-        // Ensure we only take those strictly after "today" but on/before "next7"
         if (endDateObj <= today) return false;
         if (endDateObj > next7) return false;
       }
@@ -386,6 +396,22 @@ export default function Notifications() {
     return String(m.MemberStatusID) === semaphoreFilterStatus;
   });
 
+  const handleSendExpiringReminder = async () => {
+    try {
+      const res = await axios.get("/notifications/send-expiring-reminder");
+      if (res.data.status === "success") {
+        alert("Expiry reminder emails sent!");
+      } else if (res.data.status === "no-action") {
+        alert("No members expiring in 7 days.");
+      } else {
+        alert("An error occurred. Please check the logs.");
+      }
+    } catch (error) {
+      console.error("Failed to send expiring reminder:", error);
+      alert("Failed to send expiry reminder.");
+    }
+  };
+
   // ===================== RENDER =====================
   return (
     <Box sx={{ p: 4 }}>
@@ -403,8 +429,9 @@ export default function Notifications() {
       {/* ---------------------- TAB 0: Announcements & Staff Notifications ---------------------- */}
       {activeTab === 0 && (
         <Grid container spacing={3}>
+          {/* ==================== Add a General Announcement ==================== */}
           <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2 }}>
+            <Paper sx={{ p: 2, mb: 2 }}>
               <Typography variant="h6">Add Announcement</Typography>
               <Stack spacing={2} sx={{ mt: 1 }}>
                 <TextField
@@ -437,8 +464,64 @@ export default function Notifications() {
                 </Button>
               </Stack>
             </Paper>
+            {/* =============== STAFF-SPECIFIC ANNOUNCEMENT MODULE =============== */}
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Send Announcement to Specific Staff
+              </Typography>
+              <Stack spacing={2} sx={{ mb: 2 }}>
+                <TextField
+                  label="Subject"
+                  fullWidth
+                  value={staffSubject}
+                  onChange={(e) => setStaffSubject(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <CampaignIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <TextField
+                  label="Message"
+                  fullWidth
+                  multiline
+                  rows={2}
+                  value={staffMessage}
+                  onChange={(e) => setStaffMessage(e.target.value)}
+                />
+              </Stack>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Select Staff to Receive This Announcement
+              </Typography>
+              <div style={{ width: "100%", height: 300, marginBottom: 16 }}>
+              <DataGrid
+                  rows={staffList}
+                  columns={staffColumns}
+                  getRowId={(row) => row.StaffID}
+                  checkboxSelection
+                  rowSelectionModel={selectedStaff} // <-- add this
+                  onRowSelectionModelChange={(newSelection) => {
+                    const numericIDs = newSelection.map(Number);
+                    handleStaffSelection(numericIDs);
+                  }}
+                  pageSize={5}
+                  rowsPerPageOptions={[5, 10]}
+                />
+              </div>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<SendIcon />}
+                onClick={handleSendStaffAnnouncement}
+              >
+                Send to Staff
+              </Button>
+            </Paper>
           </Grid>
 
+          {/* ==================== Display Recent Announcements ==================== */}
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 2, height: "100%" }}>
               <Typography variant="h6" gutterBottom>
@@ -511,23 +594,24 @@ export default function Notifications() {
             </a>
           </Typography>
 
-          <Stack spacing={2} sx={{ mb: 2, maxWidth: 400 }}>
-            <TextField
-              label="Mailjet Template ID"
-              fullWidth
-              value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <EmailIcon />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Stack>
+          {!mailjetShowExpiring && (
+            <Stack spacing={2} sx={{ mb: 2, maxWidth: 400 }}>
+              <TextField
+                label="Mailjet Template ID"
+                fullWidth
+                value={templateId}
+                onChange={(e) => setTemplateId(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <EmailIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Stack>
+          )}
 
-          {/* Filter UI: status + “expiring soon” checkbox */}
           <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
             <Box sx={{ minWidth: 200 }}>
               <FormControl fullWidth>

@@ -30,55 +30,38 @@ class MembershipController extends Controller
      */
     public function apiIndex()
     {
-        // 1️⃣ Get the authenticated staff
         $staff = auth('staff')->user();
-    
-        if (!$staff) {
-            \Log::error('[MembershipController] No authenticated staff found.');
-            return response()->json(['error' => 'Unauthorized'], 401);
+
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID');
+
+            // Filter members by those branches
+            $members = Member::whereIn('StartedBranchID', $branchIDs)
+                ->orderBy('MemberID','desc')
+                ->get();
+
+            // Similarly for Freezes, Renewals, Walk-Ins, etc.
+            $freezes = MembershipFreeze::whereHas('member', function ($q) use ($branchIDs) {
+                $q->whereIn('StartedBranchID', $branchIDs);
+            })->orderBy('FreezeID','desc')->get();
+
+            $renewals = MembershipRenewal::whereIn('MemberID', function ($sub) use ($branchIDs) {
+                $sub->select('MemberID')
+                    ->from('members')
+                    ->whereIn('StartedBranchID', $branchIDs);
+            })->orderBy('RenewalID','desc')->get();
+
+            $walkIns = WalkIn::whereIn('BranchID', $branchIDs)
+                ->orderBy('WalkInID','desc')
+                ->get();
+        } else {
+            // Admin or Owner => see all
+            $members  = Member::orderBy('MemberID','desc')->get();
+            $freezes  = MembershipFreeze::orderBy('FreezeID','desc')->get();
+            $renewals = MembershipRenewal::orderBy('RenewalID','desc')->get();
+            $walkIns  = WalkIn::orderBy('WalkInID','desc')->get();
         }
-    
-        \Log::info("[MembershipController] Authenticated Staff ID: {$staff->StaffID}");
-    
-        // 2️⃣ Fetch staff's assigned branch IDs
-        $branchIDs = $staff->branches->pluck('BranchID');
-    
-        if ($branchIDs->isEmpty()) {
-            \Log::warning("[MembershipController] Staff ID {$staff->StaffID} has no assigned branches.");
-            return response()->json(['message' => 'No branches assigned to this staff.'], 404);
-        }
-    
-        \Log::info("[MembershipController] Staff Branch IDs: " . json_encode($branchIDs->toArray()));
-    
-        // 3️⃣ Fetch members filtered by branch
-        $members = Member::whereIn('StartedBranchID', $branchIDs)
-                    ->orderBy('MemberID', 'desc')
-                    ->get();
-    
-        \Log::info("[MembershipController] Fetched Members: " . json_encode($members->toArray()));
-    
-        // 4️⃣ Fetch related data (Walk-Ins, Renewals, Freezes)
-        $freezes = MembershipFreeze::whereHas('member', function ($query) use ($branchIDs) {
-            $query->whereIn('StartedBranchID', $branchIDs);
-        })->orderBy('FreezeID', 'desc')->get();
-    
-        \Log::info("[MembershipController] Fetched Freezes: " . json_encode($freezes->toArray()));
-    
-        $renewals = MembershipRenewal::whereIn('MemberID', function ($query) use ($branchIDs) {
-            $query->select('MemberID')
-                ->from('members')
-                ->whereIn('StartedBranchID', $branchIDs);
-        })->orderBy('RenewalID', 'desc')->get();
-    
-        \Log::info("[MembershipController] Fetched Renewals: " . json_encode($renewals->toArray()));
-    
-        $walkIns = WalkIn::whereIn('BranchID', $branchIDs)
-                    ->orderBy('WalkInID', 'desc')
-                    ->get();
-    
-        \Log::info("[MembershipController] Fetched Walk-Ins: " . json_encode($walkIns->toArray()));
-    
-        // 5️⃣ Return JSON response
+
         return response()->json([
             'members'  => $members,
             'walkIns'  => $walkIns,
@@ -86,7 +69,6 @@ class MembershipController extends Controller
             'freezes'  => $freezes,
         ]);
     }
-    
 
     /**
      * Simple search by name (GET /membership/search-members?q=)
@@ -141,11 +123,13 @@ class MembershipController extends Controller
          // If staff => override BranchID
          $staff = auth('staff')->user();
          if ($staff) {
-             $data['StartedBranchID'] = $staff->BranchID;
+             // Retrieve the branch id from the staff's associated branches.
+             $branch = $staff->branches()->first();
+             $data['StartedBranchID'] = $branch ? $branch->BranchID : null;
          } else {
              $data['StartedBranchID'] = $data['BranchID'] ?? null;
          }
-     
+         
          // Handle photo upload
          if ($request->hasFile('PhotoFile')) {
              $filename = 'member_' . time() . '.' . $request->file('PhotoFile')->extension();

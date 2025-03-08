@@ -623,64 +623,84 @@ class OperationsController extends Controller
      */
     public function storeVisit(Request $request)
     {
+        // Attempt to get the authenticated staff user
+        $staff = auth('staff')->user();
+    
+        // Validate input
         $data = $request->validate([
             'MemberID'      => 'required|exists:members,MemberID',
-            'CheckInMethod' => 'nullable|string',
+            'VisitDate'     => 'nullable|date',       // If omitted, defaults to today
+            'VisitTime'     => 'nullable',            // If omitted, defaults to now
+            'CheckInMethod' => 'nullable|string|max:50', // e.g. "biometric", "card", "manual"
+            'Remarks'       => 'nullable|string',
+            'BranchID'      => 'nullable|exists:branches,BranchID',
         ]);
-
-        $staff = auth('staff')->user();
-        if (!$staff) {
-            return response()->json(['error' => 'Unauthorized'], 401);
+    
+        // Set default date/time if none provided
+        $data['VisitDate']     = $data['VisitDate']     ?? Carbon::today()->format('Y-m-d');
+        $data['VisitTime']     = $data['VisitTime']     ?? Carbon::now()->format('H:i:s');
+        $data['CheckInMethod'] = $data['CheckInMethod'] ?? 'card';
+    
+        // If staff is logged in, override BranchID with the staff’s branch
+        if ($staff) {
+            // If staff->BranchID is stored directly on staff, do:
+            // $data['BranchID'] = $staff->BranchID;
+            
+            // OR if you use many-to-many pivot for staff->branches():
+            // $branch = $staff->branches()->first();
+            // $data['BranchID'] = $branch ? $branch->BranchID : null;
         }
-
-        // Force BranchID to be the staff's branch.
-        $data['BranchID'] = $staff->BranchID;
-
-        $today = date('Y-m-d');
-        $existingVisit = MemberVisit::where('MemberID', $data['MemberID'])
-            ->where('VisitDate', $today)
-            ->first();
-        if ($existingVisit) {
+    
+        // If still no BranchID (e.g. not staff or staff has no branch), we can fail or set a default
+        if (empty($data['BranchID'])) {
             return response()->json([
-                'error' => 'Member is already checked in for today.'
-            ], 409);
+                'message' => 'BranchID is required (none provided).'
+            ], 422);
         }
-
-        $data['VisitDate'] = $today;
-        $data['VisitTime'] = date('H:i:s');
-
-        $visit = MemberVisit::create($data);
-
+    
+        try {
+            // Create the visit record
+            $visit = MemberVisit::create($data);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // For example, if you have a unique constraint for (MemberID, BranchID, VisitDate),
+            // you could interpret code 23000 as "already checked in"
+            if ($e->getCode() === '23000') {
+                return response()->json([
+                    'message' => 'Member is already checked in for today.'
+                ], 409);
+            }
+            throw $e; // Or handle other DB errors
+        }
+    
         return response()->json([
-            'message' => 'Member checked in successfully.',
-            'visit'   => $visit,
+            'message' => 'Visit logged successfully.',
+            'visit'   => $visit
         ], 201);
     }
-
     /**
      * Display a list of visit logs.
      */
-    public function indexVisits()
-    {
-        $staff = auth('staff')->user();
+  // app/Http/Controllers/OperationsController.php
 
-        if ($staff) {
-            $visits = MemberVisit::where('BranchID', $staff->BranchID)
-                ->with('member')
-                ->orderBy('VisitDate', 'desc')
-                ->orderBy('VisitTime', 'desc')
-                ->get();
-        } else {
-            $visits = MemberVisit::with('member')
-                ->orderBy('VisitDate', 'desc')
-                ->orderBy('VisitTime', 'desc')
-                ->get();
-        }
+public function indexVisits(Request $request)
+{
+    // Optional: check staff authentication
+    $branchID = $request->query('branchID'); 
 
-        return response()->json([
-            'visits' => $visits
-        ]);
+    // Build a query for MemberVisit
+    $query = MemberVisit::with(['member', 'branch']); 
+      // or ->select(...) if you only want certain columns
+
+    // If a branchID is provided, filter by it
+    if ($branchID) {
+        $query->where('BranchID', $branchID);
     }
+
+    // Optionally sort, e.g. newest first
+    $visits = $query->orderByDesc('VisitDate')->get();
+
+    return response()->json(['visits' => $visits]);
+}
 
     /**
      * Update an existing visit log.
@@ -799,7 +819,13 @@ class OperationsController extends Controller
         ]);
     
         if ($staff) {
-            $data['BranchID'] = $staff->BranchID;
+            // Use staff->BranchID if it exists; otherwise, fetch the first branch from the pivot.
+            if (!empty($staff->BranchID)) {
+                $data['BranchID'] = $staff->BranchID;
+            } else {
+                $branch = $staff->branches()->first();
+                $data['BranchID'] = $branch ? $branch->BranchID : null;
+            }
         } elseif ($admin || $owner) {
             if (empty($data['BranchID'])) {
                 $data['BranchID'] = 1; 
@@ -851,6 +877,7 @@ class OperationsController extends Controller
     
         return response()->json($walkIn, 201);
     }
+    
     
     /**
      * Increment the daily cash flow for a Walk-In.

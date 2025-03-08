@@ -628,7 +628,7 @@ const handleAddWalkIn = async () => {
     return;
   }
   try {
-    const res = await axios.post(`/staff/operations/walk-ins`, {
+    const res = await axios.post(`/operations/walk-ins`, {
       FullName: newWalkIn.FullName,
       VisitDate: newWalkIn.VisitDate,
       PaymentID: newWalkIn.PaymentID,
@@ -658,6 +658,7 @@ const handleAddWalkIn = async () => {
     alert("Create error. Check console for details.");
   }
 };
+
 
 // ─────────────────────────────────────────────────────────
 // FREEZE CRUD (Staffified)
@@ -2076,25 +2077,24 @@ return (
             boxShadow: 2,
           }}
         >
-          <DirectionsWalkIcon sx={{ fontSize: 30, color: "primary.main", mr: 1.5 }} />
+       <PeopleIcon sx={{ fontSize: 30, color: "#90EE90", mr: 1.5 }} /> 
           <CardContent sx={{ p: 0.5 }}>
-            <Typography variant="body2">Today's Walk-Ins</Typography>
+            <Typography variant="body2">Active Members</Typography>
             <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-              {getTodayWalkIns()}
+              {
+                filteredMemberships.filter(
+                  (m) => getStatusNameByID(m.MemberStatusID)?.toLowerCase() === "active"
+                ).length
+              }
             </Typography>
           </CardContent>
         </Card>
       </Grid>
+
       <Grid item xs={12} sm={6} md={3}>
-        {/* Expired Card now clickable */}
         <Card
-          onClick={() => {
-            setActiveTab(0);
-            setFilterExpired((prev) => !prev);
-            setFilterExpiring(false); // reset other filter
-          }}
           sx={{
-            cursor: "pointer",
+            cursor: "default", // Change cursor to indicate it's not clickable
             bgcolor: "text.primary",
             color: "background.paper",
             p: 1.5,
@@ -2118,32 +2118,29 @@ return (
         </Card>
       </Grid>
       <Grid item xs={12} sm={6} md={3}>
-        <Card
-          onClick={() => {
-            setActiveTab(0);
-            setFilterExpiring((prev) => !prev);
-            setFilterExpired(false); // reset the other filter
-          }}
-          sx={{
-            cursor: "pointer",
-            bgcolor: "text.primary",
-            color: "background.paper",
-            p: 1.5,
-            display: "flex",
-            alignItems: "center",
-            boxShadow: 2,
-            ...(filterExpiring && { border: "2px solid blue" }),
-          }}
-        >
-          <EventAvailableIcon sx={{ fontSize: 30, color: "blue", mr: 1.5 }} />
-          <CardContent sx={{ p: 0.5 }}>
-            <Typography variant="body2">Expiring Soon</Typography>
-            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-              {upcomingExpirations}
-            </Typography>
-          </CardContent>
-        </Card>
-      </Grid>
+  <Card
+    sx={{
+      cursor: "default", // Ensure it's not visually clickable
+      pointerEvents: "none", // Prevents any interaction
+      bgcolor: "text.primary",
+      color: "background.paper",
+      p: 1.5,
+      display: "flex",
+      alignItems: "center",
+      boxShadow: 2,
+      ...(filterExpiring && { border: "2px solid blue" }),
+    }}
+  >
+    <EventAvailableIcon sx={{ fontSize: 30, color: "blue", mr: 1.5 }} />
+    <CardContent sx={{ p: 0.5 }}>
+      <Typography variant="body2">Expiring Soon</Typography>
+      <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+        {upcomingExpirations}
+      </Typography>
+    </CardContent>
+  </Card>
+</Grid>
+
     </Grid>
 
     {/* Tabs */}
@@ -2286,13 +2283,15 @@ return (
             />
       </Box>
     </Paper>
-
+  
     {isAddMembershipLayoutVisible && (
-      <AddNewMemberLayout
-        onClose={() => setAddMembershipLayoutVisible(false)}
-        onMemberCreated={handleNewMemberCreated}
-      />
-    )}
+  <AddNewMemberLayout
+    onClose={() => setAddMembershipLayoutVisible(false)}
+    onMemberCreated={handleNewMemberCreated}
+    role="staff" // or role="owner" depending on who's logged in
+  />
+)}
+
     {isManagePlansOpen && <ManagePlansLayout onClose={() => setManagePlansOpen(false)} />}
 
 

@@ -39,12 +39,12 @@ import PaymentIcon from "@mui/icons-material/Payment";
 import StickyNote2Icon from "@mui/icons-material/StickyNote2";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 
-export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
+export default function AddNewMemberLayout({ onClose, onMemberCreated, role }) {
   const theme = useTheme();
   const { mode } = theme.palette;
   const webcamRef = useRef(null);
 
-  // Member info
+  // Member info state
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -59,7 +59,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   // Payment splits
   const [payments, setPayments] = useState([{ PaymentMethod: "", PaymentAmount: "" }]);
 
-  // Photo
+  // Photo state
   const [photoFile, setPhotoFile] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
 
@@ -78,8 +78,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   const [errors, setErrors] = useState({});
 
   // ────────────────────────────────────────────────────────────────
-  // Fetch Plans & Branches on mount
-  // ────────────────────────────────────────────────────────────────
+  // Fetch plans & branches on mount
   useEffect(() => {
     axios
       .get("/membership/plans")
@@ -95,8 +94,21 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   }, []);
 
   // ────────────────────────────────────────────────────────────────
-  // Whenever Plan or MonthsToPay changes, recompute membershipTotal
+  // For staff, auto-set branch from logged‑in staff details
+  useEffect(() => {
+    if (role === "staff") {
+      axios
+        .get("/staff/get-logged-in-staff")
+        .then((res) => {
+          const staffData = res.data;
+          setBranch(String(staffData.BranchID));
+        })
+        .catch((err) => console.error("Error fetching staff details:", err));
+    }
+  }, [role]);
+
   // ────────────────────────────────────────────────────────────────
+  // Recompute membershipTotal whenever plan or monthsToPay changes
   useEffect(() => {
     const selectedPlan = plans.find((p) => p.PlanID === selectedPlanID);
     const planPrice = selectedPlan?.Price ? Number(selectedPlan.Price) : 0;
@@ -112,8 +124,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   }, [selectedPlanID, monthsToPay, plans]);
 
   // ────────────────────────────────────────────────────────────────
-  // Autogenerate next card number
-  // ────────────────────────────────────────────────────────────────
+  // Auto-generate next membership card number on mount
   useEffect(() => {
     axios
       .get("/membership/latest-card-number")
@@ -128,7 +139,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
 
   // ────────────────────────────────────────────────────────────────
   // Validations
-  // ────────────────────────────────────────────────────────────────
   const validateEmail = (str) =>
     /^[^\d][\w.-]+@[a-zA-Z]+\.[a-zA-Z]+$/.test(str);
 
@@ -173,15 +183,12 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     if (!notes.trim()) {
       newErrors.Notes = ["Notes are required"];
     }
-
     if (isNaN(monthsToPay) || Number(monthsToPay) < 1) {
       newErrors.MonthsToPay = ["Months to Pay must be at least 1"];
     }
-
     if (!photoFile && !capturedImage) {
       newErrors.PhotoFile = ["A photo is required"];
     }
-
     if (!payments.length) {
       newErrors.Payments = ["At least one payment row is required"];
     } else {
@@ -204,8 +211,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   };
 
   // ────────────────────────────────────────────────────────────────
-  // Split Payment Handlers
-  // ────────────────────────────────────────────────────────────────
+  // Payment row handlers
   const handleAddPaymentRow = () => {
     setPayments((prev) => [...prev, { PaymentMethod: "", PaymentAmount: "" }]);
   };
@@ -221,8 +227,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   };
 
   // ────────────────────────────────────────────────────────────────
-  // Photo Handlers
-  // ────────────────────────────────────────────────────────────────
+  // Photo handlers
   const handleOpenWebcam = () => setOpenWebcam(true);
   const handleCloseWebcam = () => setOpenWebcam(false);
 
@@ -254,8 +259,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
   }
 
   // ────────────────────────────────────────────────────────────────
-  // Submit + Confirmation
-  // ────────────────────────────────────────────────────────────────
+  // Submit & confirmation handlers
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -310,7 +314,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
 
   // ────────────────────────────────────────────────────────────────
   // UI Rendering
-  // ────────────────────────────────────────────────────────────────
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="lg">
       <DialogTitle>
@@ -324,22 +327,18 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
           </IconButton>
         </Box>
       </DialogTitle>
-
       <DialogContent dividers>
         <Box sx={{ p: 2 }}>
           <Divider sx={{ mb: 3 }} />
-
           <form onSubmit={handleSubmit}>
             <Grid container spacing={3}>
-              {/* LEFT SIDE */}
+              {/* LEFT SIDE: Personal & Membership Details */}
               <Grid
                 item
                 xs={12}
                 md={6}
                 sx={{
-                  backgroundColor: mode === "dark"
-                    ? theme.palette.background.paper
-                    : "rgba(0,0,0,0.02)",
+                  backgroundColor: mode === "dark" ? theme.palette.background.paper : "rgba(0,0,0,0.02)",
                   p: 2,
                   borderRadius: 2,
                 }}
@@ -347,7 +346,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                 <Typography variant="subtitle1" sx={{ mb: 2 }}>
                   Personal & Membership Details
                 </Typography>
-
                 <Grid container spacing={2}>
                   <Grid item xs={12}>
                     <TextField
@@ -368,7 +366,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
-
                   <Grid item xs={12} sm={6}>
                     <TextField
                       label="Email"
@@ -389,7 +386,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
-
                   <Grid item xs={12} sm={6}>
                     <TextField
                       label="Phone Number"
@@ -409,7 +405,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
-
                   <Grid item xs={12}>
                     <TextField
                       select
@@ -439,7 +434,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       ))}
                     </TextField>
                   </Grid>
-
                   <Grid item xs={12} sm={6}>
                     <TextField
                       label="Months to Pay"
@@ -457,7 +451,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       inputProps={{ min: 1 }}
                     />
                   </Grid>
-
                   <Grid item xs={12} sm={6}>
                     <TextField
                       label="Total Membership Cost"
@@ -472,7 +465,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
-
                   <Grid item xs={12}>
                     <TextField
                       label="Membership Card Number"
@@ -492,7 +484,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
-
                   <Grid item xs={12}>
                     <FormControlLabel
                       control={
@@ -504,7 +495,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       label="Membership Card Issued?"
                     />
                   </Grid>
-
                   <Grid item xs={12} sm={6}>
                     <TextField
                       label="Free Sessions"
@@ -526,7 +516,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
-
                   <Grid item xs={12} sm={6}>
                     <TextField
                       select
@@ -545,8 +534,12 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                           </InputAdornment>
                         ),
                       }}
+                      // Disable branch selection if role is staff
+                      disabled={role === "staff"}
                     >
-                      <MenuItem value="">-- Select Branch --</MenuItem>
+                      <MenuItem value="">
+                        <em>-- Select Branch --</em>
+                      </MenuItem>
                       {branches.map((b) => (
                         <MenuItem key={b.BranchID} value={b.BranchID}>
                           {b.BranchName}
@@ -556,16 +549,13 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                   </Grid>
                 </Grid>
               </Grid>
-
-              {/* RIGHT SIDE */}
+              {/* RIGHT SIDE: Photo & Additional Info */}
               <Grid
                 item
                 xs={12}
                 md={6}
                 sx={{
-                  backgroundColor: mode === "dark"
-                    ? theme.palette.background.paper
-                    : "rgba(0,0,0,0.02)",
+                  backgroundColor: mode === "dark" ? theme.palette.background.paper : "rgba(0,0,0,0.02)",
                   p: 2,
                   borderRadius: 2,
                 }}
@@ -573,7 +563,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                 <Typography variant="subtitle1" sx={{ mb: 2 }}>
                   Photo & Additional Info
                 </Typography>
-
                 <Grid container spacing={2}>
                   <Grid item xs={12}>
                     <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
@@ -614,7 +603,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       </Typography>
                     )}
                   </Grid>
-
                   <Grid item xs={12}>
                     <TextField
                       label="Notes"
@@ -636,20 +624,11 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                       }}
                     />
                   </Grid>
-
                   <Grid item xs={12}>
                     <Typography variant="subtitle2" sx={{ mb: 1 }}>
                       Payments (Split Allowed)
                     </Typography>
-
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 3,
-                        flexWrap: "wrap",
-                      }}
-                    >
+                    <Box sx={{ display: "flex", alignItems: "flex-start", gap: 3, flexWrap: "wrap" }}>
                       {capturedImage && (
                         <Box
                           component="img"
@@ -664,7 +643,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                           }}
                         />
                       )}
-
                       <Box>
                         {payments.map((payment, index) => (
                           <Box
@@ -675,9 +653,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                               mb: 1,
                               flexWrap: "wrap",
                               alignItems: "center",
-                              backgroundColor: mode === "dark"
-                                ? theme.palette.grey[800]
-                                : "#f9f9f9",
+                              backgroundColor: mode === "dark" ? theme.palette.grey[800] : "#f9f9f9",
                               p: 1,
                               borderRadius: 1,
                             }}
@@ -711,7 +687,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                                 </FormHelperText>
                               )}
                             </FormControl>
-
                             <TextField
                               label="Amount"
                               type="number"
@@ -722,38 +697,22 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                               error={!!errors[`Payments_${index}_PaymentAmount`]}
                               helperText={errors[`Payments_${index}_PaymentAmount`]?.[0]}
                               InputProps={{
-                                startAdornment: (
-                                  <InputAdornment position="start">₱</InputAdornment>
-                                ),
+                                startAdornment: <InputAdornment position="start">₱</InputAdornment>,
                               }}
                               sx={{ width: 150 }}
                             />
-
                             {payments.length > 1 && (
-                              <IconButton
-                                onClick={() => handleRemovePaymentRow(index)}
-                                color="error"
-                              >
+                              <IconButton onClick={() => handleRemovePaymentRow(index)} color="error">
                                 <CloseIcon />
                               </IconButton>
                             )}
                           </Box>
                         ))}
-
-                        <Button
-                          variant="outlined"
-                          onClick={handleAddPaymentRow}
-                          sx={{ mt: 1 }}
-                        >
+                        <Button variant="outlined" onClick={handleAddPaymentRow} sx={{ mt: 1 }}>
                           Add Payment
                         </Button>
                         {errors.Payments && (
-                          <Typography
-                            variant="caption"
-                            color="error"
-                            display="block"
-                            sx={{ mt: 1 }}
-                          >
+                          <Typography variant="caption" color="error" display="block" sx={{ mt: 1 }}>
                             {errors.Payments[0]}
                           </Typography>
                         )}
@@ -763,24 +722,15 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
                 </Grid>
               </Grid>
             </Grid>
-
             <Box sx={{ mt: 4, display: "flex", justifyContent: "flex-end", gap: 2 }}>
-              <Button
-                variant="contained"
-                color="primary"
-                type="submit"
-                sx={{ textTransform: "none" }}
-              >
+              <Button variant="contained" color="primary" type="submit" sx={{ textTransform: "none" }}>
                 <Save sx={{ mr: 1 }} />
                 Submit Registration
               </Button>
             </Box>
           </form>
-
           <Dialog open={openWebcam} onClose={handleCloseWebcam} maxWidth="sm" fullWidth>
-            <DialogTitle sx={{ textAlign: "center" }}>
-              Capture Profile Picture
-            </DialogTitle>
+            <DialogTitle sx={{ textAlign: "center" }}>Capture Profile Picture</DialogTitle>
             <DialogContent
               dividers
               sx={{
@@ -810,7 +760,6 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
           </Dialog>
         </Box>
       </DialogContent>
-
       <Dialog
         open={openConfirmation}
         onClose={handleConfirmNo}
@@ -833,12 +782,7 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
           <Button onClick={handleConfirmNo} sx={{ textTransform: "none", color: "red" }}>
             Cancel
           </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            sx={{ textTransform: "none" }}
-            onClick={handleConfirmYes}
-          >
+          <Button variant="contained" color="primary" sx={{ textTransform: "none" }} onClick={handleConfirmYes}>
             Confirm
           </Button>
         </DialogActions>
@@ -846,3 +790,4 @@ export default function AddNewMemberLayout({ onClose, onMemberCreated }) {
     </Dialog>
   );
 }
+  

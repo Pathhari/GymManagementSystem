@@ -97,9 +97,10 @@ export default function StaffDashboard() {
   const [isClockedIn, setIsClockedIn] = useState(false);
 
   // Derived states
-  const walkInsTodayCount = walkIns.filter(
-    (w) => w.VisitDate === new Date().toISOString().split("T")[0]
-  ).length;
+  const todayString = new Date().toISOString().split("T")[0];
+  const walkInsTodayCount = walkIns.filter((w) => {
+    return new Date(w.VisitDate).toISOString().split("T")[0] === todayString;
+  }).length;
 
   const today = new Date();
   const next7 = new Date();
@@ -163,14 +164,14 @@ export default function StaffDashboard() {
       setCheckInsToday(metricsRes.data.checkInsToday || 0);
       setLockersInUse(metricsRes.data.lockersInUse || 0);
   
-      const visitsRes = await axios.get("/operations/visits");
+      const visitsRes = await axios.get("/operations/visits", {
+        params: {
+          branchID: staffBranch, // e.g. 1
+        },
+      });
       const fetchedVisits = visitsRes.data.visits || [];
-      if (staffBranch) {
-        setVisits(fetchedVisits.filter((v) => v.BranchID === staffBranch));
-      } else {
-        setVisits(fetchedVisits);
-      }
-  
+      setVisits(fetchedVisits);
+      
       const walkInsRes = await axios.get("/operations/walk-ins");
       setWalkIns(walkInsRes.data || []);
   
@@ -246,7 +247,6 @@ export default function StaffDashboard() {
       await axios.post("/operations/visits", {
         MemberID: selectedMember.MemberID,
         CheckInMethod: checkInMethod,
-        // Use the staffBranch state (or you could determine it from the member info if available)
         BranchID: staffBranch,
       });
       showSuccessMessage(
@@ -540,7 +540,7 @@ export default function StaffDashboard() {
   const walkInColumns = [
     { field: "WalkInID", headerName: "ID", width: 80 },
     { field: "FullName", headerName: "Name", width: 130 },
-    { field: "VisitDate", headerName: "Date", width: 100 },
+    { field: "VisitDate", headerName: "Date", width: 150, renderCell: (params) => (params.value ? formatDate(params.value) : "—"),},
     { field: "Notes", headerName: "Notes", width: 150 },
     {
       field: "Actions",
@@ -605,8 +605,7 @@ export default function StaffDashboard() {
       field: "MembershipEndDate",
       headerName: "Expires On",
       width: 150,
-      renderCell: (params) =>
-        params.value ? new Date(params.value).toLocaleDateString() : "—",
+      renderCell: (params) => (params.value ? formatDate(params.value) : "—"),
     },
   ];
 
@@ -1085,7 +1084,7 @@ export default function StaffDashboard() {
                       {member && member.PhotoPath ? (
                         <Box
                           component="img"
-                          src={`/storage/${selectedMembership.PhotoPath}`}
+                          src={`/storage/${member.PhotoPath}`}
                           alt="Member"
                           sx={{
                             width: "100%",
