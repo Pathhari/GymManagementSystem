@@ -52,7 +52,7 @@ export default function AddScheduleLayout({
   // For server validation errors
   const [errors, setErrors] = useState({});
 
-  // 1) Generate the date list whenever date range or toggles change
+  // 1) Generate date list whenever date range or toggles change
   useEffect(() => {
     if (!dateFrom || !dateTo) {
       setScheduleDates([]);
@@ -66,9 +66,9 @@ export default function AddScheduleLayout({
       return;
     }
 
-    // Example "holiday" list. In real usage, you might fetch from your back end
+    // Example "holiday" list
     const holidaySet = new Set(["2025-04-09", "2025-04-10"]);
-    // ^ Sample. Replace with your actual holiday data. Or fetch from an API.
+    // ^ Adjust or fetch real data from your back end if needed
 
     const newDates = [];
     let cursor = new Date(start);
@@ -76,7 +76,7 @@ export default function AddScheduleLayout({
       const iso = cursor.toISOString().split("T")[0];
       const dayOfWeek = cursor.getDay(); // 0=Sun, 1=Mon,...6=Sat
 
-      // Check weekend skip
+      // Skip Saturdays/Sundays/Holidays if toggled
       if (excludeSaturdays && dayOfWeek === 6) {
         // skip
       } else if (excludeSundays && dayOfWeek === 0) {
@@ -84,7 +84,7 @@ export default function AddScheduleLayout({
       } else if (excludeHolidays && holidaySet.has(iso)) {
         // skip
       } else {
-        // include by default => checked = true
+        // otherwise, include
         newDates.push({ date: iso, checked: true });
       }
       cursor.setDate(cursor.getDate() + 1);
@@ -107,7 +107,7 @@ export default function AddScheduleLayout({
       return;
     }
 
-    // Filter to only the dates the user left checked
+    // Filter only checked dates
     const selectedDates = scheduleDates
       .filter((dObj) => dObj.checked)
       .map((dObj) => dObj.date);
@@ -120,21 +120,23 @@ export default function AddScheduleLayout({
     // Build the payload
     const payload = {
       StaffID: staffID,
-      shiftType,
-      // For dynamic shift
+      shiftType,           // <-- CRITICAL: pass shiftType here
       startTime: dynamicStart,
       endTime: dynamicEnd,
-      // Instead of dateFrom/dateTo, we specifically pass the final chosen date array
-      selectedDates,
+      selectedDates,       // an array of 'YYYY-MM-DD'
     };
 
     try {
-      // Suppose your back end has an endpoint that accepts `selectedDates` as an array
-      const response = await axios.post(route("staff.schedules.bulkStoreCustom"), payload);
+      // Suppose your back end has an endpoint that accepts `selectedDates` 
+      // plus `shiftType` in the request
+      const response = await axios.post(
+        route("staff.schedules.bulkStoreCustom"), 
+        payload
+      );
 
-      // If success => maybe call parent's onSchedulesCreated to refresh
+      // If success => call parent's onSchedulesCreated
       if (onSchedulesCreated) {
-        onSchedulesCreated(response.data); // e.g. { message, schedules: [...] }
+        onSchedulesCreated(response.data);
       }
       onClose();
     } catch (err) {
@@ -305,7 +307,16 @@ export default function AddScheduleLayout({
 
           {/* Generated Date List => Let user uncheck single days */}
           {scheduleDates.length > 0 && (
-            <Box sx={{ mt: 3, p: 2, border: "1px solid #ccc", borderRadius: 2, maxHeight: 300, overflowY: "auto" }}>
+            <Box
+              sx={{
+                mt: 3,
+                p: 2,
+                border: "1px solid #ccc",
+                borderRadius: 2,
+                maxHeight: 300,
+                overflowY: "auto",
+              }}
+            >
               <Typography variant="subtitle1" sx={{ mb: 1 }}>
                 Select/Unselect Specific Dates:
               </Typography>

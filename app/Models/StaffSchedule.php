@@ -13,6 +13,7 @@ class StaffSchedule extends Model
         'ShiftDate',
         'ShiftStart',
         'ShiftEnd',
+        'ShiftType',
         'RoleOverride',
     ];
 

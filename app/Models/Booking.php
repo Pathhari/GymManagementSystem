@@ -20,6 +20,8 @@ class Booking extends Model
         'BookingDate',
         'BookingTime',
         'Duration',
+        'GuestName',
+        'GuestEmail',
     ];
 
     public function member()

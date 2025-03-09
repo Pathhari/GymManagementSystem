@@ -24,14 +24,15 @@ import PhoneIcon from "@mui/icons-material/Phone";
 import WorkIcon from "@mui/icons-material/Work";
 import StoreIcon from "@mui/icons-material/Store";
 import DateRangeIcon from "@mui/icons-material/DateRange";
-import AccessTimeIcon from "@mui/icons-material/AccessTime";
-import TimelapseIcon from "@mui/icons-material/Timelapse";
 import StickyNote2Icon from "@mui/icons-material/StickyNote2";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import TimelapseIcon from "@mui/icons-material/Timelapse";
 
 import axios from "axios";
 import { route } from "ziggy-js";
 
+// Notice: Removed HourlyRate and OvertimeRate from the initial state
 const initialStaff = {
   FullName: "",
   Email: "",
@@ -40,8 +41,6 @@ const initialStaff = {
   BranchID: "",
   DateHired: "",
   DailyRate: "",
-  HourlyRate: "",
-  OvertimeRate: "",
   Notes: "",
 };
 
@@ -49,6 +48,10 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
   const [newStaff, setNewStaff] = useState(initialStaff);
   const [branches, setBranches] = useState([]);
   const [errors, setErrors] = useState({});
+
+  // For real-time derived rates (client-side display only)
+  const [clientHourly, setClientHourly] = useState("");
+  const [clientOvertime, setClientOvertime] = useState("");
 
   // Snackbar state for success messages
   const [snackMessage, setSnackMessage] = useState("");
@@ -60,7 +63,9 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
   // State for realtime submit button enablement
   const [isSubmitEnabled, setIsSubmitEnabled] = useState(false);
 
+  // ---------------------------
   // Fetch branches on mount
+  // ---------------------------
   useEffect(() => {
     axios
       .get(route("branches.index"))
@@ -74,30 +79,46 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
       });
   }, []);
 
+  // ---------------------------
+  // Compute local (client-side) Hourly & OT whenever DailyRate changes
+  // ---------------------------
+  useEffect(() => {
+    const daily = parseFloat(newStaff.DailyRate);
+    if (!isNaN(daily) && daily > 0) {
+      const hr = (daily / 8).toFixed(2);
+      const ot = (hr * 1.25).toFixed(2);
+      setClientHourly(hr);
+      setClientOvertime(ot);
+    } else {
+      setClientHourly("");
+      setClientOvertime("");
+    }
+  }, [newStaff.DailyRate]);
+
+  // ---------------------------
+  // Basic front-end validations
+  // ---------------------------
+  const isValidForm = () =>
+    newStaff.FullName.trim() !== "" && newStaff.Email.trim() !== "";
+
+  useEffect(() => {
+    setIsSubmitEnabled(isValidForm());
+  }, [newStaff]);
+
+  // ---------------------------
   // Handle input changes
+  // ---------------------------
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setNewStaff((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Snackbar helper
-  const showSuccessMessage = (msg) => {
-    setSnackMessage(msg);
-    setSnackOpen(true);
-  };
-
-  // Realtime validation function: checks that required fields are filled
-  const isValidForm = () => {
-    return newStaff.FullName.trim() !== "" && newStaff.Email.trim() !== "";
-  };
-
-  // useEffect to update submit button enablement in realtime
-  useEffect(() => {
-    setIsSubmitEnabled(isValidForm());
-  }, [newStaff]);
-
-  // Submit the staff form
+  // ---------------------------
+  // Submit to back-end
+  // ---------------------------
   const handleSubmit = async () => {
+    // Clear any previous errors
+    setErrors({});
     const newErrors = {};
 
     if (!newStaff.FullName.trim()) newErrors.FullName = "Full Name is required";
@@ -110,11 +131,17 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
     }
 
     try {
+      // Build the payload — note: we do NOT send HourlyRate & OvertimeRate
       const payload = { ...newStaff };
+
+      // Post
       const response = await axios.post(route("staff.store"), payload);
       const createdStaff = response.data;
+
+      // Show success
       showSuccessMessage("Staff registration submitted!");
 
+      // Let parent know
       if (onStaffAdded) {
         onStaffAdded(createdStaff);
       }
@@ -129,13 +156,26 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
     }
   };
 
+  // ---------------------------
+  // Snackbar helper
+  // ---------------------------
+  const showSuccessMessage = (msg) => {
+    setSnackMessage(msg);
+    setSnackOpen(true);
+  };
+
+  // ---------------------------
   // Confirmation modal handlers
+  // ---------------------------
   const handleConfirmNo = () => setOpenConfirmation(false);
   const handleConfirmYes = async () => {
     await handleSubmit();
     setOpenConfirmation(false);
   };
 
+  // ---------------------------
+  // The UI
+  // ---------------------------
   return (
     <>
       {/* Main Dialog */}
@@ -314,7 +354,7 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
                     </Grid>
 
                     {/* Daily Rate */}
-                    <Grid item xs={12} sm={4}>
+                    <Grid item xs={12} sm={6}>
                       <TextField
                         label="Daily Rate"
                         variant="outlined"
@@ -326,23 +366,23 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
                         InputProps={{
                           startAdornment: (
                             <InputAdornment position="start">
-                              <Typography sx={{ fontWeight: "bold" }}>₱</Typography>
+                              <Typography sx={{ fontWeight: "bold" }}>
+                                ₱
+                              </Typography>
                             </InputAdornment>
                           ),
                         }}
                       />
                     </Grid>
 
-                    {/* Hourly Rate */}
-                    <Grid item xs={12} sm={4}>
+                    {/* Hourly Rate (derived; read-only) */}
+                    <Grid item xs={12} sm={3}>
                       <TextField
-                        label="Hourly Rate"
+                        label="Hourly Rate (auto)"
                         variant="outlined"
                         fullWidth
-                        name="HourlyRate"
-                        type="number"
-                        value={newStaff.HourlyRate}
-                        onChange={handleInputChange}
+                        value={clientHourly}
+                        disabled
                         InputProps={{
                           startAdornment: (
                             <InputAdornment position="start">
@@ -350,19 +390,18 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
                             </InputAdornment>
                           ),
                         }}
+                        helperText="Derived from DailyRate / 8"
                       />
                     </Grid>
 
-                    {/* Overtime Rate */}
-                    <Grid item xs={12} sm={4}>
+                    {/* Overtime Rate (derived; read-only) */}
+                    <Grid item xs={12} sm={3}>
                       <TextField
-                        label="Overtime Rate"
+                        label="OT Rate (auto)"
                         variant="outlined"
                         fullWidth
-                        name="OvertimeRate"
-                        type="number"
-                        value={newStaff.OvertimeRate}
-                        onChange={handleInputChange}
+                        value={clientOvertime}
+                        disabled
                         InputProps={{
                           startAdornment: (
                             <InputAdornment position="start">
@@ -370,6 +409,7 @@ export default function AddNewStaffLayout({ onClose, onStaffAdded }) {
                             </InputAdornment>
                           ),
                         }}
+                        helperText="Hourly × 1.25"
                       />
                     </Grid>
 

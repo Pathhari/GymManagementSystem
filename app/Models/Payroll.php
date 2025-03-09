@@ -52,6 +52,4 @@ class Payroll extends Model
 
         $activity->properties = $activity->properties->put('branch_id', $branchId);
     }
-
-
 }

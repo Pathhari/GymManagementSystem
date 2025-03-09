@@ -117,4 +117,12 @@ class Staff extends Authenticatable
     {
         return $this->hasMany(MaintenanceLog::class, 'MaintainedBy', 'StaffID');
     }
+
+    public function getHourlyRateAttribute() {
+        return $this->DailyRate ? $this->DailyRate / 8 : 0;
+    }
+    public function getOvertimeRateAttribute() {
+        return $this->HourlyRate * 1.25;
+    }
+    
 }

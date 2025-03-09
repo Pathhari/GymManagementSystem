@@ -15,7 +15,12 @@ return new class extends Migration
             $table->id('BookingID');
             $table->unsignedBigInteger('BranchID')->nullable(); 
             $table->foreign('BranchID')->references('BranchID')->on('branches');
-            $table->unsignedBigInteger('MemberID');
+            $table->unsignedBigInteger('MemberID')->nullable()->change();
+            $table->foreign('MemberID')
+                  ->references('MemberID')->on('members')
+                  ->onDelete('cascade');
+            $table->string('GuestName')->nullable();
+            $table->string('GuestEmail')->nullable();           
             $table->unsignedBigInteger('FacilityID');
             $table->unsignedBigInteger('PaymentID')->nullable();
             $table->date('BookingDate');

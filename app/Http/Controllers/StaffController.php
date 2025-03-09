@@ -94,43 +94,49 @@ class StaffController extends Controller
     public function storeStaff(Request $request)
     {
         $data = $request->validate([
-            'FullName'     => 'required|string|max:255',
-            'Role'         => 'required|string|max:50',
-            'Email'        => 'required|email|unique:staff,Email',
-            'Phone'        => 'nullable|string|max:50',
-            'BranchID'     => 'required|exists:branches,BranchID',
-            'DateHired'    => 'nullable|date',
-            'DailyRate'    => 'nullable|numeric|min:0',
-            'HourlyRate'   => 'nullable|numeric|min:0',
-            'OvertimeRate' => 'nullable|numeric|min:0',
-            'Notes'        => 'nullable|string',
-            'password'     => 'sometimes|nullable|min:8|confirmed',
-            'BranchIDs'    => 'nullable|array',
-            'BranchIDs.*'  => 'exists:branches,BranchID',
+            'FullName'   => 'required|string|max:255',
+            'Role'       => 'required|string|max:50',
+            'Email'      => 'required|email|unique:staff,Email',
+            'Phone'      => 'nullable|string|max:50',
+            'BranchID'   => 'required|exists:branches,BranchID',
+            'DateHired'  => 'nullable|date',
+            'DailyRate'  => 'nullable|numeric|min:0',
+            'Notes'      => 'nullable|string',
+            'password'   => 'sometimes|nullable|min:8|confirmed',
+            'BranchIDs'  => 'nullable|array',
+            'BranchIDs.*'=> 'exists:branches,BranchID',
         ]);
-
+    
         if (!empty($data['password'])) {
             $data['password'] = Hash::make($data['password']);
         } else {
             unset($data['password']);
         }
-
+    
         $branchIDs = $data['BranchIDs'] ?? [];
         unset($data['BranchIDs']);
-
-        // Create staff
+    
+        // 1) If DailyRate is given, fill Hourly & Overtime
+        if (!empty($data['DailyRate'])) {
+            $hr = $data['DailyRate'] / 8;      // e.g. 500 / 8 = 62.5
+            $ot = $hr * 1.25;                  // e.g. 62.5 * 1.25 = 78.125
+    
+            $data['HourlyRate']   = round($hr, 2);
+            $data['OvertimeRate'] = round($ot, 2);
+        }
+    
+        // 2) Create staff
         $staff = Staff::create($data);
-
-        // Attach single BranchID to pivot
+    
+        // 3) Attach pivot branches
         $staff->branches()->attach($data['BranchID']);
-
-        // If multiple branches, attach them
         if (!empty($branchIDs)) {
             $staff->branches()->attach($branchIDs);
         }
-
+    
         return response()->json($staff, 201);
     }
+    
 
     /**
      * EDIT STAFF (REMOTE VERSION)
@@ -146,40 +152,50 @@ class StaffController extends Controller
         ]);
     }
 
-    /**
-     * UPDATE STAFF (REMOTE VERSION)
-     */
     public function updateStaff(Request $request, $id)
     {
         $staff = Staff::findOrFail($id);
-
+    
         $data = $request->validate([
-            'FullName'     => 'required|string|max:255',
-            'Role'         => 'required|string|max:50',
-            'Email'        => 'required|email',
-            'Phone'        => 'nullable|string|max:50',
-            'DateHired'    => 'nullable|date',
-            'DailyRate'    => 'nullable|numeric|min:0',
-            'HourlyRate'   => 'nullable|numeric|min:0',
-            'OvertimeRate' => 'nullable|numeric|min:0',
-            'Notes'        => 'nullable|string',
-            'BranchIDs'    => 'nullable|array',
-            'BranchIDs.*'  => 'exists:branches,BranchID',
+            'FullName'   => 'required|string|max:255',
+            'Role'       => 'required|string|max:50',
+            'Email'      => 'required|email',
+            'Phone'      => 'nullable|string|max:50',
+            'DateHired'  => 'nullable|date',
+            'DailyRate'  => 'nullable|numeric|min:0',
+            'Notes'      => 'nullable|string',
+            'BranchIDs'  => 'nullable|array',
+            'BranchIDs.*'=> 'exists:branches,BranchID',
         ]);
-
-        // Update staff columns
+    
+        // If DailyRate changed, recalc & store Hourly / OT
+        if (isset($data['DailyRate'])) {
+            $daily = (float) $data['DailyRate'];
+            $hr = $daily > 0 ? $daily / 8 : 0;
+            $ot = $hr * 1.25;
+    
+            // Round or format as needed
+            $data['HourlyRate']   = round($hr, 2);
+            $data['OvertimeRate'] = round($ot, 2);
+        }
+    
+        // Update staff columns (except BranchIDs)
         $staff->update(Arr::except($data, ['BranchIDs']));
-
+    
         // Sync pivot if BranchIDs present
         if (isset($data['BranchIDs'])) {
             $staff->branches()->sync($data['BranchIDs']);
         }
-
+    
         // Reload relationships
         $staff->load('branches');
-
-        return response()->json(['message' => 'Staff updated', 'staff' => $staff]);
+    
+        return response()->json([
+            'message' => 'Staff updated',
+            'staff'   => $staff
+        ]);
     }
+    
 
     /**
      * DEACTIVATE STAFF (REMOTE VERSION)
@@ -296,10 +312,9 @@ class StaffController extends Controller
             'Date'          => 'required|date',
             'TimeIn'        => 'nullable|date_format:H:i:s',
             'TimeOut'       => 'nullable|date_format:H:i:s|after:TimeIn',
-            'HoursWorked'   => 'nullable|numeric|min:0',
             'OvertimeHours' => 'nullable|numeric|min:0',
         ]);
-
+    
         $attendance = new Attendance();
         $attendance->StaffID       = $data['StaffID'];
         $attendance->Date          = $data['Date'];
@@ -307,46 +322,76 @@ class StaffController extends Controller
         $attendance->TimeOut       = $data['TimeOut'] ?? null;
         $attendance->HoursWorked   = 0;
         $attendance->OvertimeHours = $data['OvertimeHours'] ?? 0;
-
+        $attendance->NightDiffHours = 0;  // <-- Make sure default is 0
+        $attendance->LateMinutes    = 0;  // <-- default 0
+    
         if ($attendance->TimeIn && $attendance->TimeOut) {
             $in  = strtotime($attendance->Date.' '.$attendance->TimeIn);
             $out = strtotime($attendance->Date.' '.$attendance->TimeOut);
+    
+            // handle cross-midnight
             if ($out < $in) {
-                $out += 86400;
+                $out += 86400; // +1 day in seconds
             }
+            // raw hours
             $rawHours = max(($out - $in) / 3600, 0);
-
-            // Subtract 1 hour if scheduled shift >= 9 hrs
+    
+            // 1) Possibly subtract 1 hour break if shift >= 9 hrs
             $schedule = StaffSchedule::where('StaffID', $attendance->StaffID)
                 ->where('ShiftDate', $attendance->Date)
                 ->first();
             if ($schedule) {
-                if (in_array($schedule->shiftType, ['morning','mid','evening'])) {
+                $shiftStart = strtotime($schedule->ShiftDate.' '.$schedule->ShiftStart);
+                $shiftEnd   = strtotime($schedule->ShiftDate.' '.$schedule->ShiftEnd);
+                if ($shiftEnd < $shiftStart) {
+                    $shiftEnd += 86400;
+                }
+                $scheduledHrs = ($shiftEnd - $shiftStart) / 3600;
+                if ($scheduledHrs >= 9) {
                     $rawHours = max($rawHours - 1, 0);
-                } else if ($schedule->shiftType === 'dynamic') {
-                    $shiftStart = strtotime($schedule->ShiftDate.' '.$schedule->ShiftStart);
-                    $shiftEnd   = strtotime($schedule->ShiftDate.' '.$schedule->ShiftEnd);
-                    if ($shiftEnd < $shiftStart) {
-                        $shiftEnd += 86400;
-                    }
-                    $scheduledHrs = ($shiftEnd - $shiftStart) / 3600;
-                    if ($scheduledHrs >= 9) {
-                        $rawHours = max($rawHours - 1, 0);
-                    }
+                }
+    
+                // 2) Late minutes (grace of 10 min)
+                $graceTime = $shiftStart + (10 * 60); // shiftStart + 10 min
+                if ($in > $graceTime) {
+                    $attendance->LateMinutes = floor(($in - $graceTime) / 60);
                 }
             }
-
+    
+            // 3) Determine actual paid HoursWorked (cap at 8)
             $attendance->HoursWorked = min($rawHours, 8);
+    
+            // 4) NightDiffHours: any portion from 22:00 to 06:00
+            $nightStart = strtotime($attendance->Date.' 22:00:00');
+            // If staff clocks in before midnight & out after midnight, 06:00 is the next day:
+            $nightEnd = strtotime($attendance->Date.' 06:00:00') + 86400; // add 1 day
+            $attendance->NightDiffHours = $this->calculateOverlapInHours($in, $out, $nightStart, $nightEnd);
         }
-
+    
         $attendance->save();
         $attendance->load('staff');
-
+    
         return response()->json([
             'message'    => 'Attendance created successfully.',
             'attendance' => $attendance,
         ], 201);
     }
+    
+    /**
+     * Helper to calculate overlap (in hours) between [in,out] and [rangeStart, rangeEnd].
+     */
+    private function calculateOverlapInHours($in, $out, $rangeStart, $rangeEnd)
+    {
+        $start = max($in, $rangeStart);
+        $end   = min($out, $rangeEnd);
+    
+        if ($end <= $start) {
+            return 0; // no overlap
+        }
+    
+        return ($end - $start) / 3600;
+    }
+    
 
     public function clockInOut(Request $request)
     {
@@ -782,7 +827,8 @@ class StaffController extends Controller
             'selectedDates' => 'required|array|min:1',
             'selectedDates.*' => 'date_format:Y-m-d',
         ]);
-
+    
+        // Decide default shift times if not dynamic
         $shiftStart = null;
         $shiftEnd   = null;
         switch ($data['shiftType']) {
@@ -803,23 +849,28 @@ class StaffController extends Controller
                 $shiftEnd   = $data['endTime'];
                 break;
         }
-
+    
         $createdRecords = [];
+    
         foreach ($data['selectedDates'] as $date) {
             $sched = StaffSchedule::create([
                 'StaffID'    => $data['StaffID'],
                 'ShiftDate'  => $date,
                 'ShiftStart' => $shiftStart,
                 'ShiftEnd'   => $shiftEnd,
+                // Now store the actual shiftType:
+                'ShiftType'  => $data['shiftType'],
             ]);
+    
             $createdRecords[] = $sched;
         }
-
+    
         return response()->json([
             'message'   => 'Custom schedules created successfully.',
             'schedules' => $createdRecords,
         ], 201);
     }
+    
 
     public function updateSchedule(Request $request, $id)
     {
@@ -866,66 +917,59 @@ class StaffController extends Controller
             'GeneratedDate' => 'nullable|date',
             'Status'        => 'nullable|string|max:50',
         ]);
-
+    
+        // 1) Fetch staff to get Hourly/Overtime Rate
         $staff = Staff::findOrFail($data['StaffID']);
-        $hourlyRate   = $staff->HourlyRate ?? 0;
-        $overtimeRate = $staff->OvertimeRate ?? 0;
-
+        $hourlyRate    = $staff->HourlyRate;       // DailyRate / 8
+        $overtimeRate  = $staff->OvertimeRate;     // hourlyRate * 1.25
+        $nightDiffRate = $hourlyRate * 0.10;       // 10% of hourly
+    
+        // 2) Gather attendance in date range
         $attendances = Attendance::where('StaffID', $staff->StaffID)
             ->whereBetween('Date', [$data['StartDate'], $data['EndDate']])
             ->get();
-
+    
         if ($attendances->isEmpty()) {
             return response()->json([
                 'message' => 'No attendance found in the specified date range.',
             ], 422);
         }
-
-        $schedules = StaffSchedule::where('StaffID', $staff->StaffID)
-            ->whereBetween('ShiftDate', [$data['StartDate'], $data['EndDate']])
-            ->get()
-            ->keyBy('ShiftDate');
-
-        $totalRegularHours   = 0;
-        $totalOvertimeHours  = 0;
-        $totalLateDeductions = 0;
-
+    
+        // 3) Accumulate totals
+        $totalRegHours     = 0;
+        $totalOTHours      = 0;
+        $totalNightDiffHrs = 0;
+        $totalLateMins     = 0;
+    
         foreach ($attendances as $att) {
             $hrs = $att->HoursWorked ?: 0;
-            $regular = min($hrs, 8);
-            $approvedOT = $att->OvertimeHours ?: 0;
+            $totalRegHours += min($hrs, 8);
+    
             $possibleOT = max($hrs - 8, 0);
-            $ot = min($approvedOT, $possibleOT);
-
-            $totalRegularHours  += $regular;
-            $totalOvertimeHours += $ot;
-
-            // Lateness
-            $schedule = $schedules->get($att->Date);
-            if ($schedule && $att->TimeIn) {
-                $shiftStartStr = $schedule->ShiftDate.' '.$schedule->ShiftStart;
-                $shiftStart    = strtotime($shiftStartStr);
-
-                $timeInStr = $att->Date.' '.$att->TimeIn;
-                $timeIn    = strtotime($timeInStr);
-
-                $graceEnd = $shiftStart + (10 * 60);
-                if ($timeIn > $graceEnd) {
-                    $diffSec     = $timeIn - $graceEnd;
-                    $lateMinutes = (int) floor($diffSec / 60);
-                    $penalty     = $lateMinutes * 1;
-                    $totalLateDeductions += $penalty;
-                }
-            }
+            $approvedOT = $att->OvertimeHours ?: 0;
+            $actualOT   = min($approvedOT, $possibleOT);
+            $totalOTHours += $actualOT;
+    
+            $totalNightDiffHrs += ($att->NightDiffHours ?: 0);
+            $totalLateMins     += ($att->LateMinutes    ?: 0);
         }
-
-        $grossPay = ($totalRegularHours * $hourlyRate)
-                    + ($totalOvertimeHours * $overtimeRate);
-
-        $userDeductions     = $request->input('Deductions', 0);
-        $combinedDeductions = $userDeductions + $totalLateDeductions;
+    
+        // 4) Compute gross pay
+        $regularPay   = $totalRegHours * $hourlyRate;
+        $overtimePay  = $totalOTHours  * $overtimeRate;
+        $nightDiffPay = $totalNightDiffHrs * $nightDiffRate;
+    
+        $grossPay = $regularPay + $overtimePay + $nightDiffPay;
+    
+        // 5) Combine user’s manual deductions + late penalty
+        $manualDeductions = $data['Deductions'] ?? 0;
+        $latePenalty      = $totalLateMins; // if 1 peso per min
+        $combinedDeductions = $manualDeductions + $latePenalty;
+    
+        // 6) Net pay
         $netPay = $grossPay - $combinedDeductions;
-
+    
+        // 7) Create payroll record
         $payroll = Payroll::create([
             'StaffID'       => $staff->StaffID,
             'StartDate'     => $data['StartDate'],
@@ -933,47 +977,134 @@ class StaffController extends Controller
             'GrossPay'      => $grossPay,
             'Deductions'    => $combinedDeductions,
             'NetPay'        => $netPay,
-            'GeneratedDate' => $request->input('GeneratedDate') ?: now(),
-            'Status'        => $request->input('Status', 'Pending'),
+            'GeneratedDate' => $data['GeneratedDate'] ?? now(),
+            'Status'        => $data['Status'] ?? 'Pending',
         ]);
-
+    
         $payroll->load('staff');
-
+    
         return response()->json([
-            'message' => 'Payroll created successfully (with late deductions).',
+            'message' => 'Payroll created successfully (including ND pay & late penalties).',
             'payroll' => $payroll
         ], 201);
     }
+    
 
     public function indexPayroll()
     {
-        $payrolls = Payroll::with(['staff' => function($query) {
-            $query->select('StaffID','FullName');
-        }])
-        ->orderBy('StartDate','desc')
-        ->get();
-
+        // 1) Fetch payrolls with staff, sorted by StartDate
+        $payrolls = Payroll::with('staff')->orderBy('StartDate','desc')->get();
+    
+        // 2) For each payroll row, do a custom fetch of attendance
+        foreach ($payrolls as $payroll) {
+            // Query attendance by (StaffID) + [StartDate..EndDate]
+            $computedAttendances = Attendance::where('StaffID', $payroll->StaffID)
+                ->whereBetween('Date', [$payroll->StartDate, $payroll->EndDate])
+                ->get();
+    
+            // 3) For each attendance, do a "Staff + Date" schedule lookup
+            foreach ($computedAttendances as $att) {
+                $sched = StaffSchedule::where('StaffID', $att->StaffID)
+                    ->where('ShiftDate', $att->Date)
+                    ->first();
+                $att->schedule = $sched;
+            }
+    
+            // 5) Attach those computed attendances to the payroll object
+            $payroll->computed_attendances = $computedAttendances;
+        }
+    
+        // 6) Return the final JSON
         return response()->json($payrolls);
-    }
+    }    
 
     public function updatePayroll(Request $request, $id)
     {
         $payroll = Payroll::findOrFail($id);
-
+    
+        // 1) Validate only date range & user-specified Deductions, plus optional fields
+        //    We'll ignore "GrossPay"/"NetPay" from the request, because we do a recalc.
         $data = $request->validate([
             'StartDate'     => 'required|date',
             'EndDate'       => 'required|date|after_or_equal:StartDate',
-            'GrossPay'      => 'required|numeric|min:0',
             'Deductions'    => 'nullable|numeric|min:0',
-            'NetPay'        => 'required|numeric|min:0',
             'GeneratedDate' => 'nullable|date',
             'Status'        => 'nullable|string|max:50',
         ]);
-
-        $payroll->update($data);
-
+    
+        // 2) Keep the same staff from the existing payroll record
+        //    (If you allow changing the StaffID, you'd do more logic here.)
+        $staff = $payroll->staff;
+        if (!$staff) {
+            return response()->json(['message' => 'Associated staff not found.'], 422);
+        }
+    
+        // 3) Grab staff rates (HourlyRate, OvertimeRate, etc.)
+        $hourlyRate    = $staff->HourlyRate;     // e.g. dailyRate / 8
+        $overtimeRate  = $staff->OvertimeRate;   // e.g. hourlyRate * 1.25
+        $nightDiffRate = $hourlyRate * 0.10;     // 10% of hourly
+    
+        // 4) Pull attendance in the (updated) date range
+        $attendances = Attendance::where('StaffID', $staff->StaffID)
+            ->whereBetween('Date', [$data['StartDate'], $data['EndDate']])
+            ->get();
+    
+        if ($attendances->isEmpty()) {
+            return response()->json([
+                'message' => 'No attendance found in the specified date range.',
+            ], 422);
+        }
+    
+        // 5) Sum up hours, OT, ND, Lateness
+        $totalRegHours     = 0;
+        $totalOTHours      = 0;
+        $totalNightDiffHrs = 0;
+        $totalLateMins     = 0;
+    
+        foreach ($attendances as $att) {
+            $hrs = $att->HoursWorked ?: 0;
+            $totalRegHours += min($hrs, 8);
+    
+            $possibleOT = max($hrs - 8, 0);
+            $approvedOT = $att->OvertimeHours ?: 0;
+            $actualOT   = min($approvedOT, $possibleOT);
+            $totalOTHours += $actualOT;
+    
+            $totalNightDiffHrs += ($att->NightDiffHours ?: 0);
+            $totalLateMins     += ($att->LateMinutes    ?: 0);
+        }
+    
+        // 6) Recompute gross pay
+        $regularPay   = $totalRegHours * $hourlyRate;
+        $overtimePay  = $totalOTHours  * $overtimeRate;
+        $nightDiffPay = $totalNightDiffHrs * $nightDiffRate;
+    
+        $grossPay = $regularPay + $overtimePay + $nightDiffPay;
+    
+        // 7) Combine user-specified Deductions + late penalty
+        $manualDeductions  = $data['Deductions'] ?? 0;
+        $latePenalty       = $totalLateMins; // 1 peso/min
+        $combinedDeductions = $manualDeductions + $latePenalty;
+    
+        // 8) Net pay
+        $netPay = $grossPay - $combinedDeductions;
+    
+        // 9) Update the payroll record with these recalculated fields
+        $payroll->update([
+            'StartDate'     => $data['StartDate'],
+            'EndDate'       => $data['EndDate'],
+            'GrossPay'      => $grossPay,
+            'Deductions'    => $combinedDeductions,
+            'NetPay'        => $netPay,
+            'GeneratedDate' => $data['GeneratedDate'] ?? now(),
+            'Status'        => $data['Status'] ?? $payroll->Status,
+        ]);
+    
+        // Reload staff relationship, if needed
+        $payroll->load('staff');
+    
         return response()->json([
-            'message' => 'Payroll updated.',
+            'message' => 'Payroll updated (auto-recalculated).',
             'payroll' => $payroll,
         ]);
     }

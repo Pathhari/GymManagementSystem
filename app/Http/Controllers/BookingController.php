@@ -71,7 +71,9 @@ class BookingController extends Controller
         $staff = auth('staff')->user();
 
         $data = $request->validate([
-            'MemberID'      => 'required|exists:members,MemberID',
+            'MemberID'      => 'nullable|exists:members,MemberID',
+            'GuestName'     => 'nullable|string|max:255',
+            'GuestEmail'    => 'nullable|email|max:255',
             'FacilityID'    => 'required|exists:facilities,FacilityID',
             'BookingDate'   => 'required|date',
             'BookingTime'   => 'required|string|max:20',
@@ -125,6 +127,62 @@ class BookingController extends Controller
             ], 201);
         });
     }
+
+    public function updateBooking(Request $request, $id)
+{
+    // 1) Validate input
+    $data = $request->validate([
+        'MemberID'   => 'nullable|exists:members,MemberID',
+        'GuestName'  => 'nullable|string|max:255',
+        'GuestEmail' => 'nullable|email|max:255',
+        'FacilityID' => 'required|exists:facilities,FacilityID',
+        'BookingDate'=> 'required|date',
+        'BookingTime'=> 'required',
+        'Duration'   => 'nullable|integer|min:1',
+        'Status'     => 'nullable|string|max:50',
+        'PaymentMethod' => 'nullable|string|max:50',
+        'Amount'     => 'nullable|numeric|min:0',
+    ]);
+
+    // 2) Find the booking
+    $booking = Booking::findOrFail($id);
+
+    // 3) If it’s a member booking
+    if (!empty($data['MemberID'])) {
+        $booking->MemberID   = $data['MemberID'];
+        $booking->GuestName  = null;
+        $booking->GuestEmail = null;
+    } else {
+        // If it’s a guest booking (no MemberID)
+        $booking->MemberID   = null;
+        $booking->GuestName  = $data['GuestName']  ?? null;
+        $booking->GuestEmail = $data['GuestEmail'] ?? null;
+    }
+
+    // 4) Update the rest
+    $booking->FacilityID  = $data['FacilityID'];
+    $booking->BookingDate = $data['BookingDate'];
+    $booking->BookingTime = $data['BookingTime'];
+    $booking->Duration    = $data['Duration'] ?? 1;
+    $booking->Status      = $data['Status']   ?? 'Confirmed';
+
+    // Payment method & amount if you store them in the booking itself or in related table
+    // (If you have a separate Payment model, adapt accordingly.)
+    if (isset($data['PaymentMethod'])) {
+        $booking->PaymentMethod = $data['PaymentMethod'];
+    }
+    if (isset($data['Amount'])) {
+        $booking->Amount = $data['Amount'];
+    }
+
+    // 5) Save
+    $booking->save();
+
+    return response()->json([
+        'message' => 'Booking updated successfully.',
+        'booking' => $booking,
+    ]);
+}
 
     /* --------------------------------------------------------------
      *  Coaches & Facilities Index
