@@ -17,6 +17,7 @@ class Payroll extends Model
         'EndDate',
         'GrossPay',
         'Deductions',
+        'CashAdvance',
         'NetPay',
         'GeneratedDate',
         'Status',

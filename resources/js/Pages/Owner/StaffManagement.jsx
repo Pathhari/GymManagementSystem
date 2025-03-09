@@ -522,22 +522,22 @@ function handleNewPayrollCreated(resData) {
   
       // If the DB’s stored NetPay is different, you can keep that or override
       // If you want to re-compute net on the front-end:
-      const combinedDeductions = (parseFloat(record.Deductions) || 0) + stats.totalLateDeductions;
-      const net = stats.grossPay - combinedDeductions;
-      record.ComputedNet = net;
-  
-      // 5) Save as selected & open
-      setSelectedPayroll(record);
-      setViewPayrollOpen(true);
-  
-    } catch (error) {
-      console.error("Error loading payroll details:", error);
-      // fallback
-      setSelectedPayroll(record);
-      setViewPayrollOpen(true);
-    }
-  };
-  
+      const combinedDeductions =
+      (parseFloat(record.Deductions) || 0) +
+      stats.totalLateDeductions +
+      (parseFloat(record.CashAdvance) || 0);
+
+    record.ComputedNet = stats.grossPay - combinedDeductions;
+
+    // Save final to local state
+    setSelectedPayroll(record);
+    setViewPayrollOpen(true);
+  } catch (error) {
+    console.error("Error loading payroll details:", error);
+    setSelectedPayroll(record);
+    setViewPayrollOpen(true);
+  }
+};
 
   const handleEditPayroll = (record) => {
     setSelectedPayroll(record);
@@ -557,20 +557,24 @@ function handleNewPayrollCreated(resData) {
   async function handleEditPayrollSubmit() {
     try {
       const payrollID = selectedPayroll.PayrollID;
+  
+      // Make the actual PUT request
       await axios.put(route('staff.payroll.update', payrollID), selectedPayroll);
-
+  
+      // Then update local state
       setPayrollRecords((prev) =>
         prev.map((p) => (p.PayrollID === payrollID ? { ...p, ...selectedPayroll } : p))
       );
       setFilteredPayroll((prev) =>
         prev.map((p) => (p.PayrollID === payrollID ? { ...p, ...selectedPayroll } : p))
       );
-
+  
       setEditPayrollOpen(false);
     } catch (err) {
       console.error('Error updating payroll:', err);
     }
   }
+  
 
   // -------------- TASKS CRUD --------------
   const handleViewTask = (record) => {
@@ -647,44 +651,76 @@ function handleNewPayrollCreated(resData) {
   }
 
 
-  // -------------- SEARCH & TAB SWITCH --------------
   const handleSearchChange = (e) => {
     const value = e.target.value.toLowerCase();
     setSearchTerm(value);
-
+  
     if (activeTab === 0) {
-      setFilteredStaff(
-        staffRecords.filter((s) =>
-          Object.values(s).some((val) => String(val).toLowerCase().includes(value))
-        )
-      );
+      // STAFF TAB
+      const filtered = staffRecords.filter((s) => {
+        // Build a single string of relevant fields
+        // e.g. FullName, Email, Role
+        let rowText = `${s.FullName} ${s.Email} ${s.Role} ${s.Phone}`.toLowerCase();
+  
+        // Or if you have branches array, you can do:
+        // if (s.branches) s.branches.forEach(b => rowText += b.BranchName.toLowerCase());
+        return rowText.includes(value);
+      });
+      setFilteredStaff(filtered);
+  
     } else if (activeTab === 1) {
-      setFilteredAttendance(
-        attendanceRecords.filter((a) =>
-          Object.values(a).some((val) => String(val).toLowerCase().includes(value))
-        )
-      );
+      // ATTENDANCE TAB
+      const filtered = attendanceRecords.filter((a) => {
+        // relevant fields: Date, TimeIn, TimeOut, staff FullName
+        let rowText = `${a.Date} ${a.TimeIn} ${a.TimeOut} ${a.HoursWorked} ${a.OvertimeHours}`.toLowerCase();
+        // if there's a staff object
+        if (a.staff && a.staff.FullName) {
+          rowText += ` ${a.staff.FullName.toLowerCase()}`;
+        }
+        return rowText.includes(value);
+      });
+      setFilteredAttendance(filtered);
+  
     } else if (activeTab === 2) {
-      setFilteredPayroll(
-        payrollRecords.filter((p) =>
-          Object.values(p).some((val) => String(val).toLowerCase().includes(value))
-        )
-      );
+      // PAYROLL TAB
+      const filtered = payrollRecords.filter((p) => {
+        // relevant fields: StartDate, EndDate, GrossPay, NetPay, staff's FullName
+        let rowText = `${p.StartDate} ${p.EndDate} ${p.GrossPay} ${p.NetPay} ${p.Status}`.toLowerCase();
+        if (p.staff && p.staff.FullName) {
+          rowText += ` ${p.staff.FullName.toLowerCase()}`;
+        }
+        // If you want to search by 'CashAdvance' or 'Deductions':
+        // rowText += ` ${p.CashAdvance} ${p.Deductions}`;
+        return rowText.includes(value);
+      });
+      setFilteredPayroll(filtered);
+  
     } else if (activeTab === 3) {
-      setFilteredTasks(
-        taskRecords.filter((t) =>
-          Object.values(t).some((val) => String(val).toLowerCase().includes(value))
-        )
-      );
+      // TASKS TAB
+      const filtered = taskRecords.filter((t) => {
+        // e.g. TaskDescription, TaskDate, staff FullName
+        let rowText = `${t.TaskDescription} ${t.TaskDate} ${t.Status}`.toLowerCase();
+        if (t.staff && t.staff.FullName) {
+          rowText += ` ${t.staff.FullName.toLowerCase()}`;
+        }
+        return rowText.includes(value);
+      });
+      setFilteredTasks(filtered);
+  
     } else {
-      setFilteredSchedule(
-        scheduleRecords.filter((sc) =>
-          Object.values(sc).some((val) => String(val).toLowerCase().includes(value))
-        )
-      );
+      // SCHEDULES TAB (activeTab === 4)
+      const filtered = scheduleRecords.filter((sc) => {
+        // e.g. ShiftDate, ShiftStart, ShiftEnd, staff FullName
+        let rowText = `${sc.ShiftDate} ${sc.ShiftStart} ${sc.ShiftEnd} ${sc.ShiftType}`.toLowerCase();
+        if (sc.staff && sc.staff.FullName) {
+          rowText += ` ${sc.staff.FullName.toLowerCase()}`;
+        }
+        return rowText.includes(value);
+      });
+      setFilteredSchedule(filtered);
     }
   };
-
+  
 // if newValue === 4 => show schedules
 const handleTabChange = (e, newValue) => {
   setActiveTab(newValue);
@@ -698,7 +734,7 @@ const handleTabChange = (e, newValue) => {
 
 
         // ------------------- COLUMNS: TABLES -------------------
-        const staffColumns = [
+      const staffColumns = [
           { 
             field: "StaffID", 
             headerName: "Staff ID", 
@@ -937,8 +973,6 @@ const handleTabChange = (e, newValue) => {
         },
       ];
       
-    
-
       const payrollColumns = [
         {
           field: "StartDate",
@@ -1039,6 +1073,13 @@ const handleTabChange = (e, newValue) => {
             `₱${params.value ? parseFloat(params.value).toFixed(2) : "0.00"}`,
         },
         {
+          field: "CashAdvance",
+          headerName: "Advance",
+          width: 100,
+          renderCell: (params) =>
+            `₱${params.value ? parseFloat(params.value).toFixed(2) : "0.00"}`
+        },
+        {
           field: "NetPay",
           headerName: "Net Pay",
           width: 90,
@@ -1117,9 +1158,7 @@ const handleTabChange = (e, newValue) => {
           ),
         },
       ];
-      
-      
-
+    
       const taskColumns = [
         { field: "TaskDate", headerName: "Date", width: 180, renderCell: (params) => params.value ? formatDate(params.value) : "—",},
         { field: "TaskDescription", headerName: "Description", width: 350 },
@@ -1293,7 +1332,6 @@ const handleTabChange = (e, newValue) => {
         },
       ];
   
-
   const columns =
     activeTab === 0
       ? staffColumns
@@ -1842,36 +1880,42 @@ const handleTabChange = (e, newValue) => {
                 Add Attendance
               </Button>
             )}
-            {activeTab === 2 && (
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, mb: 2, alignItems: "center" }}>
-                <TextField
-                  label="Generated Start"
-                  type="date"
-                  value={payrollFilterStart}
-                  onChange={(e) => setPayrollFilterStart(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                />
-                <TextField
-                  label="Generated End"
-                  type="date"
-                  value={payrollFilterEnd}
-                  onChange={(e) => setPayrollFilterEnd(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                />
-                <Button variant="contained" onClick={handleFilterPayroll}>
-                  Filter
-                </Button>
-                <Button variant="outlined" onClick={handleResetPayrollFilter}>
-                  Reset
-                </Button>
-                <Button variant="contained" color="secondary" onClick={handleCalculateTotalNetPay}>
-                  Total Net Pay
-                </Button>
-                <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddPayrollOpen(true)}>
-                Add Payroll
-              </Button>
-              </Box>
-            )}
+{activeTab === 2 && (
+  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, mb: 2, alignItems: "center" }}>
+    <TextField
+      label="Generated Start"
+      type="date"
+      value={payrollFilterStart}
+      onChange={(e) => setPayrollFilterStart(e.target.value)}
+      InputLabelProps={{ shrink: true }}
+      sx={{ minWidth: 160 }}
+    />
+    <TextField
+      label="Generated End"
+      type="date"
+      value={payrollFilterEnd}
+      onChange={(e) => setPayrollFilterEnd(e.target.value)}
+      InputLabelProps={{ shrink: true }}
+      sx={{ minWidth: 160 }}
+    />
+
+    <Button variant="contained" color="primary" onClick={handleFilterPayroll}>
+      Filter
+    </Button>
+
+    <Button variant="outlined" color="primary" onClick={handleResetPayrollFilter}>
+      Reset
+    </Button>
+
+    <Button variant="contained" color="secondary" onClick={handleCalculateTotalNetPay}>
+      Total Net Pay
+    </Button>
+
+    <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddPayrollOpen(true)}>
+      Add Payroll
+    </Button>
+  </Box>
+)}
             {activeTab === 3 && (
               <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={() => setAddTaskOpen(true)}>
                 Add Task
@@ -3617,15 +3661,16 @@ const handleTabChange = (e, newValue) => {
   function EditPayrollForm({ payroll, onClose, onSubmit }) {
     // Initialize local form data from the existing payroll record
     const [formData, setFormData] = useState({
-      PayrollID: payroll.PayrollID,
-      StaffID: payroll.StaffID,
-      StartDate: payroll.StartDate,
-      EndDate: payroll.EndDate,
-      Deductions: payroll.Deductions ?? 0,
-      GrossPay: payroll.GrossPay ?? 0,
-      NetPay: payroll.NetPay ?? 0,
+      PayrollID:    payroll.PayrollID,
+      StaffID:      payroll.StaffID,
+      StartDate:    payroll.StartDate,
+      EndDate:      payroll.EndDate,
+      Deductions:   payroll.Deductions ?? 0,
+      CashAdvance:  payroll.CashAdvance ?? 0, // separate from Deductions
+      GrossPay:     payroll.GrossPay ?? 0,
+      NetPay:       payroll.NetPay ?? 0,
       GeneratedDate: payroll.GeneratedDate || "",
-      Status: payroll.Status || "Pending",
+      Status:       payroll.Status || "Pending",
     });
   
     // Handle input changes, letting the user override any fields
@@ -3642,151 +3687,160 @@ const handleTabChange = (e, newValue) => {
         return;
       }
   
-      // Build final payload; convert strings to numbers where appropriate
-      const payload = {
-        PayrollID: formData.PayrollID,
-        StaffID: formData.StaffID,
-        StartDate: formData.StartDate,
-        EndDate: formData.EndDate,
-        Deductions: parseFloat(formData.Deductions) || 0,
-        GrossPay: parseFloat(formData.GrossPay) || 0,
-        NetPay: parseFloat(formData.NetPay) || 0,
-        GeneratedDate: formData.GeneratedDate || "",
-        Status: formData.Status,
-      };
-  
-      // Pass to the parent's update logic
-      onSubmit(payload);
+    // Build final payload
+    const payload = {
+      PayrollID:     formData.PayrollID,
+      StaffID:       formData.StaffID,
+      StartDate:     formData.StartDate,
+      EndDate:       formData.EndDate,
+      Deductions:    parseFloat(formData.Deductions) || 0,
+      CashAdvance:   parseFloat(formData.CashAdvance) || 0,  // new field
+      GrossPay:      parseFloat(formData.GrossPay) || 0,
+      NetPay:        parseFloat(formData.NetPay) || 0,
+      GeneratedDate: formData.GeneratedDate || "",
+      Status:        formData.Status,
     };
+
+    onSubmit(payload);
+  };
   
     return (
       <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <Grid container spacing={2}>
-          {/* Payroll ID (read-only) */}
-          <Grid item xs={12} sm={6}>
-            <TextField
-              label="Payroll ID"
-              variant="outlined"
-              value={formData.PayrollID}
-              InputProps={{ readOnly: true }}
-              fullWidth
-            />
-          </Grid>
-  
-          {/* Staff ID (if you allow changing staff, or make it read-only if not) */}
-          <Grid item xs={12} sm={6}>
-            <TextField
-              label="Staff ID"
-              variant="outlined"
-              name="StaffID"
-              value={formData.StaffID}
-              onChange={handleChange}
-              fullWidth
-            />
-          </Grid>
-  
-          {/* Date Range */}
-          <Grid item xs={12} sm={6}>
-            <TextField
-              label="Start Date"
-              type="date"
-              name="StartDate"
-              InputLabelProps={{ shrink: true }}
-              variant="outlined"
-              value={formData.StartDate}
-              onChange={handleChange}
-              fullWidth
-            />
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <TextField
-              label="End Date"
-              type="date"
-              name="EndDate"
-              InputLabelProps={{ shrink: true }}
-              variant="outlined"
-              value={formData.EndDate}
-              onChange={handleChange}
-              fullWidth
-            />
-          </Grid>
-  
-          {/* Generated Date */}
-          <Grid item xs={12} sm={6}>
-            <TextField
-              label="Generated Date"
-              type="date"
-              name="GeneratedDate"
-              InputLabelProps={{ shrink: true }}
-              variant="outlined"
-              value={formData.GeneratedDate}
-              onChange={handleChange}
-              fullWidth
-            />
-          </Grid>
-  
-          {/* Status */}
-          <Grid item xs={12} sm={6}>
-            <TextField
-              label="Status"
-              variant="outlined"
-              name="Status"
-              value={formData.Status}
-              onChange={handleChange}
-              fullWidth
-            />
-          </Grid>
-  
-          {/* Salary Fields: Deductions, GrossPay, NetPay */}
-          <Grid item xs={12} sm={4}>
-            <TextField
-              label="Deductions + CA"
-              variant="outlined"
-              type="number"
-              name="Deductions"
-              value={formData.Deductions}
-              onChange={handleChange}
-              fullWidth
-            />
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <TextField
-              label="Gross Pay"
-              variant="outlined"
-              type="number"
-              name="GrossPay"
-              value={formData.GrossPay}
-              onChange={handleChange}
-              fullWidth
-            />
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <TextField
-              label="Net Pay"
-              variant="outlined"
-              type="number"
-              name="NetPay"
-              value={formData.NetPay}
-              onChange={handleChange}
-              fullWidth
-            />
-          </Grid>
+      <Grid container spacing={2}>
+        {/* Payroll ID (read-only) */}
+        <Grid item xs={12} sm={6}>
+          <TextField
+            label="Payroll ID"
+            variant="outlined"
+            value={formData.PayrollID}
+            InputProps={{ readOnly: true }}
+            fullWidth
+          />
         </Grid>
-  
-        {/* If you want to display some info text or manual logic about late
-            or night diff, you can do so, but we won't re-calc them here. */}
-  
-        <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end", gap: 2 }}>
-          <Button variant="outlined" color="inherit" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="contained" color="primary" onClick={handleSubmit}>
-            Save Changes
-          </Button>
-        </Box>
+
+        {/* Staff ID */}
+        <Grid item xs={12} sm={6}>
+          <TextField
+            label="Staff ID"
+            variant="outlined"
+            name="StaffID"
+            value={formData.StaffID}
+            onChange={handleChange}
+            fullWidth
+          />
+        </Grid>
+
+        {/* Start/End Date */}
+        <Grid item xs={12} sm={6}>
+          <TextField
+            label="Start Date"
+            type="date"
+            name="StartDate"
+            InputLabelProps={{ shrink: true }}
+            variant="outlined"
+            value={formData.StartDate}
+            onChange={handleChange}
+            fullWidth
+          />
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <TextField
+            label="End Date"
+            type="date"
+            name="EndDate"
+            InputLabelProps={{ shrink: true }}
+            variant="outlined"
+            value={formData.EndDate}
+            onChange={handleChange}
+            fullWidth
+          />
+        </Grid>
+
+        {/* GeneratedDate */}
+        <Grid item xs={12} sm={6}>
+          <TextField
+            label="Generated Date"
+            type="date"
+            name="GeneratedDate"
+            InputLabelProps={{ shrink: true }}
+            variant="outlined"
+            value={formData.GeneratedDate}
+            onChange={handleChange}
+            fullWidth
+          />
+        </Grid>
+        {/* Status */}
+        <Grid item xs={12} sm={6}>
+          <TextField
+            label="Status"
+            variant="outlined"
+            name="Status"
+            value={formData.Status}
+            onChange={handleChange}
+            fullWidth
+          />
+        </Grid>
+
+        {/* Deductions & CashAdvance */}
+        <Grid item xs={12} sm={4}>
+          <TextField
+            label="Deductions"
+            variant="outlined"
+            type="number"
+            name="Deductions"
+            value={formData.Deductions}
+            onChange={handleChange}
+            fullWidth
+          />
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <TextField
+            label="Cash Advance"
+            variant="outlined"
+            type="number"
+            name="CashAdvance"
+            value={formData.CashAdvance}
+            onChange={handleChange}
+            fullWidth
+          />
+        </Grid>
+
+        {/* GrossPay, NetPay */}
+        <Grid item xs={12} sm={4}>
+          <TextField
+            label="Gross Pay"
+            variant="outlined"
+            type="number"
+            name="GrossPay"
+            value={formData.GrossPay}
+            onChange={handleChange}
+            fullWidth
+          />
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <TextField
+            label="Net Pay"
+            variant="outlined"
+            type="number"
+            name="NetPay"
+            value={formData.NetPay}
+            onChange={handleChange}
+            fullWidth
+          />
+        </Grid>
+      </Grid>
+
+      <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end", gap: 2 }}>
+        <Button variant="outlined" color="inherit" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button variant="contained" color="primary" onClick={handleSubmit}>
+          Save Changes
+        </Button>
       </Box>
-    );
-  }
+    </Box>
+  );
+}
 }
 
 

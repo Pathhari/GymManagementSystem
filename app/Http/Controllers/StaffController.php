@@ -914,6 +914,7 @@ class StaffController extends Controller
             'StartDate'     => 'required|date',
             'EndDate'       => 'required|date|after_or_equal:StartDate',
             'Deductions'    => 'nullable|numeric|min:0',
+            'CashAdvance'   => 'nullable|numeric|min:0',
             'GeneratedDate' => 'nullable|date',
             'Status'        => 'nullable|string|max:50',
         ]);
@@ -954,41 +955,43 @@ class StaffController extends Controller
             $totalLateMins     += ($att->LateMinutes    ?: 0);
         }
     
-        // 4) Compute gross pay
-        $regularPay   = $totalRegHours * $hourlyRate;
-        $overtimePay  = $totalOTHours  * $overtimeRate;
-        $nightDiffPay = $totalNightDiffHrs * $nightDiffRate;
-    
-        $grossPay = $regularPay + $overtimePay + $nightDiffPay;
-    
-        // 5) Combine user’s manual deductions + late penalty
-        $manualDeductions = $data['Deductions'] ?? 0;
-        $latePenalty      = $totalLateMins; // if 1 peso per min
-        $combinedDeductions = $manualDeductions + $latePenalty;
-    
-        // 6) Net pay
-        $netPay = $grossPay - $combinedDeductions;
-    
-        // 7) Create payroll record
-        $payroll = Payroll::create([
-            'StaffID'       => $staff->StaffID,
-            'StartDate'     => $data['StartDate'],
-            'EndDate'       => $data['EndDate'],
-            'GrossPay'      => $grossPay,
-            'Deductions'    => $combinedDeductions,
-            'NetPay'        => $netPay,
-            'GeneratedDate' => $data['GeneratedDate'] ?? now(),
-            'Status'        => $data['Status'] ?? 'Pending',
-        ]);
-    
-        $payroll->load('staff');
-    
-        return response()->json([
-            'message' => 'Payroll created successfully (including ND pay & late penalties).',
-            'payroll' => $payroll
-        ], 201);
-    }
-    
+    // 4) Compute pay
+    $regularPay   = $totalRegHours * $hourlyRate;
+    $overtimePay  = $totalOTHours  * $overtimeRate;
+    $nightDiffPay = $totalNightDiffHrs * $nightDiffRate;
+
+    $grossPay = $regularPay + $overtimePay + $nightDiffPay;
+
+    // 5) Combine user Deductions + Late penalty + new CashAdvance
+    $manualDeductions = $data['Deductions']     ?? 0;
+    $cashAdvance      = $data['CashAdvance']    ?? 0;
+    $latePenalty      = $totalLateMins; // if 1 peso/min
+
+    $combinedDeductions = $manualDeductions + $latePenalty + $cashAdvance;
+
+    // 6) Net pay
+    $netPay = $grossPay - $combinedDeductions;
+
+    // 7) Store payroll
+    $payroll = Payroll::create([
+        'StaffID'       => $staff->StaffID,
+        'StartDate'     => $data['StartDate'],
+        'EndDate'       => $data['EndDate'],
+        'GrossPay'      => $grossPay,
+        'Deductions'    => $manualDeductions,  // So we keep them separated
+        'CashAdvance'   => $cashAdvance,       // store separately
+        'NetPay'        => $netPay,
+        'GeneratedDate' => $data['GeneratedDate'] ?? now(),
+        'Status'        => $data['Status'] ?? 'Pending',
+    ]);
+
+    $payroll->load('staff');
+
+    return response()->json([
+        'message' => 'Payroll created successfully (including ND pay, late & cash advance).',
+        'payroll' => $payroll
+    ], 201);
+}    
 
     public function indexPayroll()
     {
@@ -1020,31 +1023,30 @@ class StaffController extends Controller
 
     public function updatePayroll(Request $request, $id)
     {
+        // 1) Find the existing record; do not re-create
         $payroll = Payroll::findOrFail($id);
     
-        // 1) Validate only date range & user-specified Deductions, plus optional fields
-        //    We'll ignore "GrossPay"/"NetPay" from the request, because we do a recalc.
+        // 2) Validate partial fields
         $data = $request->validate([
             'StartDate'     => 'required|date',
             'EndDate'       => 'required|date|after_or_equal:StartDate',
             'Deductions'    => 'nullable|numeric|min:0',
+            'CashAdvance'   => 'nullable|numeric|min:0',
             'GeneratedDate' => 'nullable|date',
             'Status'        => 'nullable|string|max:50',
         ]);
     
-        // 2) Keep the same staff from the existing payroll record
-        //    (If you allow changing the StaffID, you'd do more logic here.)
+        // 3) Keep same staff from existing payroll, or allow changes if needed
         $staff = $payroll->staff;
         if (!$staff) {
             return response()->json(['message' => 'Associated staff not found.'], 422);
         }
     
-        // 3) Grab staff rates (HourlyRate, OvertimeRate, etc.)
-        $hourlyRate    = $staff->HourlyRate;     // e.g. dailyRate / 8
-        $overtimeRate  = $staff->OvertimeRate;   // e.g. hourlyRate * 1.25
-        $nightDiffRate = $hourlyRate * 0.10;     // 10% of hourly
+        // 4) Recalc the pay
+        $hourlyRate    = $staff->HourlyRate;
+        $overtimeRate  = $staff->OvertimeRate;
+        $nightDiffRate = $hourlyRate * 0.10;
     
-        // 4) Pull attendance in the (updated) date range
         $attendances = Attendance::where('StaffID', $staff->StaffID)
             ->whereBetween('Date', [$data['StartDate'], $data['EndDate']])
             ->get();
@@ -1055,7 +1057,6 @@ class StaffController extends Controller
             ], 422);
         }
     
-        // 5) Sum up hours, OT, ND, Lateness
         $totalRegHours     = 0;
         $totalOTHours      = 0;
         $totalNightDiffHrs = 0;
@@ -1074,33 +1075,33 @@ class StaffController extends Controller
             $totalLateMins     += ($att->LateMinutes    ?: 0);
         }
     
-        // 6) Recompute gross pay
+        // 5) Compute new gross/net
         $regularPay   = $totalRegHours * $hourlyRate;
         $overtimePay  = $totalOTHours  * $overtimeRate;
         $nightDiffPay = $totalNightDiffHrs * $nightDiffRate;
     
         $grossPay = $regularPay + $overtimePay + $nightDiffPay;
     
-        // 7) Combine user-specified Deductions + late penalty
-        $manualDeductions  = $data['Deductions'] ?? 0;
-        $latePenalty       = $totalLateMins; // 1 peso/min
-        $combinedDeductions = $manualDeductions + $latePenalty;
+        $manualDeductions = $data['Deductions']   ?? 0;
+        $cashAdvance      = $data['CashAdvance']  ?? 0;
+        $latePenalty      = $totalLateMins; // e.g. 1 peso/min
     
-        // 8) Net pay
+        $combinedDeductions = $manualDeductions + $cashAdvance + $latePenalty;
         $netPay = $grossPay - $combinedDeductions;
     
-        // 9) Update the payroll record with these recalculated fields
+        // 6) Update the existing payroll record (not create new)
         $payroll->update([
             'StartDate'     => $data['StartDate'],
             'EndDate'       => $data['EndDate'],
             'GrossPay'      => $grossPay,
-            'Deductions'    => $combinedDeductions,
+            'Deductions'    => $manualDeductions,
+            'CashAdvance'   => $cashAdvance,
             'NetPay'        => $netPay,
             'GeneratedDate' => $data['GeneratedDate'] ?? now(),
-            'Status'        => $data['Status'] ?? $payroll->Status,
+            'Status'        => $data['Status'] ?? 'Pending',
         ]);
     
-        // Reload staff relationship, if needed
+        // Reload staff if needed
         $payroll->load('staff');
     
         return response()->json([
@@ -1108,7 +1109,7 @@ class StaffController extends Controller
             'payroll' => $payroll,
         ]);
     }
-
+    
     public function destroyPayroll($id)
     {
         $payroll = Payroll::findOrFail($id);

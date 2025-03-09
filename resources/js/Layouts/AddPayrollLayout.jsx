@@ -12,21 +12,20 @@ import DateRangeIcon from "@mui/icons-material/DateRange";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import SaveIcon from "@mui/icons-material/Save";
 
+const LATE_PESO_PER_MIN = 1; // 1 peso per minute
+
+// Include "CashAdvance" in initial state
 const initialPayroll = {
   StaffID: "",
   StartDate: "",
   EndDate: "",
-  Deductions: "",    // user-typed only
-  GrossPay: "",      // computed
-  NetPay: "",        // computed
+  Deductions: "",   // user typed
+  CashAdvance: "",  // new user typed
+  GrossPay: "",     // computed
+  NetPay: "",       // computed
   GeneratedDate: "",
   Status: "",
 };
-
-// EXAMPLE: We define LATE_PESO_PER_MIN and NIGHT_DIFF_RATE constants
-// or you can read them from staff or a config
-const LATE_PESO_PER_MIN = 1; // 1 peso per minute
-// We'll compute night diff rate from staff's hourlyRate * 0.1
 
 export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) {
   const [payrollData, setPayrollData] = useState(initialPayroll);
@@ -38,7 +37,7 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
   const [attendanceFetched, setAttendanceFetched] = useState(false);
   const [noAttendanceMsg, setNoAttendanceMsg] = useState("");
 
-  // For showing detailed computations in the UI
+  // For partial breakdown
   const [nightDiffHrs, setNightDiffHrs] = useState(0);
   const [nightDiffPay, setNightDiffPay] = useState(0);
   const [latePenalty, setLatePenalty] = useState(0);
@@ -61,6 +60,7 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
       setNoAttendanceMsg("");
       return;
     }
+
     const startObj = new Date(StartDate);
     const endObj = new Date(EndDate);
     if (endObj < startObj) {
@@ -69,7 +69,6 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
       return;
     }
 
-    // GET /staff/{StaffID}/attendance-range?start=..&end=..
     axios
       .get(`/staff/${StaffID}/attendance-range`, {
         params: { start: StartDate, end: EndDate },
@@ -86,13 +85,13 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
       })
       .catch((err) => {
         console.error("Error fetching attendance range:", err);
-        setNoAttendanceMsg("Error fetching attendance. See console.");
+        setNoAttendanceMsg("Error fetching attendance. Check console.");
         setAttendanceRecords([]);
       });
   }, [payrollData.StaffID, payrollData.StartDate, payrollData.EndDate]);
 
   // ─────────────────────────────────────────────────────────────────
-  // B) Fetch Schedules (optional) if you want them in the UI
+  // B) (Optional) Fetch Schedules if you want them in the UI
   // ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const { StaffID, StartDate, EndDate } = payrollData;
@@ -119,90 +118,64 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
   useEffect(() => {
     if (!attendanceFetched) return;
 
-    // 1) Identify staff => read staff's hourly & overtime rates
     const selectedStaff = staffOptions.find(
       (s) => s.value === payrollData.StaffID
     );
-    if (!selectedStaff) {
-      // no staff => skip
-      return;
-    }
+    if (!selectedStaff) return;
 
     const hourlyRate = parseFloat(selectedStaff.hourlyRate) || 0;
     const overtimeRate = parseFloat(selectedStaff.overtimeRate) || 0;
     const nightDiffRate = hourlyRate * 0.1; // 10% of hourly
 
-    let totalRegHours = 0;
-    let totalOTHours = 0;
-    let totalNDHours = 0;
-    let totalLateMinutes = 0;
+    let totalReg = 0;
+    let totalOT = 0;
+    let totalND = 0;
+    let totalLate = 0;
 
     attendanceRecords.forEach((att) => {
       const hrs = parseFloat(att.HoursWorked) || 0;
-      totalRegHours += hrs;
+      // storePayroll logic => min(hrs,8)
+      totalReg += Math.min(hrs, 8);
 
-      const ot = parseFloat(att.OvertimeHours) || 0;
-      totalOTHours += ot;
+      const possibleOT = hrs > 8 ? hrs - 8 : 0;
+      const approvedOT = parseFloat(att.OvertimeHours) || 0;
+      totalOT += Math.min(possibleOT, approvedOT);
 
-      // If your attendance records store ND hours
-      const nd = parseFloat(att.NightDiffHours) || 0;
-      totalNDHours += nd;
-
-      // If attendance has LateMinutes
-      const late = parseFloat(att.LateMinutes) || 0;
-      totalLateMinutes += late;
+      totalLate += parseFloat(att.LateMinutes) || 0;
+      totalND   += parseFloat(att.NightDiffHours) || 0;
     });
 
-    // Cap regular hours at 8 * total days if you want (or do per attendance).
-    // For simplicity, we'll just sum them as you do in storePayroll().
-    // Then compute pay
-    const regularPay =
-      (totalRegHours >= 8 ? 8 : totalRegHours) * hourlyRate;
-    // Actually, the simpler approach is storePayroll logic: 
-    // but let's just do a direct sum approach
-    // e.g. totalRegHours * hourlyRate
+    const regularPay = totalReg * hourlyRate;
+    const otPay      = totalOT * overtimeRate;
+    const ndPay      = totalND * nightDiffRate;
+    const gross = regularPay + otPay + ndPay;
 
-    // But storePayroll does a min(hrs, 8) PER attendance. 
-    // If you want that logic exactly, you'd do:
-    // let totalReg = 0;
-    // attendanceRecords.forEach(a => totalReg += Math.min(a.HoursWorked, 8));
-    // Then regularPay = totalReg * hourlyRate.
-    // For now, let's keep it consistent:
-    let totalReg = 0;
-    attendanceRecords.forEach((att) => {
-      const h = parseFloat(att.HoursWorked) || 0;
-      totalReg += Math.min(h, 8);
-    });
-    const finalRegularPay = totalReg * hourlyRate;
-
-    const finalOTPay = totalOTHours * overtimeRate;
-    const finalNDPay = totalNDHours * nightDiffRate;
-    const gross = finalRegularPay + finalOTPay + finalNDPay;
-
-    // Late penalty
-    const latePay = totalLateMinutes * LATE_PESO_PER_MIN; 
+    // sum user Deductions + late penalty + cashAdvance
     let userDeductions = parseFloat(payrollData.Deductions);
     if (isNaN(userDeductions)) userDeductions = 0;
-    const combined = userDeductions + latePay;
+
+    let userCA = parseFloat(payrollData.CashAdvance);
+    if (isNaN(userCA)) userCA = 0;
+
+    const latePay = totalLate * LATE_PESO_PER_MIN; 
+    const combined = userDeductions + latePay + userCA;
 
     const net = gross - combined;
 
-    // Convert to string
-    const safeGross = Number.isFinite(gross) ? gross.toFixed(2) : "0.00";
-    const safeNet = Number.isFinite(net) ? net.toFixed(2) : "0.00";
+    setNightDiffHrs(totalND);
+    setNightDiffPay(ndPay.toFixed(2));
+    setLatePenalty(latePay);
 
     setPayrollData((prev) => ({
       ...prev,
-      GrossPay: safeGross,
-      NetPay: safeNet,
+      GrossPay: Number.isFinite(gross) ? gross.toFixed(2) : "0.00",
+      NetPay: Number.isFinite(net) ? net.toFixed(2) : "0.00",
     }));
-    setNightDiffHrs(totalNDHours);
-    setNightDiffPay(Number.isFinite(finalNDPay) ? finalNDPay.toFixed(2) : "0.00");
-    setLatePenalty(latePay);
   }, [
     attendanceFetched,
     attendanceRecords,
     payrollData.Deductions,
+    payrollData.CashAdvance,  // watch for changes here!
     payrollData.StaffID,
     staffOptions,
   ]);
@@ -228,20 +201,21 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
       return;
     }
 
-    // 2) Validate attendance
+    // 2) Validate attendance presence
     if (!attendanceRecords.length) {
       alert("Cannot create payroll: No attendance in this date range.");
       return;
     }
 
-    // 3) Final payload
+    // 3) Final payload => pass to parent
     const payload = {
       StaffID: selectedStaff.value,
       StartDate: payrollData.StartDate,
       EndDate: payrollData.EndDate,
-      Deductions: Number(payrollData.Deductions) || 0,
-      GrossPay: Number(payrollData.GrossPay) || 0,
-      NetPay: Number(payrollData.NetPay) || 0,
+      Deductions: parseFloat(payrollData.Deductions) || 0,
+      CashAdvance: parseFloat(payrollData.CashAdvance) || 0, // new
+      GrossPay: parseFloat(payrollData.GrossPay) || 0,
+      NetPay: parseFloat(payrollData.NetPay) || 0,
       GeneratedDate: payrollData.GeneratedDate || null,
       Status: payrollData.Status || "Pending",
     };
@@ -368,6 +342,23 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
                 />
               </Grid>
 
+              {/* Cash Advance */}
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  name="CashAdvance"
+                  label="Cash Advance"
+                  type="number"
+                  value={payrollData.CashAdvance}
+                  onChange={handleChange}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">₱</InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+
               {/* Late Penalty (read-only) */}
               <Grid item xs={12} sm={6}>
                 <TextField
@@ -391,9 +382,7 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
                   label="Night Diff Hours"
                   type="text"
                   value={nightDiffHrs.toFixed(2)}
-                  InputProps={{
-                    readOnly: true,
-                  }}
+                  InputProps={{ readOnly: true }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -486,16 +475,13 @@ export default function AddPayrollLayout({ onClose, onAdd, staffOptions = [] }) 
               </Grid>
             </Grid>
 
-            {/* If no attendance in range */}
             {noAttendanceMsg && (
               <Typography variant="body2" color="error" sx={{ mt: 2 }}>
                 {noAttendanceMsg}
               </Typography>
             )}
 
-            <Box
-              sx={{ mt: 4, display: "flex", justifyContent: "flex-end", gap: 2 }}
-            >
+            <Box sx={{ mt: 4, display: "flex", justifyContent: "flex-end", gap: 2 }}>
               <Button
                 type="submit"
                 variant="contained"
