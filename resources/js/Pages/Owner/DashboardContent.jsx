@@ -1858,7 +1858,7 @@ useEffect(() => {
                     <Typography sx={{ fontSize: 30, color: 'white', mr: 1.5, fontWeight: 'bold' }}>₱</Typography>
                     <CardContent sx={{ p: 1 }}>
                       <Typography variant="body2" sx={{ color: 'white', mb: 0.5 }}>
-                        Payments Received
+                        Total Gross
                       </Typography>
                       <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
                         {formatCurrency(keyMetrics.totalRevenue)}
@@ -1880,7 +1880,7 @@ useEffect(() => {
                     <AttachMoney sx={{ fontSize: 30, color: 'white', mr: 1.5 }} />
                     <CardContent sx={{ p: 1 }}>
                       <Typography variant="body2" sx={{ color: 'white', mb: 0.5 }}>
-                        Revenue Flow Count
+                        Total Cash Flows
                       </Typography>
                       <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
                         {keyMetrics.totalPaymentsCount ?? 0}
@@ -2084,7 +2084,7 @@ useEffect(() => {
                     }}
                   >
                     <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
-                      Recent Transactions (incl. Walk-Ins)
+                      Recent Gym Transactions
                     </Typography>
                     <Box sx={{ flexGrow: 1, width: '100%' }}>
                       <DataGrid

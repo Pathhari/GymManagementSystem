@@ -463,6 +463,8 @@ class StaffController extends Controller
             'TimeOut'       => 'nullable|date_format:H:i:s|after:TimeIn',
             'HoursWorked'   => 'nullable|numeric|min:0',
             'OvertimeHours' => 'nullable|numeric|min:0',
+            'NightDiffHours'=> 'nullable|numeric|min:0',
+            'LateMinutes'   => 'nullable|numeric|min:0',// ← Add this
         ]);
 
         $attendance->update($data);
@@ -919,11 +921,11 @@ class StaffController extends Controller
             'Status'        => 'nullable|string|max:50',
         ]);
     
-        // 1) Fetch staff to get Hourly/Overtime Rate
+        // 1) Fetch staff for Hourly/Overtime Rate
         $staff = Staff::findOrFail($data['StaffID']);
-        $hourlyRate    = $staff->HourlyRate;       // DailyRate / 8
-        $overtimeRate  = $staff->OvertimeRate;     // hourlyRate * 1.25
-        $nightDiffRate = $hourlyRate * 0.10;       // 10% of hourly
+        $hourlyRate    = $staff->HourlyRate;    // e.g. dailyRate / 8
+        $overtimeRate  = $staff->OvertimeRate;  // e.g. hourlyRate * 1.25
+        $nightDiffRate = $hourlyRate * 0.10;    // 10% of hourly
     
         // 2) Gather attendance in date range
         $attendances = Attendance::where('StaffID', $staff->StaffID)
@@ -955,43 +957,57 @@ class StaffController extends Controller
             $totalLateMins     += ($att->LateMinutes    ?: 0);
         }
     
-    // 4) Compute pay
-    $regularPay   = $totalRegHours * $hourlyRate;
-    $overtimePay  = $totalOTHours  * $overtimeRate;
-    $nightDiffPay = $totalNightDiffHrs * $nightDiffRate;
-
-    $grossPay = $regularPay + $overtimePay + $nightDiffPay;
-
-    // 5) Combine user Deductions + Late penalty + new CashAdvance
-    $manualDeductions = $data['Deductions']     ?? 0;
-    $cashAdvance      = $data['CashAdvance']    ?? 0;
-    $latePenalty      = $totalLateMins; // if 1 peso/min
-
-    $combinedDeductions = $manualDeductions + $latePenalty + $cashAdvance;
-
-    // 6) Net pay
-    $netPay = $grossPay - $combinedDeductions;
-
-    // 7) Store payroll
-    $payroll = Payroll::create([
-        'StaffID'       => $staff->StaffID,
-        'StartDate'     => $data['StartDate'],
-        'EndDate'       => $data['EndDate'],
-        'GrossPay'      => $grossPay,
-        'Deductions'    => $manualDeductions,  // So we keep them separated
-        'CashAdvance'   => $cashAdvance,       // store separately
-        'NetPay'        => $netPay,
-        'GeneratedDate' => $data['GeneratedDate'] ?? now(),
-        'Status'        => $data['Status'] ?? 'Pending',
-    ]);
-
-    $payroll->load('staff');
-
-    return response()->json([
-        'message' => 'Payroll created successfully (including ND pay, late & cash advance).',
-        'payroll' => $payroll
-    ], 201);
-}    
+        // 4) Compute pay
+        $regularPay   = $totalRegHours * $hourlyRate;
+        $overtimePay  = $totalOTHours  * $overtimeRate;
+        $nightDiffPay = $totalNightDiffHrs * $nightDiffRate;
+    
+        $grossPay = $regularPay + $overtimePay + $nightDiffPay;
+    
+        // 5) Combine user Deductions + late penalty + cash advance
+        $manualDeductions = $data['Deductions'] ?? 0;
+        $cashAdvance      = $data['CashAdvance'] ?? 0;
+        $latePenalty      = $totalLateMins;  // e.g. 1 peso/min
+    
+        // The final "actualDeductions" includes late penalty
+        $actualDeductions = $manualDeductions + $latePenalty;
+    
+        // Then total "combined" includes cash advance too
+        $combinedDeductions = $actualDeductions + $cashAdvance;
+    
+        // 6) Net pay
+        $netPay = $grossPay - $combinedDeductions;
+    
+        // 7) Store payroll
+        $payroll = Payroll::create([
+            'StaffID'       => $staff->StaffID,
+            'StartDate'     => $data['StartDate'],
+            'EndDate'       => $data['EndDate'],
+            'GrossPay'      => $grossPay,
+            // Store final total in Deductions:
+            'Deductions'    => $actualDeductions, // includes manual + late penalty
+            'CashAdvance'   => $cashAdvance,
+            'NetPay'        => $netPay,
+            'GeneratedDate' => $data['GeneratedDate'] ?? now(),
+            'Status'        => $data['Status'] ?? 'Pending',
+        ]);
+    
+        // Attach staff & attendance for the response
+        $payroll->load('staff');
+    
+        // re-fetch attendance for display
+        $attendances = Attendance::where('StaffID', $payroll->StaffID)
+            ->whereBetween('Date', [$payroll->StartDate, $payroll->EndDate])
+            ->get();
+    
+        $payroll->setRelation('computed_attendances', $attendances);
+    
+        return response()->json([
+            'message' => 'Payroll created!',
+            'payroll' => $payroll,
+        ], 201);
+    }
+    
 
     public function indexPayroll()
     {
@@ -1023,7 +1039,7 @@ class StaffController extends Controller
 
     public function updatePayroll(Request $request, $id)
     {
-        // 1) Find the existing record; do not re-create
+        // 1) Find existing
         $payroll = Payroll::findOrFail($id);
     
         // 2) Validate partial fields
@@ -1034,15 +1050,18 @@ class StaffController extends Controller
             'CashAdvance'   => 'nullable|numeric|min:0',
             'GeneratedDate' => 'nullable|date',
             'Status'        => 'nullable|string|max:50',
+            'GrossPay'      => 'nullable|numeric|min:0',
+            'NetPay'        => 'nullable|numeric|min:0',
+            'IgnoreLate'    => 'nullable|boolean',
         ]);
     
-        // 3) Keep same staff from existing payroll, or allow changes if needed
+        // 3) Possibly keep the staff the same
         $staff = $payroll->staff;
         if (!$staff) {
             return response()->json(['message' => 'Associated staff not found.'], 422);
         }
     
-        // 4) Recalc the pay
+        // 4) Recalc partial fields from attendance (if desired)
         $hourlyRate    = $staff->HourlyRate;
         $overtimeRate  = $staff->OvertimeRate;
         $nightDiffRate = $hourlyRate * 0.10;
@@ -1075,41 +1094,61 @@ class StaffController extends Controller
             $totalLateMins     += ($att->LateMinutes    ?: 0);
         }
     
-        // 5) Compute new gross/net
-        $regularPay   = $totalRegHours * $hourlyRate;
-        $overtimePay  = $totalOTHours  * $overtimeRate;
-        $nightDiffPay = $totalNightDiffHrs * $nightDiffRate;
+        // 4a) If user did NOT override GrossPay, recalc
+        if (!isset($data['GrossPay'])) {
+            $regularPay   = $totalRegHours * $hourlyRate;
+            $overtimePay  = $totalOTHours  * $overtimeRate;
+            $nightDiffPay = $totalNightDiffHrs * $nightDiffRate;
+            $grossPay     = $regularPay + $overtimePay + $nightDiffPay;
+        } else {
+            $grossPay = floatval($data['GrossPay']);
+        }
     
-        $grossPay = $regularPay + $overtimePay + $nightDiffPay;
+        // 4b) If user wants to ignore late penalty, we skip adding it
+        $latePenalty = ($data['IgnoreLate'] ?? false) ? 0 : $totalLateMins;
     
-        $manualDeductions = $data['Deductions']   ?? 0;
-        $cashAdvance      = $data['CashAdvance']  ?? 0;
-        $latePenalty      = $totalLateMins; // e.g. 1 peso/min
+        // combine manual + penalty => actualDeductions
+        $manualDeductions = $data['Deductions'] ?? 0;
+        $actualDeductions = $manualDeductions + $latePenalty;
     
-        $combinedDeductions = $manualDeductions + $cashAdvance + $latePenalty;
-        $netPay = $grossPay - $combinedDeductions;
+        $cashAdvance = $data['CashAdvance'] ?? 0;
+        $combinedDeductions = $actualDeductions + $cashAdvance;
     
-        // 6) Update the existing payroll record (not create new)
+        // 4c) If user did NOT override NetPay, do the auto-calc
+        if (!isset($data['NetPay'])) {
+            $netPay = $grossPay - $combinedDeductions;
+        } else {
+            $netPay = floatval($data['NetPay']);
+        }
+    
+        // 5) Update existing payroll
         $payroll->update([
             'StartDate'     => $data['StartDate'],
             'EndDate'       => $data['EndDate'],
             'GrossPay'      => $grossPay,
-            'Deductions'    => $manualDeductions,
+    
+            // store the sum of manual + late penalty in Deductions
+            'Deductions'    => $actualDeductions,
             'CashAdvance'   => $cashAdvance,
             'NetPay'        => $netPay,
             'GeneratedDate' => $data['GeneratedDate'] ?? now(),
             'Status'        => $data['Status'] ?? 'Pending',
         ]);
     
-        // Reload staff if needed
+        // You could also store $payroll->LatePenalty = $latePenalty; if you have that column
+    
+        // Attach computed attendances
+        $payroll->setRelation('computed_attendances', $attendances);
         $payroll->load('staff');
     
+        // Return final JSON
         return response()->json([
-            'message' => 'Payroll updated (auto-recalculated).',
+            'message' => 'Payroll updated with partial overrides.',
             'payroll' => $payroll,
         ]);
     }
     
+
     public function destroyPayroll($id)
     {
         $payroll = Payroll::findOrFail($id);
