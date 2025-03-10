@@ -175,7 +175,7 @@ const [filterExpiring, setFilterExpiring] = useState(false);
     StartDate: "",
     BranchID: "",
     MonthsToPayUpfront: 1,
-  });
+  });  
   const [monthlyClientPayments, setMonthlyClientPayments] = useState([{ PaymentMethod: "", PaymentAmount: "" }]);
   const [selectedMonthlyClient, setSelectedMonthlyClient] = useState(null);
   const [memberVisitLogs, setMemberVisitLogs] = useState([]);
@@ -320,7 +320,14 @@ const [filterExpiring, setFilterExpiring] = useState(false);
     fetchDataForTab();
   }, [activeTab]);
   
-  
+  useEffect(() => {
+    if (staff && staff.branches && staff.branches.length > 0) {
+      setNewMonthlyClient((prev) => ({
+        ...prev,
+        BranchID: staff.branches[0].BranchID, // or however your staff object is structured
+      }));
+    }
+  }, [staff]);
 
   // ─────────────────────────────────────────────────────────
   // Snack helper
@@ -464,35 +471,47 @@ function handleEditMembership(row) {
 
 async function handleEditMembershipSubmit() {
   if (!selectedMembership) return;
+
+  // Create the FormData first.
+  const formData = new FormData();
+
+  // Optional branch check: verify that the member belongs to the same branch as the staff.
+  const memberBranch = String(selectedMembership.BranchID || selectedMembership.StartedBranchID);
+  const staffBranch = staff ? String(staff.BranchID) : "";
+  if (memberBranch !== staffBranch) {
+    alert("You cannot update a member from another branch.");
+    return;
+  }
+
+  // Append the membership details.
+  formData.append("FullName", selectedMembership.FullName);
+  formData.append("Email", selectedMembership.Email);
+  formData.append("Phone", selectedMembership.Phone || "");
+  formData.append("PlanID", selectedMembership.PlanID || "");
+  formData.append("MembershipCardNumber", selectedMembership.MembershipCardNumber || "");
+  formData.append("MembershipCardIssued", selectedMembership.MembershipCardIssued ? "1" : "0");
+  formData.append("MemberStatusID", selectedMembership.MemberStatusID);
+  formData.append("MembershipStartDate", selectedMembership.MembershipStartDate || "");
+  formData.append("MembershipEndDate", selectedMembership.MembershipEndDate || "");
+  formData.append("Biometrics", selectedMembership.Biometrics || "");
+  formData.append("FreeSessions", selectedMembership.FreeSessions || "0");
+  formData.append("Notes", selectedMembership.Notes || "");
+
+  // Attach the staff's BranchID so the backend can verify.
+  formData.append("BranchID", staff.BranchID);
+  if (selectedMembership.PhotoFile) {
+    formData.append("PhotoFile", selectedMembership.PhotoFile);
+  }
+
   try {
     const memberID = selectedMembership.MemberID;
-    const formData = new FormData();
-    formData.append("FullName", selectedMembership.FullName);
-    formData.append("Email", selectedMembership.Email);
-    formData.append("Phone", selectedMembership.Phone || "");
-    formData.append("PlanID", selectedMembership.PlanID || "");
-    formData.append("MembershipCardNumber", selectedMembership.MembershipCardNumber || "");
-    formData.append("MembershipCardIssued", selectedMembership.MembershipCardIssued ? "1" : "0");
-    formData.append("MemberStatusID", selectedMembership.MemberStatusID);
-    formData.append("MembershipStartDate", selectedMembership.MembershipStartDate || "");
-    formData.append("MembershipEndDate", selectedMembership.MembershipEndDate || "");
-    formData.append("Biometrics", selectedMembership.Biometrics || "");
-    formData.append("FreeSessions", selectedMembership.FreeSessions || "0");
-    formData.append("Notes", selectedMembership.Notes || "");
-    // Automatically attach the staff's branch
-    if (staff) {
-      formData.append("BranchID", staff.BranchID);
-    }
-    if (selectedMembership.PhotoFile) {
-      formData.append("PhotoFile", selectedMembership.PhotoFile);
-    }
-
-    await axios.post(`/staff/membership/members/${memberID}`, formData, {
+    // Using the public endpoint (remove any '/staff' prefix).
+    await axios.post(`/membership/members/${memberID}`, formData, {
       params: { _method: "PUT" },
       headers: { "Content-Type": "multipart/form-data" },
     });
 
-    // Update local state
+    // Update local state.
     setMembershipRecords((prev) =>
       prev.map((m) => (m.MemberID === memberID ? selectedMembership : m))
     );
@@ -503,6 +522,7 @@ async function handleEditMembershipSubmit() {
     alert("Update error. Check console for details.");
   }
 }
+
 
 async function handleDeleteMembership(memberID) {
   try {
@@ -679,18 +699,39 @@ function handleFreezeFormChange(e) {
 }
 
 async function handleSubmitFreeze() {
+  // Find the member record based on the freeze form's MemberID.
+  const member = membershipRecords.find(
+    (m) => m.MemberID === freezeForm.MemberID
+  );
+
+  // Convert branch IDs to strings for reliable comparison.
+  const memberBranch = member ? String(member.BranchID || member.StartedBranchID) : "";
+  const staffBranch = staff ? String(staff.BranchID) : "";
+
+  // Verify that the member belongs to the same branch as the staff.
+  if (!member || memberBranch !== staffBranch) {
+    alert("Not your branch.");
+    return;
+  }
+
   try {
-    // Optionally, you can add the staff's BranchID here
-    const payload = { ...freezeForm };
-    if (staff) {
-      payload.BranchID = staff.BranchID;
-    }
-    const res = await axios.post("/staff/membership/freezes", payload);
+    // Build payload and attach the staff's BranchID.
+    const payload = { ...freezeForm, BranchID: staffBranch };
+
+    // Send the request to the public endpoint (without '/staff').
+    const res = await axios.post("/membership/freezes", payload);
     const newFreeze = res.data;
+
+    // Update the local freeze records.
     setFreezeRecords((prev) => [newFreeze, ...prev]);
-    // Refresh membership list using staff endpoint
-    const refreshed = await axios.get("/staff/membership/members", { params: { branchId: staff.BranchID } });
+
+    // Refresh the membership records using the public endpoint.
+    const refreshed = await axios.get("/membership/members", {
+      params: { branchId: staffBranch },
+    });
     setMembershipRecords(refreshed.data.members || []);
+
+    // Close the freeze modal and show a success message.
     setFreezeModalOpen(false);
     showSuccessMessage("Freeze created successfully. Member is now Frozen!");
   } catch (err) {
@@ -698,6 +739,7 @@ async function handleSubmitFreeze() {
     alert("Error. Check console for details.");
   }
 }
+
 
 function handleViewFreeze(freezeRow) {
   setSelectedFreeze(freezeRow);
@@ -718,11 +760,10 @@ async function handleEditFreezeSubmit() {
   if (!selectedFreeze) return;
   try {
     const freezeID = selectedFreeze.FreezeID;
-    const res = await axios.put(`/staff/membership/freezes/${freezeID}`, {
+    await axios.put(`/membership/freezes/${freezeID}`, {
       FreezeStartDate: selectedFreeze.FreezeStartDate,
       FreezeEndDate: selectedFreeze.FreezeEndDate,
       Reason: selectedFreeze.Reason,
-      // Optionally include BranchID if required
       BranchID: staff ? staff.BranchID : "",
     });
     const updatedFreeze = res.data;
@@ -747,9 +788,14 @@ const openUnfreezeDialog = (type, freezeID) => {
 const handleUnfreezeMember = async () => {
   if (!freezeToUnfreeze) return;
   try {
-    await axios.delete(`/staff/membership/freezes/${freezeToUnfreeze}`);
+    // Use the public endpoint and pass the branchId as a query parameter.
+    await axios.delete(`/membership/freezes/${freezeToUnfreeze}`, {
+      params: { branchId: staff.BranchID },
+    });
     setFreezeRecords((prev) => prev.filter((f) => f.FreezeID !== freezeToUnfreeze));
-    const refreshed = await axios.get("/staff/membership/members", { params: { branchId: staff.BranchID } });
+    const refreshed = await axios.get("/membership/members", {
+      params: { branchId: staff.BranchID },
+    });
     setMembershipRecords(refreshed.data.members || []);
     setUnfreezeDialogOpen(false);
     showSuccessMessage("Member successfully unfrozen!");
@@ -758,17 +804,6 @@ const handleUnfreezeMember = async () => {
     alert("Error. Check console for details.");
   }
 };
-
-async function handleDeleteFreeze(freezeID) {
-  try {
-    await axios.delete(`/staff/membership/freezes/${freezeID}`);
-    setFreezeRecords((prev) => prev.filter((f) => f.FreezeID !== freezeID));
-    showSuccessMessage("Freeze deleted successfully!");
-  } catch (err) {
-    console.error("Error deleting freeze:", err);
-    alert("Error. Check console for details.");
-  }
-}
 
 // ─────────────────────────────────────────────────────────
 // RENEWAL CRUD (Staffified)
@@ -877,11 +912,11 @@ async function handleAddRenewal() {
       RenewalAmount: Number(newRenewal.RenewalAmount),
       PaymentFor: newRenewal.PaymentFor,
       Payments: renewalPayments,
-      // Optionally attach branch and staff info if your backend requires them
       BranchID: staff ? staff.BranchID : "",
       StaffID: staff ? staff.StaffID : "",
     };
-    const res = await axios.post("/staff/membership/renewals", body);
+    // Updated endpoint
+    const res = await axios.post("/membership/renewals", body);
     const { renewal, member } = res.data;
 
     setRenewalRecords((prev) => [renewal, ...prev]);
@@ -904,6 +939,7 @@ async function handleAddRenewal() {
     alert("Create error. Check console for details.");
   }
 }
+
 
 function handleViewRenewal(row) {
   setSelectedRenewal(row);
@@ -954,13 +990,12 @@ async function handleAddMonthlyClientSubmit() {
     // Build request body and automatically attach the staff's BranchID
     const payload = {
       ...newMonthlyClient,
-      BranchID: staff ? staff.BranchID : newMonthlyClient.BranchID,
+      BranchID: staff && staff.BranchID ? staff.BranchID : (staff && staff.branch ? staff.branch.BranchID : ""),
       Payments: monthlyClientPayments.map((p) => ({
         PaymentMethod: p.PaymentMethod,
         PaymentAmount: Number(p.PaymentAmount) || 0,
       })),
     };
-
     const res = await axios.post("/staff/monthly-clients", payload);
     const created = res.data.monthlyClient || res.data;
 
@@ -1670,8 +1705,8 @@ const getRowId = (row) => {
   if (activeTab === 2) return row.RenewalID;
   if (activeTab === 3) return row.FreezeID;
   if (activeTab === 4) return row.MonthlyClientID;
-  if (activeTab === 5) return row.MemberVisitID;         // new
-  if (activeTab === 6) return row.MonthlyClientAttendanceID; // new
+  if (activeTab === 5) return row.VisitID; // Use VisitID as the unique identifier for member visit logs
+  if (activeTab === 6) return row.MonthlyClientAttendanceID;
   return row.LogID;
 };
 
@@ -2867,28 +2902,29 @@ return (
     />
     {/* For staff view, the Branch field is auto‑set & disabled */}
     <FormControl fullWidth sx={{ my: 1 }}>
-      <InputLabel>Branch</InputLabel>
-      <Select
-        value={newMonthlyClient.BranchID || (staff ? staff.BranchID : "")}
-        onChange={(e) =>
-          setNewMonthlyClient((prev) => ({ ...prev, BranchID: e.target.value }))
-        }
-        label="Branch"
-        disabled={!!staff}
-        startAdornment={
-          <InputAdornment position="start">
-            <GroupsIcon />
-          </InputAdornment>
-        }
-      >
-        <MenuItem value="">-- Select Branch --</MenuItem>
-        {Object.entries(branches).map(([BranchID, BranchName]) => (
-          <MenuItem key={BranchID} value={BranchID}>
-            {BranchName}
-          </MenuItem>
-        ))}
-      </Select>
-    </FormControl>
+  <InputLabel>Branch</InputLabel>
+  <Select
+    value={newMonthlyClient.BranchID || (staff ? staff.BranchID : "")}
+    onChange={(e) =>
+      setNewMonthlyClient((prev) => ({ ...prev, BranchID: e.target.value }))
+    }
+    label="Branch"
+    disabled={!!staff} // Disable if staff is logged in
+    startAdornment={
+      <InputAdornment position="start">
+        <GroupsIcon />
+      </InputAdornment>
+    }
+  >
+    <MenuItem value="">-- Select Branch --</MenuItem>
+    {Object.entries(branches).map(([BranchID, BranchName]) => (
+      <MenuItem key={BranchID} value={BranchID}>
+        {BranchName}
+      </MenuItem>
+    ))}
+  </Select>
+</FormControl>
+
 
     {/* Start Date */}
     <TextField

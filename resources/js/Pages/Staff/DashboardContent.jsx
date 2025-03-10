@@ -25,6 +25,9 @@ import {
   Divider,
   Snackbar,
   InputAdornment,
+  List,
+  ListItem,
+  ListItemText,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -49,6 +52,7 @@ import EventIcon from "@mui/icons-material/Event";
 import NotesIcon from "@mui/icons-material/Notes";
 import { AccessTime, AlarmOn, AlarmOff, Schedule as ScheduleIcon } from "@mui/icons-material";
 import axios from "axios";
+import dayjs from "dayjs";
 
 export default function StaffDashboard() {
   const theme = useTheme();
@@ -79,7 +83,6 @@ export default function StaffDashboard() {
     return `${hours}:${minutes.toString().padStart(2, "0")} ${period}`;
   };
 
-
   // Dashboard state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -92,11 +95,13 @@ export default function StaffDashboard() {
   const [schedule, setSchedule] = useState([]);
   const [staffId, setStaffId] = useState(null);
   const [staffBranch, setStaffBranch] = useState(null);
+  // New state: all staff fetched from the backend
+  const [staffList, setStaffList] = useState([]);
 
-  // Instead of using localStorage, we recalc isClockedIn from attendance
+  // Instead of using localStorage, we recalc isClockedIn for the logged‑in staff
   const [isClockedIn, setIsClockedIn] = useState(false);
 
-  // Derived states
+  // Derived states for metrics
   const todayString = new Date().toISOString().split("T")[0];
   const walkInsTodayCount = walkIns.filter((w) => {
     return new Date(w.VisitDate).toISOString().split("T")[0] === todayString;
@@ -115,7 +120,7 @@ export default function StaffDashboard() {
   // Tabs: 0 => Visits, 1 => Walk-Ins, 2 => Expiring Soon
   const [activeTab, setActiveTab] = useState(0);
 
-  // Check-In and dialog states
+  // Check-In and dialog states (for member check-in)
   const [checkInMethod, setCheckInMethod] = useState("card");
   const [selectedMember, setSelectedMember] = useState(null);
   const [isCamOpen, setCamOpen] = useState(false);
@@ -132,18 +137,9 @@ export default function StaffDashboard() {
     VisitDate: "",
     Notes: "",
     PaymentMethod: "",
-    PaymentAmount: ""
+    PaymentAmount: "",
   });
   const [currentTime, setCurrentTime] = useState(new Date());
-
-  // ------------------------------------------------------------------
-  // Load initial dashboard data and staff info on mount
-  // ------------------------------------------------------------------
-  useEffect(() => {
-    loadDashboardData();
-    fetchStaffData();
-    fetchMembers();
-  }, []);
 
   // Update current time every second
   useEffect(() => {
@@ -153,9 +149,15 @@ export default function StaffDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // ------------------------------------------------------------------
-  // API Calls (Back end handles branch filtering)
-  // ------------------------------------------------------------------
+  // On mount, load initial data
+  useEffect(() => {
+    loadDashboardData();
+    fetchStaffData();
+    fetchAllStaff();
+    fetchMembers();
+  }, []);
+
+  // API Calls
   const loadDashboardData = async () => {
     setLoading(true);
     setError(null);
@@ -163,26 +165,22 @@ export default function StaffDashboard() {
       const metricsRes = await axios.get("/staff/metrics");
       setCheckInsToday(metricsRes.data.checkInsToday || 0);
       setLockersInUse(metricsRes.data.lockersInUse || 0);
-  
+
       const visitsRes = await axios.get("/operations/visits", {
-        params: {
-          branchID: staffBranch, // e.g. 1
-        },
+        params: { branchID: staffBranch },
       });
-      const fetchedVisits = visitsRes.data.visits || [];
-      setVisits(fetchedVisits);
-      
+      setVisits(visitsRes.data.visits || []);
+
       const walkInsRes = await axios.get("/operations/walk-ins");
       setWalkIns(walkInsRes.data || []);
-  
-      // Fetch attendance records to determine clock state
+
       const attendRes = await axios.get("/staff/attendance");
       const fetchedAttendance = Array.isArray(attendRes.data)
         ? attendRes.data
         : attendRes.data.attendance || [];
       setAttendance(fetchedAttendance);
-  
-      // Determine if current staff is clocked in for today
+
+      // Determine clock state for the logged-in staff
       const todayDate = new Date().toISOString().split("T")[0];
       const todaysAttendance = fetchedAttendance.filter(
         (rec) => rec.Date === todayDate
@@ -191,8 +189,7 @@ export default function StaffDashboard() {
         (rec) => rec.TimeIn && !rec.TimeOut
       );
       setIsClockedIn(!!clockedInRecord);
-  
-      // NEW: Fetch staff schedule from staff controller
+
       const scheduleRes = await axios.get("/staff/schedules");
       setSchedule(scheduleRes.data || []);
     } catch (err) {
@@ -202,9 +199,8 @@ export default function StaffDashboard() {
       setLoading(false);
     }
   };
-  
 
-  // Fetch logged-in staff info (including BranchID)
+  // Fetch logged-in staff info
   const fetchStaffData = async () => {
     try {
       const res = await axios.get("/staff/get-logged-in-staff");
@@ -218,6 +214,17 @@ export default function StaffDashboard() {
     }
   };
 
+  // Fetch all staff (for listing staff in the branch)
+  const fetchAllStaff = async () => {
+    try {
+      const res = await axios.get("/staff");
+      setStaffList(res.data || []);
+    } catch (err) {
+      console.error("Failed to fetch staff list:", err);
+    }
+  };
+
+  // Fetch members
   const fetchMembers = async () => {
     try {
       const res = await axios.get("/membership/members");
@@ -227,20 +234,15 @@ export default function StaffDashboard() {
     }
   };
 
-  
-  // ------------------------------------------------------------------
-  // Tabs change handler
-  // ------------------------------------------------------------------
+  // Tabs handler
   const handleTabChange = (e, val) => {
     setActiveTab(val);
   };
 
-  // ------------------------------------------------------------------
-  // Check-In function
-  // ------------------------------------------------------------------
+  // Check-In Member function (unchanged)
   const handleCheckIn = async () => {
     if (!selectedMember) {
-      alert("Please select a member.");
+      alert("Please select a member first.");
       return;
     }
     try {
@@ -249,9 +251,7 @@ export default function StaffDashboard() {
         CheckInMethod: checkInMethod,
         BranchID: staffBranch,
       });
-      showSuccessMessage(
-        `Member ${selectedMember.FullName} checked in successfully!`
-      );
+      showSuccessMessage(`Member ${selectedMember.FullName} checked in successfully!`);
       setSelectedMember(null);
       loadDashboardData();
     } catch (err) {
@@ -263,130 +263,69 @@ export default function StaffDashboard() {
       }
     }
   };
-  
 
-  // ------------------------------------------------------------------
-  // Camera & Biometric Dialogs
-  // ------------------------------------------------------------------
-  const handleOpenCam = () => setCamOpen(true);
-  const handleCloseCam = () => setCamOpen(false);
-  const handleSimulateCardScan = () => setCamOpen(false);
+  // ------------------ STAFF SCHEDULE & CLOCK IN/OUT SECTION ------------------
+  // Filter staff list: only those in the same branch and exclude the logged-in staff.
+  const staffInMyBranch = staffList.filter(
+    (st) =>
+      st.StaffID !== staffId &&
+      st.branches?.some((b) => String(b.BranchID) === String(staffBranch))
+  );
 
-  const handleOpenBiometric = () => setBiometricOpen(true);
-  const handleCloseBiometric = () => setBiometricOpen(false);
-  const handleSimulateFingerprint = () => setBiometricOpen(false);
-
-  // ------------------------------------------------------------------
-  // Visits CRUD
-  // ------------------------------------------------------------------
-  const handleViewVisit = (visit) => {
-    setSelectedVisit(visit);
-    setViewVisitOpen(true);
-  };
-  const handleEditVisit = (visit) => {
-    setSelectedVisit({ ...visit });
-    setEditVisitOpen(true);
-  };
-  const handleEditVisitSubmit = async () => {
-    if (!selectedVisit) return;
-    try {
-      await axios.put(`/operations/visits/${selectedVisit.VisitID}`, {
-        MemberID: selectedVisit.MemberID,
-        VisitDate: selectedVisit.VisitDate,
-        VisitTime: selectedVisit.VisitTime,
-        CheckInMethod: selectedVisit.CheckInMethod,
-        Remarks: selectedVisit.Remarks,
-      });
-      setEditVisitOpen(false);
-      loadDashboardData();
-      showSuccessMessage("Visit updated successfully.");
-    } catch (err) {
-      console.error("Failed to update visit:", err);
+  // Handle clock in/out for a specific staff member.
+  const handleScheduleClock = async (staffRow) => {
+    // Find today's schedule for the staff member.
+    const stSchedule = schedule.find(
+      (sch) => sch.StaffID === staffRow.StaffID && sch.ShiftDate === todayString
+    );
+    // If no schedule exists, button is disabled.
+    if (!stSchedule) {
+      showSuccessMessage(`No schedule for ${staffRow.FullName} today.`);
+      return;
     }
-  };
-  const handleDeleteVisit = async (visitID) => {
-    if (!window.confirm("Delete this visit record?")) return;
-    try {
-      await axios.delete(`/operations/visits/${visitID}`);
-      loadDashboardData();
-      showSuccessMessage("Visit deleted!");
-    } catch (err) {
-      console.error("Failed to delete visit:", err);
-    }
-  };
+    // Find attendance record for today.
+    const att = attendance.find(
+      (a) => a.StaffID === staffRow.StaffID && a.Date === todayString
+    );
+    const timeStr = currentTime.toLocaleTimeString("it-IT").slice(0, 5);
 
-  // ------------------------------------------------------------------
-  // Walk-Ins CRUD
-  // ------------------------------------------------------------------
-  const handleViewWalkIn = (wk) => {
-    setSelectedWalkIn(wk);
-    setViewWalkInOpen(true);
-  };
-  const handleEditWalkIn = (wk) => {
-    setSelectedWalkIn({ ...wk });
-    setEditWalkInOpen(true);
-  };
-  const handleEditWalkInSubmit = async () => {
-    if (!selectedWalkIn) return;
-    try {
-      await axios.put(`/operations/walk-ins/${selectedWalkIn.WalkInID}`, {
-        FullName: selectedWalkIn.FullName || "",
-        VisitDate: selectedWalkIn.VisitDate,
-        PaymentID: selectedWalkIn.PaymentID || null,
-        PaymentMethod: selectedWalkIn.PaymentMethod || "",
-        AmountPaid: selectedWalkIn.AmountPaid || 0,
-        Notes: selectedWalkIn.Notes || "",
-      });
-      setEditWalkInOpen(false);
-      loadDashboardData();
-      showSuccessMessage("Walk-In updated!");
-    } catch (err) {
-      console.error("Failed to update walk-in:", err);
+    let clockData = {
+      StaffID: staffRow.StaffID,
+      BranchID: staffBranch,
+      Date: todayString,
+    };
+
+    if (!att || !att.TimeIn) {
+      // Clock in if no attendance record or TimeIn is missing.
+      clockData.TimeIn = timeStr;
+      clockData.TimeOut = null;
+    } else if (att && !att.TimeOut) {
+      // Clock out if TimeIn exists but TimeOut is not set.
+      clockData.TimeIn = null;
+      clockData.TimeOut = timeStr;
+    } else {
+      showSuccessMessage(`Attendance for ${staffRow.FullName} is already complete today.`);
+      return;
     }
-  };
-  const handleDeleteWalkIn = async (walkInID) => {
-    if (!window.confirm("Delete this walk-in record?")) return;
+
     try {
-      await axios.delete(`/operations/walk-ins/${walkInID}`);
+      await axios.post("/staff/attendance/clock-in-out", clockData);
+      // Wait briefly to allow update
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const attendRes = await axios.get("/staff/attendance");
+      const fetchedAttendance = Array.isArray(attendRes.data)
+        ? attendRes.data
+        : attendRes.data.attendance || [];
+      setAttendance(fetchedAttendance);
+      showSuccessMessage(`Attendance updated for ${staffRow.FullName}!`);
       loadDashboardData();
-      showSuccessMessage("Walk-In deleted.");
     } catch (err) {
-      console.error("Failed to delete walk-in:", err);
+      console.error("Failed to update attendance:", err);
+      showSuccessMessage("Error updating attendance. Check console.");
     }
   };
 
-  const handleAddWalkInChange = (e) => {
-    setNewWalkIn((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  };
-  const handleAddWalkIn = async () => {
-    try {
-      await axios.post("/operations/walk-ins", {
-        FullName: newWalkIn.FullName || null,
-        VisitDate: newWalkIn.VisitDate,
-        Notes: newWalkIn.Notes || null,
-        PaymentMethod: newWalkIn.PaymentMethod || null,
-        PaymentAmount: newWalkIn.PaymentAmount || 0,
-      });
-      showSuccessMessage("Walk-In created successfully.");
-      setNewWalkIn({
-        FullName: "",
-        VisitDate: "",
-        Notes: "",
-        PaymentMethod: "",
-        PaymentAmount: "",
-      });
-      setAddWalkInOpen(false);
-      loadDashboardData();
-    } catch (err) {
-      console.error("Failed to create walk-in:", err);
-      alert("Create error. Check console for details.");
-    }
-  };
-
-  // ------------------------------------------------------------------
-  // Clock In/Out Logic (updated for staff-specific actions)
-  // ------------------------------------------------------------------
-  // Helper function to refresh and return the clock state:
+  // ------------------ CLOCK IN/OUT for LOGGED-IN STAFF (unchanged) ------------------
   const refreshClockState = async () => {
     try {
       const attendRes = await axios.get("/staff/attendance");
@@ -430,13 +369,11 @@ export default function StaffDashboard() {
       StaffID: currentStaffId,
       BranchID: staffBranch,
       Date: dateStr,
-      // If not clocked in, set TimeIn; if already clocked in, set TimeOut.
       TimeIn: isClockedIn ? null : timeStr,
       TimeOut: isClockedIn ? timeStr : null,
     };
     try {
       await axios.post("/staff/attendance/clock-in-out", clockData);
-      // Wait for a short delay to allow backend update
       await new Promise((resolve) => setTimeout(resolve, 500));
       const newClockState = await refreshClockState();
       showSuccessMessage(
@@ -447,16 +384,116 @@ export default function StaffDashboard() {
     }
   };
 
-  // ------------------------------------------------------------------
-  // TABLE COLUMNS
-  // ------------------------------------------------------------------
+  // ------------------ VISITS & WALK-INS CRUD (existing code) ------------------
+  const handleViewVisit = (visit) => {
+    setSelectedVisit(visit);
+    setViewVisitOpen(true);
+  };
+  const handleEditVisit = (visit) => {
+    setSelectedVisit({ ...visit });
+    setEditVisitOpen(true);
+  };
+  const handleEditVisitSubmit = async () => {
+    if (!selectedVisit) return;
+    try {
+      await axios.put(`/operations/visits/${selectedVisit.VisitID}`, {
+        MemberID: selectedVisit.MemberID,
+        VisitDate: selectedVisit.VisitDate,
+        VisitTime: selectedVisit.VisitTime,
+        CheckInMethod: selectedVisit.CheckInMethod,
+        Remarks: selectedVisit.Remarks,
+      });
+      setEditVisitOpen(false);
+      loadDashboardData();
+      showSuccessMessage("Visit updated successfully.");
+    } catch (err) {
+      console.error("Failed to update visit:", err);
+      alert("Error updating visit. Check console.");
+    }
+  };
+  const handleDeleteVisit = async (visitID) => {
+    if (!window.confirm("Delete this visit record?")) return;
+    try {
+      await axios.delete(`/operations/visits/${visitID}`);
+      loadDashboardData();
+      showSuccessMessage("Visit deleted!");
+    } catch (err) {
+      console.error("Failed to delete visit:", err);
+    }
+  };
+
+  const handleViewWalkIn = (wk) => {
+    setSelectedWalkIn(wk);
+    setViewWalkInOpen(true);
+  };
+  const handleEditWalkIn = (wk) => {
+    setSelectedWalkIn({ ...wk });
+    setEditWalkInOpen(true);
+  };
+  const handleEditWalkInSubmit = async () => {
+    if (!selectedWalkIn) return;
+    try {
+      await axios.put(`/operations/walk-ins/${selectedWalkIn.WalkInID}`, {
+        FullName: selectedWalkIn.FullName || "",
+        VisitDate: selectedWalkIn.VisitDate,
+        PaymentID: selectedWalkIn.PaymentID || null,
+        PaymentMethod: selectedWalkIn.PaymentMethod || "",
+        AmountPaid: selectedWalkIn.AmountPaid || 0,
+        Notes: selectedWalkIn.Notes || "",
+      });
+      setEditWalkInOpen(false);
+      loadDashboardData();
+      showSuccessMessage("Walk-In updated!");
+    } catch (err) {
+      console.error("Failed to update walk-in:", err);
+      alert("Error updating walk-in. Check console.");
+    }
+  };
+  const handleDeleteWalkIn = async (walkInID) => {
+    if (!window.confirm("Delete this walk-in record?")) return;
+    try {
+      await axios.delete(`/operations/walk-ins/${walkInID}`);
+      loadDashboardData();
+      showSuccessMessage("Walk-In deleted.");
+    } catch (err) {
+      console.error("Failed to delete walk-in:", err);
+    }
+  };
+  const handleAddWalkInChange = (e) => {
+    setNewWalkIn((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+  const handleAddWalkIn = async () => {
+    try {
+      await axios.post("/operations/walk-ins", {
+        FullName: newWalkIn.FullName || null,
+        VisitDate: newWalkIn.VisitDate,
+        Notes: newWalkIn.Notes || null,
+        PaymentMethod: newWalkIn.PaymentMethod || null,
+        PaymentAmount: newWalkIn.PaymentAmount || 0,
+      });
+      showSuccessMessage("Walk-In created successfully.");
+      setNewWalkIn({
+        FullName: "",
+        VisitDate: "",
+        Notes: "",
+        PaymentMethod: "",
+        PaymentAmount: "",
+      });
+      setAddWalkInOpen(false);
+      loadDashboardData();
+    } catch (err) {
+      console.error("Failed to create walk-in:", err);
+      alert("Create error. Check console for details.");
+    }
+  };
+
+  // ------------------ TABLE COLUMNS (unchanged) ------------------
   const actionButtonStyles = {
     minWidth: "40px",
     padding: "6px",
     transition: "transform 0.2s",
     "&:hover": { transform: "scale(1.05)" },
   };
-
   const visitColumns = [
     {
       field: "MemberID",
@@ -536,11 +573,15 @@ export default function StaffDashboard() {
       },
     },
   ];
-
   const walkInColumns = [
     { field: "WalkInID", headerName: "ID", width: 80 },
     { field: "FullName", headerName: "Name", width: 130 },
-    { field: "VisitDate", headerName: "Date", width: 150, renderCell: (params) => (params.value ? formatDate(params.value) : "—"),},
+    {
+      field: "VisitDate",
+      headerName: "Date",
+      width: 150,
+      renderCell: (params) => (params.value ? formatDate(params.value) : "—"),
+    },
     { field: "Notes", headerName: "Notes", width: 150 },
     {
       field: "Actions",
@@ -597,7 +638,6 @@ export default function StaffDashboard() {
       },
     },
   ];
-
   const expiringColumns = [
     { field: "MemberID", headerName: "Member ID", width: 120 },
     { field: "FullName", headerName: "Full Name", width: 200 },
@@ -675,11 +715,7 @@ export default function StaffDashboard() {
               }}
             >
               <CardContent
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                }}
+                sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}
               >
                 <GroupIcon sx={{ fontSize: 40, mb: 1 }} />
                 <Typography variant="subtitle2">Check-ins Today</Typography>
@@ -707,11 +743,7 @@ export default function StaffDashboard() {
               }}
             >
               <CardContent
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                }}
+                sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}
               >
                 <DirectionsWalkIcon sx={{ fontSize: 40, mb: 1 }} />
                 <Typography variant="subtitle2">Walk-ins Today</Typography>
@@ -738,11 +770,7 @@ export default function StaffDashboard() {
               }}
             >
               <CardContent
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                }}
+                sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}
               >
                 <BadgeIcon sx={{ fontSize: 40, mb: 1 }} />
                 <Typography variant="subtitle2">Lockers In Use</Typography>
@@ -770,11 +798,7 @@ export default function StaffDashboard() {
               }}
             >
               <CardContent
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                }}
+                sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}
               >
                 <WarningAmberIcon sx={{ fontSize: 40, mb: 1 }} />
                 <Typography variant="subtitle2">Expiring Soon</Typography>
@@ -786,8 +810,9 @@ export default function StaffDashboard() {
           </Grid>
         </Grid>
 
-        {/* Left Column: Check-In & Clock In/Out */}
+        {/* LEFT COLUMN: Check-In Member & Staff Schedule & Clock In/Out */}
         <Grid item xs={12} md={4}>
+          {/* Check In Member Card (unchanged) */}
           <Card sx={{ mb: 2, borderRadius: 2, boxShadow: 2 }}>
             <CardHeader title="Check In Member" />
             <CardContent>
@@ -826,88 +851,118 @@ export default function StaffDashboard() {
             </CardContent>
           </Card>
 
+          {/* Staff Schedule & Clock In/Out Card */}
           <Card
+          sx={{
+            mb: 2,
+            borderRadius: 4, // Slightly more rounded corners
+            boxShadow: 4, // Deeper shadow for better elevation
+            p: 3, // More padding for better spacing
+            backgroundColor: "background.paper", // Ensures consistency with theme
+          }}
+        >
+          <CardHeader
+            title="Staff Schedule & Clock In/Out"
             sx={{
-              mb: 2,
-              borderRadius: 2,
-              boxShadow: 2,
-              display: "flex",
-              flexDirection: "column",
+              textAlign: "center",
+              fontWeight: "bold",
+              color: "primary.dark",
             }}
-          >
-            <CardHeader title="Clock In / Clock Out" />
-            <CardContent sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
-              <Box sx={{ textAlign: "center", mb: 2 }}>
-                <Typography variant="h5" gutterBottom>
-                  <AccessTime /> {currentTime.toLocaleTimeString()}
-                </Typography>
-                <Button
-                  variant="contained"
-                  onClick={handleClockInOut}
-                  fullWidth
-                  sx={{ mt: 2 }}
-                  style={{
-                    backgroundColor: isClockedIn ? "#f44336" : "#4caf50",
-                    color: "#fff",
-                  }}
-                >
-                  {isClockedIn ? (
-                    <>
-                      <AlarmOff /> Clock Out
-                    </>
-                  ) : (
-                    <>
-                      <AlarmOn /> Clock In
-                    </>
-                  )}
-                </Button>
-              </Box>
-
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" gutterBottom sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                <ScheduleIcon sx={{ color: "primary.main" }} /> Work Schedule
+          />
+          <CardContent>
+            {/* Centered Date & Time with refined styling */}
+            <Box
+              sx={{
+                textAlign: "center",
+                mb: 2,
+                p: 2,
+                borderRadius: 2, // Softer inner edges
+                backgroundColor: "rgba(0, 0, 0, 0.05)", // Light background to distinguish section
+              }}
+            >
+              <Typography
+                variant="h6"
+                sx={{
+                  color: "text.secondary",
+                  fontWeight: 500,
+                }}
+              >
+                {dayjs(currentTime).format("dddd, MMMM D, YYYY")}
               </Typography>
-
-              {schedule.length === 0 ? (
-                <Typography variant="body2" color="textSecondary" sx={{ fontStyle: "italic", ml: 2 }}>
-                  No schedules available.
-                </Typography>
-              ) : (
-                schedule.map((shift, idx) => (
-                  <Paper key={idx} sx={{ p: 2, mb: 1, borderLeft: "5px solid", borderColor: "primary.main" }}>
-                    <Typography variant="body1" sx={{ fontWeight: "bold" }}>
-                      {formatDate(shift.ShiftDate, "date")}
-                    </Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      {formatTime(shift.ShiftStart, "time")} - {formatTime(shift.ShiftEnd, "time")}
-                    </Typography>
-                  </Paper>
-                ))
-)}
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" gutterBottom>
-                Attendance History
+              <Typography
+                variant="h4" // Slightly larger for emphasis
+                sx={{
+                  fontWeight: "bold",
+                  color: "#fffff",
+                  letterSpacing: 1,
+                  mt: 1,
+                }}
+              >
+                {currentTime.toLocaleTimeString()}
               </Typography>
-              {attendance.length === 0 ? (
-                <Typography variant="body2" color="textSecondary">
-                  No attendance records found.
-                </Typography>
+            </Box>
+
+
+              {/* List of staff from branch excluding logged-in staff */}
+              {staffInMyBranch.length === 0 ? (
+                <Typography align="center">No staff found in your branch.</Typography>
               ) : (
-                attendance.map((entry, idx) => (
-                  <Box key={idx} display="flex" justifyContent="space-between" p={1}>
-                    <Typography>{formatDate(entry.Date)}</Typography>
-                    <Typography color="textSecondary">
-                      {formatTime(entry.TimeIn)}
-                      {entry.TimeOut ? ` - ${formatTime(entry.TimeOut)}` : ""}
-                    </Typography>
-                  </Box>
-                ))
+                <List>
+                  {staffInMyBranch.map((st) => {
+                    // Find today's schedule for this staff member
+                    const stSchedule = schedule.find(
+                      (sch) => sch.StaffID === st.StaffID && sch.ShiftDate === todayString
+                    );
+                    // Find today's attendance for this staff member
+                    const att = attendance.find(
+                      (a) => a.StaffID === st.StaffID && a.Date === todayString
+                    );
+                    const clockedIn = att && att.TimeIn && !att.TimeOut;
+                    const clockedOut = att && att.TimeIn && att.TimeOut;
+                    // Button settings: if no schedule, disable the button.
+                    const disabled = !stSchedule;
+                    let btnLabel = "Clock In";
+                    let btnColor = "success";
+                    if (clockedIn) {
+                      btnLabel = "Clock Out";
+                      btnColor = "error";
+                    } else if (clockedOut) {
+                      btnLabel = "Completed";
+                      btnColor = "info";
+                    } else if (!stSchedule) {
+                      btnLabel = "No Schedule";
+                      btnColor = "inherit";
+                    }
+                    return (
+                      <ListItem key={st.StaffID} divider sx={{ py: 1.5 }}>
+                        <ListItemText
+                          primary={st.FullName}
+                          secondary={
+                            stSchedule
+                              ? `Shift: ${stSchedule.ShiftStart} - ${stSchedule.ShiftEnd}`
+                              : "No schedule for today."
+                          }
+                          sx={{ "& .MuiTypography-root": { fontSize: "0.9rem" } }}
+                        />
+                        <Button
+                          variant="contained"
+                          color={btnColor}
+                          onClick={() => handleScheduleClock(st)}
+                          disabled={disabled || clockedOut}
+                          sx={{ minWidth: 120, fontSize: "0.8rem", fontWeight: "bold" }}
+                        >
+                          {btnLabel}
+                        </Button>
+                      </ListItem>
+                    );
+                  })}
+                </List>
               )}
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Right Column: Table with Tabs */}
+        {/* RIGHT COLUMN: Tabbed Data (Visits, Walk-ins, Expiring Soon) */}
         <Grid item xs={12} md={8}>
           <Card
             sx={{
@@ -950,11 +1005,6 @@ export default function StaffDashboard() {
               )}
               {activeTab === 1 && (
                 <Box sx={{ height: 600, display: "flex", flexDirection: "column" }}>
-                  <Box sx={{ textAlign: "right", mb: 1 }}>
-                    <Button variant="contained" onClick={() => setAddWalkInOpen(true)}>
-                      Add Walk-In
-                    </Button>
-                  </Box>
                   <Paper sx={{ height: 600 }}>
                     <DataGrid
                       rows={walkIns}
@@ -1007,8 +1057,8 @@ export default function StaffDashboard() {
         </Grid>
       </Grid>
 
-      {/* Dialogs */}
-      <Dialog open={isCamOpen} onClose={handleCloseCam} fullWidth maxWidth="sm">
+      {/* Dialogs for Camera, Biometric, Visits, Walk-ins, etc. */}
+      <Dialog open={isCamOpen} onClose={() => setCamOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Card Scanning via Webcam</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2">
@@ -1016,28 +1066,29 @@ export default function StaffDashboard() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseCam}>Cancel</Button>
-          <Button variant="contained" onClick={handleSimulateCardScan}>
+          <Button onClick={() => setCamOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => setCamOpen(false)}>
             Simulate Card Scan
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={isBiometricOpen} onClose={handleCloseBiometric} fullWidth maxWidth="xs">
+      <Dialog open={isBiometricOpen} onClose={() => setBiometricOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>Fingerprint Scan</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2">
-            Placeholder for biometric scanning. In production, you'd integrate hardware or a library.
+            Placeholder for biometric scanning. In production, integrate actual hardware.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseBiometric}>Cancel</Button>
-          <Button variant="contained" onClick={handleSimulateFingerprint}>
+          <Button onClick={() => setBiometricOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => setBiometricOpen(false)}>
             Simulate Fingerprint
           </Button>
         </DialogActions>
       </Dialog>
 
+      {/* View Visit Dialog */}
       <Dialog
         open={isViewVisitOpen}
         onClose={() => setViewVisitOpen(false)}
@@ -1067,7 +1118,7 @@ export default function StaffDashboard() {
         <DialogContent dividers sx={{ p: 3 }}>
           {selectedVisit &&
             (() => {
-              const member = members.find((m) => m.MemberID === selectedVisit.MemberID);
+              const mem = members.find((m) => m.MemberID === selectedVisit.MemberID);
               return (
                 <Box>
                   <Box display="flex" alignItems="center" gap={2} mb={2}>
@@ -1081,25 +1132,17 @@ export default function StaffDashboard() {
                         border: "1px solid #ddd",
                       }}
                     >
-                      {member && member.PhotoPath ? (
+                      {mem && mem.PhotoPath ? (
                         <Box
                           component="img"
-                          src={`/storage/${member.PhotoPath}`}
+                          src={`/storage/${mem.PhotoPath}`}
                           alt="Member"
-                          sx={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                          }}
+                          sx={{ width: "100%", height: "100%", objectFit: "cover" }}
                         />
                       ) : (
                         <Typography
                           variant="caption"
-                          sx={{
-                            color: "gray",
-                            textAlign: "center",
-                            lineHeight: "100px",
-                          }}
+                          sx={{ color: "gray", textAlign: "center", lineHeight: "100px" }}
                         >
                           No photo
                         </Typography>
@@ -1107,20 +1150,20 @@ export default function StaffDashboard() {
                     </Box>
                     <Box>
                       <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                        {member ? member.FullName : "—"}
+                        {mem ? mem.FullName : "—"}
                       </Typography>
                       <Typography variant="subtitle1" sx={{ fontSize: "1.1rem" }}>
-                        {member ? member.Email : "—"}
+                        {mem ? mem.Email : "—"}
                       </Typography>
                       <Typography variant="subtitle1" sx={{ fontSize: "1.1rem" }}>
-                        {member ? member.Phone : "—"}
+                        {mem ? mem.Phone : "—"}
                       </Typography>
                     </Box>
                   </Box>
                   <Divider sx={{ my: 1 }} />
                   <Box mb={1}>
                     <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1 }}>
-                      Membership Information
+                      Membership Info
                     </Typography>
                     <Box display="flex" flexWrap="wrap" gap={1}>
                       <TextField
@@ -1135,7 +1178,7 @@ export default function StaffDashboard() {
                             </InputAdornment>
                           ),
                         }}
-                        value={member && member.PlanName ? member.PlanName : "Unknown"}
+                        value={mem?.PlanName || "Unknown"}
                       />
                       <TextField
                         variant="filled"
@@ -1149,42 +1192,28 @@ export default function StaffDashboard() {
                             </InputAdornment>
                           ),
                         }}
-                        value={member && member.Status ? member.Status : "Unknown"}
+                        value={mem?.Status || "Unknown"}
                       />
                       <TextField
                         variant="filled"
                         size="small"
                         label="Start Date"
-                        InputProps={{
-                          readOnly: true,
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <EventAvailableIcon fontSize="small" />
-                            </InputAdornment>
-                          ),
-                        }}
-                        value={member && member.MembershipStartDate ? formatDate(member.MembershipStartDate) : "—"}
+                        InputProps={{ readOnly: true }}
+                        value={mem?.MembershipStartDate ? formatDate(mem.MembershipStartDate) : "—"}
                       />
                       <TextField
                         variant="filled"
                         size="small"
                         label="End Date"
-                        InputProps={{
-                          readOnly: true,
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <HistoryIcon fontSize="small" />
-                            </InputAdornment>
-                          ),
-                        }}
-                        value={member && member.MembershipEndDate ? formatDate(member.MembershipEndDate) : "—"}
+                        InputProps={{ readOnly: true }}
+                        value={mem?.MembershipEndDate ? formatDate(mem.MembershipEndDate) : "—"}
                       />
                     </Box>
                   </Box>
                   <Divider sx={{ my: 1 }} />
                   <Box mb={1}>
                     <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1 }}>
-                      Visit Information
+                      Visit Info
                     </Typography>
                     <Box display="flex" flexWrap="wrap" gap={1}>
                       <TextField
@@ -1208,29 +1237,7 @@ export default function StaffDashboard() {
                         InputProps={{ readOnly: true }}
                         value={selectedVisit.CheckInMethod || "—"}
                       />
-                      <TextField
-                        variant="filled"
-                        size="small"
-                        label="Visit ID"
-                        InputProps={{ readOnly: true }}
-                        value={selectedVisit.VisitID || "—"}
-                      />
                     </Box>
-                  </Box>
-                  <Divider sx={{ my: 1 }} />
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1 }}>
-                      Notes
-                    </Typography>
-                    <TextField
-                      variant="filled"
-                      fullWidth
-                      multiline
-                      rows={2}
-                      size="small"
-                      InputProps={{ readOnly: true }}
-                      value={member && member.Notes ? member.Notes : "No notes available."}
-                    />
                   </Box>
                 </Box>
               );
@@ -1238,6 +1245,7 @@ export default function StaffDashboard() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Visit Dialog */}
       <Dialog open={isEditVisitOpen} onClose={() => setEditVisitOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Edit Visit</DialogTitle>
         <DialogContent dividers>
@@ -1291,6 +1299,7 @@ export default function StaffDashboard() {
         </DialogActions>
       </Dialog>
 
+      {/* View Walk-In Dialog */}
       <Dialog open={isViewWalkInOpen} onClose={() => setViewWalkInOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Walk-In Details</DialogTitle>
         <DialogContent dividers>
@@ -1324,6 +1333,7 @@ export default function StaffDashboard() {
         </DialogActions>
       </Dialog>
 
+      {/* Edit Walk-In Dialog */}
       <Dialog open={isEditWalkInOpen} onClose={() => setEditWalkInOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Edit Walk-In</DialogTitle>
         <DialogContent dividers>
@@ -1380,6 +1390,7 @@ export default function StaffDashboard() {
         </DialogActions>
       </Dialog>
 
+      {/* Add Walk-In Dialog */}
       <Dialog open={isAddWalkInOpen} onClose={() => setAddWalkInOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Add New Walk-In</DialogTitle>
         <DialogContent dividers>
@@ -1437,6 +1448,7 @@ export default function StaffDashboard() {
         </DialogActions>
       </Dialog>
 
+      {/* Snackbar */}
       <Snackbar
         open={snackOpen}
         autoHideDuration={3000}

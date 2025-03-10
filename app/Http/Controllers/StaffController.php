@@ -648,27 +648,40 @@ class StaffController extends Controller
      * STAFF SCHEDULE (REMOTE VERSION)
      * ------------------------------------------------------------------ */
 
-    public function indexSchedules()
-    {
+// In StaffController.php
+public function indexSchedules(Request $request)
+{
+    // If a branchID is passed, use it to filter schedules.
+    if ($request->has('branchID')) {
+        $branchID = $request->query('branchID');
+        $schedules = StaffSchedule::with(['staff' => function($query) {
+                $query->select('StaffID','FullName');
+            }])
+            ->whereHas('staff', function($query) use ($branchID) {
+                $query->where('BranchID', $branchID);
+            })
+            ->orderBy('ShiftDate', 'desc')
+            ->get();
+    } else {
+        // Default to returning schedules for the logged-in staff.
         $staff = auth('staff')->user();
-
         if ($staff) {
             $schedules = StaffSchedule::with(['staff' => function($query) {
                 $query->select('StaffID','FullName');
             }])
             ->where('StaffID', $staff->StaffID)
-            ->orderBy('ShiftDate','desc')
+            ->orderBy('ShiftDate', 'desc')
             ->get();
         } else {
             $schedules = StaffSchedule::with(['staff' => function($query) {
                 $query->select('StaffID','FullName');
             }])
-            ->orderBy('ShiftDate','desc')
+            ->orderBy('ShiftDate', 'desc')
             ->get();
         }
-
-        return response()->json($schedules);
     }
+    return response()->json($schedules);
+}
 
     public function createSchedule()
     {

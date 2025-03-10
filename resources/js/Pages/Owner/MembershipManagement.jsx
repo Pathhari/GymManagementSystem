@@ -293,16 +293,12 @@ export default function MembershipManagement() {
     const fetchDataForTab = async () => {
       try {
         if (activeTab === 5) {
-          // Member Visit Logs => GET /operations/visits
-          // (assuming your route is /operations/visits -> indexVisits)
+          // Fetch member visit logs from the correct endpoint.
           const res = await axios.get("/operations/visits");
-          // returns { visits: [ ... ] }
+          // Assuming the response is in the format: { member_visits: [ ... ] }
           setMemberVisitLogs(res.data.visits || []);
         } else if (activeTab === 6) {
-          // Monthly Client Attendance => you need an endpoint that returns
-          // either a global list or you can fetch them per client. Example:
           const res = await axios.get("/monthly-clients/attendances-all");
-          // or a custom route you wrote => setMonthlyClientAttendances(res.data.attendances || []);
           setMonthlyClientAttendances(res.data.attendances || []);
         }
       } catch (error) {
@@ -1482,16 +1478,31 @@ export default function MembershipManagement() {
   ];
 
   const memberVisitLogColumns = [
-    { field: "MemberVisitID", headerName: "Visit ID", width: 120 },
+    { field: "VisitID", headerName: "Visit ID", width: 120 },
     { field: "FullName", headerName: "Member Name", flex: 1 },
-    { field: "VisitDate", headerName: "Date", width: 140,
-      valueFormatter: ({ value }) => new Date(value).toLocaleDateString() },
-    { field: "VisitTime", headerName: "Time", width: 120,
-      valueFormatter: ({ value }) => new Date(`1970-01-01T${value}`).toLocaleTimeString() },
+    {
+      field: "VisitDate",
+      headerName: "Date",
+      width: 140,
+      valueFormatter: ({ value }) => new Date(value).toLocaleDateString()
+    },
+    {
+      field: "VisitTime",
+      headerName: "Time",
+      width: 120,
+      valueFormatter: ({ value }) => {
+        // Ensure that value is a valid time string
+        if (!value || isNaN(new Date(`1970-01-01T${value}`).getTime())) {
+          return "—";
+        }
+        return new Date(`1970-01-01T${value}`).toLocaleTimeString();
+      }
+    },
     { field: "CheckInMethod", headerName: "Check-in Method", width: 180 },
     { field: "BranchName", headerName: "Branch", width: 150 },
     { field: "Remarks", headerName: "Remarks", width: 250 },
   ];
+  
   
   
   const monthlyAttendanceColumns = [
@@ -1623,10 +1634,11 @@ export default function MembershipManagement() {
     if (activeTab === 2) return row.RenewalID;
     if (activeTab === 3) return row.FreezeID;
     if (activeTab === 4) return row.MonthlyClientID;
-    if (activeTab === 5) return row.MemberVisitID;         // new
-    if (activeTab === 6) return row.MonthlyClientAttendanceID; // new
+    if (activeTab === 5) return row.VisitID; // Updated: use VisitID instead of MemberVisitID
+    if (activeTab === 6) return row.MonthlyClientAttendanceID;
     return row.LogID;
   };
+  
   // ─────────────────────────────────────────────────────────
   // Export logic
   // ─────────────────────────────────────────────────────────

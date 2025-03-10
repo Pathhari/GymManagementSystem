@@ -310,15 +310,14 @@ class MembershipController extends Controller
      */
     public function apiUpdateMember(Request $request, $id)
     {
-        \Log::info('Message here');
         $member = Member::findOrFail($id);
-
-        // Staff => block updating cross‐branch
+    
+        // For staff, ensure the member belongs to one of their branches.
         $staff = auth('staff')->user();
-        if ($staff && $member->StartedBranchID != $staff->BranchID) {
+        if ($staff && !$staff->branches->pluck('BranchID')->contains($member->StartedBranchID)) {
             abort(403, 'Cannot update member from another branch.');
         }
-
+    
         $data = $request->validate([
             'BranchID'             => 'nullable|exists:branches,BranchID',
             'FullName'             => 'nullable|string|max:255',
@@ -337,24 +336,29 @@ class MembershipController extends Controller
             'PaymentMethod'        => 'nullable|string|max:50',
             'PaymentAmount'        => 'nullable|numeric|min:0',
         ]);
-
-        // If staff => must remain same branch
-        if ($staff && isset($data['BranchID']) && $data['BranchID'] != $member->StartedBranchID) {
-            abort(403, 'Staff cannot assign a different branch.');
+    
+        // For staff, do not allow changing to a branch not already assigned.
+        if ($staff) {
+            if (isset($data['BranchID']) && !$staff->branches->pluck('BranchID')->contains($data['BranchID'])) {
+                abort(403, 'Staff cannot assign a different branch.');
+            }
+            // Ensure we keep the original branch.
+            $data['StartedBranchID'] = $member->StartedBranchID;
         } else {
             $data['StartedBranchID'] = $data['BranchID'] ?? $member->StartedBranchID;
         }
-
-        // Handle photo upload if provided
+    
+        // Handle photo upload if provided.
         if ($request->hasFile('PhotoFile')) {
             $filename = 'member_' . time() . '.' . $request->file('PhotoFile')->extension();
             $photoPath = $request->file('PhotoFile')->storeAs('member_photos', $filename, 'public');
             $data['PhotoPath'] = $photoPath;
         }
-
+    
         $member->update($data);
         return response()->json($member, 200);
     }
+    
 
     /**
      * Delete a member (DELETE /membership/members/{id}).
@@ -625,78 +629,72 @@ public function destroyRenewal($id)
  * ------------------------------------------------------------------ */
 
  public function storeFreeze(Request $request)
-{
-    $staff = auth('staff')->user();
-
-    // Validate the request
-    $data = $request->validate([
-        'MemberID'        => 'required|exists:members,MemberID',
-        'FreezeStartDate' => 'required|date',
-        'FreezeEndDate'   => 'nullable|date|after_or_equal:FreezeStartDate',
-        'Reason'          => 'nullable|string|max:255',
-    ]);
-
-    // Fetch the member and check branch access
-    $member = Member::findOrFail($data['MemberID']);
-    if ($staff && $member->StartedBranchID != $staff->BranchID) {
-        abort(403, 'Not your branch.');
-    }
-
-    // Add StartedBranchID to the data so it can be mass assigned
-    $data['StartedBranchID'] = $member->StartedBranchID;
-
-    // 1) Create the freeze record with the new field
-    $freeze = MembershipFreeze::create($data);
-
-    // 2) Update the member’s status => set to "Frozen" (assuming '2' = Frozen)
-    $member->MemberStatusID = 2;
-    $member->save();
-
-    // 3) Extend the MembershipEndDate by the freeze duration
-    //    3a) If FreezeEndDate is null, treat it as the same as FreezeStartDate
-    $freezeStart = Carbon::parse($data['FreezeStartDate']);
-    $freezeEnd   = $data['FreezeEndDate'] ? Carbon::parse($data['FreezeEndDate']) : $freezeStart;
-
-    //    3b) Calculate the total freeze days (+1 so e.g. Jan 20 - Jan 20 is 1 day)
-    $freezeDays = $freezeStart->diffInDays($freezeEnd) + 1;
-
-    //    3c) Only extend if MembershipEndDate is set
-    if ($member->MembershipEndDate) {
-        $currentEnd = Carbon::parse($member->MembershipEndDate);
-        // 3d) Add the freeze days to extend the membership end date
-        $newEnd = $currentEnd->addDays($freezeDays);
-        $member->MembershipEndDate = $newEnd->format('Y-m-d');
-        $member->save();
-    }
-
-    return response()->json($freeze, 201);
-}
-
+ {
+     $staff = auth('staff')->user();
+ 
+     $data = $request->validate([
+         'MemberID'        => 'required|exists:members,MemberID',
+         'FreezeStartDate' => 'required|date',
+         'FreezeEndDate'   => 'nullable|date|after_or_equal:FreezeStartDate',
+         'Reason'          => 'nullable|string|max:255',
+     ]);
+ 
+     $member = Member::findOrFail($data['MemberID']);
+ 
+     // Check if the member belongs to one of the staff's branches.
+     if ($staff && !$staff->branches->pluck('BranchID')->contains($member->StartedBranchID)) {
+         abort(403, 'Not your branch.');
+     }
+ 
+     // Attach the member's branch to the freeze record.
+     $data['StartedBranchID'] = $member->StartedBranchID;
+ 
+     $freeze = MembershipFreeze::create($data);
+ 
+     // Update the member’s status to Frozen (assuming 2 = Frozen).
+     $member->MemberStatusID = 2;
+     $member->save();
+ 
+     // Extend the MembershipEndDate by the freeze duration.
+     $freezeStart = Carbon::parse($data['FreezeStartDate']);
+     $freezeEnd   = $data['FreezeEndDate'] ? Carbon::parse($data['FreezeEndDate']) : $freezeStart;
+     $freezeDays  = $freezeStart->diffInDays($freezeEnd) + 1;
+ 
+     if ($member->MembershipEndDate) {
+         $currentEnd = Carbon::parse($member->MembershipEndDate);
+         $newEnd = $currentEnd->addDays($freezeDays);
+         $member->MembershipEndDate = $newEnd->format('Y-m-d');
+         $member->save();
+     }
+ 
+     return response()->json($freeze, 201);
+ }
+ 
 // 2) UPDATE an existing freeze
 public function updateFreeze(Request $request, $id)
 {
     $staff = auth('staff')->user();
     $freeze = MembershipFreeze::findOrFail($id);
 
-    // Ensure the freeze's member belongs to the staff's branch
+    // Ensure the freeze's member belongs to one of the staff's branches.
     $member = $freeze->member;
-    if ($staff && $member->StartedBranchID != $staff->BranchID) {
+    if ($staff && !$staff->branches->pluck('BranchID')->contains($member->StartedBranchID)) {
         abort(403, 'Not your branch.');
     }
 
-    // Validate fields that can be updated
     $data = $request->validate([
         'FreezeStartDate' => 'required|date',
         'FreezeEndDate'   => 'nullable|date|after_or_equal:FreezeStartDate',
         'Reason'          => 'nullable|string|max:255',
     ]);
 
-    // Maintain the original StartedBranchID
+    // Keep the original branch.
     $data['StartedBranchID'] = $freeze->StartedBranchID;
 
     $freeze->update($data);
     return response()->json($freeze, 200);
 }
+
 
 // 3) DELETE a freeze record and revert membership changes
 public function destroyFreeze($id)
@@ -704,20 +702,22 @@ public function destroyFreeze($id)
     $freeze = MembershipFreeze::findOrFail($id);
     $member = Member::findOrFail($freeze->MemberID);
 
-    // Staff branch check
+    // Get the authenticated staff user.
     $staff = auth('staff')->user();
-    if ($staff && $member->StartedBranchID != $staff->BranchID) {
+
+    // Use the staff's associated branch IDs for verification.
+    if ($staff && !$staff->branches->pluck('BranchID')->contains($member->StartedBranchID)) {
         abort(403, 'Cannot remove freeze from another branch.');
     }
 
-    // 1) Calculate freeze duration
+    // 1) Calculate freeze duration.
     $freezeStart = Carbon::parse($freeze->FreezeStartDate);
     $freezeEnd   = $freeze->FreezeEndDate ? Carbon::parse($freeze->FreezeEndDate) : $freezeStart;
     $totalFreezeDays = $freezeStart->diffInDays($freezeEnd) + 1;
 
     $today = Carbon::today();
 
-    // Determine unused freeze days
+    // Determine unused freeze days.
     if ($today <= $freezeStart) {
         $leftoverDays = $totalFreezeDays;
     } elseif ($today >= $freezeEnd) {
@@ -726,7 +726,7 @@ public function destroyFreeze($id)
         $leftoverDays = $today->diffInDays($freezeEnd) + 1;
     }
 
-    // 2) Subtract only the unused freeze days from the membership's end date
+    // 2) Subtract only the unused freeze days from the membership's end date.
     if (!empty($member->MembershipEndDate) && $leftoverDays > 0) {
         $currentEnd = Carbon::parse($member->MembershipEndDate);
         $newEnd = $currentEnd->subDays($leftoverDays);
@@ -734,11 +734,11 @@ public function destroyFreeze($id)
         $member->save();
     }
 
-    // 3) Revert member status to Active (assuming '1' = Active)
+    // 3) Revert member status to Active (assuming '1' = Active).
     $member->MemberStatusID = 1;
     $member->save();
 
-    // 4) Delete the freeze record
+    // 4) Delete the freeze record.
     $freeze->delete();
 
     return response()->json([

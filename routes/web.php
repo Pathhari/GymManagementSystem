@@ -779,16 +779,19 @@ use App\Http\Controllers\FacilityController;
     
     use App\Http\Controllers\MonthlyClientController;   
 
-     Route::prefix('monthly-clients')->group(function () {
-        Route::get('/',        [MonthlyClientController::class, 'index']);
-        Route::get('/{id}',    [MonthlyClientController::class, 'show']);
-        Route::post('/',       [MonthlyClientController::class, 'store']);
-        Route::put('/{id}',    [MonthlyClientController::class, 'update']);
+    Route::prefix('monthly-clients')->group(function () {
+        Route::get('/', [MonthlyClientController::class, 'index']);
+        Route::get('/{id}', [MonthlyClientController::class, 'show']);
+        Route::post('/', [MonthlyClientController::class, 'store']);
+        Route::put('/{id}', [MonthlyClientController::class, 'update']);
         Route::delete('/{id}', [MonthlyClientController::class, 'destroy']);
-        Route::get('monthly-clients/{id}/attendances', [MonthlyClientController::class, 'indexAttendances']);
-        Route::get('attendances-all', [MonthlyClientController::class, 'indexAllAttendances']);
-        Route::post('monthly-clients/{id}/attendances', [MonthlyClientController::class, 'storeAttendance']);
+        Route::get('/{id}/attendances', [MonthlyClientController::class, 'indexAttendances']);
+        Route::post('/{id}/attendances', [MonthlyClientController::class, 'storeAttendance']);
+        Route::get('/attendances-all', [MonthlyClientController::class, 'indexAllAttendances']);
     });
+    
+    // Separate route for staff to create monthly clients
+    Route::post('staff/monthly-clients', [MonthlyClientController::class, 'store']);
     
 
     use App\Http\Controllers\ReportsController;

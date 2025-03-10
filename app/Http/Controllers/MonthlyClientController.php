@@ -70,10 +70,12 @@ class MonthlyClientController extends Controller
             'Payments.*.PaymentAmount'=> 'numeric|min:0',
         ]);
     
-        // Staff => override BranchID
+        // If a staff user is logged in, use the branch from their associated branches.
         $staff = auth('staff')->user();
         if ($staff) {
-            $data['BranchID'] = $staff->BranchID;
+            // Retrieve the branch id from the staff's associated branches.
+            $branch = $staff->branches()->first();
+            $data['BranchID'] = $branch ? $branch->BranchID : null;
         }
     
         DB::beginTransaction();
@@ -108,11 +110,11 @@ class MonthlyClientController extends Controller
                 'InvoiceTotal'     => 0,
             ]);
     
-            $monthlyFee = 2500; // fixed
+            $monthlyFee = 2500; // fixed fee
             $monthsUpfront = $data['MonthsToPayUpfront'] ?? 1;
             $subtotal = $monthlyFee * $monthsUpfront;
     
-            $lineItem = InvoiceLineItem::create([
+            InvoiceLineItem::create([
                 'InvoiceID'   => $invoice->InvoiceID,
                 'ItemType'    => 'MonthlyClientFee', // or 'MonthlyMembership'
                 'ItemID'      => null,
@@ -140,7 +142,6 @@ class MonthlyClientController extends Controller
                     'Status'           => 'Completed',
                 ]);
     
-                // PaymentInvoice bridging
                 PaymentInvoice::create([
                     'PaymentID'       => $payment->PaymentID,
                     'InvoiceID'       => $invoice->InvoiceID,
