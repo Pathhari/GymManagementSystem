@@ -409,7 +409,7 @@ public function getStaffNotifications(Request $request)
     public function sendExpiringMembershipReminder(Request $request)
     {
         // 1) Fetch members expiring in 7 days (adjust logic/date range as needed)
-        $expiringSoon = Member::whereDate('expiry_date', '=', now()->addDays(7))->get();
+        $expiringSoon = Member::whereDate('MembershipEndDate', '=', now()->addDays(7))->get();
 
         // 2) Initialize Mailjet Client for Send API v3.1
         $mj = new Client(
