@@ -86,19 +86,21 @@ export default function StaffDashboard() {
   // Dashboard state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
   const [checkInsToday, setCheckInsToday] = useState(0);
   const [lockersInUse, setLockersInUse] = useState(0);
+
   const [walkIns, setWalkIns] = useState([]);
   const [members, setMembers] = useState([]);
   const [visits, setVisits] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [schedule, setSchedule] = useState([]);
+
   const [staffId, setStaffId] = useState(null);
   const [staffBranch, setStaffBranch] = useState(null);
-  // New state: all staff fetched from the backend
   const [staffList, setStaffList] = useState([]);
 
-  // Instead of using localStorage, we recalc isClockedIn for the logged‑in staff
+  // Instead of localStorage, we use a state bool for the logged‑in staff's clock status
   const [isClockedIn, setIsClockedIn] = useState(false);
 
   // Derived states for metrics
@@ -120,14 +122,18 @@ export default function StaffDashboard() {
   // Tabs: 0 => Visits, 1 => Walk-Ins, 2 => Expiring Soon
   const [activeTab, setActiveTab] = useState(0);
 
-  // Check-In and dialog states (for member check-in)
+  // Dialog states
   const [checkInMethod, setCheckInMethod] = useState("card");
   const [selectedMember, setSelectedMember] = useState(null);
   const [isCamOpen, setCamOpen] = useState(false);
   const [isBiometricOpen, setBiometricOpen] = useState(false);
+
+  // Visits
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [isViewVisitOpen, setViewVisitOpen] = useState(false);
   const [isEditVisitOpen, setEditVisitOpen] = useState(false);
+
+  // Walk-Ins
   const [selectedWalkIn, setSelectedWalkIn] = useState(null);
   const [isViewWalkInOpen, setViewWalkInOpen] = useState(false);
   const [isEditWalkInOpen, setEditWalkInOpen] = useState(false);
@@ -139,6 +145,8 @@ export default function StaffDashboard() {
     PaymentMethod: "",
     PaymentAmount: "",
   });
+
+  // Current time (for display in the UI)
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // Update current time every second
@@ -149,97 +157,101 @@ export default function StaffDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // On mount, load initial data
+  // -- PHASE 1: ON MOUNT => fetch staff data so we know staffBranch
   useEffect(() => {
-    loadDashboardData();
-    fetchStaffData();
-    fetchAllStaff();
-    fetchMembers();
+    fetchStaffData(); // sets staffId and staffBranch if found
   }, []);
 
-  // API Calls
-  const loadDashboardData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const metricsRes = await axios.get("/staff/metrics");
-      setCheckInsToday(metricsRes.data.checkInsToday || 0);
-      setLockersInUse(metricsRes.data.lockersInUse || 0);
+  // Once staffBranch is known, fetch attendance, visits, schedules, etc.
+  useEffect(() => {
+    if (!staffBranch) return; // skip if branch is null/undefined
 
-      const visitsRes = await axios.get("/operations/visits", {
-        params: { branchID: staffBranch },
-      });
-      setVisits(visitsRes.data.visits || []);
+    // We can wrap everything in one function or do them individually
+    const fetchAllDashboardData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // 1) Metrics
+        const metricsRes = await axios.get("/staff/metrics");
+        setCheckInsToday(metricsRes.data.checkInsToday || 0);
+        setLockersInUse(metricsRes.data.lockersInUse || 0);
 
-      const walkInsRes = await axios.get("/operations/walk-ins");
-      setWalkIns(walkInsRes.data || []);
+        // 2) Visits (branch-based)
+        const visitsRes = await axios.get("/operations/visits", {
+          params: { branchID: staffBranch },
+        });
+        setVisits(visitsRes.data.visits || []);
 
-      const attendRes = await axios.get("/staff/attendance");
-      const fetchedAttendance = Array.isArray(attendRes.data)
-        ? attendRes.data
-        : attendRes.data.attendance || [];
-      setAttendance(fetchedAttendance);
+        // 3) Walk-Ins
+        const walkInsRes = await axios.get("/operations/walk-ins");
+        setWalkIns(walkInsRes.data || []);
 
-      // Determine clock state for the logged-in staff
-      const todayDate = new Date().toISOString().split("T")[0];
-      const todaysAttendance = fetchedAttendance.filter(
-        (rec) => rec.Date === todayDate
-      );
-      const clockedInRecord = todaysAttendance.find(
-        (rec) => rec.TimeIn && !rec.TimeOut
-      );
-      setIsClockedIn(!!clockedInRecord);
+        // 4) Attendance (branch-based)
+        const attendRes = await axios.get("/staff/attendance", {
+          params: { branchID: staffBranch },
+        });
+        const fetchedAttendance = Array.isArray(attendRes.data)
+          ? attendRes.data
+          : attendRes.data.attendance || [];
+        setAttendance(fetchedAttendance);
 
-      const scheduleRes = await axios.get("/staff/schedules");
-      setSchedule(scheduleRes.data || []);
-    } catch (err) {
-      console.error("Error loading data:", err);
-      setError("Failed to load staff dashboard data.");
-    } finally {
-      setLoading(false);
-    }
-  };
+        // 5) Determine clock state for the logged-in staff
+        const todayDate = new Date().toISOString().split("T")[0];
+        const todaysAttendance = fetchedAttendance.filter(
+          (rec) => rec.Date === todayDate && rec.StaffID === staffId
+        );
+        const clockedInRecord = todaysAttendance.find(
+          (rec) => rec.TimeIn && !rec.TimeOut
+        );
+        setIsClockedIn(!!clockedInRecord);
 
-  // Fetch logged-in staff info
+        // 6) Schedules
+        const scheduleRes = await axios.get("/staff/schedules");
+        setSchedule(scheduleRes.data || []);
+
+        // 7) Staff list (for staff kiosk clock in/out)
+        const staffRes = await axios.get("/staff");
+        setStaffList(staffRes.data || []);
+
+        // 8) Members
+        const membersRes = await axios.get("/membership/members");
+        setMembers(membersRes.data.members || []);
+      } catch (err) {
+        console.error("Error loading data:", err);
+        setError("Failed to load staff dashboard data.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAllDashboardData();
+  }, [staffBranch, staffId]);
+
+  // ------------- API Calls (Step 1) -------------
+  // Fetch logged-in staff info (Phase 1)
   const fetchStaffData = async () => {
     try {
       const res = await axios.get("/staff/get-logged-in-staff");
       const data = res.data;
-      if (data.StaffID) {
+      if (data && data.StaffID) {
         setStaffId(data.StaffID);
         setStaffBranch(data.BranchID);
       }
     } catch (err) {
       console.error("Failed to load staff info:", err);
+      setError("Could not load staff info.");
     }
   };
 
-  // Fetch all staff (for listing staff in the branch)
-  const fetchAllStaff = async () => {
-    try {
-      const res = await axios.get("/staff");
-      setStaffList(res.data || []);
-    } catch (err) {
-      console.error("Failed to fetch staff list:", err);
-    }
-  };
-
-  // Fetch members
-  const fetchMembers = async () => {
-    try {
-      const res = await axios.get("/membership/members");
-      setMembers(res.data.members || []);
-    } catch (err) {
-      console.error("Failed to fetch members:", err);
-    }
-  };
-
-  // Tabs handler
+  // ------------- CRUD / clock-in / check-in etc. -------------
   const handleTabChange = (e, val) => {
     setActiveTab(val);
   };
 
-  // Check-In Member function (unchanged)
+  const handleCheckInMethodChange = (e) => {
+    setCheckInMethod(e.target.value);
+  };
+
   const handleCheckIn = async () => {
     if (!selectedMember) {
       alert("Please select a member first.");
@@ -253,7 +265,14 @@ export default function StaffDashboard() {
       });
       showSuccessMessage(`Member ${selectedMember.FullName} checked in successfully!`);
       setSelectedMember(null);
-      loadDashboardData();
+      // Refresh data
+      if (staffBranch) {
+        // Re-load visits & metrics. If you want to do a partial fetch, do so:
+        const visitsRes = await axios.get("/operations/visits", {
+          params: { branchID: staffBranch },
+        });
+        setVisits(visitsRes.data.visits || []);
+      }
     } catch (err) {
       console.error("Check-in error:", err);
       if (err.response && err.response.status === 409) {
@@ -264,77 +283,86 @@ export default function StaffDashboard() {
     }
   };
 
-  // ------------------ STAFF SCHEDULE & CLOCK IN/OUT SECTION ------------------
-  // Filter staff list: only those in the same branch and exclude the logged-in staff.
-  const staffInMyBranch = staffList.filter(
-    (st) =>
-      st.StaffID !== staffId &&
-      st.branches?.some((b) => String(b.BranchID) === String(staffBranch))
-  );
-
-  // Handle clock in/out for a specific staff member.
+  // Clock In/Out for staff on the kiosk
   const handleScheduleClock = async (staffRow) => {
-    // Find today's schedule for the staff member.
+    const dateStr = new Date().toISOString().split("T")[0];
     const stSchedule = schedule.find(
-      (sch) => sch.StaffID === staffRow.StaffID && sch.ShiftDate === todayString
+      (sch) => sch.StaffID === staffRow.StaffID && sch.ShiftDate === dateStr
     );
-    // If no schedule exists, button is disabled.
     if (!stSchedule) {
       showSuccessMessage(`No schedule for ${staffRow.FullName} today.`);
       return;
     }
-    // Find attendance record for today.
+
     const att = attendance.find(
-      (a) => a.StaffID === staffRow.StaffID && a.Date === todayString
+      (a) => a.StaffID === staffRow.StaffID && a.Date === dateStr
     );
-    const timeStr = currentTime.toLocaleTimeString("it-IT").slice(0, 5);
+    const timeStr = new Date().toLocaleTimeString("it-IT").slice(0, 5);
 
     let clockData = {
       StaffID: staffRow.StaffID,
       BranchID: staffBranch,
-      Date: todayString,
+      Date: dateStr,
     };
 
     if (!att || !att.TimeIn) {
-      // Clock in if no attendance record or TimeIn is missing.
+      // Clock In
       clockData.TimeIn = timeStr;
       clockData.TimeOut = null;
-    } else if (att && !att.TimeOut) {
-      // Clock out if TimeIn exists but TimeOut is not set.
+    } else if (!att.TimeOut) {
+      // Clock Out
       clockData.TimeIn = null;
       clockData.TimeOut = timeStr;
     } else {
-      showSuccessMessage(`Attendance for ${staffRow.FullName} is already complete today.`);
+      // Already completed
+      showSuccessMessage(`${staffRow.FullName} has already completed attendance.`);
       return;
     }
 
     try {
-      await axios.post("/staff/attendance/clock-in-out", clockData);
-      // Wait briefly to allow update
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      const attendRes = await axios.get("/staff/attendance");
-      const fetchedAttendance = Array.isArray(attendRes.data)
-        ? attendRes.data
-        : attendRes.data.attendance || [];
-      setAttendance(fetchedAttendance);
-      showSuccessMessage(`Attendance updated for ${staffRow.FullName}!`);
-      loadDashboardData();
+      const response = await axios.post(
+        "/staff/attendance/clock-in-out",
+        clockData
+      );
+      const updatedRec = response.data.attendance;
+      if (!updatedRec) {
+        showSuccessMessage("Attendance updated but no record returned.");
+        return;
+      }
+      // Update local state
+      setAttendance((prev) => {
+        const others = prev.filter(
+          (a) => !(a.StaffID === updatedRec.StaffID && a.Date === updatedRec.Date)
+        );
+        return [...others, updatedRec];
+      });
+      showSuccessMessage(
+        updatedRec.TimeOut
+          ? `${staffRow.FullName} clocked out at ${updatedRec.TimeOut}`
+          : `${staffRow.FullName} clocked in at ${updatedRec.TimeIn}`
+      );
     } catch (err) {
-      console.error("Failed to update attendance:", err);
-      showSuccessMessage("Error updating attendance. Check console.");
+      console.error("Failed to clock in/out", err);
+      showSuccessMessage("Error updating attendance. Check console for details.");
     }
   };
 
-  // ------------------ CLOCK IN/OUT for LOGGED-IN STAFF (unchanged) ------------------
+  // Clock In/Out for *logged-in staff*
   const refreshClockState = async () => {
     try {
-      const attendRes = await axios.get("/staff/attendance");
+      // fetch updated attendance for this branch
+      const attendRes = await axios.get("/staff/attendance", {
+        params: { branchID: staffBranch },
+      });
       const fetchedAttendance = Array.isArray(attendRes.data)
         ? attendRes.data
         : attendRes.data.attendance || [];
+
+      setAttendance(fetchedAttendance);
+
       const todayDate = new Date().toISOString().split("T")[0];
       const clockedInRecord = fetchedAttendance.find(
-        (rec) => rec.Date === todayDate && rec.TimeIn && !rec.TimeOut
+        (rec) => rec.Date === todayDate && rec.StaffID === staffId && rec.TimeIn && !rec.TimeOut
       );
       const newState = !!clockedInRecord;
       setIsClockedIn(newState);
@@ -346,27 +374,15 @@ export default function StaffDashboard() {
   };
 
   const handleClockInOut = async () => {
-    let currentStaffId = staffId;
-    if (!currentStaffId) {
-      try {
-        const res = await axios.get("/staff/get-logged-in-staff");
-        if (res.data && res.data.StaffID) {
-          currentStaffId = res.data.StaffID;
-          setStaffId(currentStaffId);
-          setStaffBranch(res.data.BranchID);
-        } else {
-          console.warn("No staffId available after refetch.");
-          return;
-        }
-      } catch (err) {
-        console.error("Error refetching staff info:", err);
-        return;
-      }
+    if (!staffId) {
+      console.warn("No staffId available, cannot clock in/out.");
+      return;
     }
     const dateStr = new Date().toISOString().split("T")[0];
     const timeStr = currentTime.toLocaleTimeString("it-IT").slice(0, 5);
+
     const clockData = {
-      StaffID: currentStaffId,
+      StaffID: staffId,
       BranchID: staffBranch,
       Date: dateStr,
       TimeIn: isClockedIn ? null : timeStr,
@@ -374,6 +390,7 @@ export default function StaffDashboard() {
     };
     try {
       await axios.post("/staff/attendance/clock-in-out", clockData);
+      // small delay, then refresh
       await new Promise((resolve) => setTimeout(resolve, 500));
       const newClockState = await refreshClockState();
       showSuccessMessage(
@@ -381,10 +398,11 @@ export default function StaffDashboard() {
       );
     } catch (err) {
       console.error("Failed to record attendance:", err);
+      showSuccessMessage("Error clocking in/out. See console for details.");
     }
   };
 
-  // ------------------ VISITS & WALK-INS CRUD (existing code) ------------------
+  // ---------- VISITS & WALK-INS CRUD -------------
   const handleViewVisit = (visit) => {
     setSelectedVisit(visit);
     setViewVisitOpen(true);
@@ -404,7 +422,11 @@ export default function StaffDashboard() {
         Remarks: selectedVisit.Remarks,
       });
       setEditVisitOpen(false);
-      loadDashboardData();
+      // re-fetch
+      const visitsRes = await axios.get("/operations/visits", {
+        params: { branchID: staffBranch },
+      });
+      setVisits(visitsRes.data.visits || []);
       showSuccessMessage("Visit updated successfully.");
     } catch (err) {
       console.error("Failed to update visit:", err);
@@ -415,7 +437,10 @@ export default function StaffDashboard() {
     if (!window.confirm("Delete this visit record?")) return;
     try {
       await axios.delete(`/operations/visits/${visitID}`);
-      loadDashboardData();
+      const visitsRes = await axios.get("/operations/visits", {
+        params: { branchID: staffBranch },
+      });
+      setVisits(visitsRes.data.visits || []);
       showSuccessMessage("Visit deleted!");
     } catch (err) {
       console.error("Failed to delete visit:", err);
@@ -442,7 +467,8 @@ export default function StaffDashboard() {
         Notes: selectedWalkIn.Notes || "",
       });
       setEditWalkInOpen(false);
-      loadDashboardData();
+      const walkInsRes = await axios.get("/operations/walk-ins");
+      setWalkIns(walkInsRes.data || []);
       showSuccessMessage("Walk-In updated!");
     } catch (err) {
       console.error("Failed to update walk-in:", err);
@@ -453,7 +479,8 @@ export default function StaffDashboard() {
     if (!window.confirm("Delete this walk-in record?")) return;
     try {
       await axios.delete(`/operations/walk-ins/${walkInID}`);
-      loadDashboardData();
+      const walkInsRes = await axios.get("/operations/walk-ins");
+      setWalkIns(walkInsRes.data || []);
       showSuccessMessage("Walk-In deleted.");
     } catch (err) {
       console.error("Failed to delete walk-in:", err);
@@ -480,20 +507,23 @@ export default function StaffDashboard() {
         PaymentAmount: "",
       });
       setAddWalkInOpen(false);
-      loadDashboardData();
+      // re-fetch
+      const walkInsRes = await axios.get("/operations/walk-ins");
+      setWalkIns(walkInsRes.data || []);
     } catch (err) {
       console.error("Failed to create walk-in:", err);
       alert("Create error. Check console for details.");
     }
   };
 
-  // ------------------ TABLE COLUMNS (unchanged) ------------------
+  // ---------- TABLE COLUMNS ----------
   const actionButtonStyles = {
     minWidth: "40px",
     padding: "6px",
     transition: "transform 0.2s",
     "&:hover": { transform: "scale(1.05)" },
   };
+
   const visitColumns = [
     {
       field: "MemberID",
@@ -573,6 +603,7 @@ export default function StaffDashboard() {
       },
     },
   ];
+
   const walkInColumns = [
     { field: "WalkInID", headerName: "ID", width: 80 },
     { field: "FullName", headerName: "Name", width: 130 },
@@ -638,6 +669,7 @@ export default function StaffDashboard() {
       },
     },
   ];
+
   const expiringColumns = [
     { field: "MemberID", headerName: "Member ID", width: 120 },
     { field: "FullName", headerName: "Full Name", width: 200 },
@@ -649,6 +681,7 @@ export default function StaffDashboard() {
     },
   ];
 
+  // ---------- RENDER ----------
   if (loading) {
     return (
       <Box sx={{ p: 4, textAlign: "center" }}>
@@ -663,6 +696,13 @@ export default function StaffDashboard() {
       </Box>
     );
   }
+
+  // Filter staff list for kiosk clock in: only staff in the same branch, exclude self
+  const staffInMyBranch = staffList.filter(
+    (st) =>
+      st.StaffID !== staffId &&
+      st.branches?.some((b) => String(b.BranchID) === String(staffBranch))
+  );
 
   return (
     <Box sx={{ minHeight: "100vh", p: 2 }}>
@@ -812,7 +852,7 @@ export default function StaffDashboard() {
 
         {/* LEFT COLUMN: Check-In Member & Staff Schedule & Clock In/Out */}
         <Grid item xs={12} md={4}>
-          {/* Check In Member Card (unchanged) */}
+          {/* Check In Member Card */}
           <Card sx={{ mb: 2, borderRadius: 2, boxShadow: 2 }}>
             <CardHeader title="Check In Member" />
             <CardContent>
@@ -821,7 +861,7 @@ export default function StaffDashboard() {
                 <Select
                   label="Check-in Method"
                   value={checkInMethod}
-                  onChange={(e) => setCheckInMethod(e.target.value)}
+                  onChange={handleCheckInMethodChange}
                 >
                   <MenuItem value="manual">Manual</MenuItem>
                   <MenuItem value="card">Membership Card</MenuItem>
@@ -853,73 +893,69 @@ export default function StaffDashboard() {
 
           {/* Staff Schedule & Clock In/Out Card */}
           <Card
-          sx={{
-            mb: 2,
-            borderRadius: 4, // Slightly more rounded corners
-            boxShadow: 4, // Deeper shadow for better elevation
-            p: 3, // More padding for better spacing
-            backgroundColor: "background.paper", // Ensures consistency with theme
-          }}
-        >
-          <CardHeader
-            title="Staff Schedule & Clock In/Out"
             sx={{
-              textAlign: "center",
-              fontWeight: "bold",
-              color: "primary.dark",
+              mb: 2,
+              borderRadius: 4,
+              boxShadow: 4,
+              p: 3,
+              backgroundColor: "background.paper",
             }}
-          />
-          <CardContent>
-            {/* Centered Date & Time with refined styling */}
-            <Box
+          >
+            <CardHeader
+              title="Staff Schedule & Clock In/Out"
               sx={{
                 textAlign: "center",
-                mb: 2,
-                p: 2,
-                borderRadius: 2, // Softer inner edges
-                backgroundColor: "rgba(0, 0, 0, 0.05)", // Light background to distinguish section
+                fontWeight: "bold",
+                color: "primary.dark",
               }}
-            >
-              <Typography
-                variant="h6"
+            />
+            <CardContent>
+              <Box
                 sx={{
-                  color: "text.secondary",
-                  fontWeight: 500,
+                  textAlign: "center",
+                  mb: 2,
+                  p: 2,
+                  borderRadius: 2,
+                  backgroundColor: "rgba(0, 0, 0, 0.05)",
                 }}
               >
-                {dayjs(currentTime).format("dddd, MMMM D, YYYY")}
-              </Typography>
-              <Typography
-                variant="h4" // Slightly larger for emphasis
-                sx={{
-                  fontWeight: "bold",
-                  color: "#fffff",
-                  letterSpacing: 1,
-                  mt: 1,
-                }}
-              >
-                {currentTime.toLocaleTimeString()}
-              </Typography>
-            </Box>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: "text.secondary",
+                    fontWeight: 500,
+                  }}
+                >
+                  {dayjs(currentTime).format("dddd, MMMM D, YYYY")}
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontWeight: "bold",
+                    color: "#fffff",
+                    letterSpacing: 1,
+                    mt: 1,
+                  }}
+                >
+                  {currentTime.toLocaleTimeString()}
+                </Typography>
+              </Box>
 
-
-              {/* List of staff from branch excluding logged-in staff */}
+              {/* Staff in branch (kiosk clock in/out) */}
               {staffInMyBranch.length === 0 ? (
                 <Typography align="center">No staff found in your branch.</Typography>
               ) : (
                 <List>
                   {staffInMyBranch.map((st) => {
-                    // Find today's schedule for this staff member
                     const stSchedule = schedule.find(
                       (sch) => sch.StaffID === st.StaffID && sch.ShiftDate === todayString
                     );
-                    // Find today's attendance for this staff member
                     const att = attendance.find(
                       (a) => a.StaffID === st.StaffID && a.Date === todayString
                     );
                     const clockedIn = att && att.TimeIn && !att.TimeOut;
                     const clockedOut = att && att.TimeIn && att.TimeOut;
-                    // Button settings: if no schedule, disable the button.
+
                     const disabled = !stSchedule;
                     let btnLabel = "Clock In";
                     let btnColor = "success";
@@ -933,17 +969,44 @@ export default function StaffDashboard() {
                       btnLabel = "No Schedule";
                       btnColor = "inherit";
                     }
+
                     return (
                       <ListItem key={st.StaffID} divider sx={{ py: 1.5 }}>
                         <ListItemText
                           primary={st.FullName}
                           secondary={
-                            stSchedule
-                              ? `Shift: ${stSchedule.ShiftStart} - ${stSchedule.ShiftEnd}`
-                              : "No schedule for today."
+                            stSchedule ? (
+                              <>
+                                <Typography variant="body2">
+                                  Shift: {stSchedule.ShiftStart} - {stSchedule.ShiftEnd}
+                                </Typography>
+                                {att ? (
+                                  att.TimeIn && !att.TimeOut ? (
+                                    <Typography variant="body2" color="success.main">
+                                      Clocked In at {att.TimeIn}
+                                    </Typography>
+                                  ) : att.TimeIn && att.TimeOut ? (
+                                    <Typography variant="body2" color="text.secondary">
+                                      In: {att.TimeIn}, Out: {att.TimeOut}
+                                    </Typography>
+                                  ) : (
+                                    <Typography variant="body2" color="warning.main">
+                                      Scheduled, not clocked in yet.
+                                    </Typography>
+                                  )
+                                ) : (
+                                  <Typography variant="body2" color="warning.main">
+                                    Scheduled, but no attendance record yet.
+                                  </Typography>
+                                )}
+                              </>
+                            ) : (
+                              "No schedule for today."
+                            )
                           }
                           sx={{ "& .MuiTypography-root": { fontSize: "0.9rem" } }}
                         />
+
                         <Button
                           variant="contained"
                           color={btnColor}

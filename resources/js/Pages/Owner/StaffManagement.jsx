@@ -186,23 +186,19 @@ export default function StaffManagement({
     });
   };
 
-  // Called by AddNewStaffLayout => new staff created
   function handleNewStaffCreated(resData) {
-    const staffObj = resData.staff;
-    setStaffRecords((prev) => [staffObj, ...prev]);
-    setFilteredStaff((prev) => [staffObj, ...prev]);
-
-    // ✅ Fetch latest staff data after adding
+    console.log("New staff from server => ", resData.staff);
+    // Instead of setStaffRecords with partial data, go straight to re-fetch:
     axios
       .get(route("staff.index"))
       .then((response) => {
         setStaffRecords(response.data);
         setFilteredStaff(response.data);
+        showSuccessMessage("New staff added successfully!");
       })
       .catch((err) => console.error("Error fetching updated staff list:", err));
-
-    showSuccessMessage("New staff added successfully!");
   }
+  
 
   // Called by AddPayrollLayout => new payroll created
   function handleNewPayrollCreated(resData) {
@@ -2096,7 +2092,7 @@ export default function StaffManagement({
       rowsPerPageOptions={[5, 10]}
     />
   </Box>
-</Paper>
+      </Paper>
 
 
       {/* ------------------- RENDER EXTERNAL LAYOUTS ------------------- */}
@@ -2166,10 +2162,14 @@ export default function StaffManagement({
       {isAddScheduleOpen && (
         <AddScheduleLayout
           onClose={() => setAddScheduleOpen(false)}
-          onSchedulesCreated={(resData) => {
-            const newSchedules = resData.schedules; 
-            setScheduleRecords(prev => [...newSchedules, ...prev]);
-            setFilteredSchedule(prev => [...newSchedules, ...prev]);
+          onSchedulesCreated={() => {
+            axios.get(route("staff.schedules.index"))
+              .then((res) => {
+                setScheduleRecords(res.data);
+                setFilteredSchedule(res.data);
+              })
+              .catch((err) => console.error("Error fetching updated schedules:", err));
+          
             showSuccessMessage("New schedules created!");
             setAddScheduleOpen(false);
           }}

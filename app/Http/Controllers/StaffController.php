@@ -287,23 +287,42 @@ class StaffController extends Controller
      * ATTENDANCE (REMOTE VERSION)
      * ------------------------------------------------------------------ */
 
-    public function indexAttendance()
-    {
-        $staff = auth('staff')->user();
-
-        if ($staff) {
-            $attendance = Attendance::with('staff')
-                ->where('StaffID', $staff->StaffID)
-                ->orderBy('Date','desc')
-                ->get();
-        } else {
-            $attendance = Attendance::with('staff')
-                ->orderBy('Date','desc')
-                ->get();
-        }
-
-        return response()->json($attendance);
-    }
+     public function indexAttendance(Request $request)
+     {
+         $staff = auth('staff')->user();
+         $branchID = $request->input('branchID'); // e.g. ?branchID=1
+     
+         // If the front end passes a branchID => return attendance for *that* branch
+         if ($branchID) {
+             $attendance = Attendance::with('staff.branches')
+                 ->whereHas('staff.branches', function ($q) use ($branchID) {
+                     // Filter by the "BranchID" column in the "branches" table
+                     $q->where('branches.BranchID', $branchID);
+                 })
+                 ->orderBy('Date', 'desc')
+                 ->get();
+     
+             return response()->json($attendance);
+         }
+     
+         // Otherwise fallback: if staff is logged in, show only that staff's attendance
+         if ($staff) {
+             $attendance = Attendance::with('staff')
+                 ->where('StaffID', $staff->StaffID)
+                 ->orderBy('Date', 'desc')
+                 ->get();
+     
+             return response()->json($attendance);
+         }
+     
+         // If no staff is logged in and no branchID => return all
+         $attendance = Attendance::with('staff')
+             ->orderBy('Date','desc')
+             ->get();
+     
+         return response()->json($attendance);
+     }
+     
 
     public function storeAttendance(Request $request)
     {
@@ -648,40 +667,40 @@ class StaffController extends Controller
      * STAFF SCHEDULE (REMOTE VERSION)
      * ------------------------------------------------------------------ */
 
-// In StaffController.php
-public function indexSchedules(Request $request)
-{
-    // If a branchID is passed, use it to filter schedules.
-    if ($request->has('branchID')) {
-        $branchID = $request->query('branchID');
-        $schedules = StaffSchedule::with(['staff' => function($query) {
-                $query->select('StaffID','FullName');
-            }])
-            ->whereHas('staff', function($query) use ($branchID) {
-                $query->where('BranchID', $branchID);
-            })
-            ->orderBy('ShiftDate', 'desc')
-            ->get();
-    } else {
-        // Default to returning schedules for the logged-in staff.
+    // In StaffController.php
+    public function indexSchedules(Request $request)
+    {
+        // 1) Grab the logged-in staff (from the 'staff' guard)
         $staff = auth('staff')->user();
+    
         if ($staff) {
+            // 2) Get all branch IDs from the pivot table for that staff
+            //    i.e. staff->branches is many-to-many
+            $branchIds = $staff->branches()->pluck('branches.BranchID');
+    
+            // 3) Fetch all schedules where the schedule’s staff
+            //    belongs to any of these branches
             $schedules = StaffSchedule::with(['staff' => function($query) {
-                $query->select('StaffID','FullName');
-            }])
-            ->where('StaffID', $staff->StaffID)
-            ->orderBy('ShiftDate', 'desc')
-            ->get();
+                    $query->select('StaffID', 'FullName');
+                }])
+                ->whereHas('staff.branches', function($query) use ($branchIds) {
+                    $query->whereIn('branch_staff.BranchID', $branchIds);
+                })
+                ->orderBy('ShiftDate', 'desc')
+                ->get();
         } else {
+            // If for some reason no user is logged in, return all schedules
+            // (or you could return an empty collection if that’s your preference)
             $schedules = StaffSchedule::with(['staff' => function($query) {
-                $query->select('StaffID','FullName');
+                $query->select('StaffID', 'FullName');
             }])
             ->orderBy('ShiftDate', 'desc')
             ->get();
         }
+    
+        return response()->json($schedules);
     }
-    return response()->json($schedules);
-}
+    
 
     public function createSchedule()
     {
@@ -890,20 +909,39 @@ public function indexSchedules(Request $request)
     public function updateSchedule(Request $request, $id)
     {
         $schedule = StaffSchedule::findOrFail($id);
+    
         $data = $request->validate([
             'StaffID'      => 'required|exists:staff,StaffID',
             'ShiftDate'    => 'required|date',
-            'ShiftStart'   => 'required|date_format:H:i',
+            'ShiftType'    => 'required|string|in:morning,mid,evening,dynamic',
+            'ShiftStart'   => 'nullable|date_format:H:i',
             'ShiftEnd'     => 'nullable|date_format:H:i|after:ShiftStart',
             'RoleOverride' => 'nullable|string|max:50',
         ]);
+        
+        switch ($data['ShiftType']) {
+            case 'morning':
+                $data['ShiftStart'] = '05:30';
+                $data['ShiftEnd']   = '14:30';
+                break;
+            case 'mid':
+                $data['ShiftStart'] = '10:00';
+                $data['ShiftEnd']   = '19:00';
+                break;
+            case 'evening':
+                $data['ShiftStart'] = '15:00';
+                $data['ShiftEnd']   = '23:59';
+                break;
+        }
+        
         $schedule->update($data);
-
+    
         return response()->json([
             'message'  => 'Schedule updated.',
             'schedule' => $schedule,
         ]);
     }
+    
 
     public function destroySchedule($id)
     {
