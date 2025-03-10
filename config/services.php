@@ -13,6 +13,11 @@ return [
     | a conventional file to locate the various service credentials.
     |
     */
+    'mailjet' => [
+        'api_key' => env('MAILJET_API_KEY'),
+        'secret_key' => env('MAILJET_SECRET_KEY'),
+        'api_token' => env('MAILJET_API_TOKEN'), // Optional
+    ],
 
     'postmark' => [
         'token' => env('POSTMARK_TOKEN'),
