@@ -405,60 +405,69 @@ public function getStaffNotifications(Request $request)
 
         return redirect()->back()->with('success','Template approved.');
     }
-
     public function sendExpiringMembershipReminder(Request $request)
     {
-        // 1) Fetch members expiring in 7 days (adjust logic/date range as needed)
-        $expiringSoon = Member::whereDate('MembershipEndDate', '=', now()->addDays(7))->get();
-
-        // 2) Initialize Mailjet Client for Send API v3.1
-        $mj = new Client(
-            config('services.mailjet.key'),    // MAILJET_API_KEY
-            config('services.mailjet.secret'), // MAILJET_SECRET_KEY
+        // Expecting an array of member IDs and require at least one element
+        $data = $request->validate([
+            'memberIds' => 'required|array|min:1',
+        ]);
+    
+        // Optionally, verify that each member has a MembershipEndDate equal to now()+7 days.
+        $targetDate = now()->addDays(7)->toDateString();
+        $members = Member::whereIn('MemberID', $data['memberIds'])
+            ->whereDate('MembershipEndDate', $targetDate)
+            ->get();
+    
+        if ($members->isEmpty()) {
+            return response()->json([
+                'status'  => 'no-action',
+                'message' => 'No members with expiring memberships found for the selected criteria.'
+            ], 200);
+        }
+    
+        // Initialize Mailjet Client
+        $mj = new \Mailjet\Client(
+            config('services.mailjet.api_key'),
+            config('services.mailjet.secret_key'),
             true,
             ['version' => 'v3.1']
         );
-
-        // 3) Build the array of messages
+    
+        // Build the messages for each member
         $messages = [];
-        foreach ($expiringSoon as $member) {
-            // If member has an email and we want to send
+        foreach ($members as $member) {
             if (!empty($member->Email)) {
+                $memberName = !empty($member->FullName) ? $member->FullName : 'Valued Member';
                 $messages[] = [
                     'From' => [
                         'Email' => config('services.mailjet.from.address'),
                         'Name'  => config('services.mailjet.from.name'),
                     ],
                     'To' => [
-                        ['Email' => $member->Email, 'Name' => $member->name],
+                        ['Email' => $member->Email, 'Name' => $memberName],
                     ],
-                    'TemplateID'      => 6731692,      // Your Mailjet Template ID
-                    'TemplateLanguage' => true,         // Enable template placeholders
-                    'Subject'         => 'CONTNENTAL GYM PAYMENT DUE', 
-                    // Pass dynamic variables to match placeholders like {{var:member_name}} etc.
-                    'Variables' => [
-                        'member_name' => $member->name,
+                    'TemplateID'       => 6731692, // Your Mailjet Template ID
+                    'TemplateLanguage' => true,
+                    'Subject'          => 'CONTINENTAL GYM PAYMENT DUE',
+                    'Variables'        => [
+                        'member_name' => $memberName,
                         'expiry_date' => \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y'),
                     ],
                 ];
             }
         }
-
-        // 4) If we have messages to send, call the Mailjet API
+    
+        // Send emails if there are messages
         if (!empty($messages)) {
             $body = ['Messages' => $messages];
-            $response = $mj->post(Resources::$Email, ['body' => $body]);
-
+            $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
+    
             if ($response->success()) {
-                // Optionally log success or do more
-                // e.g. return a success message
                 return response()->json([
                     'status'  => 'success',
-                    'message' => 'Expiry reminder emails sent!',
-                    'data'    => $response->getData()
+                    'message' => 'Expiry reminder emails sent!'
                 ], 200);
             } else {
-                // Handle or log errors
                 return response()->json([
                     'status'  => 'error',
                     'message' => 'Mailjet API call failed',
@@ -466,13 +475,14 @@ public function getStaffNotifications(Request $request)
                 ], 500);
             }
         }
-
-        // If no members are expiring soon, you can handle that here
+    
         return response()->json([
             'status'  => 'no-action',
-            'message' => 'No members expiring in 7 days'
+            'message' => 'No valid email recipients found.'
         ], 200);
     }
+    
+    
 
 
     public function sendMailjetTemplate(Request $request)
