@@ -682,25 +682,25 @@ class OperationsController extends Controller
      */
   // app/Http/Controllers/OperationsController.php
 
-public function indexVisits(Request $request)
-{
-    // Optional: check staff authentication
-    $branchID = $request->query('branchID'); 
+    public function indexVisits(Request $request)
+    {
+        // Optional: check staff authentication
+        $branchID = $request->query('branchID'); 
 
-    // Build a query for MemberVisit
-    $query = MemberVisit::with(['member', 'branch']); 
-      // or ->select(...) if you only want certain columns
+        // Build a query for MemberVisit
+        $query = MemberVisit::with(['member', 'branch']); 
+        // or ->select(...) if you only want certain columns
 
-    // If a branchID is provided, filter by it
-    if ($branchID) {
-        $query->where('BranchID', $branchID);
+        // If a branchID is provided, filter by it
+        if ($branchID) {
+            $query->where('BranchID', $branchID);
+        }
+
+        // Optionally sort, e.g. newest first
+        $visits = $query->orderByDesc('VisitDate')->get();
+
+        return response()->json(['visits' => $visits]);
     }
-
-    // Optionally sort, e.g. newest first
-    $visits = $query->orderByDesc('VisitDate')->get();
-
-    return response()->json(['visits' => $visits]);
-}
 
     /**
      * Update an existing visit log.

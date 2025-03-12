@@ -54,6 +54,4 @@ class MonthlyClient extends Model
 {
     return $this->hasMany(MonthlyClientAttendance::class, 'MonthlyClientID', 'MonthlyClientID');
 }
-
-
 }

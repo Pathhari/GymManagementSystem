@@ -28,6 +28,8 @@ import {
   List,
   ListItem,
   ListItemText,
+  FormControlLabel,
+  Switch,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -92,6 +94,7 @@ export default function StaffDashboard() {
 
   const [walkIns, setWalkIns] = useState([]);
   const [members, setMembers] = useState([]);
+  const [monthlyClients, setMonthlyClients] = useState([]);
   const [visits, setVisits] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [schedule, setSchedule] = useState([]);
@@ -122,11 +125,21 @@ export default function StaffDashboard() {
   // Tabs: 0 => Visits, 1 => Walk-Ins, 2 => Expiring Soon
   const [activeTab, setActiveTab] = useState(0);
 
+    // The user can toggle: "Member" or "Monthly Client"
+    const [checkInType, setCheckInType] = useState("member");
+    const [selectedMember, setSelectedMember] = useState(null);
+    const [selectedClient, setSelectedClient] = useState(null);
+
+    const [isClientDetailsOpen, setClientDetailsOpen] = useState(false);
+  
   // Dialog states
   const [checkInMethod, setCheckInMethod] = useState("card");
-  const [selectedMember, setSelectedMember] = useState(null);
   const [isCamOpen, setCamOpen] = useState(false);
   const [isBiometricOpen, setBiometricOpen] = useState(false);
+  const [isDetailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [pendingCheckInMethod, setPendingCheckInMethod] = useState("card");
+
+  
 
   // Visits
   const [selectedVisit, setSelectedVisit] = useState(null);
@@ -243,6 +256,18 @@ export default function StaffDashboard() {
     }
   };
 
+  // On mount, load the data if you haven't already
+  useEffect(() => {
+    // Example loads. Adjust to your actual endpoints
+    axios.get("/membership/members").then((res) => {
+      setMembers(res.data.members || []);
+    });
+    axios.get("/monthly-clients").then((res) => {
+      setMonthlyClients(res.data || []);
+    });
+  }, []);
+  
+
   // ------------- CRUD / clock-in / check-in etc. -------------
   const handleTabChange = (e, val) => {
     setActiveTab(val);
@@ -252,36 +277,66 @@ export default function StaffDashboard() {
     setCheckInMethod(e.target.value);
   };
 
-  const handleCheckIn = async () => {
-    if (!selectedMember) {
-      alert("Please select a member first.");
-      return;
+  // Toggle between normal members vs monthly clients
+  const handleToggleCheckInType = (evt) => {
+    setCheckInType(evt.target.checked ? "monthlyClient" : "member");
+    // Optionally clear selected
+    setSelectedMember(null);
+    setSelectedClient(null);
+  };
+
+  // Show details for whichever type is selected
+  const handleShowDetails = () => {
+    if (checkInType === "member") {
+      if (!selectedMember) {
+        alert("Please select a member first.");
+        return;
+      }
+    } else {
+      if (!selectedClient) {
+        alert("Please select a monthly client first.");
+        return;
+      }
     }
+    setClientDetailsOpen(true);
+  };
+
+
+  // Confirm check in (calls different endpoints)
+  const handleConfirmCheckIn = async () => {
     try {
-      await axios.post("/operations/visits", {
-        MemberID: selectedMember.MemberID,
-        CheckInMethod: checkInMethod,
-        BranchID: staffBranch,
-      });
-      showSuccessMessage(`Member ${selectedMember.FullName} checked in successfully!`);
-      setSelectedMember(null);
-      // Refresh data
-      if (staffBranch) {
-        // Re-load visits & metrics. If you want to do a partial fetch, do so:
-        const visitsRes = await axios.get("/operations/visits", {
-          params: { branchID: staffBranch },
+      if (checkInType === "member") {
+        if (!selectedMember) return;
+        // Normal member => e.g. /operations/visits
+        await axios.post("/operations/visits", {
+          MemberID: selectedMember.MemberID,
+          BranchID: staffBranch, // if needed
         });
-        setVisits(visitsRes.data.visits || []);
+        showSuccessMessage(`Checked in Member: ${selectedMember.FullName}`);
+        setSelectedMember(null);
+      } else {
+        if (!selectedClient) return;
+        // Monthly client => e.g. /monthly-clients/{id}/attendances
+        await axios.post(
+          `/monthly-clients/${selectedClient.MonthlyClientID}/attendances`,
+          {
+            VisitDateTime: new Date().toISOString(),
+            Notes: "Checked in by staff",
+          }
+        );
+        showSuccessMessage(
+          `Checked in Monthly Client: ${selectedClient.FullName}`
+        );
+        setSelectedClient(null);
       }
     } catch (err) {
-      console.error("Check-in error:", err);
-      if (err.response && err.response.status === 409) {
-        alert("Member is already checked in for today.");
-      } else {
-        alert("Failed to check in. See console for details.");
-      }
+      console.error("Check in error:", err);
+      alert("Check in failed. See console for details.");
+    } finally {
+      setClientDetailsOpen(false);
     }
   };
+  
 
   // Clock In/Out for staff on the kiosk
   const handleScheduleClock = async (staffRow) => {
@@ -852,44 +907,188 @@ export default function StaffDashboard() {
 
         {/* LEFT COLUMN: Check-In Member & Staff Schedule & Clock In/Out */}
         <Grid item xs={12} md={4}>
-          {/* Check In Member Card */}
-          <Card sx={{ mb: 2, borderRadius: 2, boxShadow: 2 }}>
-            <CardHeader title="Check In Member" />
-            <CardContent>
-              <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                <InputLabel>Check-in Method</InputLabel>
-                <Select
-                  label="Check-in Method"
-                  value={checkInMethod}
-                  onChange={handleCheckInMethodChange}
-                >
-                  <MenuItem value="manual">Manual</MenuItem>
-                  <MenuItem value="card">Membership Card</MenuItem>
-                  <MenuItem value="biometric">Biometric</MenuItem>
-                </Select>
-              </FormControl>
+      {/* ===================== CHECK IN CARD ===================== */}
+      <Card sx={{ mb: 2, borderRadius: 2, boxShadow: 2 }}>
+        <CardHeader title="Check In" />
+        <CardContent>
+
+          {/* Switch: Member vs Monthly Client */}
+          <FormControlLabel
+            label="Monthly Client?"
+            control={
+              <Switch
+                checked={checkInType === "monthlyClient"}
+                onChange={handleToggleCheckInType}
+                color="primary"
+              />
+            }
+            sx={{ mb: 2 }}
+          />
+
+          {checkInType === "member" ? (
+            <>
+              {/* Normal membership Autocomplete */}
               <Autocomplete
                 options={members}
                 getOptionLabel={(option) =>
                   `${option.MemberID} - ${option.FullName}`
                 }
                 value={selectedMember}
-                onChange={(event, newValue) => setSelectedMember(newValue)}
+                onChange={(_, newVal) => setSelectedMember(newVal)}
                 renderInput={(params) => (
                   <TextField
                     {...params}
                     label="Select Member"
                     variant="outlined"
                     size="small"
-                    sx={{ mb: 2 }}
                   />
                 )}
+                sx={{ mb: 2 }}
               />
-              <Button variant="contained" onClick={handleCheckIn} fullWidth>
-                Check In
-              </Button>
-            </CardContent>
-          </Card>
+            </>
+          ) : (
+            <>
+              {/* Monthly Clients Autocomplete */}
+              <Autocomplete
+                options={monthlyClients}
+                getOptionLabel={(option) =>
+                  `${option.MonthlyClientID} - ${option.FullName}`
+                }
+                value={selectedClient}
+                onChange={(_, newVal) => setSelectedClient(newVal)}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Select Monthly Client"
+                    variant="outlined"
+                    size="small"
+                  />
+                )}
+                sx={{ mb: 2 }}
+              />
+            </>
+          )}
+
+          <Button
+            variant="contained"
+            onClick={handleShowDetails}
+            fullWidth
+            disabled={
+              (checkInType === "member" && !selectedMember) ||
+              (checkInType === "monthlyClient" && !selectedClient)
+            }
+          >
+            Show Details / Verify
+          </Button>
+        </CardContent>
+      </Card>
+
+
+      {/* ===================== DIALOG FOR DETAILS ===================== */}
+      <Dialog
+        open={isClientDetailsOpen}
+        onClose={() => setClientDetailsOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              Details
+            </Typography>
+            <IconButton
+              onClick={() => setClientDetailsOpen(false)}
+              sx={{ "&:hover": { color: theme.palette.error.main } }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent dividers>
+          {checkInType === "member" && selectedMember && (
+            <Box>
+              {/* Replicate your "Visit Details" layout for the selected Member */}
+              <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
+                {selectedMember.FullName}
+              </Typography>
+
+              {/* Member Photo */}
+              {selectedMember.PhotoPath ? (
+                <Box
+                  component="img"
+                  src={`/storage/${selectedMember.PhotoPath}`}
+                  alt="Member"
+                  sx={{
+                    width: 100,
+                    height: 100,
+                    objectFit: "cover",
+                    border: "1px solid #ddd",
+                    borderRadius: 1,
+                    mb: 2,
+                  }}
+                />
+              ) : (
+                <Typography>No photo</Typography>
+              )}
+
+              {/* Plan & Status */}
+              <Typography>
+                Plan:{" "}
+                {selectedMember.plan
+                  ? selectedMember.plan.PlanName
+                  : "N/A"}
+              </Typography>
+              <Typography>
+                Status:{" "}
+                {selectedMember.status
+                  ? selectedMember.status.StatusName
+                  : "N/A"}
+              </Typography>
+              <Typography>
+                Start:{" "}
+                {selectedMember.MembershipStartDate
+                  ? formatDate(selectedMember.MembershipStartDate)
+                  : "N/A"}
+              </Typography>
+              <Typography>
+                End:{" "}
+                {selectedMember.MembershipEndDate
+                  ? formatDate(selectedMember.MembershipEndDate)
+                  : "N/A"}
+              </Typography>
+            </Box>
+          )}
+
+          {checkInType === "monthlyClient" && selectedClient && (
+            <Box>
+              {/* For Monthly Client, replicate your style but show monthly client data */}
+              <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
+                {selectedClient.FullName}
+              </Typography>
+              <Typography>Email: {selectedClient.Email || "N/A"}</Typography>
+              <Typography>Phone: {selectedClient.Phone || "N/A"}</Typography>
+              <Typography>
+                Start Date: {selectedClient.StartDate || "N/A"}
+              </Typography>
+              <Typography>
+                End Date: {selectedClient.EndDate || "N/A"}
+              </Typography>
+              <Typography>
+                IsActive: {selectedClient.IsActive ? "Yes" : "No"}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={() => setClientDetailsOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleConfirmCheckIn}>
+            Confirm Check In
+          </Button>
+        </DialogActions>
+      </Dialog>
+
 
           {/* Staff Schedule & Clock In/Out Card */}
           <Card
@@ -1229,35 +1428,36 @@ export default function StaffDashboard() {
                       Membership Info
                     </Typography>
                     <Box display="flex" flexWrap="wrap" gap={1}>
-                      <TextField
-                        variant="filled"
-                        size="small"
-                        label="Plan"
-                        InputProps={{
-                          readOnly: true,
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <GroupsIcon fontSize="small" />
-                            </InputAdornment>
-                          ),
-                        }}
-                        value={mem?.PlanName || "Unknown"}
-                      />
-                      <TextField
-                        variant="filled"
-                        size="small"
-                        label="Status"
-                        InputProps={{
-                          readOnly: true,
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <WarningIcon fontSize="small" />
-                            </InputAdornment>
-                          ),
-                        }}
-                        value={mem?.Status || "Unknown"}
-                      />
-                      <TextField
+                    <TextField
+                      variant="filled"
+                      size="small"
+                      label="Plan"
+                      InputProps={{
+                        readOnly: true,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <GroupsIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      }}
+                      value={mem?.plan ? mem.plan.PlanName : "N/A"} // <-- changed here
+                    />
+
+                    <TextField
+                      variant="filled"
+                      size="small"
+                      label="Status"
+                      InputProps={{
+                        readOnly: true,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <WarningIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      }}
+                      value={mem?.status ? mem.status.StatusName : "N/A"} // <-- changed here
+                    />                      
+                    <TextField
                         variant="filled"
                         size="small"
                         label="Start Date"

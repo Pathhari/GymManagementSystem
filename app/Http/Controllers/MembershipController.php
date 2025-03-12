@@ -30,38 +30,63 @@ class MembershipController extends Controller
      */
     public function apiIndex()
     {
+        // List all relationships you want to eager-load
+        $relations = [
+            'startedBranch',
+            'plan',
+            'renewals',
+            'freezes',
+            'changeLogs',
+            'payments',
+            'bookings',
+            'notifications',
+            'lockerUsages',
+            'sessionBookings',
+            'sessionAttendances',
+            'sessionWaitlists',
+            'visits',
+            'status',
+        ];
+    
         $staff = auth('staff')->user();
-
+    
         if ($staff) {
             $branchIDs = $staff->branches->pluck('BranchID');
-
-            // Filter members by those branches
-            $members = Member::whereIn('StartedBranchID', $branchIDs)
+    
+            // Filter members by those branches + eager load
+            $members = Member::with($relations)
+                ->whereIn('StartedBranchID', $branchIDs)
+                ->orderBy('MemberID', 'desc')
+                ->get();
+    
+            $freezes = MembershipFreeze::whereHas('member', function ($q) use ($branchIDs) {
+                    $q->whereIn('StartedBranchID', $branchIDs);
+                })
+                ->orderBy('FreezeID', 'desc')
+                ->get();
+    
+            $renewals = MembershipRenewal::whereIn('MemberID', function ($sub) use ($branchIDs) {
+                    $sub->select('MemberID')
+                        ->from('members')
+                        ->whereIn('StartedBranchID', $branchIDs);
+                })
+                ->orderBy('RenewalID', 'desc')
+                ->get();
+    
+            $walkIns = WalkIn::whereIn('BranchID', $branchIDs)
+                ->orderBy('WalkInID', 'desc')
+                ->get();
+    
+        } else {
+            // Admin or Owner => see all, including eager-loaded relationships
+            $members  = Member::with($relations)
                 ->orderBy('MemberID','desc')
                 ->get();
-
-            // Similarly for Freezes, Renewals, Walk-Ins, etc.
-            $freezes = MembershipFreeze::whereHas('member', function ($q) use ($branchIDs) {
-                $q->whereIn('StartedBranchID', $branchIDs);
-            })->orderBy('FreezeID','desc')->get();
-
-            $renewals = MembershipRenewal::whereIn('MemberID', function ($sub) use ($branchIDs) {
-                $sub->select('MemberID')
-                    ->from('members')
-                    ->whereIn('StartedBranchID', $branchIDs);
-            })->orderBy('RenewalID','desc')->get();
-
-            $walkIns = WalkIn::whereIn('BranchID', $branchIDs)
-                ->orderBy('WalkInID','desc')
-                ->get();
-        } else {
-            // Admin or Owner => see all
-            $members  = Member::orderBy('MemberID','desc')->get();
             $freezes  = MembershipFreeze::orderBy('FreezeID','desc')->get();
             $renewals = MembershipRenewal::orderBy('RenewalID','desc')->get();
             $walkIns  = WalkIn::orderBy('WalkInID','desc')->get();
         }
-
+    
         return response()->json([
             'members'  => $members,
             'walkIns'  => $walkIns,
@@ -69,6 +94,7 @@ class MembershipController extends Controller
             'freezes'  => $freezes,
         ]);
     }
+    
 
     /**
      * Simple search by name (GET /membership/search-members?q=)
@@ -504,31 +530,31 @@ class MembershipController extends Controller
     public function storeRenewal(Request $request)
     {
         $data = $request->validate([
-            'MemberID'                => 'required|exists:members,MemberID',
-            'NewEndDate'              => 'required|date|after_or_equal:today',
-            'RenewalAmount'           => 'required|numeric|min:0',
-            'Payments'                => 'array',
-            'Payments.*.PaymentMethod'=> 'string|max:50',
-            'Payments.*.PaymentAmount'=> 'numeric|min:0',
-            'PaymentFor'              => 'nullable|string',
+            'MemberID'           => 'required|exists:members,MemberID',
+            'RenewalStartDate'   => 'required|date|after_or_equal:today',
+            'NewEndDate'         => 'required|date|after_or_equal:RenewalStartDate',
+            'RenewalAmount'      => 'required|numeric|min:0',
+            'Payments'           => 'array',
+            'Payments.*.PaymentMethod' => 'string|max:50',
+            'Payments.*.PaymentAmount' => 'numeric|min:0',
+            'PaymentFor'         => 'nullable|string',
         ]);
     
         // 1) Fetch the member
         $member = Member::findOrFail($data['MemberID']);
     
-        // 2) Update membership end date to the user-selected date
+        // 2) Update membership end date with the user-chosen new end date
         $member->MembershipEndDate = $data['NewEndDate'];
-    
-        // DON’T immediately set to Active here. We handle status after we do the invoice, etc.
-    
+        // Save the member after setting end date
         $member->save();
     
-        // 3) Create a renewal record
+        // 3) Create a renewal record, capturing the RenewalStartDate
         $renewal = MembershipRenewal::create([
-            'MemberID'      => $member->MemberID,
-            'PlanID'        => $member->PlanID, // keep existing plan if needed
-            'RenewalAmount' => $data['RenewalAmount'],
-            'RenewalDate'   => now(),
+            'MemberID'         => $member->MemberID,
+            'PlanID'           => $member->PlanID,      // keep existing plan
+            'RenewalAmount'    => $data['RenewalAmount'],
+            'RenewalDate'      => now(),                // date of this renewal action
+            'RenewalStartDate' => $data['RenewalStartDate'],
         ]);
     
         // 4) Create an invoice + line item
@@ -543,7 +569,7 @@ class MembershipController extends Controller
         InvoiceLineItem::create([
             'InvoiceID'   => $invoice->InvoiceID,
             'ItemType'    => 'Renewal',
-            'ItemID'      => $member->PlanID, // or null
+            'ItemID'      => $member->PlanID,  // or null
             'Description' => 'Manual Renewal',
             'Quantity'    => 1,
             'UnitPrice'   => $data['RenewalAmount'],
@@ -593,21 +619,17 @@ class MembershipController extends Controller
         }
     
         // 6) Decide if the member can become Active
-        // We check how many months total from the membership's start date to the new end date:
         $monthsPaidSoFar = $this->calculateMonthsPaidSoFar($member);
     
-        // Example rule: if they've effectively paid for >= 3 months, set to Active
-        // and the invoice is fully paid
+        // Example rule: if they've effectively paid >= 3 months, set to Active
         if ($monthsPaidSoFar >= 3 && $invoice->PaymentStatus === 'Paid') {
             $member->MemberStatusID = 1; // 1 = ACTIVE
         } else {
-            // Otherwise, stay NEW (ID=6) or keep their existing status
-            // if you prefer to force it to remain "NEW MEMBER" if <3 months:
-            $member->MemberStatusID = 6; // "NEW MEMBER"
+            $member->MemberStatusID = 6; // 6 = "NEW MEMBER", or keep existing
         }
         $member->save();
     
-        // 7) Return everything
+        // 7) Return JSON response
         return response()->json([
             'renewal' => $renewal,
             'invoice' => $invoice,
@@ -616,13 +638,44 @@ class MembershipController extends Controller
         ], 201);
     }
     
-    
-public function destroyRenewal($id)
-{
-    $renewal = MembershipRenewal::findOrFail($id);
-    $renewal->delete();
-    return response()->json(['message' => 'Renewal deleted'], 200);
-}
+        public function updateRenewal(Request $request, $id)
+    {
+        $data = $request->validate([
+            'RenewalStartDate' => 'required|date|after_or_equal:today',
+            'NewEndDate'       => 'required|date|after_or_equal:RenewalStartDate',
+            'RenewalAmount'    => 'required|numeric|min:0',
+        ]);
+
+        // Fetch the renewal record
+        $renewal = MembershipRenewal::findOrFail($id);
+        $member  = $renewal->member;
+
+        // Update renewal row
+        $renewal->RenewalStartDate = $data['RenewalStartDate'];
+        $renewal->RenewalAmount    = $data['RenewalAmount'];
+        // If you want to update RenewalDate to "now" each edit, do so:
+        $renewal->RenewalDate      = now();
+        $renewal->save();
+
+        // Update the member's MembershipEndDate as well
+        $member->MembershipEndDate = $data['NewEndDate'];
+        $member->save();
+
+        // If you have any business logic to recalc months, do it here...
+        // e.g. $monthsPaidSoFar = $this->calculateMonthsPaidSoFar($member);
+
+        return response()->json([
+            'renewal' => $renewal,
+            'member'  => $member,
+        ], 200);
+    }
+     
+    public function destroyRenewal($id)
+    {
+        $renewal = MembershipRenewal::findOrFail($id);
+        $renewal->delete();
+        return response()->json(['message' => 'Renewal deleted'], 200);
+    }
 
 /* ------------------------------------------------------------------
  * 4) MEMBERSHIP FREEZE

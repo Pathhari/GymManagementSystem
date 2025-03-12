@@ -14,8 +14,10 @@ class MembershipRenewal extends Model
         'MemberID',
         'PlanID',
         'RenewalAmount',
-        'RenewalDate', // Must match the DB column name
+        'RenewalDate',
+        'RenewalStartDate', // Add this
     ];
+    
     // Relationship: belongs to a member
     public function member()
     {
