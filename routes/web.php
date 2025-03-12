@@ -337,8 +337,11 @@ Route::prefix('notifications')->group(function() {
     Route::post('/notifications/send-expiring-reminder-selected', [NotificationController::class, 'sendExpiringMembershipReminderForSelected'])
         ->middleware('auth:owner,admin,staff')
         ->name('notifications.sendExpiringReminderSelected');
-    
 
+    Route::get('/notifications/mailjet-activity-logs', [NotificationController::class, 'getMailjetActivityLogs'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('notifications.mailjet.activityLogs');
+    
     Route::post('/notifications/send-mailjet-template', [NotificationController::class, 'sendMailjetTemplate'])
     ->middleware('auth:owner,admin,staff')
     ->name('notifications.sendMailjetTemplate');
