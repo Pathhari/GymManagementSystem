@@ -25,7 +25,8 @@ import {
   Tabs,
   Tab,
   InputAdornment,
-  Snackbar
+  Snackbar,
+  Chip
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 
@@ -38,19 +39,72 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import SendIcon from "@mui/icons-material/Send";
 
+
+  // 1. Define a mapping from status ID to color and label:
+  const statusColorMap = {
+    1: "green",    // ACTIVE
+    2: "orange",   // FROZEN
+    3: "blue",     // ON-HOLD
+    4: "gray",     // TERMINATED
+    5: "red",      // EXPIRED
+    6: "purple",   // NEW MEMBER
+  };
+
+  const statusLabelMap = {
+    1: "ACTIVE",
+    2: "FROZEN",
+    3: "ON-HOLD",
+    4: "TERMINATED",
+    5: "EXPIRED",
+    6: "NEW MEMBER",
+  };
+
+
 // ---------- DataGrid columns for Mailjet and Semaphore ----------
 const mailjetColumns = [
   { field: "MemberID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Email", headerName: "Email", width: 200 },
-  { field: "MemberStatusID", headerName: "StatusID", width: 100 },
+  {
+    field: "MemberStatusID",
+    headerName: "Status",
+    width: 150,
+    renderCell: (params) => {
+      const statusId = params.value;
+      const label = statusLabelMap[statusId] || `Status ${statusId}`;
+      const bgColor = statusColorMap[statusId] || "black";
+  
+      return (
+        <Chip
+          label={label}
+          style={{ backgroundColor: bgColor, color: "white" }}
+        />
+      );
+    },
+  },
 ];
 
 const semaphoreColumns = [
   { field: "MemberID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Phone", headerName: "Phone", width: 180 },
-  { field: "MemberStatusID", headerName: "StatusID", width: 100 },
+  {
+    field: "MemberStatusID",
+    headerName: "Status",
+    width: 120,
+    renderCell: (params) => {
+      const statusId = params.value;
+      const label = statusLabelMap[statusId] || `Status ${statusId}`;
+      const bgColor = statusColorMap[statusId] || "black";
+  
+      return (
+        <Chip
+          label={label}
+          style={{ backgroundColor: bgColor, color: "white" }}
+        />
+      );
+    },
+  },
 ];
 
 // (Optional) For staff selection
@@ -59,15 +113,6 @@ const staffColumns = [
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Email", headerName: "Email", width: 220 },
   { field: "Role", headerName: "Role", width: 150 },
-];
-
-// New columns for the Mailjet activity logs (adjusted to match your notifications table)
-const mailjetLogColumns = [
-  { field: "NotificationID", headerName: "ID", width: 70 },
-  { field: "MemberID", headerName: "Member ID", width: 100 },
-  { field: "Status", headerName: "Status", width: 120 },
-  { field: "SentDate", headerName: "Sent Date", width: 180 },
-  { field: "Message", headerName: "Message", width: 250 },
 ];
 
 export default function Notifications() {
@@ -98,6 +143,10 @@ export default function Notifications() {
   const [mailjetShowExpiring, setMailjetShowExpiring] = useState(false);
   // State for Mailjet activity logs
   const [mailjetActivityLogs, setMailjetActivityLogs] = useState([]);
+  // Search term for Email Activity Logs
+  const [logSearchTerm, setLogSearchTerm] = useState("");
+
+  const [memberSearchTerm, setMemberSearchTerm] = useState("");
 
   // Semaphore
   const [semaphoreMembers, setSemaphoreMembers] = useState([]);
@@ -115,7 +164,7 @@ export default function Notifications() {
   const [staffSender, setStaffSender] = useState("admin");
   const [staffNotifications, setStaffNotifications] = useState([]);
 
-  // Member Statuses (Hard-coded statuses: 1=ACTIVE, 2=FROZEN, 3=ON-HOLD, 4=TERMINATED, 5=EXPIRED, 6=NEW MEMBER)
+  // Member Statuses
   const [memberStatuses, setMemberStatuses] = useState([]);
 
   // ─────────────────────────────────────────────────────────
@@ -145,6 +194,19 @@ export default function Notifications() {
     handleCloseConfirm();
   };
 
+  //formatter
+  const formatDateTime = (dateString) => {
+    if (!dateString) return "—";
+    const dateObj = new Date(dateString);
+    return dateObj.toLocaleString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
   // ─────────────────────────────────────────────────────────
   // Snackbar
   // ─────────────────────────────────────────────────────────
@@ -398,17 +460,57 @@ export default function Notifications() {
     );
   };
 
+  // Transform logs: map MemberID to MemberName using allMembers
+  const transposedLogs = mailjetActivityLogs.map((log) => {
+    const member = allMembers.find((m) => m.MemberID === log.MemberID);
+    return { ...log, MemberName: member ? member.FullName : log.MemberID };
+  });
+
+  // Filter logs by search term (searching in MemberName and Message)
+  const filteredLogs = transposedLogs.filter(
+    (log) =>
+      log.MemberName.toLowerCase().includes(logSearchTerm.toLowerCase()) ||
+      log.Message.toLowerCase().includes(logSearchTerm.toLowerCase())
+  );
+
+  // Define columns for the Mailjet Activity Logs with custom rendering for Status
+  const logColumns = [
+    { field: "NotificationID", headerName: "ID", width: 70 },
+    { field: "MemberName", headerName: "Member", width: 150 },
+    {
+      field: "Status",
+      headerName: "Status",
+      width: 120,
+      renderCell: (params) => {
+        const status = params.value;
+        let bgColor = "";
+        if (status === "Sent") bgColor = "green";
+        else if (status === "Failed") bgColor = "red";
+        else if (status === "Pending") bgColor = "blue";
+        else if (status === "Queued") bgColor = "orange";
+        return <Chip label={status} style={{ backgroundColor: bgColor, color: "white" }} />;
+      },
+    },
+    { field: "timestamp", headerName: "Sent Date", width: 250,  renderCell: (params) =>
+      params.value ? formatDateTime(params.value) : "—",},
+    { field: "Message", headerName: "Message", width: 250 },
+  ];
+
   const filteredMailjetMembers = React.useMemo(() => {
     const today = new Date();
     const next7 = new Date();
     next7.setDate(next7.getDate() + 7);
-
+  
     return allMembers.filter((m) => {
-      if (
-        mailjetFilterStatus !== "All" &&
-        String(m.MemberStatusID) !== mailjetFilterStatus
-      ) {
-        return false;
+      // Filter by search term on FullName or Email
+      if (memberSearchTerm) {
+        const search = memberSearchTerm.toLowerCase();
+        if (
+          !m.FullName.toLowerCase().includes(search) &&
+          !m.Email.toLowerCase().includes(search)
+        ) {
+          return false;
+        }
       }
       if (mailjetShowExpiring) {
         if (!m.MembershipEndDate) return false;
@@ -418,7 +520,7 @@ export default function Notifications() {
       }
       return true;
     });
-  }, [allMembers, mailjetFilterStatus, mailjetShowExpiring]);
+  }, [allMembers, mailjetFilterStatus, mailjetShowExpiring, memberSearchTerm]);
 
   const handleSendExpiryReminderSelected = async () => {
     if (selectedMailjetIDs.length === 0) {
@@ -433,7 +535,6 @@ export default function Notifications() {
       if (response.data.status === "success") {
         showSuccessMessage("Expiry reminders sent for selected members!");
       } else {
-        // Could be "no-action" or "partial"
         alert(response.data.message || "Some issue occurred. Check logs.");
       }
       setSelectedMailjetIDs([]);
@@ -443,7 +544,7 @@ export default function Notifications() {
     }
   };
 
-  const handleSendExpiringReminder = async () => {
+  const handleSendExpiryReminder = async () => {
     try {
       const res = await axios.get("/notifications/send-expiring-reminder");
       if (res.data.status === "success") {
@@ -499,7 +600,7 @@ export default function Notifications() {
       const resp = await axios.post("/notifications/send-semaphore-sms", payload);
       if (resp.data.status === "success" || resp.data.status === "partial") {
         showSuccessMessage(
-          `SMS sent successfully! \nSent: ${resp.data.successCount}, Failed: ${resp.data.failCount}`
+          `SMS sent successfully! Sent: ${resp.data.successCount}, Failed: ${resp.data.failCount}`
         );
         setSemaphoreNumbers("");
         setSemaphoreMessage("");
@@ -659,7 +760,6 @@ export default function Notifications() {
                   const lines = ann.Message.split("\n");
                   const parsedTopic = lines[0].replace("Topic: ", "").trim();
                   const parsedMsg = lines.slice(1).join("\n").trim();
-
                   return (
                     <Box
                       key={ann.NotificationID}
@@ -678,7 +778,10 @@ export default function Notifications() {
                       </Typography>
                       <Box sx={{ mt: 1 }}>
                         <Tooltip title="Edit">
-                          <IconButton size="small" onClick={() => handleEditOpen(ann)}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEditOpen(ann)}
+                          >
                             <EditIcon fontSize="inherit" />
                           </IconButton>
                         </Tooltip>
@@ -686,7 +789,9 @@ export default function Notifications() {
                           <IconButton
                             size="small"
                             sx={{ color: "red", ml: 1 }}
-                            onClick={() => handleDeleteAnnouncement(ann.NotificationID)}
+                            onClick={() =>
+                              handleDeleteAnnouncement(ann.NotificationID)
+                            }
                           >
                             <DeleteIcon fontSize="inherit" />
                           </IconButton>
@@ -772,7 +877,14 @@ export default function Notifications() {
               <Typography variant="subtitle1" sx={{ mb: 1 }}>
                 Select Members to Receive the Template
               </Typography>
-              <div style={{ width: "100%", height: 400 }}>
+              <TextField
+                  label="Search Members"
+                  fullWidth
+                  value={memberSearchTerm}
+                  onChange={(e) => setMemberSearchTerm(e.target.value)}
+                  sx={{ mb: 1 }}
+                />
+                <div style={{ width: "100%", height: 400 }}>
                 <DataGrid
                   rows={filteredMailjetMembers}
                   columns={mailjetColumns}
@@ -787,19 +899,26 @@ export default function Notifications() {
               </div>
             </Grid>
 
-            {/* Right: Email Activity Logs DataGrid */}
+            {/* Right: Email Activity Logs */}
             <Grid item xs={6}>
               <Typography variant="subtitle1" sx={{ mb: 1 }}>
                 Email Activity Logs
               </Typography>
+              <TextField
+                label="Search Logs"
+                fullWidth
+                value={logSearchTerm}
+                onChange={(e) => setLogSearchTerm(e.target.value)}
+                sx={{ mb: 1 }}
+              />
               <div style={{ width: "100%", height: 400 }}>
-              <DataGrid
-              rows={mailjetActivityLogs}
-              columns={mailjetLogColumns}
-              getRowId={(row) => row.NotificationID}
-              pageSize={5}
-              rowsPerPageOptions={[5, 10]}
-            />
+                <DataGrid
+                  rows={filteredLogs}
+                  columns={logColumns}
+                  getRowId={(row) => row.NotificationID}
+                  pageSize={5}
+                  rowsPerPageOptions={[5, 10]}
+                />
               </div>
             </Grid>
           </Grid>
@@ -810,7 +929,7 @@ export default function Notifications() {
                 <Button
                   variant="contained"
                   startIcon={<SendIcon />}
-                  onClick={handleSendExpiringReminder}
+                  onClick={handleSendExpiryReminder}
                 >
                   Send Expiry Reminders to All Expiring Members
                 </Button>
