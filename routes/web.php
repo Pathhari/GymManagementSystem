@@ -334,6 +334,11 @@ Route::prefix('notifications')->group(function() {
         ->middleware('auth:owner') // or any guard you prefer
         ->name('notifications.sendExpiringReminder');
 
+    Route::post('/notifications/send-expiring-reminder-selected', [NotificationController::class, 'sendExpiringMembershipReminderForSelected'])
+        ->middleware('auth:owner,admin,staff')
+        ->name('notifications.sendExpiringReminderSelected');
+    
+
     Route::post('/notifications/send-mailjet-template', [NotificationController::class, 'sendMailjetTemplate'])
     ->middleware('auth:owner,admin,staff')
     ->name('notifications.sendMailjetTemplate');

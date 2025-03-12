@@ -487,6 +487,90 @@ public function getStaffNotifications(Request $request)
             'responses' => $responses,
         ], 200);
     }
+
+
+    public function sendExpiringMembershipReminderForSelected(Request $request)
+{
+    $data = $request->validate([
+        'memberIds' => 'required|array',
+    ]);
+
+    // Fetch only the selected members that are expiring in the next 7 days.
+    $expiringMembers = Member::whereIn('MemberID', $data['memberIds'])
+        ->whereBetween('MembershipEndDate', [now(), now()->addDays(7)])
+        ->get();
+
+    if ($expiringMembers->isEmpty()) {
+        return response()->json([
+            'status'  => 'no-action',
+            'message' => 'No selected members are expiring in 7 days.'
+        ], 200);
+    }
+
+    // Initialize Mailjet Client
+    $mj = new \Mailjet\Client(
+        config('services.mailjet.api_key'),
+        config('services.mailjet.secret_key'),
+        true,
+        ['version' => 'v3.1']
+    );
+
+    // Build the messages array
+    $messages = [];
+    foreach ($expiringMembers as $member) {
+        if (!empty($member->Email)) {
+            $memberName = $member->FullName ?: 'Valued Member';
+            $messages[] = [
+                'From' => [
+                    'Email' => config('services.mailjet.from.address'),
+                    'Name'  => config('services.mailjet.from.name'),
+                ],
+                'To' => [
+                    ['Email' => $member->Email, 'Name' => $memberName],
+                ],
+                'TemplateID'       => 6731692, // Your Mailjet Template ID for expiry reminder
+                'TemplateLanguage' => true,
+                'Subject'          => 'CONTNENTAL GYM PAYMENT DUE',
+                'Variables'        => [
+                    'member_name' => $memberName,
+                    'expiry_date' => \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y'),
+                ],
+            ];
+        }
+    }
+
+    if (empty($messages)) {
+        return response()->json([
+            'status'  => 'no-action',
+            'message' => 'No valid email recipients found among selected members.'
+        ], 200);
+    }
+
+    // Send emails in chunks to respect Mailjet limits
+    $chunks = array_chunk($messages, 50);
+    $overallSuccess = 0;
+    $overallFailed  = 0;
+    foreach ($chunks as $chunk) {
+        $body = ['Messages' => $chunk];
+        $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
+        $responseData = $response->getData();
+        foreach ($responseData['Messages'] as $msg) {
+            if (isset($msg['Status']) && strtolower($msg['Status']) === 'success') {
+                $overallSuccess++;
+            } else {
+                $overallFailed++;
+            }
+        }
+    }
+    
+    $status = ($overallFailed === 0) ? 'success' : 'partial';
+    
+    return response()->json([
+        'status'  => $status,
+        'message' => "Expiry reminder emails sent for selected members! Success: {$overallSuccess}, Failed: {$overallFailed}",
+    ], 200);
+}
+
     
     
     

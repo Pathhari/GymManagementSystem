@@ -342,6 +342,24 @@ export default function Notifications() {
     });
   }, [allMembers, mailjetFilterStatus, mailjetShowExpiring]);
 
+  const handleSendExpiryReminderSelected = async () => {
+    if (selectedMailjetIDs.length === 0) {
+      alert("Please select at least one member.");
+      return;
+    }
+    try {
+      const response = await axios.post("/notifications/send-expiring-reminder-selected", {
+        memberIds: selectedMailjetIDs,
+      });
+      alert(response.data.message || "Expiry reminders sent for selected members!");
+      setSelectedMailjetIDs([]);
+    } catch (error) {
+      console.error("Failed to send expiry reminders for selected members:", error);
+      alert("Error sending expiry reminders for selected members.");
+    }
+  };
+  
+
   // ===================== SEMAPHORE =====================
   const handleSemaphoreSelection = (ids) => {
     setSelectedSemaphoreIDs(ids);
@@ -671,21 +689,37 @@ export default function Notifications() {
           />
 
           </div>
-          <Box sx={{ mt: 2 }}>
+          <Box sx={{ mt: 2, display: "flex", gap: 2 }}>
+          {mailjetShowExpiring ? (
+            <>
+              <Button
+                variant="contained"
+                startIcon={<SendIcon />}
+                onClick={handleSendExpiringReminder}
+              >
+                Send Expiry Reminders to All Expiring Members
+              </Button>
+              {selectedMailjetIDs.length > 0 && (
+                <Button
+                  variant="contained"
+                  startIcon={<SendIcon />}
+                  onClick={handleSendExpiryReminderSelected}
+                >
+                  Send Expiry Reminder to Selected Members
+                </Button>
+              )}
+            </>
+          ) : (
             <Button
               variant="contained"
               startIcon={<SendIcon />}
-              onClick={
-                mailjetShowExpiring
-                  ? handleSendExpiringReminder
-                  : handleSendMailjetTemplate
-              }
+              onClick={handleSendMailjetTemplate}
             >
-              {mailjetShowExpiring
-                ? "Send Expiry Reminders"
-                : "Send Templated Email"}
+              Send Templated Email
             </Button>
-          </Box>
+          )}
+        </Box>
+
         </Paper>
       )}
 
