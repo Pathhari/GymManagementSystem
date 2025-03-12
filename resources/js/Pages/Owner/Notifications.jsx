@@ -58,9 +58,17 @@ const staffColumns = [
   { field: "StaffID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Email", headerName: "Email", width: 220 },
-  { field: "Role", headerName: "Role", width: 150 }, // Optional, helpful info
+  { field: "Role", headerName: "Role", width: 150 },
 ];
 
+// New columns for the Mailjet activity logs
+const mailjetLogColumns = [
+  { field: "MemberID", headerName: "Member ID", width: 70 },
+  { field: "Email", headerName: "Email", width: 200 },
+  { field: "status", headerName: "Status", width: 120 },
+  { field: "timestamp", headerName: "Timestamp", width: 180 },
+  { field: "message", headerName: "Message", width: 250 },
+];
 
 export default function Notifications() {
   // Tabs
@@ -88,6 +96,8 @@ export default function Notifications() {
   const [templateId, setTemplateId] = useState("");
   const [mailjetFilterStatus, setMailjetFilterStatus] = useState("All");
   const [mailjetShowExpiring, setMailjetShowExpiring] = useState(false);
+  // New state for Mailjet activity logs
+  const [mailjetActivityLogs, setMailjetActivityLogs] = useState([]);
 
   // Semaphore
   const [semaphoreMembers, setSemaphoreMembers] = useState([]);
@@ -115,7 +125,13 @@ export default function Notifications() {
     loadMemberStatuses();
     loadStaffList();
   }, [activeTab]);
-  
+
+  // Load Mailjet activity logs when Mailjet tab is active
+  useEffect(() => {
+    if (activeTab === 1) {
+      loadMailjetActivityLogs();
+    }
+  }, [activeTab]);
 
   const loadAnnouncements = async () => {
     try {
@@ -161,12 +177,20 @@ export default function Notifications() {
   // ---------------- LOAD STAFF LIST FOR STAFF ANNOUNCEMENTS ---------------
   const loadStaffList = async () => {
     try {
-      // Adjust this endpoint if necessary
       const response = await axios.get("/staff");
-      // e.g. if response.data is an array of staff, set it:
       setStaffList(response.data || []);
     } catch (error) {
       console.error("Failed to load staff list:", error);
+    }
+  };
+
+  // Function to load Mailjet activity logs
+  const loadMailjetActivityLogs = async () => {
+    try {
+      const res = await axios.get("/notifications/mailjet-activity-logs");
+      setMailjetActivityLogs(res.data.logs || []);
+    } catch (error) {
+      console.error("Error loading Mailjet logs:", error);
     }
   };
 
@@ -243,7 +267,6 @@ export default function Notifications() {
 
   // ============== STAFF-SPECIFIC ANNOUNCEMENTS (sendStaffNotification) ==============
   const handleStaffSelection = (staffIds) => {
-    // staffIds is an array of row IDs from the DataGrid
     setSelectedStaff(staffIds);
   };
 
@@ -265,7 +288,6 @@ export default function Notifications() {
     try {
       const resp = await axios.post("/notifications/send-staff", payload);
       alert(resp.data.message || "Staff notification sent!");
-      // Optionally reset form
       setSelectedStaff([]);
       setStaffSubject("");
       setStaffMessage("");
@@ -279,6 +301,7 @@ export default function Notifications() {
   const handleMailjetSelection = (ids) => {
     setSelectedMailjetIDs(ids);
   };
+
   const handleSendMailjetTemplate = async () => {
     if (!templateId.trim()) {
       alert("Please enter the Mailjet Template ID.");
@@ -303,7 +326,12 @@ export default function Notifications() {
   
       if (response.data.status === "success") {
         alert("Template emails sent!");
-        setSelectedMailjetIDs([]); // ✅ Move inside success block
+        setSelectedMailjetIDs([]);
+        if (response.data.logs) {
+          setMailjetActivityLogs(response.data.logs);
+        } else {
+          loadMailjetActivityLogs();
+        }
       } else if (response.data.status === "no-action") {
         alert("No valid members or emails found.");
       } else {
@@ -316,22 +344,18 @@ export default function Notifications() {
     }
   };
   
-
   const filteredMailjetMembers = React.useMemo(() => {
     const today = new Date();
     const next7 = new Date();
-    next7.setDate(next7.getDate() + 7); // 7 days from now
-    next7.setDate(next7.getDate() + 7); // 7 days from now
+    next7.setDate(next7.getDate() + 7);
 
     return allMembers.filter((m) => {
-      // Filter by status
       if (
         mailjetFilterStatus !== "All" &&
         String(m.MemberStatusID) !== mailjetFilterStatus
       ) {
         return false;
       }
-      // Filter by “Expiring in 7 days”
       if (mailjetShowExpiring) {
         if (!m.MembershipEndDate) return false;
         const endDateObj = new Date(m.MembershipEndDate);
@@ -358,12 +382,12 @@ export default function Notifications() {
       alert("Error sending expiry reminders for selected members.");
     }
   };
-  
 
   // ===================== SEMAPHORE =====================
   const handleSemaphoreSelection = (ids) => {
     setSelectedSemaphoreIDs(ids);
   };
+
   const handleAutoFillSemaphoreNumbers = () => {
     const selectedRows = semaphoreMembers.filter((m) =>
       selectedSemaphoreIDs.includes(m.MemberID)
@@ -372,13 +396,13 @@ export default function Notifications() {
     const phones = selectedRows
       .map((m) => {
         if (!m.Phone) return null;
-        let formatted = m.Phone.replace(/\D/g, ""); // Remove non-numeric characters
+        let formatted = m.Phone.replace(/\D/g, "");
         if (formatted.startsWith("09")) {
           formatted = "63" + formatted.substring(1);
         }
         return formatted;
       })
-      .filter(Boolean); // Remove null values
+      .filter(Boolean);
   
     if (phones.length === 0) {
       alert("No valid phone numbers among selected members.");
@@ -386,42 +410,40 @@ export default function Notifications() {
     }
     setSemaphoreNumbers(phones.join(","));
   };
-  
 
   const handleSendSemaphoreSMS = async () => {
     if (!semaphoreNumbers.trim()) {
-        alert("Please provide at least one mobile number.");
-        return;
+      alert("Please provide at least one mobile number.");
+      return;
     }
     if (!semaphoreMessage.trim()) {
-        alert("Please enter your SMS message.");
-        return;
+      alert("Please enter your SMS message.");
+      return;
     }
     const payload = {
-        numbers: semaphoreNumbers,
-        message: semaphoreMessage,
-        senderName: semaphoreSenderName || "Contnental",
+      numbers: semaphoreNumbers,
+      message: semaphoreMessage,
+      senderName: semaphoreSenderName || "Contnental",
     };
     if (!window.confirm("Send the above message via Semaphore?")) {
-        return;
+      return;
     }
     try {
-        const resp = await axios.post("/notifications/send-semaphore-sms", payload);
-        if (resp.data.status === "success" || resp.data.status === "partial") {
-          alert(`SMS sent successfully! ✅ \n\n📩 Sent: ${resp.data.successCount} \n❌ Failed: ${resp.data.failCount}`);      
-            setSemaphoreNumbers("");
-            setSemaphoreMessage("");
-            setSemaphoreSenderName("");
-        } else {
-            console.error("Semaphore API Response Error:", resp.data);
-            alert(`Something went wrong: ${resp.data.message}`);
-        }
+      const resp = await axios.post("/notifications/send-semaphore-sms", payload);
+      if (resp.data.status === "success" || resp.data.status === "partial") {
+        alert(`SMS sent successfully! ✅ \n\n📩 Sent: ${resp.data.successCount} \n❌ Failed: ${resp.data.failCount}`);
+        setSemaphoreNumbers("");
+        setSemaphoreMessage("");
+        setSemaphoreSenderName("");
+      } else {
+        console.error("Semaphore API Response Error:", resp.data);
+        alert(`Something went wrong: ${resp.data.message}`);
+      }
     } catch (error) {
-        console.error("Semaphore SMS error:", error);
-        alert("Error sending Semaphore SMS. Check logs.");
+      console.error("Semaphore SMS error:", error);
+      alert("Error sending Semaphore SMS. Check logs.");
     }
-};
-
+  };
 
   const filteredSemaphoreMembers = semaphoreMembers.filter((m) => {
     if (semaphoreFilterStatus === "All") return true;
@@ -528,12 +550,12 @@ export default function Notifications() {
                 Select Staff to Receive This Announcement
               </Typography>
               <div style={{ width: "100%", height: 300, marginBottom: 16 }}>
-              <DataGrid
+                <DataGrid
                   rows={staffList}
                   columns={staffColumns}
                   getRowId={(row) => row.StaffID}
                   checkboxSelection
-                  rowSelectionModel={selectedStaff} // <-- add this
+                  rowSelectionModel={selectedStaff}
                   onRowSelectionModelChange={(newSelection) => {
                     const numericIDs = newSelection.map(Number);
                     handleStaffSelection(numericIDs);
@@ -672,54 +694,75 @@ export default function Notifications() {
               label="Expiring in 7 days"
             />
           </Box>
-          <Typography variant="subtitle1" sx={{ mb: 1 }}>
-            Select Members to Receive the Template
-          </Typography>
-          <div style={{ width: "100%", height: 400 }}>
-          <DataGrid
-            rows={filteredMailjetMembers}
-            columns={mailjetColumns}
-            getRowId={(row) => row.MemberID}
-            checkboxSelection
-            onRowSelectionModelChange={(newSelection) => {
-              handleMailjetSelection(newSelection.map(Number)); // Convert to number
-            }}
-            pageSize={5}
-            rowsPerPageOptions={[5, 10]}
-          />
 
-          </div>
+          <Grid container spacing={2}>
+            {/* Left: Member Selection DataGrid */}
+            <Grid item xs={6}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                Select Members to Receive the Template
+              </Typography>
+              <div style={{ width: "100%", height: 400 }}>
+                <DataGrid
+                  rows={filteredMailjetMembers}
+                  columns={mailjetColumns}
+                  getRowId={(row) => row.MemberID}
+                  checkboxSelection
+                  onRowSelectionModelChange={(newSelection) => {
+                    handleMailjetSelection(newSelection.map(Number));
+                  }}
+                  pageSize={5}
+                  rowsPerPageOptions={[5, 10]}
+                />
+              </div>
+            </Grid>
+
+            {/* Right: Email Activity Logs DataGrid */}
+            <Grid item xs={6}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                Email Activity Logs
+              </Typography>
+              <div style={{ width: "100%", height: 400 }}>
+                <DataGrid
+                  rows={mailjetActivityLogs}
+                  columns={mailjetLogColumns}
+                  getRowId={(row) => row.logId || row.MemberID}
+                  pageSize={5}
+                  rowsPerPageOptions={[5, 10]}
+                />
+              </div>
+            </Grid>
+          </Grid>
+
           <Box sx={{ mt: 2, display: "flex", gap: 2 }}>
-          {mailjetShowExpiring ? (
-            <>
-              <Button
-                variant="contained"
-                startIcon={<SendIcon />}
-                onClick={handleSendExpiringReminder}
-              >
-                Send Expiry Reminders to All Expiring Members
-              </Button>
-              {selectedMailjetIDs.length > 0 && (
+            {mailjetShowExpiring ? (
+              <>
                 <Button
                   variant="contained"
                   startIcon={<SendIcon />}
-                  onClick={handleSendExpiryReminderSelected}
+                  onClick={handleSendExpiringReminder}
                 >
-                  Send Expiry Reminder to Selected Members
+                  Send Expiry Reminders to All Expiring Members
                 </Button>
-              )}
-            </>
-          ) : (
-            <Button
-              variant="contained"
-              startIcon={<SendIcon />}
-              onClick={handleSendMailjetTemplate}
-            >
-              Send Templated Email
-            </Button>
-          )}
-        </Box>
-
+                {selectedMailjetIDs.length > 0 && (
+                  <Button
+                    variant="contained"
+                    startIcon={<SendIcon />}
+                    onClick={handleSendExpiryReminderSelected}
+                  >
+                    Send Expiry Reminder to Selected Members
+                  </Button>
+                )}
+              </>
+            ) : (
+              <Button
+                variant="contained"
+                startIcon={<SendIcon />}
+                onClick={handleSendMailjetTemplate}
+              >
+                Send Templated Email
+              </Button>
+            )}
+          </Box>
         </Paper>
       )}
 
@@ -756,7 +799,6 @@ export default function Notifications() {
               checkboxSelection
               rowSelectionModel={selectedSemaphoreIDs}
               onRowSelectionModelChange={(newSelection) => {
-                // newSelection might be ["1201", "1202"], so convert them if needed
                 setSelectedSemaphoreIDs(newSelection.map(Number));
               }}
               pageSize={5}
