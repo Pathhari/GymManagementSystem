@@ -406,81 +406,85 @@ public function getStaffNotifications(Request $request)
         return redirect()->back()->with('success','Template approved.');
     }
     public function sendExpiringMembershipReminder(Request $request)
-    {
-        // Expecting an array of member IDs and require at least one element
-        $data = $request->validate([
-            'memberIds' => 'required|array|min:1',
-        ]);
-    
-        // Optionally, verify that each member has a MembershipEndDate equal to now()+7 days.
-        $targetDate = now()->addDays(7)->toDateString();
-        $members = Member::whereIn('MemberID', $data['memberIds'])
-            ->whereDate('MembershipEndDate', $targetDate)
-            ->get();
-    
-        if ($members->isEmpty()) {
-            return response()->json([
-                'status'  => 'no-action',
-                'message' => 'No members with expiring memberships found for the selected criteria.'
-            ], 200);
-        }
-    
-        // Initialize Mailjet Client
-        $mj = new \Mailjet\Client(
-            config('services.mailjet.api_key'),
-            config('services.mailjet.secret_key'),
-            true,
-            ['version' => 'v3.1']
-        );
-    
-        // Build the messages for each member
-        $messages = [];
-        foreach ($members as $member) {
-            if (!empty($member->Email)) {
-                $memberName = !empty($member->FullName) ? $member->FullName : 'Valued Member';
-                $messages[] = [
-                    'From' => [
-                        'Email' => config('services.mailjet.from.address'),
-                        'Name'  => config('services.mailjet.from.name'),
-                    ],
-                    'To' => [
-                        ['Email' => $member->Email, 'Name' => $memberName],
-                    ],
-                    'TemplateID'       => 6731692, // Your Mailjet Template ID
-                    'TemplateLanguage' => true,
-                    'Subject'          => 'CONTINENTAL GYM PAYMENT DUE',
-                    'Variables'        => [
-                        'member_name' => $memberName,
-                        'expiry_date' => \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y'),
-                    ],
-                ];
-            }
-        }
-    
-        // Send emails if there are messages
-        if (!empty($messages)) {
-            $body = ['Messages' => $messages];
-            $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
-    
-            if ($response->success()) {
-                return response()->json([
-                    'status'  => 'success',
-                    'message' => 'Expiry reminder emails sent!'
-                ], 200);
-            } else {
-                return response()->json([
-                    'status'  => 'error',
-                    'message' => 'Mailjet API call failed',
-                    'data'    => $response->getData()
-                ], 500);
-            }
-        }
-    
+{
+    // 1) Fetch members expiring in 7 days
+    $expiringSoon = Member::whereBetween('MembershipEndDate', [now(), now()->addDays(7)])->get();
+
+    if ($expiringSoon->isEmpty()) {
         return response()->json([
             'status'  => 'no-action',
-            'message' => 'No valid email recipients found.'
+            'message' => 'No members expiring in 7 days.'
         ], 200);
     }
+
+    // 2) Initialize Mailjet Client
+    $mj = new Client(
+        config('services.mailjet.api_key'),
+        config('services.mailjet.secret_key'),
+        true,
+        ['version' => 'v3.1']
+    );
+
+    // 3) Build the messages
+    $messages = [];
+    foreach ($expiringSoon as $member) {
+        if (!empty($member->Email)) {
+            // Ensure member_name is not null
+            $memberName = !empty($member->FullName) ? $member->FullName : 'Valued Member';
+
+            $msg = [
+                'From' => [
+                    'Email' => config('services.mailjet.from.address'),
+                    'Name'  => config('services.mailjet.from.name'),
+                ],
+                'To' => [
+                    ['Email' => $member->Email, 'Name' => $memberName],
+                ],
+                'TemplateID'      => 6731692, // Your Mailjet Template ID
+                'TemplateLanguage' => true,
+                'Subject'         => 'CONTNENTAL GYM PAYMENT DUE',
+                'Variables' => [
+                    'member_name' => $memberName,
+                    'expiry_date' => \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y'),
+                ],
+            ];
+
+            // Log each message before sending to Mailjet
+            \Log::info('Mailjet Message Prepared:', $msg);
+
+            $messages[] = $msg;
+        }
+    }
+
+    // 4) Send emails only if there are recipients
+    if (!empty($messages)) {
+        $body = ['Messages' => $messages];
+        $response = $mj->post(Resources::$Email, ['body' => $body]);
+
+        // Log Mailjet Response for debugging
+        \Log::info('Mailjet Response:', $response->getData());
+
+        if ($response->success()) {
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Expiry reminder emails sent!',
+                'data'    => $response->getData()
+            ], 200);
+        } else {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Mailjet API call failed',
+                'data'    => $response->getData()
+            ], 500);
+        }
+    }
+
+    return response()->json([
+        'status'  => 'no-action',
+        'message' => 'No valid email recipients found.'
+    ], 200);
+}
+
     
     
 
@@ -638,51 +642,63 @@ public function getStaffNotifications(Request $request)
     public function sendSemaphoreSMS(Request $request)
     {
         $data = $request->validate([
-            'numbers'    => 'required|string', // "09998887777,09171234567"
+            'numbers'    => 'required|string', // Example: "09998887777,09171234567"
             'message'    => 'required|string',
             'senderName' => 'nullable|string',
         ]);
     
-        // Convert comma-separated to array:
-        $numbersArray = array_filter(array_map('trim', explode(',', $data['numbers'])));
+        // ✅ Auto-format phone numbers to correct format (09xxxxxx → 639xxxxxx)
+        $numbersArray = array_map(function ($number) {
+            $cleanNumber = preg_replace('/\D/', '', $number); // Remove non-numeric characters
+            if (substr($cleanNumber, 0, 2) === '09') {
+                $cleanNumber = '63' . substr($cleanNumber, 1);
+            }
+            return $cleanNumber;
+        }, explode(',', $data['numbers']));
+    
         if (empty($numbersArray)) {
-            return response()->json(['status'=>'error','message'=>'No valid phone numbers provided'], 422);
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'No valid phone numbers provided'
+            ], 422);
         }
     
-        // 1) Insert a local Notification row for each phone number
-        //    (We do not have direct "MemberID" unless we do advanced matching. Up to you.)
+        // ✅ Insert into notifications log with "Queued" status
         $notifs = [];
         foreach ($numbersArray as $phone) {
             $notifs[$phone] = Notification::create([
-                'MemberID'          => null,  // or link if known
-                'EventTrigger'      => 'SemaphoreBatch',
-                'Message'           => 'Queued SMS to ' . $phone,
-                'NotificationMethod'=> 'SMS',
-                'SentDate'          => null,
-                'Status'            => 'Queued',
+                'MemberID'           => null, 
+                'EventTrigger'       => 'SemaphoreBatch',
+                'Message'            => 'Queued SMS to ' . $phone,
+                'NotificationMethod' => 'SMS',
+                'SentDate'           => null,
+                'Status'             => 'Queued',
             ]);
         }
     
-        // 2) Send the request to Semaphore
+        // ✅ Check API key
         $apiKey = config('services.semaphore.key');
         if (!$apiKey) {
-            // Mark all as failed
-            foreach ($notifs as $phone => $row) {
+            foreach ($notifs as $row) {
                 $row->update([
                     'Status'  => 'Failed',
-                    'Message' => "Missing SEMAPHORE_KEY in config!",
+                    'Message' => "Missing SEMAPHORE_API_KEY in config!",
                     'SentDate'=> now(),
                 ]);
             }
-    
-            return response()->json(['status'=>'error','message'=>'Missing Semaphore API Key'], 500);
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Missing Semaphore API Key'
+            ], 500);
         }
     
+      
+        $senderName = "Contnental"; 
         $postData = [
             'apikey'     => $apiKey,
-            'number'     => implode(',', $numbersArray),  // Comma separated
+            'number'     => implode(',', $numbersArray),
             'message'    => $data['message'],
-            'sendername' => $data['senderName'] ?? 'SEMAPHORE'
+            'sendername' => $senderName,
         ];
     
         try {
@@ -692,58 +708,65 @@ public function getStaffNotifications(Request $request)
             ]);
     
             $json = json_decode($response->getBody()->getContents(), true);
-    
+
+            // ✅ Log full Semaphore API response before processing
+            \Log::info('Semaphore API Raw Response:', $json);
+            
+            // ✅ Check if response is valid
             if (!is_array($json)) {
-                // We have no structured data, so let's fail everything
-                foreach ($notifs as $phone => $row) {
+                foreach ($notifs as $row) {
                     $row->update([
-                        'Status' => 'Failed',
-                        'Message' => "No valid JSON from Semaphore",
+                        'Status'  => 'Failed',
+                        'Message' => "Invalid JSON from Semaphore",
                         'SentDate'=> now(),
                     ]);
                 }
-    
                 return response()->json([
-                    'status'=>'error',
-                    'message'=>'Unexpected Semaphore response format.',
-                    'raw' => $json
+                    'status'  => 'error',
+                    'message' => 'Unexpected Semaphore response format.',
+                    'raw'     => $json
                 ], 500);
             }
+            
     
-            // 3) Partial results from Semaphore. Example response might be:
-            //  [
-            //    {"message_id":12345,"user_id":678,"account_id":111,"recipient":"09998887777","status":"Queued"...},
-            //    {"message_id":12346,"user_id":678,"account_id":111,"recipient":"09171234567","status":"Failed"...}
-            //  ]
-            // We loop each item and update the local row
+            // ✅ Update notification status based on API response
             foreach ($json as $item) {
                 $recipient = $item['recipient'];
                 $status    = $item['status'] ?? 'Unknown';
+                $messageId = $item['message_id'] ?? null;
     
                 if (isset($notifs[$recipient])) {
-                    $row = $notifs[$recipient];
-                    $finalStatus = ($status === 'Queued' || $status === 'Pending')
-                        ? 'Sent'    // or "Delivered" if you want to unify
-                        : 'Failed'; // or "Error"
+                    $notif = $notifs[$recipient];
     
-                    $row->update([
+                    // ✅ Handle status properly
+                    if ($status === 'Queued' || $status === 'Pending') {
+                        $finalStatus = 'Pending'; // Awaiting delivery
+                    } elseif ($status === 'Sent') {
+                        $finalStatus = 'Sent';
+                    } else {
+                        $finalStatus = 'Failed';
+                    }
+    
+                    // ✅ Update database
+                    $notif->update([
                         'Status'  => $finalStatus,
-                        'Message' => "Semaphore: $status for {$recipient}",
+                        'Message' => "Semaphore: $status (MsgID: $messageId) for {$recipient}",
                         'SentDate'=> now(),
                     ]);
                 }
             }
     
-            // 4) Summarize
+            // ✅ Count sent and failed messages
             $successCount = Notification::whereIn(
                 'NotificationID', 
                 array_values(array_map(fn($n) => $n->NotificationID, $notifs))
-            )->where('Status','Sent')
-             ->count();
+            )->where('Status', 'Sent')->count();
+    
             $failCount = count($notifs) - $successCount;
     
+            // ✅ Return response
             return response()->json([
-                'status'       => 'partial',
+                'status'       => $failCount === 0 ? 'success' : 'partial',
                 'message'      => "Semaphore request done. Success: $successCount, Failed: $failCount",
                 'successCount' => $successCount,
                 'failCount'    => $failCount,
@@ -751,7 +774,10 @@ public function getStaffNotifications(Request $request)
             ]);
     
         } catch (\Exception $ex) {
-            // If the entire call failed (e.g. network error)
+            // ✅ Log the exact error
+            \Log::error('Semaphore API Error: ' . $ex->getMessage());
+    
+            // ✅ Update database as failed
             foreach ($notifs as $row) {
                 $row->update([
                     'Status'  => 'Failed',
@@ -762,10 +788,11 @@ public function getStaffNotifications(Request $request)
     
             return response()->json([
                 'status'  => 'error',
-                'message' => $ex->getMessage(),
+                'message' => 'Error sending SMS via Semaphore: ' . $ex->getMessage(),
             ], 500);
         }
     }
+    
     
     public function notifyCoachOfBookingMailjet(Request $request)
     {

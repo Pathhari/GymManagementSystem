@@ -244,9 +244,9 @@ Route::prefix('invoices')->middleware('multiGuard:owner,admin,staff')->group(fun
         });
 
 /*
-|-------------------------------------------------------------------------- 
-| NotificationController Routes (Updated for Staff)
-|-------------------------------------------------------------------------- 
+|--------------------------------------------------------------------------
+| NotificationController
+|--------------------------------------------------------------------------
 */
 use App\Http\Controllers\NotificationController;
 
@@ -328,29 +328,21 @@ Route::prefix('notifications')->group(function() {
     Route::post('templates/{id}/approve', [NotificationController::class, 'approveTemplate'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('notifications.templates.approve');
-
-    // Expiry Reminder – updated to be a POST route accessible by owner, admin, and staff
-    Route::post('send-expiring-reminder', [NotificationController::class, 'sendExpiringMembershipReminder'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('notifications.sendExpiringReminder');
-
-    // Mailjet Template Send
-    Route::post('send-mailjet-template', [NotificationController::class, 'sendMailjetTemplate'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('notifications.sendMailjetTemplate');
-
-    // Semaphore SMS
-    Route::post('send-semaphore-sms', [NotificationController::class, 'sendSemaphoreSMS'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('notifications.sendSemaphoreSMS');
-
-    // Coach Booking Notification
-    Route::post('notify-coach-booking-mailjet', [NotificationController::class, 'notifyCoachOfBookingMailjet'])
-        ->middleware('multiGuard:owner,admin,staff')
-        ->name('notifications.notifyCoachBookingMailjet');
 });
 
+    Route::get('/notifications/send-expiring-reminder', [NotificationController::class, 'sendExpiringMembershipReminder'])
+        ->middleware('auth:owner') // or any guard you prefer
+        ->name('notifications.sendExpiringReminder');
 
+    Route::post('/notifications/send-mailjet-template', [NotificationController::class, 'sendMailjetTemplate'])
+    ->middleware('auth:owner,admin,staff')
+    ->name('notifications.sendMailjetTemplate');
+
+    Route::post('/notifications/send-semaphore-sms', [NotificationController::class, 'sendSemaphoreSMS'])
+    ->middleware('auth:owner,admin,staff');
+
+    Route::post('/notifications/notify-coach-booking-mailjet', [NotificationController::class, 'notifyCoachOfBookingMailjet'])
+    ->middleware('multiGuard:owner,admin,staff');
 /*
 |--------------------------------------------------------------------------
 | MembershipController
