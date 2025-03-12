@@ -701,16 +701,16 @@ public function getStaffNotifications(Request $request)
         ]);
     }
     public function getMailjetActivityLogs(Request $request)
-{
-    // Retrieve notifications that represent Mailjet email sends.
-    // Adjust the where condition if you use a different event trigger.
-    $logs = Notification::where('EventTrigger', 'MailjetBatch')
-            ->orderBy('NotificationID', 'desc')
-            ->get(['MemberID', 'Status', 'SentDate as timestamp', 'Message']);
-
-    return response()->json(['logs' => $logs]);
-}
-
+    {
+        // Retrieve notifications that represent Mailjet email sends.
+        // Include NotificationID to use as the unique row id.
+        $logs = Notification::where('EventTrigger', 'MailjetBatch')
+                ->orderBy('NotificationID', 'desc')
+                ->get(['NotificationID', 'MemberID', 'Status', 'SentDate as timestamp', 'Message']);
+    
+        return response()->json(['logs' => $logs]);
+    }
+    
     
 
     public function sendSemaphoreSMS(Request $request)

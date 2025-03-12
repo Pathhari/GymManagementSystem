@@ -793,13 +793,13 @@ export default function Notifications() {
                 Email Activity Logs
               </Typography>
               <div style={{ width: "100%", height: 400 }}>
-                <DataGrid
-                  rows={mailjetActivityLogs}
-                  columns={mailjetLogColumns}
-                  getRowId={(row) => row.NotificationID}
-                  pageSize={5}
-                  rowsPerPageOptions={[5, 10]}
-                />
+              <DataGrid
+              rows={mailjetActivityLogs}
+              columns={mailjetLogColumns}
+              getRowId={(row) => row.NotificationID}
+              pageSize={5}
+              rowsPerPageOptions={[5, 10]}
+            />
               </div>
             </Grid>
           </Grid>
