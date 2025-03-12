@@ -26,7 +26,6 @@ import {
   Tab,
   InputAdornment,
 } from "@mui/material";
-import Autocomplete from "@mui/material/Autocomplete";
 import { DataGrid } from "@mui/x-data-grid";
 
 // ===== MUI Icons =====
@@ -61,13 +60,13 @@ const staffColumns = [
   { field: "Role", headerName: "Role", width: 150 },
 ];
 
-// New columns for the Mailjet activity logs
+// New columns for the Mailjet activity logs (adjusted to match your notifications table)
 const mailjetLogColumns = [
-  { field: "MemberID", headerName: "Member ID", width: 70 },
-  { field: "Email", headerName: "Email", width: 200 },
-  { field: "status", headerName: "Status", width: 120 },
-  { field: "timestamp", headerName: "Timestamp", width: 180 },
-  { field: "message", headerName: "Message", width: 250 },
+  { field: "NotificationID", headerName: "ID", width: 70 },
+  { field: "MemberID", headerName: "Member ID", width: 100 },
+  { field: "Status", headerName: "Status", width: 120 },
+  { field: "SentDate", headerName: "Sent Date", width: 180 },
+  { field: "Message", headerName: "Message", width: 250 },
 ];
 
 export default function Notifications() {
@@ -96,7 +95,7 @@ export default function Notifications() {
   const [templateId, setTemplateId] = useState("");
   const [mailjetFilterStatus, setMailjetFilterStatus] = useState("All");
   const [mailjetShowExpiring, setMailjetShowExpiring] = useState(false);
-  // New state for Mailjet activity logs
+  // State for Mailjet activity logs
   const [mailjetActivityLogs, setMailjetActivityLogs] = useState([]);
 
   // Semaphore
@@ -174,7 +173,7 @@ export default function Notifications() {
     setMemberStatuses(statuses);
   };
 
-  // ---------------- LOAD STAFF LIST FOR STAFF ANNOUNCEMENTS ---------------
+  // Load staff list for staff notifications
   const loadStaffList = async () => {
     try {
       const response = await axios.get("/staff");
@@ -184,7 +183,7 @@ export default function Notifications() {
     }
   };
 
-  // Function to load Mailjet activity logs
+  // Function to load Mailjet activity logs from the back-end
   const loadMailjetActivityLogs = async () => {
     try {
       const res = await axios.get("/notifications/mailjet-activity-logs");
@@ -236,7 +235,7 @@ export default function Notifications() {
       return;
     }
     try {
-      const res = await axios.put(`/notifications/announcements/${editData.id}`, { 
+      const res = await axios.put(`/notifications/announcements/${editData.id}`, {
         topic: editData.topic,
         message: editData.message,
       });
@@ -258,7 +257,9 @@ export default function Notifications() {
     }
     try {
       await axios.delete(`/notifications/announcements/${notifId}`);
-      setAnnouncements((prev) => prev.filter((a) => a.NotificationID !== notifId));
+      setAnnouncements((prev) =>
+        prev.filter((a) => a.NotificationID !== notifId)
+      );
     } catch (error) {
       console.error("Delete announcement failed:", error);
       alert("Failed to delete announcement.");
@@ -317,21 +318,17 @@ export default function Notifications() {
       )
     ) {
       return;
-    }    
+    }
     try {
       const response = await axios.post("/notifications/send-mailjet-template", {
         templateId: Number(templateId),
         memberIds: selectedMailjetIDs,
       });
-  
+
       if (response.data.status === "success") {
         alert("Template emails sent!");
         setSelectedMailjetIDs([]);
-        if (response.data.logs) {
-          setMailjetActivityLogs(response.data.logs);
-        } else {
-          loadMailjetActivityLogs();
-        }
+        loadMailjetActivityLogs();
       } else if (response.data.status === "no-action") {
         alert("No valid members or emails found.");
       } else {
@@ -343,7 +340,7 @@ export default function Notifications() {
       alert("Failed to send Mailjet template.");
     }
   };
-  
+
   const filteredMailjetMembers = React.useMemo(() => {
     const today = new Date();
     const next7 = new Date();
@@ -372,9 +369,10 @@ export default function Notifications() {
       return;
     }
     try {
-      const response = await axios.post("/notifications/send-expiring-reminder-selected", {
-        memberIds: selectedMailjetIDs,
-      });
+      const response = await axios.post(
+        "/notifications/send-expiring-reminder-selected",
+        { memberIds: selectedMailjetIDs }
+      );
       alert(response.data.message || "Expiry reminders sent for selected members!");
       setSelectedMailjetIDs([]);
     } catch (error) {
@@ -392,7 +390,7 @@ export default function Notifications() {
     const selectedRows = semaphoreMembers.filter((m) =>
       selectedSemaphoreIDs.includes(m.MemberID)
     );
-  
+
     const phones = selectedRows
       .map((m) => {
         if (!m.Phone) return null;
@@ -403,7 +401,7 @@ export default function Notifications() {
         return formatted;
       })
       .filter(Boolean);
-  
+
     if (phones.length === 0) {
       alert("No valid phone numbers among selected members.");
       return;
@@ -431,7 +429,9 @@ export default function Notifications() {
     try {
       const resp = await axios.post("/notifications/send-semaphore-sms", payload);
       if (resp.data.status === "success" || resp.data.status === "partial") {
-        alert(`SMS sent successfully! ✅ \n\n📩 Sent: ${resp.data.successCount} \n❌ Failed: ${resp.data.failCount}`);
+        alert(
+          `SMS sent successfully! ✅ \n\n📩 Sent: ${resp.data.successCount} \n❌ Failed: ${resp.data.failCount}`
+        );
         setSemaphoreNumbers("");
         setSemaphoreMessage("");
         setSemaphoreSenderName("");
@@ -725,7 +725,7 @@ export default function Notifications() {
                 <DataGrid
                   rows={mailjetActivityLogs}
                   columns={mailjetLogColumns}
-                  getRowId={(row) => row.logId || row.MemberID}
+                  getRowId={(row) => row.NotificationID}
                   pageSize={5}
                   rowsPerPageOptions={[5, 10]}
                 />

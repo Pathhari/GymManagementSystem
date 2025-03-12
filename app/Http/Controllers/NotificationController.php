@@ -440,7 +440,7 @@ public function getStaffNotifications(Request $request)
                     ],
                     'TemplateID'       => 6731692, // Your Mailjet Template ID
                     'TemplateLanguage' => true,
-                    'Subject'          => 'CONTNENTAL GYM PAYMENT DUE',
+                    'Subject'          => 'CONTNENTAL FITNESS GYM PAYMENT DUE',
                     'Variables'        => [
                         'member_name' => $memberName,
                         'expiry_date' => \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y'),
@@ -530,7 +530,7 @@ public function getStaffNotifications(Request $request)
                 ],
                 'TemplateID'       => 6731692, // Your Mailjet Template ID for expiry reminder
                 'TemplateLanguage' => true,
-                'Subject'          => 'CONTNENTAL GYM PAYMENT DUE',
+                'Subject'          => 'CONTNENTAL FITNESS GYM PAYMENT DUE',
                 'Variables'        => [
                     'member_name' => $memberName,
                     'expiry_date' => \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y'),
@@ -632,7 +632,7 @@ public function getStaffNotifications(Request $request)
                 ],
                 'TemplateID'       => $data['templateId'],
                 'TemplateLanguage' => true,
-                'Subject'          => 'Gym Notification',
+                'Subject'          => 'Contnental Fitness Gym',
                 'Variables'       => [
                     'member_name' => $member->FullName,
                 ],
