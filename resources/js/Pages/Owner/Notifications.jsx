@@ -25,6 +25,7 @@ import {
   Tabs,
   Tab,
   InputAdornment,
+  Snackbar
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 
@@ -117,6 +118,47 @@ export default function Notifications() {
   // Member Statuses (Hard-coded statuses: 1=ACTIVE, 2=FROZEN, 3=ON-HOLD, 4=TERMINATED, 5=EXPIRED, 6=NEW MEMBER)
   const [memberStatuses, setMemberStatuses] = useState([]);
 
+  // ─────────────────────────────────────────────────────────
+  // Confirmation Dialog States
+  // ─────────────────────────────────────────────────────────
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState("");
+  const [confirmMessage, setConfirmMessage] = useState("");
+  const [confirmCallback, setConfirmCallback] = useState(null);
+
+  const openConfirmDialog = (title, message, callback) => {
+    setConfirmTitle(title);
+    setConfirmMessage(message);
+    setConfirmCallback(() => callback);
+    setConfirmOpen(true);
+  };
+
+  const handleCloseConfirm = () => {
+    setConfirmOpen(false);
+    setConfirmTitle("");
+    setConfirmMessage("");
+    setConfirmCallback(null);
+  };
+
+  const handleConfirm = () => {
+    if (confirmCallback) confirmCallback();
+    handleCloseConfirm();
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // Snackbar
+  // ─────────────────────────────────────────────────────────
+  const [snackOpen, setSnackOpen] = useState(false);
+  const [snackMessage, setSnackMessage] = useState("");
+
+  const showSuccessMessage = (msg) => {
+    setSnackMessage(msg);
+    setSnackOpen(true);
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // Lifecycle & Data Loading
+  // ─────────────────────────────────────────────────────────
   useEffect(() => {
     loadAnnouncements();
     loadAllMembersMailjet();
@@ -173,7 +215,6 @@ export default function Notifications() {
     setMemberStatuses(statuses);
   };
 
-  // Load staff list for staff notifications
   const loadStaffList = async () => {
     try {
       const response = await axios.get("/staff");
@@ -183,7 +224,6 @@ export default function Notifications() {
     }
   };
 
-  // Function to load Mailjet activity logs from the back-end
   const loadMailjetActivityLogs = async () => {
     try {
       const res = await axios.get("/notifications/mailjet-activity-logs");
@@ -193,7 +233,9 @@ export default function Notifications() {
     }
   };
 
-  // ===================== ANNOUNCEMENTS =====================
+  // ─────────────────────────────────────────────────────────
+  // Announcements
+  // ─────────────────────────────────────────────────────────
   const handleAddAnnouncement = async () => {
     if (!newTopic.trim() || !newMessage.trim()) {
       alert("Please fill out both Topic and Message.");
@@ -207,6 +249,7 @@ export default function Notifications() {
       setAnnouncements((prev) => [res.data, ...prev]);
       setNewTopic("");
       setNewMessage("");
+      showSuccessMessage("Announcement added!");
     } catch (error) {
       console.error("Add announcement failed:", error);
       alert("Failed to add announcement.");
@@ -245,28 +288,39 @@ export default function Notifications() {
         )
       );
       setEditOpen(false);
+      showSuccessMessage("Announcement updated!");
     } catch (error) {
       console.error("Edit announcement failed:", error);
       alert("Failed to edit announcement.");
     }
   };
 
-  const handleDeleteAnnouncement = async (notifId) => {
-    if (!window.confirm("Are you sure you want to delete this announcement?")) {
-      return;
-    }
+  const doDeleteAnnouncement = async (notifId) => {
     try {
       await axios.delete(`/notifications/announcements/${notifId}`);
       setAnnouncements((prev) =>
         prev.filter((a) => a.NotificationID !== notifId)
       );
+      showSuccessMessage("Announcement deleted.");
     } catch (error) {
       console.error("Delete announcement failed:", error);
       alert("Failed to delete announcement.");
     }
   };
 
-  // ============== STAFF-SPECIFIC ANNOUNCEMENTS (sendStaffNotification) ==============
+  const handleDeleteAnnouncement = (notifId) => {
+    const ann = announcements.find((a) => a.NotificationID === notifId);
+    if (!ann) return;
+    openConfirmDialog(
+      "Delete Announcement",
+      `Are you sure you want to delete "${ann.Message.substring(0, 30)}..."?`,
+      () => doDeleteAnnouncement(notifId)
+    );
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // Staff-Specific Announcements
+  // ─────────────────────────────────────────────────────────
   const handleStaffSelection = (staffIds) => {
     setSelectedStaff(staffIds);
   };
@@ -288,7 +342,7 @@ export default function Notifications() {
 
     try {
       const resp = await axios.post("/notifications/send-staff", payload);
-      alert(resp.data.message || "Staff notification sent!");
+      showSuccessMessage(resp.data.message || "Staff notification sent!");
       setSelectedStaff([]);
       setStaffSubject("");
       setStaffMessage("");
@@ -298,27 +352,14 @@ export default function Notifications() {
     }
   };
 
-  // ===================== MAILJET =====================
+  // ─────────────────────────────────────────────────────────
+  // Mailjet
+  // ─────────────────────────────────────────────────────────
   const handleMailjetSelection = (ids) => {
     setSelectedMailjetIDs(ids);
   };
 
-  const handleSendMailjetTemplate = async () => {
-    if (!templateId.trim()) {
-      alert("Please enter the Mailjet Template ID.");
-      return;
-    }
-    if (selectedMailjetIDs.length === 0) {
-      alert("Please select at least one member.");
-      return;
-    }
-    if (
-      !window.confirm(
-        `Send Mailjet template #${templateId} to ${selectedMailjetIDs.length} member(s)?`
-      )
-    ) {
-      return;
-    }
+  const doSendMailjetTemplate = async () => {
     try {
       const response = await axios.post("/notifications/send-mailjet-template", {
         templateId: Number(templateId),
@@ -326,7 +367,7 @@ export default function Notifications() {
       });
 
       if (response.data.status === "success") {
-        alert("Template emails sent!");
+        showSuccessMessage("Template emails sent!");
         setSelectedMailjetIDs([]);
         loadMailjetActivityLogs();
       } else if (response.data.status === "no-action") {
@@ -339,6 +380,22 @@ export default function Notifications() {
       console.error("Mailjet template send failed:", error);
       alert("Failed to send Mailjet template.");
     }
+  };
+
+  const handleSendMailjetTemplate = () => {
+    if (!templateId.trim()) {
+      alert("Please enter the Mailjet Template ID.");
+      return;
+    }
+    if (selectedMailjetIDs.length === 0) {
+      alert("Please select at least one member.");
+      return;
+    }
+    openConfirmDialog(
+      "Send Templated Email",
+      `Send Mailjet template #${templateId} to ${selectedMailjetIDs.length} member(s)?`,
+      doSendMailjetTemplate
+    );
   };
 
   const filteredMailjetMembers = React.useMemo(() => {
@@ -373,7 +430,12 @@ export default function Notifications() {
         "/notifications/send-expiring-reminder-selected",
         { memberIds: selectedMailjetIDs }
       );
-      alert(response.data.message || "Expiry reminders sent for selected members!");
+      if (response.data.status === "success") {
+        showSuccessMessage("Expiry reminders sent for selected members!");
+      } else {
+        // Could be "no-action" or "partial"
+        alert(response.data.message || "Some issue occurred. Check logs.");
+      }
       setSelectedMailjetIDs([]);
     } catch (error) {
       console.error("Failed to send expiry reminders for selected members:", error);
@@ -381,7 +443,25 @@ export default function Notifications() {
     }
   };
 
-  // ===================== SEMAPHORE =====================
+  const handleSendExpiringReminder = async () => {
+    try {
+      const res = await axios.get("/notifications/send-expiring-reminder");
+      if (res.data.status === "success") {
+        showSuccessMessage("Expiry reminder emails sent!");
+      } else if (res.data.status === "no-action") {
+        alert("No members expiring in 7 days.");
+      } else {
+        alert("An error occurred. Please check the logs.");
+      }
+    } catch (error) {
+      console.error("Failed to send expiring reminder:", error);
+      alert("Failed to send expiry reminder.");
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // Semaphore
+  // ─────────────────────────────────────────────────────────
   const handleSemaphoreSelection = (ids) => {
     setSelectedSemaphoreIDs(ids);
   };
@@ -409,28 +489,17 @@ export default function Notifications() {
     setSemaphoreNumbers(phones.join(","));
   };
 
-  const handleSendSemaphoreSMS = async () => {
-    if (!semaphoreNumbers.trim()) {
-      alert("Please provide at least one mobile number.");
-      return;
-    }
-    if (!semaphoreMessage.trim()) {
-      alert("Please enter your SMS message.");
-      return;
-    }
+  const doSendSemaphoreSMS = async () => {
     const payload = {
       numbers: semaphoreNumbers,
       message: semaphoreMessage,
       senderName: semaphoreSenderName || "Contnental",
     };
-    if (!window.confirm("Send the above message via Semaphore?")) {
-      return;
-    }
     try {
       const resp = await axios.post("/notifications/send-semaphore-sms", payload);
       if (resp.data.status === "success" || resp.data.status === "partial") {
-        alert(
-          `SMS sent successfully! ✅ \n\n📩 Sent: ${resp.data.successCount} \n❌ Failed: ${resp.data.failCount}`
+        showSuccessMessage(
+          `SMS sent successfully! \nSent: ${resp.data.successCount}, Failed: ${resp.data.failCount}`
         );
         setSemaphoreNumbers("");
         setSemaphoreMessage("");
@@ -445,28 +514,30 @@ export default function Notifications() {
     }
   };
 
+  const handleSendSemaphoreSMS = () => {
+    if (!semaphoreNumbers.trim()) {
+      alert("Please provide at least one mobile number.");
+      return;
+    }
+    if (!semaphoreMessage.trim()) {
+      alert("Please enter your SMS message.");
+      return;
+    }
+    openConfirmDialog(
+      "Send SMS",
+      `Send the above message to:\n${semaphoreNumbers}`,
+      doSendSemaphoreSMS
+    );
+  };
+
   const filteredSemaphoreMembers = semaphoreMembers.filter((m) => {
     if (semaphoreFilterStatus === "All") return true;
     return String(m.MemberStatusID) === semaphoreFilterStatus;
   });
 
-  const handleSendExpiringReminder = async () => {
-    try {
-      const res = await axios.get("/notifications/send-expiring-reminder");
-      if (res.data.status === "success") {
-        alert("Expiry reminder emails sent!");
-      } else if (res.data.status === "no-action") {
-        alert("No members expiring in 7 days.");
-      } else {
-        alert("An error occurred. Please check the logs.");
-      }
-    } catch (error) {
-      console.error("Failed to send expiring reminder:", error);
-      alert("Failed to send expiry reminder.");
-    }
-  };
-
-  // ===================== RENDER =====================
+  // ─────────────────────────────────────────────────────────
+  // Rendering
+  // ─────────────────────────────────────────────────────────
   return (
     <Box sx={{ p: 4 }}>
       <Typography variant="h4" gutterBottom>
@@ -908,6 +979,28 @@ export default function Notifications() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ================== CONFIRMATION DIALOG ================== */}
+      <Dialog open={confirmOpen} onClose={handleCloseConfirm}>
+        <DialogTitle>{confirmTitle}</DialogTitle>
+        <DialogContent dividers>
+          <Typography>{confirmMessage}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseConfirm}>Cancel</Button>
+          <Button variant="contained" color="primary" onClick={handleConfirm}>
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ================== SNACKBAR FOR SUCCESS ================== */}
+      <Snackbar
+        open={snackOpen}
+        autoHideDuration={3000}
+        onClose={() => setSnackOpen(false)}
+        message={snackMessage}
+      />
     </Box>
   );
 }

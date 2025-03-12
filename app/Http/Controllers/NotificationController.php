@@ -706,7 +706,7 @@ public function getStaffNotifications(Request $request)
     // Adjust the where condition if you use a different event trigger.
     $logs = Notification::where('EventTrigger', 'MailjetBatch')
             ->orderBy('NotificationID', 'desc')
-            ->get(['MemberID', 'Email', 'Status', 'SentDate as timestamp', 'Message']);
+            ->get(['MemberID', 'Status', 'SentDate as timestamp', 'Message']);
 
     return response()->json(['logs' => $logs]);
 }
