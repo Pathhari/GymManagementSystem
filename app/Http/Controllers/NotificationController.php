@@ -491,7 +491,6 @@ public function getStaffNotifications(Request $request)
     
     
 
-
     public function sendMailjetTemplate(Request $request)
     {
         $data = $request->validate([
@@ -502,29 +501,22 @@ public function getStaffNotifications(Request $request)
         // 1) Fetch the members
         $members = Member::whereIn('MemberID', $data['memberIds'])->get();
     
-        // 2) We’ll create a Notification row for each email we want to send,
-        //    marking them "Queued" or "Pending" initially.
-        //    We'll store them in $localNotifs so we can reference them later.
+        // 2) Create a Notification row for each member with a valid email
         $localNotifs = [];
         foreach ($members as $member) {
-            // Only if the member has a valid email
             if (!empty($member->Email)) {
                 $notif = Notification::create([
                     'MemberID'           => $member->MemberID,
                     'EventTrigger'       => 'MailjetBatch',
-                    // We'll store a placeholder message for now. Or you might store e.g. 'Template: X'
                     'Message'            => "Mailjet template #{$data['templateId']} queued.",
                     'NotificationMethod' => 'Email',
-                    'SentDate'           => null,    // not sent yet
+                    'SentDate'           => null,
                     'Status'             => 'Queued',
                 ]);
-    
-                // Keep references to update them after the API call
-                $localNotifs[$member->Email] = $notif; 
+                $localNotifs[$member->Email] = $notif;
             }
         }
     
-        // If we have no valid emails, we can short-circuit:
         if (count($localNotifs) === 0) {
             return response()->json([
                 'status'  => 'no-action',
@@ -532,18 +524,17 @@ public function getStaffNotifications(Request $request)
             ]);
         }
     
-        // 3) Prepare Mailjet client
+        // 3) Prepare Mailjet client using the correct configuration keys
         $mj = new \Mailjet\Client(
             config('services.mailjet.api_key'),
             config('services.mailjet.secret_key'),
             true,
             ['version' => 'v3.1']
         );
-        
-        // 4) Build the array of messages (only for valid emails)
+    
+        // 4) Build the array of messages
         $messages = [];
         foreach ($localNotifs as $email => $notif) {
-            // Use the member we stored in each Notification, or separate map if needed
             $memberId = $notif->MemberID;
             $member   = $members->firstWhere('MemberID', $memberId);
     
@@ -555,9 +546,9 @@ public function getStaffNotifications(Request $request)
                 'To' => [
                     ['Email' => $email, 'Name' => $member->FullName],
                 ],
-                'TemplateID'      => $data['templateId'],
+                'TemplateID'       => $data['templateId'],
                 'TemplateLanguage' => true,
-                'Subject'         => 'Gym Notification',
+                'Subject'          => 'Gym Notification',
                 'Variables'       => [
                     'member_name' => $member->FullName,
                 ],
@@ -569,13 +560,11 @@ public function getStaffNotifications(Request $request)
         $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
     
         if (!$response->success()) {
-            // If the entire request failed (e.g. invalid API key),
-            // we might mark them all as failed, or store the error
             foreach ($localNotifs as $notif) {
                 $notif->update([
                     'Status'  => 'Failed',
                     'Message' => 'Mailjet request error. Could not send batch.',
-                    'SentDate'=> now(), // or null
+                    'SentDate'=> now(),
                 ]);
             }
     
@@ -587,59 +576,47 @@ public function getStaffNotifications(Request $request)
         }
     
         // 6) Parse partial results from Mailjet
-        // Typically you get something like:
-        //  { "Messages":[ { "Status":"success",
-        //      "To":[ {"Email":"someone@example.com","MessageUUID":"abc","MessageID":...} ],
-        //      "Errors":[] 
-        //    }, ... ] }
         $responseData = $response->getData();
         $allMessages  = $responseData['Messages'] ?? [];
     
         foreach ($allMessages as $msg) {
-            $msgStatus = $msg['Status']; // e.g. "success" or "error"
+            $msgStatus = $msg['Status']; 
             $msgTo     = $msg['To'];
     
-            // $msgTo might be an array of recipients - we handle each
             foreach ($msgTo as $rcpt) {
                 $rcptEmail = $rcpt['Email'];
                 $messageId = $rcpt['MessageUUID'] ?? null;
     
-                // We can find the local Notification by email
                 if (isset($localNotifs[$rcptEmail])) {
                     $notif = $localNotifs[$rcptEmail];
-    
-                    // Decide the final status
                     $finalStatus = ($msgStatus === 'success') ? 'Sent' : 'Failed';
-    
                     $notif->update([
                         'Status'  => $finalStatus,
                         'Message' => ($finalStatus === 'Sent')
                             ? "Mailjet Template #{$data['templateId']} delivered. (MsgID: $messageId)"
                             : "Mailjet Template #{$data['templateId']} failed.",
-                        'SentDate' => ($finalStatus === 'Sent') ? now() : now(), 
+                        'SentDate' => now(),
                     ]);
                 }
             }
         }
     
-        // Now we check if at least one was "Sent":
+        // Count successes and failures
         $successCount = Notification::whereIn('NotificationID', array_values(array_map(fn($n) => $n->NotificationID, $localNotifs)))
-            ->where('Status','Sent')
-            ->count();
-    
-        // Also check how many are 'Failed'
+                            ->where('Status', 'Sent')
+                            ->count();
         $failCount = count($localNotifs) - $successCount;
+        $status = ($failCount === 0) ? 'success' : 'partial';
     
-        // Return a summary
         return response()->json([
-            'status'         => 'partial',
+            'status'         => $status,
             'message'        => "Mailjet sending complete. Success: {$successCount}, Failed: {$failCount}",
             'success_count'  => $successCount,
             'failed_count'   => $failCount,
-            // You could include the entire response if needed:
             'mailjet_detail' => $responseData,
         ]);
     }
+    
     
 
     public function sendSemaphoreSMS(Request $request)
