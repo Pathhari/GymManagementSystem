@@ -534,12 +534,12 @@ public function getStaffNotifications(Request $request)
     
         // 3) Prepare Mailjet client
         $mj = new \Mailjet\Client(
-            config('services.mailjet.key'),
-            config('services.mailjet.secret'),
+            config('services.mailjet.api_key'),
+            config('services.mailjet.secret_key'),
             true,
             ['version' => 'v3.1']
         );
-    
+        
         // 4) Build the array of messages (only for valid emails)
         $messages = [];
         foreach ($localNotifs as $email => $notif) {
@@ -811,11 +811,11 @@ public function getStaffNotifications(Request $request)
     
         // 1) Prepare a Mailjet Client
         $mj = new Client(
-            config('services.mailjet.key'),      // or .env: MAILJET_API_KEY
-            config('services.mailjet.secret'),   // or .env: MAILJET_SECRET_KEY
+            config('services.mailjet.api_key'),
+            config('services.mailjet.secret_key'),
             true,
             ['version' => 'v3.1']
-        );
+        );        
     
         // 2) Build the message array
         //    If you already have a dedicated “Coach Booking” Template in Mailjet,
