@@ -878,36 +878,48 @@ async function handleBookSessionConfirm() {
       Amount: Number(sessionBookingPaymentAmount) || 0,
     });
 
- // Step 2: Notify the coach using the notifyCoachOfBookingMailjet endpoint
-if (sessionToBook.CoachID) {
-  const foundCoach = coaches.find(c => c.CoachID === sessionToBook.CoachID);
-  console.log("foundCoach =>", foundCoach);
-  // Check that the coach has a valid email address
-  if (foundCoach && foundCoach.Email && foundCoach.Email.includes("@")) {
-    const foundMember = members.find(m => m.MemberID === Number(sessionBookingMemberID));
-    const memberName = foundMember ? foundMember.FullName : "Unknown Member";
-    await axios.post("/notifications/notify-coach-booking-mailjet", {
-      coach_id: foundCoach.CoachID,
-      coach_name: foundCoach.FullName,
-      coach_email: foundCoach.Email,
-      member_name: memberName,
-      session_name: sessionToBook.SessionName,
-      // Format the times to a readable 12-hour format with AM/PM
-      start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD hh:mm A"),
-      end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD hh:mm A"),
-    });
-  } else {
-    console.warn("Coach email not valid or missing:", foundCoach);
-  }
-}
+    // Step 2: Notify the coach using the notify-coach endpoint
+    if (sessionToBook.CoachID) {
+      const foundCoach = coaches.find(c => c.CoachID === sessionToBook.CoachID);
+      console.log("foundCoach =>", foundCoach);
+      if (foundCoach && foundCoach.Email && foundCoach.Email.includes("@")) {
+        const foundMember = members.find(m => m.MemberID === Number(sessionBookingMemberID));
+        const memberName = foundMember ? foundMember.FullName : "Unknown Member";
+        await axios.post("/notifications/notify-coach-booking-mailjet", {
+          coach_id: foundCoach.CoachID,
+          coach_name: foundCoach.FullName,
+          coach_email: foundCoach.Email,
+          member_name: memberName,
+          session_name: sessionToBook.SessionName,
+          start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD hh:mm A"),
+          end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD hh:mm A"),
+        });
+      } else {
+        console.warn("Coach email not valid or missing:", foundCoach);
+      }
+    }
 
-    // Step 3: Finalize booking process
+    // Step 2b: Notify the member using a new endpoint (create this on your backend)
+    const foundMemberForNotification = members.find(m => m.MemberID === Number(sessionBookingMemberID));
+    if (foundMemberForNotification && foundMemberForNotification.Email && foundMemberForNotification.Email.includes("@")) {
+      await axios.post("/notifications/notify-member-booking-mailjet", {
+        member_id: foundMemberForNotification.MemberID,
+        member_name: foundMemberForNotification.FullName,
+        member_email: foundMemberForNotification.Email,
+        session_name: sessionToBook.SessionName,
+        start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD hh:mm A"),
+        end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD hh:mm A"),
+      });
+    } else {
+      console.warn("Member email not valid or missing:", foundMemberForNotification);
+    }
+
+    // Step 3: Finalize the booking process
     setBookSessionOpen(false);
     fetchAllData();
-    showSnack("Session booked successfully, coach notified by Mailjet!", "success");
-
+    showSnack("Session booked successfully, coach and member notified by Mailjet!", "success");
   } catch (err) {
-    console.error("Failed to book session or notify coach:", err);
+    console.error("Failed to book session or notify coach/member:", err);
     if (err.response && err.response.status === 422) {
       showSnack(err.response.data.message || "Capacity reached!", "warning");
     } else {
@@ -915,8 +927,6 @@ if (sessionToBook.CoachID) {
     }
   }
 }
-
-
 
 
   // Coaches
