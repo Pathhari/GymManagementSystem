@@ -879,6 +879,9 @@ public function getStaffNotifications(Request $request)
             'start_time'    => 'required|date_format:Y-m-d H:i:s',
             'end_time'      => 'required|date_format:Y-m-d H:i:s',
         ]);
+        
+        // Log the validated request data
+        \Log::info('notifyCoachOfBookingMailjet - Request Data:', $data);
     
         // 1) Prepare a Mailjet Client
         $mj = new Client(
@@ -889,16 +892,13 @@ public function getStaffNotifications(Request $request)
         );        
     
         // 2) Build the message array
-        //    If you already have a dedicated “Coach Booking” Template in Mailjet,
-        //    set its ID and pass placeholders in `Variables`.
-        $templateID = 6806665; // <--- put your actual Mailjet template ID here
-    
+        $templateID = 6806665; // Ensure this is the correct and active Mailjet template ID
         $body = [
             'Messages' => [
                 [
                     'From' => [
-                        'Email' => config('services.mailjet.from.address'), // e.g. "no-reply@yourdomain.com"
-                        'Name'  => config('services.mailjet.from.name'),    // e.g. "Gym Booking"
+                        'Email' => config('services.mailjet.from.address'),
+                        'Name'  => config('services.mailjet.from.name'),
                     ],
                     'To' => [
                         [
@@ -906,12 +906,10 @@ public function getStaffNotifications(Request $request)
                             'Name'  => $data['coach_name'],
                         ]
                     ],
-                    'TemplateID'      => $templateID,
+                    'TemplateID'       => $templateID,
                     'TemplateLanguage' => true,
-                    'Subject'         => 'New Booking For You',
+                    'Subject'          => 'New Booking For You',
                     'Variables' => [
-                        // These correspond to placeholders in your Mailjet template,
-                        // like {{var:coach_name}}, {{var:member_name}}, etc.
                         'coach_name'   => $data['coach_name'],
                         'member_name'  => $data['member_name'],
                         'session_name' => $data['session_name'],
@@ -922,34 +920,40 @@ public function getStaffNotifications(Request $request)
             ]
         ];
     
+        // Log the Mailjet request body
+        \Log::info('notifyCoachOfBookingMailjet - Mailjet Request Body:', $body);
+        
         // 3) Send request
         $response = $mj->post(Resources::$Email, ['body' => $body]);
-    
+        $responseData = $response->getData();
+        
+        // Log the response data from Mailjet
+        \Log::info('notifyCoachOfBookingMailjet - Mailjet Response Data:', $responseData);
+        
         // 4) Evaluate response
         if ($response->success()) {
-            // Optionally store a row in your notifications table
-            // so you have a log that the coach was notified by email.
+            // Store a notification log if the email was sent successfully
             \App\Models\Notification::create([
-                'MemberID'           => null, // or store the coach if you want
+                'MemberID'           => null,
                 'EventTrigger'       => 'CoachBookedMailjet',
                 'Message'            => "Coach #{$data['coach_id']} => Booked email sent to {$data['coach_email']}",
                 'NotificationMethod' => 'Email',
                 'SentDate'           => now(),
                 'Status'             => 'Sent',
             ]);
-    
+            \Log::info('notifyCoachOfBookingMailjet - Email Sent Successfully.', $data);
             return response()->json([
                 'status'  => 'success',
                 'message' => 'Coach booking email sent via Mailjet.',
             ]);
         }
-    
-        // If the response is not successful, handle it:
+        
+        // Log an error if Mailjet did not return success
+        \Log::error('notifyCoachOfBookingMailjet - Mailjet Error:', $responseData);
         return response()->json([
             'status'  => 'error',
             'message' => 'Mailjet error when sending to coach.',
-            'data'    => $response->getData(),
+            'data'    => $responseData,
         ], 500);
-    }
-
+    }    
 }
