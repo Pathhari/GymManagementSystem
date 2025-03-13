@@ -57,7 +57,21 @@ class StaffController extends Controller
             'schedule'   => $schedules,
         ]);
     }
+    
+    public function getAuthUser(Request $request) 
+    {
+        $staff = Auth::user(); // or however you're authenticating staff
+        // Eager-load the branches relationship so the accessor can work
+        $staff->load('branches');
 
+        return response()->json([
+            'StaffID'         => $staff->StaffID,
+            'FullName'        => $staff->FullName,
+            'DefaultBranchID' => $staff->default_branch_id,  // uses the accessor
+            // ... other fields as needed ...
+        ]);
+    }
+    
     /**
      * LIST ALL STAFF (REMOTE VERSION)
      */

@@ -5,6 +5,7 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 use App\Models\Payment;
 use App\Observers\PaymentObserver;
+use App\Console\Commands\ShiftPettyCash;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -13,7 +14,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+                // Register your command so that "php artisan petty:shift" is recognized
+                $this->app->singleton('command.petty.shift', function ($app) {
+                    return new ShiftPettyCash;
+                });
+        
+                $this->commands([
+                    'command.petty.shift'
+                ]);
     }
 
     /**

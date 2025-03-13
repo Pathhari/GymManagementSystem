@@ -25,6 +25,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableFooter,
   IconButton,
   Divider,
   InputAdornment,
@@ -51,6 +52,7 @@ import InfoIcon from "@mui/icons-material/Info";
 import PersonIcon from "@mui/icons-material/Person";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import BarChartIcon from "@mui/icons-material/BarChart";
 
 import jsPDF from "jspdf";
 import "jspdf-autotable";
@@ -66,10 +68,23 @@ export default function PaymentsAndInvoices() {
   // For unfiltered data from server
   const [allPayments, setAllPayments] = useState([]);
   const [allInvoices, setAllInvoices] = useState([]);
+  const [selectedDetailDate, setSelectedDetailDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  
 
   // For filtered data displayed in the table
   const [filteredPayments, setFilteredPayments] = useState([]);
   const [filteredInvoices, setFilteredInvoices] = useState([]);
+
+    // For petty
+  const [pettyDialogOpen, setPettyDialogOpen] = useState(false);
+  const [selectedFlowRow, setSelectedFlowRow] = useState(null); // store the row user clicked
+  const [pettyForm, setPettyForm] = useState({
+    pettyCash: '',
+    pettyTomorrow: '',
+  });
+
 
   // Active tab, search, and branch
   const [activeTab, setActiveTab] = useState(0);
@@ -135,6 +150,9 @@ export default function PaymentsAndInvoices() {
   const [editInvoice, setEditInvoice] = useState({});
   const [viewInvoice, setViewInvoice] = useState(null);
 
+  const [gymCashFlows, setGymCashFlows] = useState([]);
+  const [filteredGymSales, setFilteredGymSales] = useState([]);
+
   // Confirmation dialog
   const [openConfirmation, setOpenConfirmation] = useState(false);
 
@@ -170,6 +188,27 @@ export default function PaymentsAndInvoices() {
     return `₱${parseInt(value).toLocaleString("en-PH")}`;
   };
 
+  function formatCurrencyCell(params) {
+    if (!params.value) return '—';
+    return '₱' + Number(params.value).toLocaleString();
+  }
+
+      // somewhere above your component:
+    function filterSalesByDateRange(rows, fromDate, toDate) {
+      if (!fromDate && !toDate) return rows;
+      const start = fromDate ? new Date(fromDate) : null;
+      const end = toDate ? new Date(toDate) : null;
+
+      return rows.filter((row) => {
+        // If row has row.date in 'YYYY-MM-DD' format:
+        const d = new Date(row.date);
+        if (start && d < start) return false;
+        if (end && d > end) return false;
+        return true;
+      });
+    }
+  
+
   // Payment-date filter for payments
   function filterPaymentsByDate(payments, start, end) {
     if (!start && !end) return payments;
@@ -195,6 +234,73 @@ export default function PaymentsAndInvoices() {
       return true;
     });
   }
+
+  function groupPaymentsByPaymentFor(payments) {
+    // This returns something like:
+    // {
+    //   "Walk-in Payment": [
+    //     { payerName: "Alice", cash: 350, gcash: 0, bpi: 0, bdo: 0, total: 350 },
+    //     { payerName: "Jakes", cash: 0, gcash: 350, bpi: 0, bdo: 0, total: 350 },
+    //     ...
+    //   ],
+    //   "New Membership": [...],
+    //   "Membership Renewal": [...]
+    // }
+  
+    const result = {};
+  
+    payments.forEach((pay) => {
+      // pay.paymentFor could be multiple categories if it's an array
+      // Typically 1-element array like ["Walk-in Payment"] 
+      // so we map over each category in there
+      (pay.paymentFor || []).forEach((category) => {
+        const normalizedCategory = category.trim();
+  
+        // If we only care about the Gym categories, skip anything else
+        // or you can keep them all
+        if (!result[normalizedCategory]) {
+          result[normalizedCategory] = [];
+        }
+  
+        // Normalize the method
+        const method = normalizePaymentMethod(pay.method);
+        // Prepare a row object with all method columns = 0
+        const row = {
+          payerName: pay.payerName || pay.walkInName || "N/A",
+          cash: 0,
+          gcash: 0,
+          bpi: 0,
+          bdo: 0,
+          total: 0,
+        };
+  
+        // Put the amount in the right column
+        switch (method) {
+          case "Cash":
+            row.cash = pay.amountPaid;
+            break;
+          case "GCash":
+            row.gcash = pay.amountPaid;
+            break;
+          case "BPI":
+            row.bpi = pay.amountPaid;
+            break;
+          case "BDO":
+            row.bdo = pay.amountPaid;
+            break;
+          default:
+            // If you want to track others
+            break;
+        }
+        row.total = pay.amountPaid;
+  
+        result[normalizedCategory].push(row);
+      });
+    });
+  
+    return result;
+  }
+  
 
   // The main "handleFilterData" function
   const handleFilterData = () => {
@@ -229,6 +335,16 @@ export default function PaymentsAndInvoices() {
     setFilteredInvoices(textFilteredInvoices);
   };
 
+  // 2) PaymentFor categories we want to count
+  const PAYMENT_FOR_TYPES = [
+    "New Membership",
+    "Monthly Client Fee",
+    "Walk-in Payment",
+    "Membership Renewal",
+    "Booking",
+    "CoachingSessionBooking",
+  ];
+
   // ==================== useEffect Fetch Calls ====================
   useEffect(() => {
     fetchMembers();
@@ -236,11 +352,22 @@ export default function PaymentsAndInvoices() {
     fetchAllPayments();
     fetchAllInvoices();
     fetchUnpaidInvoices();
+    fetchGymCashFlow();
   }, []);
 
   useEffect(() => {
     handleFilterData();
   }, [searchTerm, dateFrom, dateTo, branch]);
+  
+  useEffect(() => {
+    if (activeTab === 2) {
+      // pivot everything into a single row per date
+      const aggregated = aggregateByDate(gymCashFlows, allPayments);
+      // optionally filter by date range
+      const dateFiltered = filterSalesByDateRange(aggregated, dateFrom, dateTo);
+      setFilteredGymSales(dateFiltered);
+    }
+  }, [activeTab, gymCashFlows, allPayments, dateFrom, dateTo]);
   
 
   // 1) MEMBERS
@@ -268,6 +395,7 @@ export default function PaymentsAndInvoices() {
       setBranchOptions([{ value: "all", label: "All Branches" }]);
     }
   };
+  
 
   const fetchAllPayments = async () => {
     try {
@@ -335,12 +463,64 @@ export default function PaymentsAndInvoices() {
     }
   };
 
+    // Example fetch for daily cash flows (Gym) - or you can fetch *all* flows and filter
+    const fetchGymCashFlow = async () => {
+      try {
+        const res = await axios.get("/finance/cashflow");
+        let flows = res.data.flows || [];
+        // Filter to only Gym
+        flows = flows.filter((f) => f.BusinessType === "Gym");
+        setGymCashFlows(flows);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
   // ==================== Delete Logic ====================
   function handleOpenDeleteDialog(type, id) {
     setDeleteType(type);
     setDeleteItemId(id);
     setDeleteDialogOpen(true);
   }
+
+  function openPettyDialog(row) {
+    // Save the entire row so we know which date/Flow to update
+    setSelectedFlowRow(row);
+  
+    // Pre-fill pettyForm with existing values
+    setPettyForm({
+      pettyCash: row.pettyCash?.toString() || '',
+      pettyTomorrow: row.pettyTomorrow?.toString() || '',
+    });
+  
+    setPettyDialogOpen(true);
+  }
+
+  async function handleSubmitPetty() {
+    if (!selectedFlowRow) return;
+  
+    try {
+      const payload = {
+        PettyCash: Number(pettyForm.pettyCash) || 0,
+        PettyCashTomorrow: Number(pettyForm.pettyTomorrow) || 0,
+      };
+      // Example: PUT /finance/cashflow/:id
+      await axios.put(`/finance/cashflow/${selectedFlowRow.CashFlowID}`, payload);
+  
+      alert('Petty cash updated successfully!');
+  
+      // Optionally re-fetch the flows so updated values appear in the DataGrid
+      await fetchGymCashFlow();
+  
+      setPettyDialogOpen(false);
+      setSelectedFlowRow(null);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update petty cash');
+    }
+  }
+  
+  
 
   async function handleConfirmDelete() {
     try {
@@ -377,6 +557,163 @@ export default function PaymentsAndInvoices() {
     }
     return "Are you sure you want to delete this record? This action cannot be undone.";
   }
+
+  function normalizePaymentMethod(method) {
+    // "W-In Cash", "W-In Gcash" => treat as "Cash", "GCash", etc.
+    if (!method) return method;
+    const lower = method.toLowerCase();
+    if (lower.includes("cash")) return "Cash";
+    if (lower.includes("gcash")) return "GCash";
+    if (lower.includes("bpi")) return "BPI";
+    if (lower.includes("bdo")) return "BDO";
+    return method; // fallback
+  }
+
+  function aggregateByDate(gymFlows, allPayments) {
+    const resultsMap = {};
+  
+    // 1) Process your daily flows (Gym)
+    gymFlows.forEach((flow) => {
+      // Use flow.Date as-is (like "2025-03-13"). No new Date(), no created_at.
+      const dateStr = flow.Date; 
+  
+      if (!resultsMap[dateStr]) {
+        resultsMap[dateStr] = {
+          date: dateStr,
+  
+          totalCash: 0,
+          totalGCash: 0,
+          totalBPI: 0,
+          totalBDO: 0,
+  
+          pettyCash: 0,
+          pettyTomorrow: 0,
+          cashPlusPetty: 0,
+  
+          countNewMembership: 0,
+          countMonthlyClientFee: 0,
+          countWalkinPayment: 0,
+          countMembershipRenewal: 0,
+          countBooking: 0,
+          countCoachingSessionBooking: 0,
+  
+          totalSales: 0,
+          takeHome: 0,
+        };
+      }
+  
+      // Sum up the flow’s own cash & petty
+      const flowCash = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
+      const pettyVal = parseFloat(flow.PettyCash || 0);
+      const pettyTmr = parseFloat(flow.PettyCashTomorrow || 0);
+  
+      // Merge into aggregator
+      resultsMap[dateStr].totalCash += flowCash;
+      resultsMap[dateStr].pettyCash += pettyVal;
+      resultsMap[dateStr].pettyTomorrow += pettyTmr;
+      resultsMap[dateStr].cashPlusPetty += (flowCash + pettyVal);
+    });
+  
+    // 2) Process all relevant Payments
+    allPayments.forEach((pay) => {
+      // PaymentDate might be "2025-03-13 07:30:13"
+      // We split by space, taking first chunk = "2025-03-13"
+      let payDateStr = null;
+      if (pay.PaymentDate) {
+        payDateStr = pay.PaymentDate.split(" ")[0]; // e.g., "2025-03-13"
+      }
+      if (!payDateStr) return;
+  
+      // If not found, initialize aggregator row
+      if (!resultsMap[payDateStr]) {
+        resultsMap[payDateStr] = {
+          date: payDateStr,
+          totalCash: 0,
+          totalGCash: 0,
+          totalBPI: 0,
+          totalBDO: 0,
+          pettyCash: 0,
+          pettyTomorrow: 0,
+          cashPlusPetty: 0,
+          countNewMembership: 0,
+          countMonthlyClientFee: 0,
+          countWalkinPayment: 0,
+          countMembershipRenewal: 0,
+          countBooking: 0,
+          countCoachingSessionBooking: 0,
+          totalSales: 0,
+          takeHome: 0,
+        };
+      }
+  
+      // Add Payment amounts
+      const payAmount = parseFloat(pay.Amount || 0);
+      const unifiedMethod = normalizePaymentMethod(pay.PaymentMethod);
+  
+      switch (unifiedMethod) {
+        case "Cash":
+          resultsMap[payDateStr].totalCash += payAmount;
+          resultsMap[payDateStr].cashPlusPetty += payAmount;
+          break;
+        case "GCash":
+          resultsMap[payDateStr].totalGCash += payAmount;
+          break;
+        case "BPI":
+          resultsMap[payDateStr].totalBPI += payAmount;
+          break;
+        case "BDO":
+          resultsMap[payDateStr].totalBDO += payAmount;
+          break;
+        default:
+          // skip or handle "Other"
+          break;
+      }
+  
+      // Count PaymentFor categories
+      if (Array.isArray(pay.PaymentFor)) {
+        pay.PaymentFor.forEach((cat) => {
+          const c = cat.trim();
+          if (c === "New Membership") {
+            resultsMap[payDateStr].countNewMembership++;
+          } else if (c === "Monthly Client Fee") {
+            resultsMap[payDateStr].countMonthlyClientFee++;
+          } else if (c === "Walk-in Payment") {
+            resultsMap[payDateStr].countWalkinPayment++;
+          } else if (c === "Membership Renewal") {
+            resultsMap[payDateStr].countMembershipRenewal++;
+          } else if (c === "Booking") {
+            resultsMap[payDateStr].countBooking++;
+          } else if (c === "CoachingSessionBooking") {
+            resultsMap[payDateStr].countCoachingSessionBooking++;
+          }
+        });
+      }
+    });
+  
+    // 3) Compute final totals for each date
+    Object.values(resultsMap).forEach((row) => {
+      // totalSales = (cash + petty) + GCash + BPI + BDO
+      row.totalSales = row.cashPlusPetty + row.totalGCash + row.totalBPI + row.totalBDO;
+  
+      // takeHome = totalSales - pettyTomorrow
+      row.takeHome = row.totalSales - row.pettyTomorrow;
+    });
+  
+    // 4) Return a sorted array
+    return Object.values(resultsMap).sort((a, b) => a.date.localeCompare(b.date));
+  }
+  
+  // Example PaymentMethod normalizer
+  function normalizePaymentMethod(method) {
+    if (!method) return "";
+    const lower = method.toLowerCase();
+    if (lower.includes("cash")) return "Cash";
+    if (lower.includes("gcash")) return "GCash";
+    if (lower.includes("bpi")) return "BPI";
+    if (lower.includes("bdo")) return "BDO";
+    return "Other";
+  }
+  
 
   // ==================== Tab Logic ====================
   const handleTabChange = (event, newValue) => {
@@ -991,6 +1328,7 @@ export default function PaymentsAndInvoices() {
         <Tabs value={activeTab} onChange={handleTabChange}>
           <Tab icon={<ReceiptIcon />} label="Payments" />
           <Tab icon={<DescriptionIcon />} label="Invoices" />
+          <Tab icon={<BarChartIcon />} label="Sales Report" />
         </Tabs>
       </Box>
 
@@ -1057,18 +1395,236 @@ export default function PaymentsAndInvoices() {
             )}
           </Box>
         </Box>
+        {activeTab === 2 && (
+  <>
+    {/* 1) The existing "Sales Report (Gym)" pivot table */}
+    <Box sx={{ mt: 2 }}>
+      <Typography variant="h5" gutterBottom>
+        Sales Report (Gym)
+      </Typography>
+      <div style={{ height: 420, width: "100%" }}>
+        <DataGrid
+          rows={filteredGymSales}
+          columns={[
+            { 
+              field: 'date',
+              headerName: 'Date',
+              width: 130,
+            },
+            {
+              field: 'totalCash',  // aggregator’s “totalCash”
+              headerName: 'Cash',
+              width: 130,
+              renderCell: (params) =>
+                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+            },
+            {
+              field: 'totalGCash', // aggregator’s “totalGCash”
+              headerName: 'GCash',
+              width: 130,
+              renderCell: (params) =>
+                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+            },
+            {
+              field: 'totalBPI',   // aggregator’s “totalBPI”
+              headerName: 'BPI',
+              width: 130,
+              renderCell: (params) =>
+                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+            },
+            {
+              field: 'totalBDO',   // aggregator’s “totalBDO”
+              headerName: 'BDO',
+              width: 130,
+              renderCell: (params) =>
+                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+            },
+          
+            // --- PaymentFor counters ---
+            { field: 'countNewMembership', headerName: 'New Memb.', width: 120 },
+            { field: 'countMonthlyClientFee', headerName: 'Monthly Fee', width: 120 },
+            { field: 'countWalkinPayment', headerName: 'Walk-Ins', width: 120 },
+            { field: 'countMembershipRenewal', headerName: 'Renewals', width: 120 },
+            { field: 'countBooking', headerName: 'Booking', width: 110 },
+            { field: 'countCoachingSessionBooking', headerName: 'Coaching', width: 120 },
+          
+            // --- Petty fields if you want to see them individually ---
+            {
+              field: 'pettyCash',
+              headerName: 'Petty (Today)',
+              width: 130,
+              renderCell: (params) =>
+                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+            },
+            {
+              field: 'pettyTomorrow',
+              headerName: 'Petty (Tomorrow)',
+              width: 140,
+              renderCell: (params) =>
+                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+            },
+            {
+              field: 'cashPlusPetty',   // aggregator’s “cashPlusPetty”
+              headerName: 'Cash + Petty',
+              width: 130,
+              renderCell: (params) =>
+                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+            },
+          
+            // --- Totals & net ---
+            {
+              field: 'totalSales',      // aggregator’s “totalSales”
+              headerName: 'Total Sales',
+              width: 130,
+              renderCell: (params) =>
+                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+            },
+            {
+              field: 'takeHome',        // aggregator’s “takeHome”
+              headerName: 'Take Home',
+              width: 130,
+              renderCell: (params) =>
+                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+            }, 
+            {
+              field: 'Actions',
+              headerName: 'Actions',
+              width: 150,
+              sortable: false,
+              renderCell: (params) => {
+                const row = params.row;
+                return (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => openPettyDialog(row)}
+                  >
+                    Set Petty
+                  </Button>
+                );
+              },
+            },
+                     
+          ]}
+          getRowId={(row) => row.date}
+          pageSize={5}
+          rowsPerPageOptions={[5, 10]}
+        />
+      </div>
+    </Box>
 
-        {/* DataGrid */}
-        <div style={{ height: 455, width: "100%" }}>
-          <DataGrid
-            rows={displayedRows}
-            columns={displayedColumns}
-            getRowId={rowIdGetter}
-            pageSize={5}
-            rowsPerPageOptions={[5, 10]}
-          />
-        </div>
+    {/* 2) The Detailed Breakdown: One table per PaymentFor for the selected day */}
+    <Box sx={{ mt: 4 }}>
+      <Typography variant="h5" gutterBottom>
+        Detailed Breakdown by PaymentFor
+      </Typography>
+      {/* Date picker to choose the day for which you want detailed breakdown */}
+      <TextField
+        type="date"
+        value={selectedDetailDate}
+        onChange={(e) => setSelectedDetailDate(e.target.value)}
+        InputLabelProps={{ shrink: true }}
+        sx={{ mb: 2 }}
+      />
+      <Typography variant="subtitle1" sx={{ mb: 2 }}>
+        Detailed records for: {selectedDetailDate}
+      </Typography>
+
+      {/* Filter payments for the selected date */}
+      {Object.entries(
+        groupPaymentsByPaymentFor(
+          allPayments.filter(
+            (p) => p.paymentDate.split("T")[0] === selectedDetailDate
+          )
+        )
+      ).map(([categoryName, paymentRows]) => {
+        // Compute sums for columns in this category
+        let sumCash = 0,
+          sumGCash = 0,
+          sumBPI = 0,
+          sumBDO = 0,
+          grandTotal = 0;
+
+        paymentRows.forEach((r) => {
+          sumCash += r.cash;
+          sumGCash += r.gcash;
+          sumBPI += r.bpi;
+          sumBDO += r.bdo;
+          grandTotal += r.total;
+        });
+
+        return (
+          <Paper
+            key={categoryName}
+            sx={{ mt: 2, p: 2, border: "1px solid #ccc", borderRadius: 2 }}
+          >
+            <Typography variant="h6" sx={{ mb: 1 }}>
+              {categoryName}
+            </Typography>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: "#f7f7f7" }}>
+                    <TableCell>Name</TableCell>
+                    <TableCell align="right">Cash</TableCell>
+                    <TableCell align="right">GCash</TableCell>
+                    <TableCell align="right">BPI</TableCell>
+                    <TableCell align="right">BDO</TableCell>
+                    <TableCell align="right">Row Total</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {paymentRows.map((r, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>{r.payerName}</TableCell>
+                      <TableCell align="right">
+                        {r.cash > 0 ? r.cash.toLocaleString() : ""}
+                      </TableCell>
+                      <TableCell align="right">
+                        {r.gcash > 0 ? r.gcash.toLocaleString() : ""}
+                      </TableCell>
+                      <TableCell align="right">
+                        {r.bpi > 0 ? r.bpi.toLocaleString() : ""}
+                      </TableCell>
+                      <TableCell align="right">
+                        {r.bdo > 0 ? r.bdo.toLocaleString() : ""}
+                      </TableCell>
+                      <TableCell align="right">
+                        {r.total > 0 ? r.total.toLocaleString() : ""}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow sx={{ fontWeight: "bold" }}>
+                    <TableCell sx={{ fontWeight: "bold" }}>Totals</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold" }}>
+                      {sumCash.toLocaleString()}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold" }}>
+                      {sumGCash.toLocaleString()}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold" }}>
+                      {sumBPI.toLocaleString()}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold" }}>
+                      {sumBDO.toLocaleString()}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: "bold" }}>
+                      {grandTotal.toLocaleString()}
+                    </TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </TableContainer>
+          </Paper>
+        );
+      })}
+    </Box>
+  </>
+)}     
       </Paper>
+      
 
       {/* ==================== Payment / Invoice Dialogs below ==================== */}
 
@@ -2040,6 +2596,57 @@ export default function PaymentsAndInvoices() {
           </Button>
         </DialogActions>
       </Dialog>
+
+
+
+              {/* Petty Cash Dialog */}
+        <Dialog
+          open={pettyDialogOpen}
+          onClose={() => setPettyDialogOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>Set Petty Cash</DialogTitle>
+          <DialogContent dividers>
+            {selectedFlowRow && (
+              <>
+                <Typography variant="body1" sx={{ mb: 2 }}>
+                  Date: <strong>{selectedFlowRow.date}</strong>
+                </Typography>
+
+                <TextField
+                  label="Today's Petty Cash"
+                  name="pettyCash"
+                  type="number"
+                  fullWidth
+                  value={pettyForm.pettyCash}
+                  onChange={(e) =>
+                    setPettyForm((prev) => ({ ...prev, pettyCash: e.target.value }))
+                  }
+                  sx={{ mb: 2 }}
+                />
+
+                <TextField
+                  label="Petty Cash Tomorrow"
+                  name="pettyTomorrow"
+                  type="number"
+                  fullWidth
+                  value={pettyForm.pettyTomorrow}
+                  onChange={(e) =>
+                    setPettyForm((prev) => ({ ...prev, pettyTomorrow: e.target.value }))
+                  }
+                />
+              </>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setPettyDialogOpen(false)}>Cancel</Button>
+            <Button variant="contained" onClick={handleSubmitPetty}>
+              Save Petty
+            </Button>
+          </DialogActions>
+        </Dialog>
+
     </Box>
   );
 }

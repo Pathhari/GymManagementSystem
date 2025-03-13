@@ -30,6 +30,8 @@ import {
   ListItemText,
   FormControlLabel,
   Switch,
+  Avatar,
+  Chip
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -312,8 +314,16 @@ export default function StaffDashboard() {
           MemberID: selectedMember.MemberID,
           BranchID: staffBranch, // if needed
         });
-        showSuccessMessage(`Checked in Member: ${selectedMember.FullName}`);
-        setSelectedMember(null);
+      // Re-fetch all visits so the new one appears
+      const visitsRes = await axios.get("/operations/visits", {
+        params: { branchID: staffBranch },
+      });
+      setVisits(visitsRes.data.visits || []);
+
+      showSuccessMessage(
+        `Checked in Member: ${selectedMember.FullName}`
+      );
+      setSelectedMember(null);
       } else {
         if (!selectedClient) return;
         // Monthly client => e.g. /monthly-clients/{id}/attendances
@@ -990,11 +1000,12 @@ export default function StaffDashboard() {
         onClose={() => setClientDetailsOpen(false)}
         maxWidth="md"
         fullWidth
+        sx={{ "& .MuiDialog-paper": { borderRadius: 2, boxShadow: 3 } }}
       >
-        <DialogTitle>
+        <DialogTitle sx={{ pb: 0 }}>
           <Box display="flex" justifyContent="space-between" alignItems="center">
             <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-              Details
+              {checkInType === "member" ? "Member Details" : "Monthly Client Details"}
             </Typography>
             <IconButton
               onClick={() => setClientDetailsOpen(false)}
@@ -1005,89 +1016,235 @@ export default function StaffDashboard() {
           </Box>
         </DialogTitle>
 
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ pt: 1 }}>
+          {/* --------------------- MEMBER CHECK-IN --------------------- */}
           {checkInType === "member" && selectedMember && (
             <Box>
-              {/* Replicate your "Visit Details" layout for the selected Member */}
-              <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
-                {selectedMember.FullName}
-              </Typography>
+              {/* TOP SECTION: Photo or initial, name, email, phone */}
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 2,
+                  p: 2,
+                  borderRadius: 2,
+                  border: "1px solid",
+                  borderColor: theme.palette.divider,
+                  mb: 2,
+                  backgroundColor:
+                    theme.palette.mode === "dark" ? "#1e1e1e" : "#fafafa",
+                }}
+              >
+                {selectedMember.PhotoPath ? (
+                  <Avatar
+                    src={`/storage/${selectedMember.PhotoPath}`}
+                    alt={selectedMember.FullName}
+                    sx={{ width: 80, height: 80, fontSize: "1.5rem" }}
+                  />
+                ) : (
+                  <Avatar sx={{ width: 80, height: 80, fontSize: "1.5rem" }}>
+                    {selectedMember.FullName?.[0] || "?"}
+                  </Avatar>
+                )}
 
-              {/* Member Photo */}
-              {selectedMember.PhotoPath ? (
-                <Box
-                  component="img"
-                  src={`/storage/${selectedMember.PhotoPath}`}
-                  alt="Member"
-                  sx={{
-                    width: 100,
-                    height: 100,
-                    objectFit: "cover",
-                    border: "1px solid #ddd",
-                    borderRadius: 1,
-                    mb: 2,
-                  }}
-                />
-              ) : (
-                <Typography>No photo</Typography>
-              )}
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: "bold", mb: 0.3 }}>
+                    {selectedMember.FullName}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedMember.Email || "No Email"}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedMember.Phone || "No Phone"}
+                  </Typography>
+                </Box>
+              </Box>
 
-              {/* Plan & Status */}
-              <Typography>
-                Plan:{" "}
-                {selectedMember.plan
-                  ? selectedMember.plan.PlanName
-                  : "N/A"}
+              <Divider sx={{ mb: 2 }} />
+
+              {/* MEMBERSHIP INFO */}
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                Membership Info
               </Typography>
-              <Typography>
-                Status:{" "}
-                {selectedMember.status
-                  ? selectedMember.status.StatusName
-                  : "N/A"}
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    Plan:
+                  </Typography>
+                  <Box mt={0.3}>
+                    {selectedMember.plan ? (
+                      <Chip
+                        label={selectedMember.plan.PlanName}
+                        color="primary"
+                        variant="outlined"
+                        size="small"
+                      />
+                    ) : (
+                      <Chip label="No Plan" variant="outlined" size="small" />
+                    )}
+                  </Box>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    Status:
+                  </Typography>
+                  <Box mt={0.3}>
+                    {selectedMember.status ? (
+                      <Chip
+                        label={selectedMember.status.StatusName}
+                        color="success"
+                        variant="outlined"
+                        size="small"
+                      />
+                    ) : (
+                      <Chip label="N/A" variant="outlined" size="small" />
+                    )}
+                  </Box>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    Start Date:
+                  </Typography>
+                  <Typography variant="body2">
+                    {selectedMember.MembershipStartDate
+                      ? formatDate(selectedMember.MembershipStartDate)
+                      : "N/A"}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    End Date:
+                  </Typography>
+                  <Typography variant="body2">
+                    {selectedMember.MembershipEndDate
+                      ? formatDate(selectedMember.MembershipEndDate)
+                      : "N/A"}
+                  </Typography>
+                </Grid>
+              </Grid>
+
+              <Divider sx={{ mt: 3, mb: 2 }} />
+
+              {/* CHECK-IN METHOD */}
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                Check-In Method
               </Typography>
-              <Typography>
-                Start:{" "}
-                {selectedMember.MembershipStartDate
-                  ? formatDate(selectedMember.MembershipStartDate)
-                  : "N/A"}
-              </Typography>
-              <Typography>
-                End:{" "}
-                {selectedMember.MembershipEndDate
-                  ? formatDate(selectedMember.MembershipEndDate)
-                  : "N/A"}
-              </Typography>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Method</InputLabel>
+                <Select
+                  label="Method"
+                  value={checkInMethod}
+                  onChange={(e) => setCheckInMethod(e.target.value)}
+                >
+                  <MenuItem value="manual">Manual</MenuItem>
+                  <MenuItem value="card">Membership Card</MenuItem>
+                  <MenuItem value="biometric">Biometric</MenuItem>
+                </Select>
+              </FormControl>
             </Box>
           )}
 
+          {/* ------------------- MONTHLY CLIENT CHECK-IN ------------------- */}
           {checkInType === "monthlyClient" && selectedClient && (
             <Box>
-              {/* For Monthly Client, replicate your style but show monthly client data */}
-              <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>
-                {selectedClient.FullName}
+              {/* BASIC INFO */}
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  border: "1px solid",
+                  borderColor: theme.palette.divider,
+                  mb: 2,
+                  backgroundColor:
+                    theme.palette.mode === "dark" ? "#1e1e1e" : "#fafafa",
+                }}
+              >
+                <Typography variant="h6" sx={{ fontWeight: "bold", mb: 0.5 }}>
+                  {selectedClient.FullName}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {selectedClient.Email || "No Email"}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {selectedClient.Phone || "No Phone"}
+                </Typography>
+              </Box>
+
+              <Divider sx={{ mb: 2 }} />
+
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                Monthly Client Info
               </Typography>
-              <Typography>Email: {selectedClient.Email || "N/A"}</Typography>
-              <Typography>Phone: {selectedClient.Phone || "N/A"}</Typography>
-              <Typography>
-                Start Date: {selectedClient.StartDate || "N/A"}
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    Start Date:
+                  </Typography>
+                  <Typography variant="body2">
+                    {selectedClient.StartDate
+                      ? formatDate(selectedClient.StartDate)
+                      : "N/A"}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    End Date:
+                  </Typography>
+                  <Typography variant="body2">
+                    {selectedClient.EndDate
+                      ? formatDate(selectedClient.EndDate)
+                      : "N/A"}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    Active?
+                  </Typography>
+                  <Box mt={0.3}>
+                    {selectedClient.IsActive ? (
+                      <Chip label="Yes" color="success" variant="outlined" size="small" />
+                    ) : (
+                      <Chip label="No" color="error" variant="outlined" size="small" />
+                    )}
+                  </Box>
+                </Grid>
+              </Grid>
+
+              <Divider sx={{ mt: 3, mb: 2 }} />
+
+              {/* CHECK-IN METHOD */}
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                Check-In Method
               </Typography>
-              <Typography>
-                End Date: {selectedClient.EndDate || "N/A"}
-              </Typography>
-              <Typography>
-                IsActive: {selectedClient.IsActive ? "Yes" : "No"}
-              </Typography>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Method</InputLabel>
+                <Select
+                  label="Method"
+                  value={checkInMethod}
+                  onChange={(e) => setCheckInMethod(e.target.value)}
+                >
+                  <MenuItem value="manual">Manual</MenuItem>
+                  <MenuItem value="card">Membership Card</MenuItem>
+                  <MenuItem value="biometric">Biometric</MenuItem>
+                </Select>
+              </FormControl>
             </Box>
           )}
         </DialogContent>
 
-        <DialogActions>
+        <DialogActions sx={{ py: 2, px: 3 }}>
           <Button onClick={() => setClientDetailsOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleConfirmCheckIn}>
             Confirm Check In
           </Button>
         </DialogActions>
       </Dialog>
+
 
 
           {/* Staff Schedule & Clock In/Out Card */}

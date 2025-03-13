@@ -682,25 +682,46 @@ class OperationsController extends Controller
      */
   // app/Http/Controllers/OperationsController.php
 
-    public function indexVisits(Request $request)
-    {
-        // Optional: check staff authentication
-        $branchID = $request->query('branchID'); 
-
-        // Build a query for MemberVisit
-        $query = MemberVisit::with(['member', 'branch']); 
-        // or ->select(...) if you only want certain columns
-
-        // If a branchID is provided, filter by it
-        if ($branchID) {
-            $query->where('BranchID', $branchID);
-        }
-
-        // Optionally sort, e.g. newest first
-        $visits = $query->orderByDesc('VisitDate')->get();
-
-        return response()->json(['visits' => $visits]);
-    }
+  public function indexVisits(Request $request)
+  {
+      $branchID = $request->query('branchID'); 
+  
+      // Eager-load the related Member and Branch.
+      // This ensures we can access $visit->member->FullName and $visit->branch->BranchName
+      // without causing extra queries.
+      $query = MemberVisit::with(['member', 'branch']);
+  
+      // If a branchID was provided, filter by it.
+      if ($branchID) {
+          $query->where('BranchID', $branchID);
+      }
+  
+      // Sort by newest visit first (optional).
+      $visits = $query->orderByDesc('VisitDate')->get();
+  
+      // Transform each visit so it includes a top-level "FullName", etc.
+      // This is optional, but it prevents deeply nested JSON structure
+      // and lets you control exactly which fields get returned.
+      $transformedVisits = $visits->map(function ($visit) {
+          return [
+              'VisitID'       => $visit->VisitID,
+              'MemberID'      => $visit->MemberID,
+              'FullName'      => optional($visit->member)->FullName, // safely retrieve FullName
+              'BranchID'      => $visit->BranchID,
+              'BranchName'    => optional($visit->branch)->BranchName,
+              'VisitDate'     => $visit->VisitDate,
+              'VisitTime'     => $visit->VisitTime,
+              'CheckInMethod' => $visit->CheckInMethod,
+              'Remarks'       => $visit->Remarks,
+          ];
+      });
+  
+      // Return JSON with the flattened result
+      return response()->json([
+          'visits' => $transformedVisits
+      ]);
+  }
+  
 
     /**
      * Update an existing visit log.

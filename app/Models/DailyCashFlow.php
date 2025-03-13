@@ -22,6 +22,7 @@ class DailyCashFlow extends Model
         'WalkInBDOSales',      // <--- add
         'TotalSales',
         'PettyCash',
+        'PettyCashTomorrow',
         'DepositedAmount',
         'Remarks',
         'BranchID',

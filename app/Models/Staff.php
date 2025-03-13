@@ -124,5 +124,25 @@ class Staff extends Authenticatable
     public function getOvertimeRateAttribute() {
         return $this->HourlyRate * 1.25;
     }
+
+    public function getDefaultBranchIdAttribute()
+{
+    // Make sure the 'branches' relationship is loaded:
+    // (You can do $this->load('branches') in the controller or method.)
+    if ($this->branches->isEmpty()) {
+        return null;
+    }
+
+    // 1) If you just want the FIRST branch in the pivot:
+    //    (This only makes sense if staff truly belongs to a single or 
+    //     “primary” branch and the pivot is basically 1 record.)
+    return $this->branches->first()->BranchID;
+
+    // 2) If you want to pick the pivot row where e.g. 'IsDefault' = 1:
+    //    return $this->branches->where('pivot.IsDefault', 1)
+    //                          ->first()
+    //                          ->BranchID ?? null;
+}
+
     
 }
