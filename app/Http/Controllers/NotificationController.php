@@ -891,7 +891,7 @@ public function getStaffNotifications(Request $request)
         // 2) Build the message array
         //    If you already have a dedicated “Coach Booking” Template in Mailjet,
         //    set its ID and pass placeholders in `Variables`.
-        $templateID = 9999999; // <--- put your actual Mailjet template ID here
+        $templateID = 6806665; // <--- put your actual Mailjet template ID here
     
         $body = [
             'Messages' => [

@@ -463,15 +463,18 @@ export default function Notifications() {
   // Transform logs: map MemberID to MemberName using allMembers
   const transposedLogs = mailjetActivityLogs.map((log) => {
     const member = allMembers.find((m) => m.MemberID === log.MemberID);
-    return { ...log, MemberName: member ? member.FullName : log.MemberID };
-  });
+    return { 
+      ...log, 
+      MemberName: member ? member.FullName : String(log.MemberID) // Ensure it's a string
+    };
+});
+const filteredLogs = transposedLogs.filter(
+  (log) =>
+    typeof log.MemberName === "string" &&
+    log.MemberName.toLowerCase().includes(logSearchTerm.toLowerCase()) ||
+    (typeof log.Message === "string" && log.Message.toLowerCase().includes(logSearchTerm.toLowerCase()))
+);
 
-  // Filter logs by search term (searching in MemberName and Message)
-  const filteredLogs = transposedLogs.filter(
-    (log) =>
-      log.MemberName.toLowerCase().includes(logSearchTerm.toLowerCase()) ||
-      log.Message.toLowerCase().includes(logSearchTerm.toLowerCase())
-  );
 
   // Define columns for the Mailjet Activity Logs with custom rendering for Status
   const logColumns = [

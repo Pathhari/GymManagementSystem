@@ -867,7 +867,7 @@ async function handleUpdateBooking() {
 async function handleBookSessionConfirm() {
   if (!sessionToBook) return;
   try {
-    // Step 1) Create the booking on backend
+    // Step 1: Create the session booking
     await axios.post("/booking/sessions/book", {
       SessionID: sessionToBook.SessionID,
       MemberID: sessionBookingMemberID,
@@ -877,30 +877,25 @@ async function handleBookSessionConfirm() {
       Amount: Number(sessionBookingPaymentAmount) || 0,
     });
 
-    // Step 2) Immediately notify the coach (Mailjet) if the session has a valid coach
+    // Step 2: Notify the coach using the notifyCoachOfBookingMailjet endpoint
     if (sessionToBook.CoachID) {
-      // 2a) Find coach data from your coaches array
       const foundCoach = coaches.find(c => c.CoachID === sessionToBook.CoachID);
       if (foundCoach && foundCoach.ContactInfo && foundCoach.Email.includes("@")) {
-
-        // 2b) Find the member for a nice name display
         const foundMember = members.find(m => m.MemberID === Number(sessionBookingMemberID));
         const memberName = foundMember ? foundMember.FullName : "Unknown Member";
-
-        // 2c) Post to your new notify endpoint
         await axios.post("/notifications/notify-coach-booking-mailjet", {
-          coach_id:     foundCoach.CoachID,
-          coach_name:   foundCoach.FullName,
-          coach_email:  foundCoach.Email,   // or foundCoach.Email if your DB has it
-          member_name:  memberName,
+          coach_id: foundCoach.CoachID,
+          coach_name: foundCoach.FullName,
+          coach_email: foundCoach.Email,
+          member_name: memberName,
           session_name: sessionToBook.SessionName,
-          start_time:   sessionToBook.StartTime,  // "YYYY-MM-DD HH:mm:ss"
-          end_time:     sessionToBook.EndTime,
+          start_time: sessionToBook.StartTime, // "YYYY-MM-DD HH:mm:ss"
+          end_time: sessionToBook.EndTime,
         });
       }
     }
 
-    // Step 3) Wrap up
+    // Step 3: Finalize booking process
     setBookSessionOpen(false);
     fetchAllData();
     showSnack("Session booked successfully, coach notified by Mailjet!", "success");
@@ -914,6 +909,7 @@ async function handleBookSessionConfirm() {
     }
   }
 }
+
 
 
   // Coaches
