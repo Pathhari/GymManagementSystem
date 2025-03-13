@@ -182,25 +182,31 @@ class MonthlyClientController extends Controller
     public function update(Request $request, $id)
     {
         $client = MonthlyClient::findOrFail($id);
-
-        $staff = auth('staff')->user();
-        if ($staff && $client->BranchID != $staff->BranchID) {
-            abort(403, 'Not your branch');
+        $staff  = auth('staff')->user();
+    
+        // if staff is logged in, confirm the client’s BranchID is in staff’s branches
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID')->toArray();
+            if (! in_array($client->BranchID, $branchIDs)) {
+                abort(403, 'Not your branch');
+            }
         }
-
+    
+        // Now do your validation and update
         $data = $request->validate([
-            'FullName'   => 'nullable|string|max:255',
-            'Email'      => 'nullable|email|unique:monthly_clients,Email,' . $client->MonthlyClientID . ',MonthlyClientID',
-            'Phone'      => 'nullable|string|max:50',
-            'StartDate'  => 'nullable|date',
-            'EndDate'    => 'nullable|date|after_or_equal:StartDate',
-            'IsActive'   => 'boolean',
+            'FullName'  => 'nullable|string|max:255',
+            'Email'     => 'nullable|email|unique:monthly_clients,Email,' . $client->MonthlyClientID . ',MonthlyClientID',
+            'Phone'     => 'nullable|string|max:50',
+            'StartDate' => 'nullable|date',
+            'EndDate'   => 'nullable|date|after_or_equal:StartDate',
+            'IsActive'  => 'boolean',
         ]);
-
+    
         $client->update($data);
+    
         return response()->json($client);
     }
-
+    
     /**
      * DELETE /monthly-clients/{id}
      * You might want to handle invoice/payment reversion, or just soft-delete the client.

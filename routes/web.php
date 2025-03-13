@@ -679,7 +679,7 @@ Route::prefix('finance')->group(function() {
         Route::get('financial-summary', [FinanceController::class, 'getFinancialSummary'])->name('finance.summary');
     });
 
-    Route::middleware('multiGuard:owner,admin')->group(function() {
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
         Route::put('summary/{id}', [FinanceController::class, 'updateSummary'])->name('finance.summary.update');
         Route::delete('summary/{id}', [FinanceController::class, 'destroySummary'])->name('finance.summary.destroy');
 
