@@ -249,12 +249,13 @@ class BookingController extends Controller
                 'Branch'       => optional($s->branch)->BranchName ?? '',
                 'SessionName'  => $s->SessionName,
                 'SessionType'  => $s->SessionType ?? '',
+                'CoachID'      => $s->CoachID, // Add this line
                 'CoachName'    => optional($s->coach)->FullName ?? '',
                 'StartTime'    => $s->StartTime ?? '',
                 'EndTime'      => $s->EndTime ?? '',
                 'Capacity'     => $s->Capacity,
                 'Location'     => $s->Location ?? '',
-                'Fee'          => $s->Fee ? number_format($s->Fee, 2) : '0.00', // Format fee as decimal
+                'Fee'          => $s->Fee ? number_format($s->Fee, 2) : '0.00',
                 'Participants' => $s->Participants ?? 0,
                 'Status'       => $s->Status ?? '',
             ];

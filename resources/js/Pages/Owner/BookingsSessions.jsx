@@ -863,6 +863,7 @@ async function handleUpdateBooking() {
       setBookSessionOpen(true);
     }
   }
+  
 // Inside your BookingsSessions component
 async function handleBookSessionConfirm() {
   if (!sessionToBook) return;
@@ -881,7 +882,8 @@ async function handleBookSessionConfirm() {
     if (sessionToBook.CoachID) {
       const foundCoach = coaches.find(c => c.CoachID === sessionToBook.CoachID);
       console.log("foundCoach =>", foundCoach);
-      if (foundCoach && foundCoach.ContactInfo && foundCoach.Email.includes("@")) {
+      // Relaxed condition: only check for a valid email
+      if (foundCoach && foundCoach.Email && foundCoach.Email.includes("@")) {
         const foundMember = members.find(m => m.MemberID === Number(sessionBookingMemberID));
         const memberName = foundMember ? foundMember.FullName : "Unknown Member";
         await axios.post("/notifications/notify-coach-booking-mailjet", {
@@ -893,6 +895,8 @@ async function handleBookSessionConfirm() {
           start_time: sessionToBook.StartTime, // "YYYY-MM-DD HH:mm:ss"
           end_time: sessionToBook.EndTime,
         });
+      } else {
+        console.warn("Coach email not valid or missing:", foundCoach);
       }
     }
 
@@ -910,6 +914,7 @@ async function handleBookSessionConfirm() {
     }
   }
 }
+
 
 
 
