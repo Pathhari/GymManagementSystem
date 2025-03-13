@@ -28,6 +28,7 @@ import {
   Stack,
   IconButton,
   OutlinedInput,
+  Chip,
 } from "@mui/material";
 import '@fontsource/roboto';
 import Webcam from "react-webcam";
@@ -77,6 +78,8 @@ import "jspdf-autotable";
 /* Layouts */
 import AddNewMemberLayout from "../../Layouts/AddNewMemberLayout";
 import ManagePlansLayout from "../../Layouts/ManagePlansLayout";
+
+
 
 export default function MembershipManagement() {
   const theme = useTheme();
@@ -1106,7 +1109,7 @@ useEffect(() => {
     {
       field: "MemberStatusID",
       headerName: "Status",
-      width: 120,
+      width: 150,
       renderCell: (params) => {
         const msid = params.value;
         const stName = getStatusNameByID(msid) ?? "—";
@@ -1118,17 +1121,26 @@ useEffect(() => {
               return "#f44336";
             case "frozen":
               return "#2196f3";
+            case "on-hold":
+              return "blue";
+            case "terminated":
+              return "gray";
             default:
-              return "#757575";
+              return "black";
           }
         };
+
         return (
-          <span style={{ color: getStatusColor(stName), fontWeight: "bold" }}>
-            {stName}
-          </span>
+          <Chip
+            label={stName}
+            style={{
+              backgroundColor: getStatusColor(stName),
+              color: "white",
+            }}
+          />
         );
       },
-    },
+    },    
     {
       field: "MembershipEndDate",
       headerName: "Ends",

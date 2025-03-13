@@ -25,8 +25,9 @@ import {
   Tabs,
   Tab,
   InputAdornment,
+  Snackbar,
+  Chip
 } from "@mui/material";
-import Autocomplete from "@mui/material/Autocomplete";
 import { DataGrid } from "@mui/x-data-grid";
 
 // ===== MUI Icons =====
@@ -38,19 +39,72 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import SendIcon from "@mui/icons-material/Send";
 
+
+  // 1. Define a mapping from status ID to color and label:
+  const statusColorMap = {
+    1: "green",    // ACTIVE
+    2: "orange",   // FROZEN
+    3: "blue",     // ON-HOLD
+    4: "gray",     // TERMINATED
+    5: "red",      // EXPIRED
+    6: "purple",   // NEW MEMBER
+  };
+
+  const statusLabelMap = {
+    1: "ACTIVE",
+    2: "FROZEN",
+    3: "ON-HOLD",
+    4: "TERMINATED",
+    5: "EXPIRED",
+    6: "NEW MEMBER",
+  };
+
+
 // ---------- DataGrid columns for Mailjet and Semaphore ----------
 const mailjetColumns = [
   { field: "MemberID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Email", headerName: "Email", width: 200 },
-  { field: "MemberStatusID", headerName: "StatusID", width: 100 },
+  {
+    field: "MemberStatusID",
+    headerName: "Status",
+    width: 150,
+    renderCell: (params) => {
+      const statusId = params.value;
+      const label = statusLabelMap[statusId] || `Status ${statusId}`;
+      const bgColor = statusColorMap[statusId] || "black";
+  
+      return (
+        <Chip
+          label={label}
+          style={{ backgroundColor: bgColor, color: "white" }}
+        />
+      );
+    },
+  },
 ];
 
 const semaphoreColumns = [
   { field: "MemberID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Phone", headerName: "Phone", width: 180 },
-  { field: "MemberStatusID", headerName: "StatusID", width: 100 },
+  {
+    field: "MemberStatusID",
+    headerName: "Status",
+    width: 120,
+    renderCell: (params) => {
+      const statusId = params.value;
+      const label = statusLabelMap[statusId] || `Status ${statusId}`;
+      const bgColor = statusColorMap[statusId] || "black";
+  
+      return (
+        <Chip
+          label={label}
+          style={{ backgroundColor: bgColor, color: "white" }}
+        />
+      );
+    },
+  },
 ];
 
 // (Optional) For staff selection
@@ -58,9 +112,8 @@ const staffColumns = [
   { field: "StaffID", headerName: "ID", width: 70 },
   { field: "FullName", headerName: "Name", width: 180 },
   { field: "Email", headerName: "Email", width: 220 },
-  { field: "Role", headerName: "Role", width: 150 }, // Optional, helpful info
+  { field: "Role", headerName: "Role", width: 150 },
 ];
-
 
 export default function Notifications() {
   // Tabs
@@ -88,6 +141,12 @@ export default function Notifications() {
   const [templateId, setTemplateId] = useState("");
   const [mailjetFilterStatus, setMailjetFilterStatus] = useState("All");
   const [mailjetShowExpiring, setMailjetShowExpiring] = useState(false);
+  // State for Mailjet activity logs
+  const [mailjetActivityLogs, setMailjetActivityLogs] = useState([]);
+  // Search term for Email Activity Logs
+  const [logSearchTerm, setLogSearchTerm] = useState("");
+
+  const [memberSearchTerm, setMemberSearchTerm] = useState("");
 
   // Semaphore
   const [semaphoreMembers, setSemaphoreMembers] = useState([]);
@@ -105,9 +164,63 @@ export default function Notifications() {
   const [staffSender, setStaffSender] = useState("admin");
   const [staffNotifications, setStaffNotifications] = useState([]);
 
-  // Member Statuses (Hard-coded statuses: 1=ACTIVE, 2=FROZEN, 3=ON-HOLD, 4=TERMINATED, 5=EXPIRED, 6=NEW MEMBER)
+  // Member Statuses
   const [memberStatuses, setMemberStatuses] = useState([]);
 
+  // ─────────────────────────────────────────────────────────
+  // Confirmation Dialog States
+  // ─────────────────────────────────────────────────────────
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState("");
+  const [confirmMessage, setConfirmMessage] = useState("");
+  const [confirmCallback, setConfirmCallback] = useState(null);
+
+  const openConfirmDialog = (title, message, callback) => {
+    setConfirmTitle(title);
+    setConfirmMessage(message);
+    setConfirmCallback(() => callback);
+    setConfirmOpen(true);
+  };
+
+  const handleCloseConfirm = () => {
+    setConfirmOpen(false);
+    setConfirmTitle("");
+    setConfirmMessage("");
+    setConfirmCallback(null);
+  };
+
+  const handleConfirm = () => {
+    if (confirmCallback) confirmCallback();
+    handleCloseConfirm();
+  };
+
+  //formatter
+  const formatDateTime = (dateString) => {
+    if (!dateString) return "—";
+    const dateObj = new Date(dateString);
+    return dateObj.toLocaleString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+  // ─────────────────────────────────────────────────────────
+  // Snackbar
+  // ─────────────────────────────────────────────────────────
+  const [snackOpen, setSnackOpen] = useState(false);
+  const [snackMessage, setSnackMessage] = useState("");
+
+  const showSuccessMessage = (msg) => {
+    setSnackMessage(msg);
+    setSnackOpen(true);
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // Lifecycle & Data Loading
+  // ─────────────────────────────────────────────────────────
   useEffect(() => {
     loadAnnouncements();
     loadAllMembersMailjet();
@@ -115,7 +228,13 @@ export default function Notifications() {
     loadMemberStatuses();
     loadStaffList();
   }, [activeTab]);
-  
+
+  // Load Mailjet activity logs when Mailjet tab is active
+  useEffect(() => {
+    if (activeTab === 1) {
+      loadMailjetActivityLogs();
+    }
+  }, [activeTab]);
 
   const loadAnnouncements = async () => {
     try {
@@ -158,19 +277,27 @@ export default function Notifications() {
     setMemberStatuses(statuses);
   };
 
-  // ---------------- LOAD STAFF LIST FOR STAFF ANNOUNCEMENTS ---------------
   const loadStaffList = async () => {
     try {
-      // Adjust this endpoint if necessary
       const response = await axios.get("/staff");
-      // e.g. if response.data is an array of staff, set it:
       setStaffList(response.data || []);
     } catch (error) {
       console.error("Failed to load staff list:", error);
     }
   };
 
-  // ===================== ANNOUNCEMENTS =====================
+  const loadMailjetActivityLogs = async () => {
+    try {
+      const res = await axios.get("/notifications/mailjet-activity-logs");
+      setMailjetActivityLogs(res.data.logs || []);
+    } catch (error) {
+      console.error("Error loading Mailjet logs:", error);
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // Announcements
+  // ─────────────────────────────────────────────────────────
   const handleAddAnnouncement = async () => {
     if (!newTopic.trim() || !newMessage.trim()) {
       alert("Please fill out both Topic and Message.");
@@ -184,6 +311,7 @@ export default function Notifications() {
       setAnnouncements((prev) => [res.data, ...prev]);
       setNewTopic("");
       setNewMessage("");
+      showSuccessMessage("Announcement added!");
     } catch (error) {
       console.error("Add announcement failed:", error);
       alert("Failed to add announcement.");
@@ -212,7 +340,7 @@ export default function Notifications() {
       return;
     }
     try {
-      const res = await axios.put(`/notifications/announcements/${editData.id}`, { 
+      const res = await axios.put(`/notifications/announcements/${editData.id}`, {
         topic: editData.topic,
         message: editData.message,
       });
@@ -222,28 +350,40 @@ export default function Notifications() {
         )
       );
       setEditOpen(false);
+      showSuccessMessage("Announcement updated!");
     } catch (error) {
       console.error("Edit announcement failed:", error);
       alert("Failed to edit announcement.");
     }
   };
 
-  const handleDeleteAnnouncement = async (notifId) => {
-    if (!window.confirm("Are you sure you want to delete this announcement?")) {
-      return;
-    }
+  const doDeleteAnnouncement = async (notifId) => {
     try {
       await axios.delete(`/notifications/announcements/${notifId}`);
-      setAnnouncements((prev) => prev.filter((a) => a.NotificationID !== notifId));
+      setAnnouncements((prev) =>
+        prev.filter((a) => a.NotificationID !== notifId)
+      );
+      showSuccessMessage("Announcement deleted.");
     } catch (error) {
       console.error("Delete announcement failed:", error);
       alert("Failed to delete announcement.");
     }
   };
 
-  // ============== STAFF-SPECIFIC ANNOUNCEMENTS (sendStaffNotification) ==============
+  const handleDeleteAnnouncement = (notifId) => {
+    const ann = announcements.find((a) => a.NotificationID === notifId);
+    if (!ann) return;
+    openConfirmDialog(
+      "Delete Announcement",
+      `Are you sure you want to delete "${ann.Message.substring(0, 30)}..."?`,
+      () => doDeleteAnnouncement(notifId)
+    );
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // Staff-Specific Announcements
+  // ─────────────────────────────────────────────────────────
   const handleStaffSelection = (staffIds) => {
-    // staffIds is an array of row IDs from the DataGrid
     setSelectedStaff(staffIds);
   };
 
@@ -264,8 +404,7 @@ export default function Notifications() {
 
     try {
       const resp = await axios.post("/notifications/send-staff", payload);
-      alert(resp.data.message || "Staff notification sent!");
-      // Optionally reset form
+      showSuccessMessage(resp.data.message || "Staff notification sent!");
       setSelectedStaff([]);
       setStaffSubject("");
       setStaffMessage("");
@@ -275,35 +414,24 @@ export default function Notifications() {
     }
   };
 
-  // ===================== MAILJET =====================
+  // ─────────────────────────────────────────────────────────
+  // Mailjet
+  // ─────────────────────────────────────────────────────────
   const handleMailjetSelection = (ids) => {
     setSelectedMailjetIDs(ids);
   };
-  const handleSendMailjetTemplate = async () => {
-    if (!templateId.trim()) {
-      alert("Please enter the Mailjet Template ID.");
-      return;
-    }
-    if (selectedMailjetIDs.length === 0) {
-      alert("Please select at least one member.");
-      return;
-    }
-    if (
-      !window.confirm(
-        `Send Mailjet template #${templateId} to ${selectedMailjetIDs.length} member(s)?`
-      )
-    ) {
-      return;
-    }    
+
+  const doSendMailjetTemplate = async () => {
     try {
       const response = await axios.post("/notifications/send-mailjet-template", {
         templateId: Number(templateId),
         memberIds: selectedMailjetIDs,
       });
-  
+
       if (response.data.status === "success") {
-        alert("Template emails sent!");
-        setSelectedMailjetIDs([]); // ✅ Move inside success block
+        showSuccessMessage("Template emails sent!");
+        setSelectedMailjetIDs([]);
+        loadMailjetActivityLogs();
       } else if (response.data.status === "no-action") {
         alert("No valid members or emails found.");
       } else {
@@ -315,23 +443,75 @@ export default function Notifications() {
       alert("Failed to send Mailjet template.");
     }
   };
-  
+
+  const handleSendMailjetTemplate = () => {
+    if (!templateId.trim()) {
+      alert("Please enter the Mailjet Template ID.");
+      return;
+    }
+    if (selectedMailjetIDs.length === 0) {
+      alert("Please select at least one member.");
+      return;
+    }
+    openConfirmDialog(
+      "Send Templated Email",
+      `Send Mailjet template #${templateId} to ${selectedMailjetIDs.length} member(s)?`,
+      doSendMailjetTemplate
+    );
+  };
+
+  // Transform logs: map MemberID to MemberName using allMembers
+  const transposedLogs = mailjetActivityLogs.map((log) => {
+    const member = allMembers.find((m) => m.MemberID === log.MemberID);
+    return { ...log, MemberName: member ? member.FullName : log.MemberID };
+  });
+
+  // Filter logs by search term (searching in MemberName and Message)
+  const filteredLogs = transposedLogs.filter(
+    (log) =>
+      log.MemberName.toLowerCase().includes(logSearchTerm.toLowerCase()) ||
+      log.Message.toLowerCase().includes(logSearchTerm.toLowerCase())
+  );
+
+  // Define columns for the Mailjet Activity Logs with custom rendering for Status
+  const logColumns = [
+    { field: "NotificationID", headerName: "ID", width: 70 },
+    { field: "MemberName", headerName: "Member", width: 150 },
+    {
+      field: "Status",
+      headerName: "Status",
+      width: 120,
+      renderCell: (params) => {
+        const status = params.value;
+        let bgColor = "";
+        if (status === "Sent") bgColor = "green";
+        else if (status === "Failed") bgColor = "red";
+        else if (status === "Pending") bgColor = "blue";
+        else if (status === "Queued") bgColor = "orange";
+        return <Chip label={status} style={{ backgroundColor: bgColor, color: "white" }} />;
+      },
+    },
+    { field: "timestamp", headerName: "Sent Date", width: 250,  renderCell: (params) =>
+      params.value ? formatDateTime(params.value) : "—",},
+    { field: "Message", headerName: "Message", width: 250 },
+  ];
 
   const filteredMailjetMembers = React.useMemo(() => {
     const today = new Date();
     const next7 = new Date();
-    next7.setDate(next7.getDate() + 7); // 7 days from now
-    next7.setDate(next7.getDate() + 7); // 7 days from now
-
+    next7.setDate(next7.getDate() + 7);
+  
     return allMembers.filter((m) => {
-      // Filter by status
-      if (
-        mailjetFilterStatus !== "All" &&
-        String(m.MemberStatusID) !== mailjetFilterStatus
-      ) {
-        return false;
+      // Filter by search term on FullName or Email
+      if (memberSearchTerm) {
+        const search = memberSearchTerm.toLowerCase();
+        if (
+          !m.FullName.toLowerCase().includes(search) &&
+          !m.Email.toLowerCase().includes(search)
+        ) {
+          return false;
+        }
       }
-      // Filter by “Expiring in 7 days”
       if (mailjetShowExpiring) {
         if (!m.MembershipEndDate) return false;
         const endDateObj = new Date(m.MembershipEndDate);
@@ -340,81 +520,35 @@ export default function Notifications() {
       }
       return true;
     });
-  }, [allMembers, mailjetFilterStatus, mailjetShowExpiring]);
+  }, [allMembers, mailjetFilterStatus, mailjetShowExpiring, memberSearchTerm]);
 
-  // ===================== SEMAPHORE =====================
-  const handleSemaphoreSelection = (ids) => {
-    setSelectedSemaphoreIDs(ids);
-  };
-  const handleAutoFillSemaphoreNumbers = () => {
-    const selectedRows = semaphoreMembers.filter((m) =>
-      selectedSemaphoreIDs.includes(m.MemberID)
-    );
-  
-    const phones = selectedRows
-      .map((m) => {
-        if (!m.Phone) return null;
-        let formatted = m.Phone.replace(/\D/g, ""); // Remove non-numeric characters
-        if (formatted.startsWith("09")) {
-          formatted = "63" + formatted.substring(1);
-        }
-        return formatted;
-      })
-      .filter(Boolean); // Remove null values
-  
-    if (phones.length === 0) {
-      alert("No valid phone numbers among selected members.");
+  const handleSendExpiryReminderSelected = async () => {
+    if (selectedMailjetIDs.length === 0) {
+      alert("Please select at least one member.");
       return;
     }
-    setSemaphoreNumbers(phones.join(","));
-  };
-  
-
-  const handleSendSemaphoreSMS = async () => {
-    if (!semaphoreNumbers.trim()) {
-        alert("Please provide at least one mobile number.");
-        return;
-    }
-    if (!semaphoreMessage.trim()) {
-        alert("Please enter your SMS message.");
-        return;
-    }
-    const payload = {
-        numbers: semaphoreNumbers,
-        message: semaphoreMessage,
-        senderName: semaphoreSenderName || "Contnental",
-    };
-    if (!window.confirm("Send the above message via Semaphore?")) {
-        return;
-    }
     try {
-        const resp = await axios.post("/notifications/send-semaphore-sms", payload);
-        if (resp.data.status === "success" || resp.data.status === "partial") {
-          alert(`SMS sent successfully! ✅ \n\n📩 Sent: ${resp.data.successCount} \n❌ Failed: ${resp.data.failCount}`);      
-            setSemaphoreNumbers("");
-            setSemaphoreMessage("");
-            setSemaphoreSenderName("");
-        } else {
-            console.error("Semaphore API Response Error:", resp.data);
-            alert(`Something went wrong: ${resp.data.message}`);
-        }
+      const response = await axios.post(
+        "/notifications/send-expiring-reminder-selected",
+        { memberIds: selectedMailjetIDs }
+      );
+      if (response.data.status === "success") {
+        showSuccessMessage("Expiry reminders sent for selected members!");
+      } else {
+        alert(response.data.message || "Some issue occurred. Check logs.");
+      }
+      setSelectedMailjetIDs([]);
     } catch (error) {
-        console.error("Semaphore SMS error:", error);
-        alert("Error sending Semaphore SMS. Check logs.");
+      console.error("Failed to send expiry reminders for selected members:", error);
+      alert("Error sending expiry reminders for selected members.");
     }
-};
+  };
 
-
-  const filteredSemaphoreMembers = semaphoreMembers.filter((m) => {
-    if (semaphoreFilterStatus === "All") return true;
-    return String(m.MemberStatusID) === semaphoreFilterStatus;
-  });
-
-  const handleSendExpiringReminder = async () => {
+  const handleSendExpiryReminder = async () => {
     try {
       const res = await axios.get("/notifications/send-expiring-reminder");
       if (res.data.status === "success") {
-        alert("Expiry reminder emails sent!");
+        showSuccessMessage("Expiry reminder emails sent!");
       } else if (res.data.status === "no-action") {
         alert("No members expiring in 7 days.");
       } else {
@@ -426,7 +560,85 @@ export default function Notifications() {
     }
   };
 
-  // ===================== RENDER =====================
+  // ─────────────────────────────────────────────────────────
+  // Semaphore
+  // ─────────────────────────────────────────────────────────
+  const handleSemaphoreSelection = (ids) => {
+    setSelectedSemaphoreIDs(ids);
+  };
+
+  const handleAutoFillSemaphoreNumbers = () => {
+    const selectedRows = semaphoreMembers.filter((m) =>
+      selectedSemaphoreIDs.includes(m.MemberID)
+    );
+
+    const phones = selectedRows
+      .map((m) => {
+        if (!m.Phone) return null;
+        let formatted = m.Phone.replace(/\D/g, "");
+        if (formatted.startsWith("09")) {
+          formatted = "63" + formatted.substring(1);
+        }
+        return formatted;
+      })
+      .filter(Boolean);
+
+    if (phones.length === 0) {
+      alert("No valid phone numbers among selected members.");
+      return;
+    }
+    setSemaphoreNumbers(phones.join(","));
+  };
+
+  const doSendSemaphoreSMS = async () => {
+    const payload = {
+      numbers: semaphoreNumbers,
+      message: semaphoreMessage,
+      senderName: semaphoreSenderName || "Contnental",
+    };
+    try {
+      const resp = await axios.post("/notifications/send-semaphore-sms", payload);
+      if (resp.data.status === "success" || resp.data.status === "partial") {
+        showSuccessMessage(
+          `SMS sent successfully! Sent: ${resp.data.successCount}, Failed: ${resp.data.failCount}`
+        );
+        setSemaphoreNumbers("");
+        setSemaphoreMessage("");
+        setSemaphoreSenderName("");
+      } else {
+        console.error("Semaphore API Response Error:", resp.data);
+        alert(`Something went wrong: ${resp.data.message}`);
+      }
+    } catch (error) {
+      console.error("Semaphore SMS error:", error);
+      alert("Error sending Semaphore SMS. Check logs.");
+    }
+  };
+
+  const handleSendSemaphoreSMS = () => {
+    if (!semaphoreNumbers.trim()) {
+      alert("Please provide at least one mobile number.");
+      return;
+    }
+    if (!semaphoreMessage.trim()) {
+      alert("Please enter your SMS message.");
+      return;
+    }
+    openConfirmDialog(
+      "Send SMS",
+      `Send the above message to:\n${semaphoreNumbers}`,
+      doSendSemaphoreSMS
+    );
+  };
+
+  const filteredSemaphoreMembers = semaphoreMembers.filter((m) => {
+    if (semaphoreFilterStatus === "All") return true;
+    return String(m.MemberStatusID) === semaphoreFilterStatus;
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // Rendering
+  // ─────────────────────────────────────────────────────────
   return (
     <Box sx={{ p: 4 }}>
       <Typography variant="h4" gutterBottom>
@@ -510,12 +722,12 @@ export default function Notifications() {
                 Select Staff to Receive This Announcement
               </Typography>
               <div style={{ width: "100%", height: 300, marginBottom: 16 }}>
-              <DataGrid
+                <DataGrid
                   rows={staffList}
                   columns={staffColumns}
                   getRowId={(row) => row.StaffID}
                   checkboxSelection
-                  rowSelectionModel={selectedStaff} // <-- add this
+                  rowSelectionModel={selectedStaff}
                   onRowSelectionModelChange={(newSelection) => {
                     const numericIDs = newSelection.map(Number);
                     handleStaffSelection(numericIDs);
@@ -548,7 +760,6 @@ export default function Notifications() {
                   const lines = ann.Message.split("\n");
                   const parsedTopic = lines[0].replace("Topic: ", "").trim();
                   const parsedMsg = lines.slice(1).join("\n").trim();
-
                   return (
                     <Box
                       key={ann.NotificationID}
@@ -567,7 +778,10 @@ export default function Notifications() {
                       </Typography>
                       <Box sx={{ mt: 1 }}>
                         <Tooltip title="Edit">
-                          <IconButton size="small" onClick={() => handleEditOpen(ann)}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEditOpen(ann)}
+                          >
                             <EditIcon fontSize="inherit" />
                           </IconButton>
                         </Tooltip>
@@ -575,7 +789,9 @@ export default function Notifications() {
                           <IconButton
                             size="small"
                             sx={{ color: "red", ml: 1 }}
-                            onClick={() => handleDeleteAnnouncement(ann.NotificationID)}
+                            onClick={() =>
+                              handleDeleteAnnouncement(ann.NotificationID)
+                            }
                           >
                             <DeleteIcon fontSize="inherit" />
                           </IconButton>
@@ -654,37 +870,88 @@ export default function Notifications() {
               label="Expiring in 7 days"
             />
           </Box>
-          <Typography variant="subtitle1" sx={{ mb: 1 }}>
-            Select Members to Receive the Template
-          </Typography>
-          <div style={{ width: "100%", height: 400 }}>
-          <DataGrid
-            rows={filteredMailjetMembers}
-            columns={mailjetColumns}
-            getRowId={(row) => row.MemberID}
-            checkboxSelection
-            onRowSelectionModelChange={(newSelection) => {
-              handleMailjetSelection(newSelection.map(Number)); // Convert to number
-            }}
-            pageSize={5}
-            rowsPerPageOptions={[5, 10]}
-          />
 
-          </div>
-          <Box sx={{ mt: 2 }}>
-            <Button
-              variant="contained"
-              startIcon={<SendIcon />}
-              onClick={
-                mailjetShowExpiring
-                  ? handleSendExpiringReminder
-                  : handleSendMailjetTemplate
-              }
-            >
-              {mailjetShowExpiring
-                ? "Send Expiry Reminders"
-                : "Send Templated Email"}
-            </Button>
+          <Grid container spacing={2}>
+            {/* Left: Member Selection DataGrid */}
+            <Grid item xs={6}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                Select Members to Receive the Template
+              </Typography>
+              <TextField
+                  label="Search Members"
+                  fullWidth
+                  value={memberSearchTerm}
+                  onChange={(e) => setMemberSearchTerm(e.target.value)}
+                  sx={{ mb: 1 }}
+                />
+                <div style={{ width: "100%", height: 400 }}>
+                <DataGrid
+                  rows={filteredMailjetMembers}
+                  columns={mailjetColumns}
+                  getRowId={(row) => row.MemberID}
+                  checkboxSelection
+                  onRowSelectionModelChange={(newSelection) => {
+                    handleMailjetSelection(newSelection.map(Number));
+                  }}
+                  pageSize={5}
+                  rowsPerPageOptions={[5, 10]}
+                />
+              </div>
+            </Grid>
+
+            {/* Right: Email Activity Logs */}
+            <Grid item xs={6}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                Email Activity Logs
+              </Typography>
+              <TextField
+                label="Search Logs"
+                fullWidth
+                value={logSearchTerm}
+                onChange={(e) => setLogSearchTerm(e.target.value)}
+                sx={{ mb: 1 }}
+              />
+              <div style={{ width: "100%", height: 400 }}>
+                <DataGrid
+                  rows={filteredLogs}
+                  columns={logColumns}
+                  getRowId={(row) => row.NotificationID}
+                  pageSize={5}
+                  rowsPerPageOptions={[5, 10]}
+                />
+              </div>
+            </Grid>
+          </Grid>
+
+          <Box sx={{ mt: 2, display: "flex", gap: 2 }}>
+            {mailjetShowExpiring ? (
+              <>
+                <Button
+                  variant="contained"
+                  startIcon={<SendIcon />}
+                  onClick={handleSendExpiryReminder}
+                >
+                  Send Expiry Reminders to All Expiring Members
+                </Button>
+                {selectedMailjetIDs.length > 0 && (
+                  <Button
+                    variant="contained"
+                    startIcon={<SendIcon />}
+                    onClick={handleSendExpiryReminderSelected}
+                  >
+                    Send Expiry Reminder to Selected Members
+                  </Button>
+                )}
+              </>
+            ) : (
+              <Button
+                variant="contained"
+                startIcon={<SendIcon />}
+                onClick={handleSendMailjetTemplate}
+              >
+                Send Templated Email
+              </Button>
+            )}
           </Box>
         </Paper>
       )}
@@ -722,7 +989,6 @@ export default function Notifications() {
               checkboxSelection
               rowSelectionModel={selectedSemaphoreIDs}
               onRowSelectionModelChange={(newSelection) => {
-                // newSelection might be ["1201", "1202"], so convert them if needed
                 setSelectedSemaphoreIDs(newSelection.map(Number));
               }}
               pageSize={5}
@@ -832,6 +1098,28 @@ export default function Notifications() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ================== CONFIRMATION DIALOG ================== */}
+      <Dialog open={confirmOpen} onClose={handleCloseConfirm}>
+        <DialogTitle>{confirmTitle}</DialogTitle>
+        <DialogContent dividers>
+          <Typography>{confirmMessage}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseConfirm}>Cancel</Button>
+          <Button variant="contained" color="primary" onClick={handleConfirm}>
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ================== SNACKBAR FOR SUCCESS ================== */}
+      <Snackbar
+        open={snackOpen}
+        autoHideDuration={3000}
+        onClose={() => setSnackOpen(false)}
+        message={snackMessage}
+      />
     </Box>
   );
 }
