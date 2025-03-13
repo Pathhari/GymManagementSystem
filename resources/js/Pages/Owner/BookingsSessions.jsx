@@ -882,6 +882,7 @@ async function handleBookSessionConfirm() {
     if (sessionToBook.CoachID) {
       const foundCoach = coaches.find(c => c.CoachID === sessionToBook.CoachID);
       console.log("foundCoach =>", foundCoach);
+      // Check that the coach has a valid email address
       if (foundCoach && foundCoach.Email && foundCoach.Email.includes("@")) {
         const foundMember = members.find(m => m.MemberID === Number(sessionBookingMemberID));
         const memberName = foundMember ? foundMember.FullName : "Unknown Member";
@@ -891,8 +892,9 @@ async function handleBookSessionConfirm() {
           coach_email: foundCoach.Email,
           member_name: memberName,
           session_name: sessionToBook.SessionName,
-          start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD hh:mm A"),
-          end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD hh:mm A"),
+          // Send times in 24-hour format as expected by the validator
+          start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD HH:mm:ss"),
+          end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD HH:mm:ss"),
         });
       } else {
         console.warn("Coach email not valid or missing:", foundCoach);
@@ -906,15 +908,17 @@ async function handleBookSessionConfirm() {
         member_id: foundMemberForNotification.MemberID,
         member_name: foundMemberForNotification.FullName,
         member_email: foundMemberForNotification.Email,
+        // Optionally include the coach's name for additional context
+        coach_name: coaches.find(c => c.CoachID === sessionToBook.CoachID)?.FullName || "",
         session_name: sessionToBook.SessionName,
-        start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD hh:mm A"),
-        end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD hh:mm A"),
+        start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD HH:mm:ss"),
+        end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD HH:mm:ss"),
       });
     } else {
       console.warn("Member email not valid or missing:", foundMemberForNotification);
     }
 
-    // Step 3: Finalize the booking process
+    // Step 3: Finalize booking process
     setBookSessionOpen(false);
     fetchAllData();
     showSnack("Session booked successfully, coach and member notified by Mailjet!", "success");
@@ -927,6 +931,7 @@ async function handleBookSessionConfirm() {
     }
   }
 }
+
 
 
   // Coaches
