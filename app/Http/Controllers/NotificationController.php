@@ -868,9 +868,9 @@ public function getStaffNotifications(Request $request)
         // Log the incoming data for debugging
         \Log::info('notifyCoachOfBookingMailjet - Request Data:', $data);
     
-        // Use Carbon to parse the start and end times
-        $startTimeParsed = \Carbon\Carbon::parse($data['start_time'])->format('Y-m-d H:i:s');
-        $endTimeParsed   = \Carbon\Carbon::parse($data['end_time'])->format('Y-m-d H:i:s');
+        // Use Carbon to parse the start and end times and format them in a human-readable format
+        $startTimeFormatted = \Carbon\Carbon::parse($data['start_time'])->format('F j, Y g:i A');
+        $endTimeFormatted   = \Carbon\Carbon::parse($data['end_time'])->format('F j, Y g:i A');
     
         // Initialize the Mailjet client
         $mj = new \Mailjet\Client(
@@ -882,7 +882,7 @@ public function getStaffNotifications(Request $request)
     
         $templateID = 6806665; // Make sure this template is active and published
     
-        // Build the messages array exactly as in sendExpiringMembershipReminderForSelected
+        // Build the messages array
         $messages = [];
         $messages[] = [
             'From' => [
@@ -902,24 +902,24 @@ public function getStaffNotifications(Request $request)
                 'coach_name'   => $data['coach_name'],
                 'member_name'  => $data['member_name'],
                 'session_name' => $data['session_name'],
-                'start_time'   => $startTimeParsed,
-                'end_time'     => $endTimeParsed,
+                'start_time'   => $startTimeFormatted,
+                'end_time'     => $endTimeFormatted,
             ],
         ];
     
         \Log::info('notifyCoachOfBookingMailjet - Messages Array:', $messages);
     
-        // Chunk messages into batches of 50 (even if there's only one message, we use the same logic)
+        // Chunk messages into batches of 50 (even if there's only one message)
         $chunks = array_chunk($messages, 50);
         $overallSuccess = 0;
         $overallFailed  = 0;
         $responses = [];
-    
+        
         foreach ($chunks as $chunk) {
             $body = ['Messages' => $chunk];
             $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
             $responseData = $response->getData();
-    
+        
             foreach ($responseData['Messages'] as $msg) {
                 if (isset($msg['Status']) && strtolower($msg['Status']) === 'success') {
                     $overallSuccess++;
@@ -929,7 +929,7 @@ public function getStaffNotifications(Request $request)
             }
             $responses[] = $responseData;
         }
-    
+        
         if ($overallFailed === 0) {
             \App\Models\Notification::create([
                 'MemberID'           => null,
@@ -940,13 +940,13 @@ public function getStaffNotifications(Request $request)
                 'Status'             => 'Sent',
             ]);
             \Log::info('notifyCoachOfBookingMailjet - Email Sent Successfully.', $data);
-    
+        
             return response()->json([
                 'status'  => 'success',
                 'message' => 'Coach booking email sent via Mailjet.',
             ]);
         }
-    
+        
         \Log::error('notifyCoachOfBookingMailjet - Mailjet Error:', $responses);
         return response()->json([
             'status'  => 'error',
