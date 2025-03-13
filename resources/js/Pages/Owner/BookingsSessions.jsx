@@ -892,8 +892,8 @@ async function handleBookSessionConfirm() {
           coach_email: foundCoach.Email,
           member_name: memberName,
           session_name: sessionToBook.SessionName,
-          start_time: sessionToBook.StartTime, // "YYYY-MM-DD HH:mm:ss"
-          end_time: sessionToBook.EndTime,
+          start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD HH:mm:ss"),
+          end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD HH:mm:ss"),
         });
       } else {
         console.warn("Coach email not valid or missing:", foundCoach);
