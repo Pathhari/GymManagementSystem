@@ -972,9 +972,9 @@ public function getStaffNotifications(Request $request)
     \Log::info('notifyMemberOfBookingMailjet - Request Data:', $data);
 
     // Use Carbon to parse and format start and end times
-    $startTimeFormatted = \Carbon\Carbon::parse($data['start_time'])->format('F j, Y g:i A');
-    $endTimeFormatted   = \Carbon\Carbon::parse($data['end_time'])->format('F j, Y g:i A');
-
+    $startTimeParsed = \Carbon\Carbon::parse($data['start_time'])->format('F j, Y g:i A');
+    $endTimeParsed  = \Carbon\Carbon::parse($data['end_time'])->format('F j, Y g:i A');
+    
     // Initialize the Mailjet client
     $mj = new \Mailjet\Client(
         config('services.mailjet.api_key'),
