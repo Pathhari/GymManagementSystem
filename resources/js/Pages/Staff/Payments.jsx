@@ -499,29 +499,40 @@ export default function PaymentsAndInvoices() {
   async function handleSubmitPetty() {
     if (!selectedFlowRow) return;
   
+    // Debug: see what we have
+    console.log("selectedFlowRow:", selectedFlowRow);
+  
     try {
+      // Provide fallback or real values for the missing fields:
       const payload = {
+        // If selectedFlowRow has no BranchID, you could fallback to staff’s branch or 1
+        BranchID: selectedFlowRow.BranchID ?? 1,
+        
+        // The backend expects 'Date', but your row has 'date' (lowercase):
+        Date: selectedFlowRow.date ?? dayjs().format("YYYY-MM-DD"),
+  
+        // If your DB column is BusinessType, you can default it or store it somewhere:
+        BusinessType: selectedFlowRow.BusinessType ?? "Gym",
+  
+        // The actual petty-cash fields you’re updating:
         PettyCash: Number(pettyForm.pettyCash) || 0,
         PettyCashTomorrow: Number(pettyForm.pettyTomorrow) || 0,
       };
-      // Example: PUT /finance/cashflow/:id
+  
+      console.log("Payload =>", payload);
+  
       await axios.put(`/finance/cashflow/${selectedFlowRow.CashFlowID}`, payload);
   
-      alert('Petty cash updated successfully!');
-  
-      // Optionally re-fetch the flows so updated values appear in the DataGrid
-      await fetchGymCashFlow();
-  
+      alert("Petty cash updated successfully!");
+      await fetchGymCashFlow(); // Refresh
       setPettyDialogOpen(false);
       setSelectedFlowRow(null);
     } catch (err) {
       console.error(err);
-      alert('Failed to update petty cash');
+      alert("Failed to update petty cash");
     }
   }
   
-  
-
   async function handleConfirmDelete() {
     try {
       if (deleteType === "payment") {
@@ -559,72 +570,85 @@ export default function PaymentsAndInvoices() {
   }
 
   function normalizePaymentMethod(method) {
-    // "W-In Cash", "W-In Gcash" => treat as "Cash", "GCash", etc.
-    if (!method) return method;
+    if (!method) return "";
     const lower = method.toLowerCase();
-    if (lower.includes("cash")) return "Cash";
-    if (lower.includes("gcash")) return "GCash";
-    if (lower.includes("bpi")) return "BPI";
-    if (lower.includes("bdo")) return "BDO";
-    return method; // fallback
+    // Normalize common variations of payment methods:
+    if (lower.includes("cash") && !lower.includes("w-in")) return "Cash";
+    if (lower.includes("gcash") || lower.includes("w-in gcash")) return "GCash";
+    if (lower.includes("bpi") || lower.includes("w-in bpi")) return "BPI";
+    if (lower.includes("bdo") || lower.includes("w-in bdo")) return "BDO";
+    return method;
   }
-
+  
   function aggregateByDate(gymFlows, allPayments) {
     const resultsMap = {};
   
-    // 1) Process your daily flows (Gym)
+    // 1) Process daily flows
     gymFlows.forEach((flow) => {
-      // Use flow.Date as-is (like "2025-03-13"). No new Date(), no created_at.
-      const dateStr = flow.Date; 
-  
+      // Use the "Date" field from the flow (e.g., "2025-03-13")
+      const dateStr = flow.Date;
       if (!resultsMap[dateStr]) {
         resultsMap[dateStr] = {
+          CashFlowID: flow.CashFlowID,
           date: dateStr,
-  
           totalCash: 0,
           totalGCash: 0,
           totalBPI: 0,
           totalBDO: 0,
-  
           pettyCash: 0,
           pettyTomorrow: 0,
           cashPlusPetty: 0,
-  
           countNewMembership: 0,
           countMonthlyClientFee: 0,
           countWalkinPayment: 0,
           countMembershipRenewal: 0,
           countBooking: 0,
           countCoachingSessionBooking: 0,
-  
           totalSales: 0,
           takeHome: 0,
         };
       }
   
-      // Sum up the flow’s own cash & petty
-      const flowCash = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
+      // Parse the numeric values (they are returned as strings)
+      const cashSales = parseFloat(flow.CashSales || 0);
+      const walkInCashSales = parseFloat(flow.WalkInCashSales || 0);
+      const sumCash = cashSales + walkInCashSales;
+  
+      const gCashSales = parseFloat(flow.GCashSales || 0);
+      const walkInGCashSales = parseFloat(flow.WalkInGCashSales || 0);
+      const sumGCash = gCashSales + walkInGCashSales;
+  
+      const bpiSales = parseFloat(flow.BPISales || 0);
+      const walkInBPISales = parseFloat(flow.WalkInBPISales || 0);
+      const sumBPI = bpiSales + walkInBPISales;
+  
+      const bdoSales = parseFloat(flow.BDOSales || 0);
+      const walkInBDOSales = parseFloat(flow.WalkInBDOSales || 0);
+      const sumBDO = bdoSales + walkInBDOSales;
+  
       const pettyVal = parseFloat(flow.PettyCash || 0);
       const pettyTmr = parseFloat(flow.PettyCashTomorrow || 0);
   
-      // Merge into aggregator
-      resultsMap[dateStr].totalCash += flowCash;
+      // Update aggregated row for this date
+      resultsMap[dateStr].totalCash += sumCash;
+      resultsMap[dateStr].totalGCash += sumGCash;
+      resultsMap[dateStr].totalBPI += sumBPI;
+      resultsMap[dateStr].totalBDO += sumBDO;
       resultsMap[dateStr].pettyCash += pettyVal;
       resultsMap[dateStr].pettyTomorrow += pettyTmr;
-      resultsMap[dateStr].cashPlusPetty += (flowCash + pettyVal);
+      // Define cashPlusPetty as the sum of cash sales and petty cash
+      resultsMap[dateStr].cashPlusPetty += (sumCash + pettyVal);
     });
   
-    // 2) Process all relevant Payments
+    // 2) Process payments
     allPayments.forEach((pay) => {
-      // PaymentDate might be "2025-03-13 07:30:13"
-      // We split by space, taking first chunk = "2025-03-13"
       let payDateStr = null;
       if (pay.PaymentDate) {
-        payDateStr = pay.PaymentDate.split(" ")[0]; // e.g., "2025-03-13"
+        // PaymentDate is something like "2025-03-13 22:01:41"; split on space:
+        payDateStr = pay.PaymentDate.split(" ")[0];
       }
       if (!payDateStr) return;
   
-      // If not found, initialize aggregator row
       if (!resultsMap[payDateStr]) {
         resultsMap[payDateStr] = {
           date: payDateStr,
@@ -646,7 +670,6 @@ export default function PaymentsAndInvoices() {
         };
       }
   
-      // Add Payment amounts
       const payAmount = parseFloat(pay.Amount || 0);
       const unifiedMethod = normalizePaymentMethod(pay.PaymentMethod);
   
@@ -665,11 +688,10 @@ export default function PaymentsAndInvoices() {
           resultsMap[payDateStr].totalBDO += payAmount;
           break;
         default:
-          // skip or handle "Other"
           break;
       }
   
-      // Count PaymentFor categories
+      // Count the categories in PaymentFor (if provided as an array)
       if (Array.isArray(pay.PaymentFor)) {
         pay.PaymentFor.forEach((cat) => {
           const c = cat.trim();
@@ -677,7 +699,7 @@ export default function PaymentsAndInvoices() {
             resultsMap[payDateStr].countNewMembership++;
           } else if (c === "Monthly Client Fee") {
             resultsMap[payDateStr].countMonthlyClientFee++;
-          } else if (c === "Walk-in Payment") {
+          } else if (c === "Walk-In Payment" || c === "Walkin Payment") {
             resultsMap[payDateStr].countWalkinPayment++;
           } else if (c === "Membership Renewal") {
             resultsMap[payDateStr].countMembershipRenewal++;
@@ -692,27 +714,16 @@ export default function PaymentsAndInvoices() {
   
     // 3) Compute final totals for each date
     Object.values(resultsMap).forEach((row) => {
-      // totalSales = (cash + petty) + GCash + BPI + BDO
+      // totalSales = (cashPlusPetty) + totalGCash + totalBPI + totalBDO
       row.totalSales = row.cashPlusPetty + row.totalGCash + row.totalBPI + row.totalBDO;
-  
       // takeHome = totalSales - pettyTomorrow
       row.takeHome = row.totalSales - row.pettyTomorrow;
     });
   
-    // 4) Return a sorted array
+    // 4) Return a sorted array by date
     return Object.values(resultsMap).sort((a, b) => a.date.localeCompare(b.date));
   }
   
-  // Example PaymentMethod normalizer
-  function normalizePaymentMethod(method) {
-    if (!method) return "";
-    const lower = method.toLowerCase();
-    if (lower.includes("cash")) return "Cash";
-    if (lower.includes("gcash")) return "GCash";
-    if (lower.includes("bpi")) return "BPI";
-    if (lower.includes("bdo")) return "BDO";
-    return "Other";
-  }
   
 
   // ==================== Tab Logic ====================
@@ -1440,13 +1451,13 @@ export default function PaymentsAndInvoices() {
                 params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
             },
           
-            // --- PaymentFor counters ---
-            { field: 'countNewMembership', headerName: 'New Memb.', width: 120 },
-            { field: 'countMonthlyClientFee', headerName: 'Monthly Fee', width: 120 },
-            { field: 'countWalkinPayment', headerName: 'Walk-Ins', width: 120 },
-            { field: 'countMembershipRenewal', headerName: 'Renewals', width: 120 },
-            { field: 'countBooking', headerName: 'Booking', width: 110 },
-            { field: 'countCoachingSessionBooking', headerName: 'Coaching', width: 120 },
+            //* --- PaymentFor counters --- 
+            //{ field: 'countNewMembership', headerName: 'New Memb.', width: 120 },
+            //{ field: 'countMonthlyClientFee', headerName: 'Monthly Fee', width: 120 },
+            //{ field: 'countWalkinPayment', headerName: 'Walk-Ins', width: 120 },
+            //{ field: 'countMembershipRenewal', headerName: 'Renewals', width: 120 },
+            //{ field: 'countBooking', headerName: 'Booking', width: 110 },
+            //{ field: 'countCoachingSessionBooking', headerName: 'Coaching', width: 120 },
           
             // --- Petty fields if you want to see them individually ---
             {
