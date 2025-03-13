@@ -117,11 +117,11 @@ export default function TaskTimeManagement({ isStaff = true }) {
 
   // Fetch tasks data
   useEffect(() => {
-    fetch("/staff/dashboard-info")
+    fetch("/staff/tasks") // Fetch tasks directly from a new endpoint
       .then((res) => res.json())
       .then((data) => {
-        if (data.tasks) {
-          const normalized = data.tasks.map((item) => ({
+        if (Array.isArray(data)) {
+          const normalized = data.map((item) => ({
             ...item,
             status: item.Status,
             description: item.TaskDescription,
@@ -131,9 +131,9 @@ export default function TaskTimeManagement({ isStaff = true }) {
           setCompletedTasks(normalized.filter((task) => task.status === "Completed"));
         }
       })
-      .catch((err) => console.error("Failed to load dashboard info:", err));
+      .catch((err) => console.error("Failed to load tasks:", err));
   }, []);
-
+  
   // Fetch attendance, schedule and staff info
   useEffect(() => {
     const fetchAttendanceAndSchedule = async () => {

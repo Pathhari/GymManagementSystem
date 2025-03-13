@@ -31,6 +31,7 @@ import {
   InputAdornment,
   OutlinedInput,
   useTheme,
+  CircularProgress,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import AddIcon from "@mui/icons-material/Add";
@@ -65,6 +66,8 @@ export default function PaymentsAndInvoices() {
 
   // ==================== State Hooks ====================
 
+
+  const [loading, setLoading] = useState(true);
   // For unfiltered data from server
   const [allPayments, setAllPayments] = useState([]);
   const [allInvoices, setAllInvoices] = useState([]);
@@ -87,7 +90,7 @@ export default function PaymentsAndInvoices() {
 
 
   // Active tab, search, and branch
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(2);
   const [searchTerm, setSearchTerm] = useState("");
   const [branch, setBranch] = useState("all");
   const [branchOptions, setBranchOptions] = useState([]);
@@ -347,12 +350,18 @@ export default function PaymentsAndInvoices() {
 
   // ==================== useEffect Fetch Calls ====================
   useEffect(() => {
-    fetchMembers();
-    fetchBranches();
-    fetchAllPayments();
-    fetchAllInvoices();
-    fetchUnpaidInvoices();
-    fetchGymCashFlow();
+    async function fetchData() {
+      await Promise.all([
+        fetchMembers(),
+        fetchBranches(),
+        fetchAllPayments(),
+        fetchAllInvoices(),
+        fetchUnpaidInvoices(),
+        fetchGymCashFlow()
+      ]);
+      setLoading(false);
+    }
+    fetchData();
   }, []);
 
   useEffect(() => {
@@ -728,7 +737,7 @@ export default function PaymentsAndInvoices() {
 
   // ==================== Tab Logic ====================
   const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
+    setActiveTab(2);
     setSearchTerm("");
   };
 
@@ -1280,14 +1289,33 @@ export default function PaymentsAndInvoices() {
     const pdfFilename = activeTab === 0 ? "PaymentsReport.pdf" : "InvoicesReport.pdf";
     doc.save(pdfFilename);
   };
+
+
+    // ==================== Loading Front-end ====================
+    if (loading) {
+      return (
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: "100vh"
+          }}
+        >
+          <CircularProgress />
+        </Box>
+      );
+    }
+  
   
   // ==================== JSX Return ====================
   return (
     <Box sx={{ p: 3 }}>
       {/* Date and Branch Filter Section */}
-      <Paper sx={{ p: 3, mb: 2, boxShadow: 3, borderRadius: 2 }}>
+     
+      {/* <Paper sx={{ p: 3, mb: 2, boxShadow: 3, borderRadius: 2 }}>
         <Grid container spacing={2}>
-          {/* FROM DATE */}
+          
           <Grid item xs={12} sm={6} md={3}>
             <TextField
               label="From Date"
@@ -1299,7 +1327,7 @@ export default function PaymentsAndInvoices() {
               InputLabelProps={{ shrink: true }}
             />
           </Grid>
-          {/* TO DATE */}
+      
           <Grid item xs={12} sm={6} md={3}>
             <TextField
               label="To Date"
@@ -1311,7 +1339,7 @@ export default function PaymentsAndInvoices() {
               InputLabelProps={{ shrink: true }}
             />
           </Grid>
-          {/* BRANCH */}
+        
           <Grid item xs={12} sm={6} md={3}>
             <FormControl fullWidth size="small">
               <InputLabel>Branch</InputLabel>
@@ -1329,18 +1357,12 @@ export default function PaymentsAndInvoices() {
             </FormControl>
           </Grid>
         </Grid>
-      </Paper>
-
+      </Paper>  */}
       {/* Tabs */}
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Typography variant="h4" gutterBottom>
           Payments & Invoices
         </Typography>
-        <Tabs value={activeTab} onChange={handleTabChange}>
-          <Tab icon={<ReceiptIcon />} label="Payments" />
-          <Tab icon={<DescriptionIcon />} label="Invoices" />
-          <Tab icon={<BarChartIcon />} label="Sales Report" />
-        </Tabs>
       </Box>
 
       {/* Search + Export + Add Buttons */}
