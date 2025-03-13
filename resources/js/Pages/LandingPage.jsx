@@ -4,18 +4,18 @@ import { AccountCircle, AdminPanelSettings, Work } from '@mui/icons-material';
 
 const LandingPage = () => {
   return (
-    <div className="flex items-center justify-center h-screen bg-black p-4">
+    <div className="flex items-center justify-center min-h-screen bg-black p-4">
       <div className="text-center">
         {/* Logo */}
         <div className="mb-6">
           <img
             src="/imgs/logo-main.png"
             alt="Logo"
-            className="mx-auto w-100 sm:w-40 md:w-80"
+            className="mx-auto w-full sm:w-40 md:w-80"
           />
         </div>
         {/* Card */}
-        <div className="bg-gray-800 text-white rounded-lg shadow-lg p-6 sm:p-8 md:p-10 w-full max-w-2xl">
+        <div className="bg-gray-800 text-white rounded-lg shadow-lg p-6 sm:p-8 md:p-10 w-full max-w-2xl mx-auto">
           {/* Buttons */}
           <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-4">
             {/* Log in as Owner Button */}
