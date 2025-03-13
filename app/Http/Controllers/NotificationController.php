@@ -571,9 +571,6 @@ public function getStaffNotifications(Request $request)
     ], 200);
 }
 
-    
-    
-    
 
     public function sendMailjetTemplate(Request $request)
     {
@@ -854,107 +851,110 @@ public function getStaffNotifications(Request $request)
             ], 500);
         }
     }
+
+
     public function notifyCoachOfBookingMailjet(Request $request)
-{
-    $data = $request->validate([
-        'coach_id'     => 'required|exists:coaches,CoachID',
-        'coach_name'   => 'required|string|max:255',
-        'coach_email'  => 'required|email',
-        'member_name'  => 'required|string|max:255',
-        'session_name' => 'required|string|max:255',
-        'start_time'   => 'required|date_format:Y-m-d H:i:s',
-        'end_time'     => 'required|date_format:Y-m-d H:i:s',
-    ]);
-
-    // Log the validated request data
-    \Log::info('notifyCoachOfBookingMailjet - Request Data:', $data);
-
-    // Parse start and end times using Carbon
-    $startTimeParsed = \Carbon\Carbon::parse($data['start_time'])->format('Y-m-d H:i:s');
-    $endTimeParsed   = \Carbon\Carbon::parse($data['end_time'])->format('Y-m-d H:i:s');
-
-    // Prepare Mailjet client
-    $mj = new \Mailjet\Client(
-        config('services.mailjet.api_key'),
-        config('services.mailjet.secret_key'),
-        true,
-        ['version' => 'v3.1']
-    );
-
-    $templateID = 6806665; // Ensure this is the correct Mailjet template ID
-
-    // Build the messages array (same as in sendExpiringMembershipReminderForSelected)
-    $messages = [];
-    $messages[] = [
-        'From' => [
-            'Email' => config('services.mailjet.from.address'),
-            'Name'  => config('services.mailjet.from.name'),
-        ],
-        'To' => [
-            [
-                'Email' => $data['coach_email'],
-                'Name'  => $data['coach_name'],
-            ]
-        ],
-        'TemplateID'       => $templateID,
-        'TemplateLanguage' => true,
-        'Subject'          => 'Contnental Fitness Gym',
-        'Variables'        => [
-            'coach_name'   => $data['coach_name'],
-            'member_name'  => $data['member_name'],
-            'session_name' => $data['session_name'],
-            'start_time'   => $startTimeParsed,
-            'end_time'     => $endTimeParsed,
-        ],
-    ];
-
-    \Log::info('notifyCoachOfBookingMailjet - Messages Array:', $messages);
-
-    // Chunk messages into batches of 50 (even though for a single coach you likely have one message)
-    $chunks = array_chunk($messages, 50);
-    $overallSuccess = 0;
-    $overallFailed  = 0;
-    $responses      = [];
-    foreach ($chunks as $chunk) {
-        $body = ['Messages' => $chunk];
-        $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
-        $responseData = $response->getData();
-        foreach ($responseData['Messages'] as $msg) {
-            if (isset($msg['Status']) && strtolower($msg['Status']) === 'success') {
-                $overallSuccess++;
-            } else {
-                $overallFailed++;
+    {
+        $data = $request->validate([
+            'coach_id'     => 'required|exists:coaches,CoachID',
+            'coach_name'   => 'required|string|max:255',
+            'coach_email'  => 'required|email',
+            'member_name'  => 'required|string|max:255',
+            'session_name' => 'required|string|max:255',
+            'start_time'   => 'required|date_format:Y-m-d H:i:s',
+            'end_time'     => 'required|date_format:Y-m-d H:i:s',
+        ]);
+    
+        // Log the incoming data for debugging
+        \Log::info('notifyCoachOfBookingMailjet - Request Data:', $data);
+    
+        // Use Carbon to parse the start and end times
+        $startTimeParsed = \Carbon\Carbon::parse($data['start_time'])->format('Y-m-d H:i:s');
+        $endTimeParsed   = \Carbon\Carbon::parse($data['end_time'])->format('Y-m-d H:i:s');
+    
+        // Initialize the Mailjet client
+        $mj = new \Mailjet\Client(
+            config('services.mailjet.api_key'),
+            config('services.mailjet.secret_key'),
+            true,
+            ['version' => 'v3.1']
+        );
+    
+        $templateID = 6806665; // Make sure this template is active and published
+    
+        // Build the messages array exactly as in sendExpiringMembershipReminderForSelected
+        $messages = [];
+        $messages[] = [
+            'From' => [
+                'Email' => config('services.mailjet.from.address'),
+                'Name'  => config('services.mailjet.from.name'),
+            ],
+            'To' => [
+                [
+                    'Email' => $data['coach_email'],
+                    'Name'  => $data['coach_name'],
+                ]
+            ],
+            'TemplateID'       => $templateID,
+            'TemplateLanguage' => true,
+            'Subject'          => 'Contnental Fitness Gym',
+            'Variables'        => [
+                'coach_name'   => $data['coach_name'],
+                'member_name'  => $data['member_name'],
+                'session_name' => $data['session_name'],
+                'start_time'   => $startTimeParsed,
+                'end_time'     => $endTimeParsed,
+            ],
+        ];
+    
+        \Log::info('notifyCoachOfBookingMailjet - Messages Array:', $messages);
+    
+        // Chunk messages into batches of 50 (even if there's only one message, we use the same logic)
+        $chunks = array_chunk($messages, 50);
+        $overallSuccess = 0;
+        $overallFailed  = 0;
+        $responses = [];
+    
+        foreach ($chunks as $chunk) {
+            $body = ['Messages' => $chunk];
+            $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
+            $responseData = $response->getData();
+    
+            foreach ($responseData['Messages'] as $msg) {
+                if (isset($msg['Status']) && strtolower($msg['Status']) === 'success') {
+                    $overallSuccess++;
+                } else {
+                    $overallFailed++;
+                }
             }
+            $responses[] = $responseData;
         }
-        $responses[] = $responseData;
-    }
-
-    // If no failures, log the notification and return success
-    if ($overallFailed === 0) {
-        \App\Models\Notification::create([
-            'MemberID'           => null,
-            'EventTrigger'       => 'CoachBookedMailjet',
-            'Message'            => "Coach #{$data['coach_id']} => Booked email sent to {$data['coach_email']}",
-            'NotificationMethod' => 'Email',
-            'SentDate'           => now(),
-            'Status'             => 'Sent',
-        ]);
-        \Log::info('notifyCoachOfBookingMailjet - Email Sent Successfully.', $data);
+    
+        if ($overallFailed === 0) {
+            \App\Models\Notification::create([
+                'MemberID'           => null,
+                'EventTrigger'       => 'CoachBookedMailjet',
+                'Message'            => "Coach #{$data['coach_id']} => Booked email sent to {$data['coach_email']}",
+                'NotificationMethod' => 'Email',
+                'SentDate'           => now(),
+                'Status'             => 'Sent',
+            ]);
+            \Log::info('notifyCoachOfBookingMailjet - Email Sent Successfully.', $data);
+    
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Coach booking email sent via Mailjet.',
+            ]);
+        }
+    
+        \Log::error('notifyCoachOfBookingMailjet - Mailjet Error:', $responses);
         return response()->json([
-            'status'  => 'success',
-            'message' => 'Coach booking email sent via Mailjet.',
-        ]);
+            'status'  => 'error',
+            'message' => 'Mailjet error when sending to coach.',
+            'data'    => $responses,
+        ], 500);
     }
-
-    // Otherwise, log the error and return an error response
-    \Log::error('notifyCoachOfBookingMailjet - Mailjet Error:', $responses);
-    return response()->json([
-        'status'  => 'error',
-        'message' => 'Mailjet error when sending to coach.',
-        'data'    => $responses,
-    ], 500);
-}
-
+    
 
     public function getMailjetActivityLogs(Request $request)
     {

@@ -14,8 +14,9 @@ class CoachController extends Controller
      */
     public function index()
     {
-        // If you want to return their availability in the same response:
-        $coaches = Coach::with('availabilities')->orderBy('FullName')->get();
+        $coaches = Coach::select('CoachID', 'FullName', 'Specialty', 'ContactInfo', 'Email')
+        ->with('availabilities')
+        ->get();
         return response()->json(['coaches' => $coaches]);
     }
 

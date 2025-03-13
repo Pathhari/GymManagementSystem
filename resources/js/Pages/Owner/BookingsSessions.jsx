@@ -880,6 +880,7 @@ async function handleBookSessionConfirm() {
     // Step 2: Notify the coach using the notifyCoachOfBookingMailjet endpoint
     if (sessionToBook.CoachID) {
       const foundCoach = coaches.find(c => c.CoachID === sessionToBook.CoachID);
+      console.log("foundCoach =>", foundCoach);
       if (foundCoach && foundCoach.ContactInfo && foundCoach.Email.includes("@")) {
         const foundMember = members.find(m => m.MemberID === Number(sessionBookingMemberID));
         const memberName = foundMember ? foundMember.FullName : "Unknown Member";
