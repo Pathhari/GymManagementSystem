@@ -351,6 +351,9 @@ Route::prefix('notifications')->group(function() {
 
     Route::post('/notifications/notify-coach-booking-mailjet', [NotificationController::class, 'notifyCoachOfBookingMailjet'])
     ->middleware('multiGuard:owner,admin,staff');
+
+    Route::post('/notify-member-booking-mailjet', [NotificationController::class, 'notifyMemberOfBookingMailjet'])
+    ->middleware('multiGuard:owner,admin,staff');
 /*
 |--------------------------------------------------------------------------
 | MembershipController

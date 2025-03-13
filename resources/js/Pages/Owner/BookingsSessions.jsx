@@ -878,27 +878,28 @@ async function handleBookSessionConfirm() {
       Amount: Number(sessionBookingPaymentAmount) || 0,
     });
 
-    // Step 2: Notify the coach using the notifyCoachOfBookingMailjet endpoint
-    if (sessionToBook.CoachID) {
-      const foundCoach = coaches.find(c => c.CoachID === sessionToBook.CoachID);
-      console.log("foundCoach =>", foundCoach);
-      // Relaxed condition: only check for a valid email
-      if (foundCoach && foundCoach.Email && foundCoach.Email.includes("@")) {
-        const foundMember = members.find(m => m.MemberID === Number(sessionBookingMemberID));
-        const memberName = foundMember ? foundMember.FullName : "Unknown Member";
-        await axios.post("/notifications/notify-coach-booking-mailjet", {
-          coach_id: foundCoach.CoachID,
-          coach_name: foundCoach.FullName,
-          coach_email: foundCoach.Email,
-          member_name: memberName,
-          session_name: sessionToBook.SessionName,
-          start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD HH:mm:ss"),
-          end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD HH:mm:ss"),
-        });
-      } else {
-        console.warn("Coach email not valid or missing:", foundCoach);
-      }
-    }
+ // Step 2: Notify the coach using the notifyCoachOfBookingMailjet endpoint
+if (sessionToBook.CoachID) {
+  const foundCoach = coaches.find(c => c.CoachID === sessionToBook.CoachID);
+  console.log("foundCoach =>", foundCoach);
+  // Check that the coach has a valid email address
+  if (foundCoach && foundCoach.Email && foundCoach.Email.includes("@")) {
+    const foundMember = members.find(m => m.MemberID === Number(sessionBookingMemberID));
+    const memberName = foundMember ? foundMember.FullName : "Unknown Member";
+    await axios.post("/notifications/notify-coach-booking-mailjet", {
+      coach_id: foundCoach.CoachID,
+      coach_name: foundCoach.FullName,
+      coach_email: foundCoach.Email,
+      member_name: memberName,
+      session_name: sessionToBook.SessionName,
+      // Format the times to a readable 12-hour format with AM/PM
+      start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD hh:mm A"),
+      end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD hh:mm A"),
+    });
+  } else {
+    console.warn("Coach email not valid or missing:", foundCoach);
+  }
+}
 
     // Step 3: Finalize booking process
     setBookSessionOpen(false);
