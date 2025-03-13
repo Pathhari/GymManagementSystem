@@ -37,7 +37,7 @@ const NAVIGATION = [
   { segment: 'tasktimemanagement', title: 'Task & Time Management', icon: <TaskIcon /> },
   { segment: 'membership-management', title: 'Membership Management', icon: <PeopleIcon /> },
   { segment: 'bookingsessions', title: 'Bookings & Sessions', icon: <EventNoteIcon /> },
-  { segment: 'payments', title: 'Payments & Invoices', icon: <PaymentsIcon /> },
+  { segment: 'payments', title: 'Sales Reports', icon: <PaymentsIcon /> },
   { segment: 'lockermanagement', title: 'Locker Management', icon: <LockIcon /> },
   { segment: 'maintequip', title: 'Maintenance & Equipment', icon: <BuildIcon /> },
   { segment: 'notifications', title: 'Notifications', icon: <NotificationsIcon /> },
