@@ -277,8 +277,9 @@ export default function PaymentsAndInvoices() {
         memberId: p.MemberID ? p.MemberID.toString() : "",
         monthlyClientId: p.MonthlyClientID ? p.MonthlyClientID.toString() : "",
         payerName:
+          p.PayerName ??
           p.member?.FullName ??
-          p.monthly_client?.FullName ??  // note the underscore here
+          p.monthly_client?.FullName ??
           p.WalkInName ??
           "N/A",
         paymentDate: new Date(p.PaymentDate).toISOString(),

@@ -11,6 +11,8 @@ use App\Models\InvoiceLineItem;
 use App\Models\Payment;
 use App\Models\PaymentInvoice;
 use App\Models\Branch; // if needed
+use App\Models\MonthlyClientAttendance;
+
 
 class MonthlyClientController extends Controller
 {

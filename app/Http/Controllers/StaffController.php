@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
 use App\Models\Staff;
 use App\Models\StaffTask;
 use App\Models\StaffSchedule;
@@ -60,17 +61,23 @@ class StaffController extends Controller
     
     public function getAuthUser(Request $request) 
     {
-        $staff = Auth::user(); // or however you're authenticating staff
+        $staff = Auth::user();
+        
+        if (!$staff) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+        
         // Eager-load the branches relationship so the accessor can work
         $staff->load('branches');
-
+    
         return response()->json([
             'StaffID'         => $staff->StaffID,
             'FullName'        => $staff->FullName,
-            'DefaultBranchID' => $staff->default_branch_id,  // uses the accessor
+            'DefaultBranchID' => $staff->default_branch_id,
             // ... other fields as needed ...
         ]);
     }
+    
     
     /**
      * LIST ALL STAFF (REMOTE VERSION)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo} from 'react';
 import axios from 'axios';
 import {
   Box,
@@ -113,6 +113,8 @@ export default function OwnerDashboard(onClose) {
   // ----------------- SNACKBAR STATES & HELPER (for success messages) -----------------
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackMessage, setSnackMessage] = useState('');
+  const [showPettyToday, setShowPettyToday] = useState(true);
+  const [showPettyTomorrow, setShowPettyTomorrow] = useState(true);
   const showSuccessMessage = (message) => {
     setSnackMessage(message);
     setSnackOpen(true);
@@ -364,9 +366,6 @@ export default function OwnerDashboard(onClose) {
   
     setExpenseFormOpen(true);
   }
-  
-  
-
 
   // Consolidated
   const [consolidatedRows, setConsolidatedRows] = useState([]);
@@ -440,7 +439,7 @@ export default function OwnerDashboard(onClose) {
     try {
       if (!selectedDailyFlow) return;
   
-      const pettyVal = parseFloat(dailyPettyForm.pettyCash) || 0;
+      const pettyVal = showPettyCash ? parseFloat(flow.PettyCashTomorrow || 0) : 0;      
       const pettyTmrVal = parseFloat(dailyPettyForm.pettyCashTomorrow) || 0;
   
       await axios.put(`/finance/cashflow/${selectedDailyFlow.CashFlowID}`, {
@@ -514,14 +513,30 @@ export default function OwnerDashboard(onClose) {
 
         // 4. recent transactions
         const paymentsRes = await axios.get('/payments');
-        const transactions = paymentsRes.data.map((p) => ({
-          id: p.PaymentID,
-          payer: p.member ? p.member.FullName : p.WalkInName || 'Walk-In',
-          amount: p.Amount,
-          method: p.PaymentMethod,
-          date: p.PaymentDate,
-          status: p.Status,
-        }));
+        const transactions = paymentsRes.data.map((p) => {
+          let payer = '';
+          if (p.monthly_client && p.monthly_client.FullName) {
+            payer = p.monthly_client.FullName;
+          } else if (p.member && p.member.FullName) {
+            payer = p.member.FullName;
+          } else if (p.PayerName) {
+            payer = p.PayerName;
+          } else if (p.WalkInName) {
+            payer = p.WalkInName;
+          } else {
+            payer = 'Walk-In';
+          }
+          
+          return {
+            id: p.PaymentID,
+            payer, // aggregated value
+            amount: p.Amount,
+            method: p.PaymentMethod,
+            date: p.PaymentDate,
+            status: p.Status,
+          };
+        });
+        
         setRecentTransactions(transactions);
 
         // 5. flows & expenses
@@ -554,10 +569,13 @@ export default function OwnerDashboard(onClose) {
   }, []);
 
   // Rebuild consolidated if flows/expenses/paymentFilter change
-  useEffect(() => {
-    buildConsolidatedRows(filteredFlows, filteredExpenses, paymentFilter);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredFlows, filteredExpenses, paymentFilter]);
+    useEffect(() => {
+      buildConsolidatedRows(filteredFlows, filteredExpenses);
+    }, [filteredFlows, filteredExpenses, showPettyToday, showPettyTomorrow, paymentFilter, bizFilter]);
+
+    const consolidatedColumns = useMemo(() => {
+      return getDynamicConsolidatedColumns();
+    }, [showPettyToday, showPettyTomorrow, showExpenses, bizFilter]);
 
   // ======================== Chart Builders ========================
   const buildRevenueTrends = (flows) => {
@@ -861,220 +879,220 @@ export default function OwnerDashboard(onClose) {
       }
     }
     
-// Add PettyCashTomorrow so it displays in the DataGrid
-const flowColumns = [
-  {
-    field: 'Date',
-    headerName: 'Date',
-    width: 150,
-    renderCell: (params) => (params.value ? formatDate(params.value) : '—'),
-  },
-  {
-    field: 'BranchID',
-    headerName: 'Branch',
-    width: 80,
-  },
-  {
-    field: 'BusinessType',
-    headerName: 'Type',
-    width: 110,
-  },
-  {
-    field: 'PettyCash',
-    headerName: 'PettyCash',
-    width: 100,
-    renderCell: (params) => formatCurrency(params.value),
-  },
-  {
-    field: 'CashSales',
-    headerName: 'Cash',
-    width: 80,
-    renderCell: (params) => formatCurrency(params.value),
-  },
-  {
-    field: 'CashPlusPetty',
-    headerName: 'Cash + Petty',
-    width: 120,
-    // optional formatting
-    renderCell: (params) => `₱${params.value.toLocaleString()}`
-  },
+    // Add PettyCashTomorrow so it displays in the DataGrid
+    const flowColumns = [
+      {
+        field: 'Date',
+        headerName: 'Date',
+        width: 150,
+        renderCell: (params) => (params.value ? formatDate(params.value) : '—'),
+      },
+      {
+        field: 'BranchID',
+        headerName: 'Branch',
+        width: 80,
+      },
+      {
+        field: 'BusinessType',
+        headerName: 'Type',
+        width: 110,
+      },
+      {
+        field: 'PettyCash',
+        headerName: 'PettyCash',
+        width: 100,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      {
+        field: 'CashSales',
+        headerName: 'Cash',
+        width: 80,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      {
+        field: 'CashPlusPetty',
+        headerName: 'Cash + Petty',
+        width: 120,
+        // optional formatting
+        renderCell: (params) => `₱${params.value.toLocaleString()}`
+      },
 
-  {
-    field: 'GCashSales',
-    headerName: 'GCash',
-    width: 80,
-    renderCell: (params) => formatCurrency(params.value),
-  },
-  {
-    field: 'BPISales',
-    headerName: 'BPI',
-    width: 80,
-    renderCell: (params) => formatCurrency(params.value),
-  },
-  {
-    field: 'BDOSales',
-    headerName: 'BDO',
-    width: 80,
-    renderCell: (params) => formatCurrency(params.value),
-  },
-  {
-    field: 'TotalGross',
-    headerName: 'Total Gross',
-    width: 110,
-    renderCell: (params) => formatCurrency(params.value),
-  },
-  /* NEW COLUMN FOR PETTY CASH TOMORROW */
-  {
-    field: 'PettyCashTomorrow',
-    headerName: 'Petty Tomorrow',
-    width: 130,
-    renderCell: (params) => formatCurrency(params.value),
-  },
+      {
+        field: 'GCashSales',
+        headerName: 'GCash',
+        width: 80,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      {
+        field: 'BPISales',
+        headerName: 'BPI',
+        width: 80,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      {
+        field: 'BDOSales',
+        headerName: 'BDO',
+        width: 80,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      {
+        field: 'TotalGross',
+        headerName: 'Total Gross',
+        width: 110,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      /* NEW COLUMN FOR PETTY CASH TOMORROW */
+      {
+        field: 'PettyCashTomorrow',
+        headerName: 'Petty Tomorrow',
+        width: 130,
+        renderCell: (params) => formatCurrency(params.value),
+      },
 
-  {
-    field: 'TotalGrossMinusPetty',
-    headerName: 'Gross - Petty',
-    width: 120,
-    renderCell: (params) => formatCurrency(params.value),
-  },
-  {
-    field: 'TotalGrossMinusExpenses',
-    headerName: 'Gross - Expenses',
-    width: 140,
-    renderCell: (params) => formatCurrency(params.value),
-  },
-  {
-    field: 'TakeHome',
-    headerName: 'Take Home',
-    width: 110,
-    renderCell: (params) => formatCurrency(params.value),
-  },
-  {
-    field: 'Remarks',
-    headerName: 'Remarks',
-    width: 160,
-  },
-  {
-    field: 'actions',
-    headerName: 'Actions',
-    width: 250,
-    renderCell: (params) => {
-      const row = params.row;
-      return (
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button variant="contained" size="small" onClick={() => openDailyPettyDialog(row)}>
-            Add Petty
-          </Button>
-          <Button variant="outlined" size="small" onClick={() => openEditFlowDialog(row)}>
-            Edit
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            size="small"
-            onClick={() => handleDeleteFlow(row)}
-          >
-            Delete
-          </Button>
-        </Box>
-      );
-    },
-  },
-];
+      {
+        field: 'TotalGrossMinusPetty',
+        headerName: 'Gross - Petty',
+        width: 120,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      {
+        field: 'TotalGrossMinusExpenses',
+        headerName: 'Gross - Expenses',
+        width: 140,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      {
+        field: 'TakeHome',
+        headerName: 'Take Home',
+        width: 110,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      {
+        field: 'Remarks',
+        headerName: 'Remarks',
+        width: 160,
+      },
+      {
+        field: 'actions',
+        headerName: 'Actions',
+        width: 250,
+        renderCell: (params) => {
+          const row = params.row;
+          return (
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button variant="contained" size="small" onClick={() => openDailyPettyDialog(row)}>
+                Add Petty
+              </Button>
+              <Button variant="outlined" size="small" onClick={() => openEditFlowDialog(row)}>
+                Edit
+              </Button>
+              <Button
+                variant="contained"
+                color="error"
+                size="small"
+                onClick={() => handleDeleteFlow(row)}
+              >
+                Delete
+              </Button>
+            </Box>
+          );
+        },
+      },
+    ];
 
-const flowRows = filteredFlows.map((flow) => {
-  // 1. Parse main payment values (pure sales only, ignoring petty)
-  const flowCash  = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
-  const flowGCash = parseFloat(flow.GCashSales || 0) + parseFloat(flow.WalkInGCashSales || 0);
-  const flowBPI   = parseFloat(flow.BPISales || 0)   + parseFloat(flow.WalkInBPISales || 0);
-  const flowBDO   = parseFloat(flow.BDOSales || 0)   + parseFloat(flow.WalkInBDOSales || 0);
+    const flowRows = filteredFlows.map((flow) => {
+      // 1. Parse main payment values (pure sales only, ignoring petty)
+      const flowCash  = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
+      const flowGCash = parseFloat(flow.GCashSales || 0) + parseFloat(flow.WalkInGCashSales || 0);
+      const flowBPI   = parseFloat(flow.BPISales || 0)   + parseFloat(flow.WalkInBPISales || 0);
+      const flowBDO   = parseFloat(flow.BDOSales || 0)   + parseFloat(flow.WalkInBDOSales || 0);
 
-  // 2. Daily expenses for each payment method
-  const dailyCashExpenses = allExpenses
-    .filter((exp) =>
-      exp.BranchID == flow.BranchID &&
-      exp.BusinessType === flow.BusinessType &&
-      (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
-      exp.PaymentMethod === 'Cash'
-    )
-    .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
+      // 2. Daily expenses for each payment method
+      const dailyCashExpenses = allExpenses
+        .filter((exp) =>
+          exp.BranchID == flow.BranchID &&
+          exp.BusinessType === flow.BusinessType &&
+          (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
+          exp.PaymentMethod === 'Cash'
+        )
+        .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
 
-  const dailyGCashExpenses = allExpenses
-    .filter((exp) =>
-      exp.BranchID == flow.BranchID &&
-      exp.BusinessType === flow.BusinessType &&
-      (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
-      exp.PaymentMethod === 'GCash'
-    )
-    .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
+      const dailyGCashExpenses = allExpenses
+        .filter((exp) =>
+          exp.BranchID == flow.BranchID &&
+          exp.BusinessType === flow.BusinessType &&
+          (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
+          exp.PaymentMethod === 'GCash'
+        )
+        .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
 
-  const dailyBPIExpenses = allExpenses
-    .filter((exp) =>
-      exp.BranchID == flow.BranchID &&
-      exp.BusinessType === flow.BusinessType &&
-      (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
-      exp.PaymentMethod === 'BPI'
-    )
-    .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
+      const dailyBPIExpenses = allExpenses
+        .filter((exp) =>
+          exp.BranchID == flow.BranchID &&
+          exp.BusinessType === flow.BusinessType &&
+          (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
+          exp.PaymentMethod === 'BPI'
+        )
+        .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
 
-  const dailyBDOExpenses = allExpenses
-    .filter((exp) =>
-      exp.BranchID == flow.BranchID &&
-      exp.BusinessType === flow.BusinessType &&
-      (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
-      exp.PaymentMethod === 'BDO'
-    )
-    .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
+      const dailyBDOExpenses = allExpenses
+        .filter((exp) =>
+          exp.BranchID == flow.BranchID &&
+          exp.BusinessType === flow.BusinessType &&
+          (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
+          exp.PaymentMethod === 'BDO'
+        )
+        .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
 
-  const totalExpenses = dailyCashExpenses + dailyGCashExpenses + dailyBPIExpenses + dailyBDOExpenses;
+      const totalExpenses = dailyCashExpenses + dailyGCashExpenses + dailyBPIExpenses + dailyBDOExpenses;
 
-  // 3. Petty cash values
-  const pettyCash      = parseFloat(flow.PettyCash || 0);
-  const pettyTomorrow  = parseFloat(flow.PettyCashTomorrow || 0);
+      // 3. Petty cash values
+      const pettyCash      = parseFloat(flow.PettyCash || 0);
+      const pettyTomorrow  = parseFloat(flow.PettyCashTomorrow || 0);
 
-  // 4. “Cash + Petty” column (optional)
-  const cashPlusPetty  = flowCash + pettyCash;
+      // 4. “Cash + Petty” column (optional)
+      const cashPlusPetty  = flowCash + pettyCash;
 
-  // 5. Total Gross = (Cash + Petty) + (GCash + BPI + BDO)
-  const totalGross = cashPlusPetty + flowGCash + flowBPI + flowBDO;
+      // 5. Total Gross = (Cash + Petty) + (GCash + BPI + BDO)
+      const totalGross = cashPlusPetty + flowGCash + flowBPI + flowBDO;
 
-  // 6. If your business logic subtracts “tomorrow’s petty” from net:
-  const TotalGrossMinusPetty    = totalGross - pettyTomorrow;
-  const TotalGrossMinusExpenses = totalGross - totalExpenses;
-  const takeHome                = totalGross - pettyTomorrow - totalExpenses;
+      // 6. If your business logic subtracts “tomorrow’s petty” from net:
+      const TotalGrossMinusPetty    = totalGross - pettyTomorrow;
+      const TotalGrossMinusExpenses = totalGross - totalExpenses;
+      const takeHome                = totalGross - pettyTomorrow - totalExpenses;
 
-  // 7. Return the row object for DataGrid
-  return {
-    id: flow.CashFlowID,
-    CashFlowID: flow.CashFlowID,
-    Date: flow.Date || '',
-    BranchID: flow.BranchID || '',
-    BusinessType: flow.BusinessType || '',
+      // 7. Return the row object for DataGrid
+      return {
+        id: flow.CashFlowID,
+        CashFlowID: flow.CashFlowID,
+        Date: flow.Date || '',
+        BranchID: flow.BranchID || '',
+        BusinessType: flow.BusinessType || '',
 
-    // Pure daily cash (no petty)
-    CashSales: flowCash,
+        // Pure daily cash (no petty)
+        CashSales: flowCash,
 
-    // The new combined field (Cash + Petty)
-    CashPlusPetty: cashPlusPetty,
+        // The new combined field (Cash + Petty)
+        CashPlusPetty: cashPlusPetty,
 
-    // Other payment methods
-    GCashSales: flowGCash,
-    BPISales: flowBPI,
-    BDOSales: flowBDO,
+        // Other payment methods
+        GCashSales: flowGCash,
+        BPISales: flowBPI,
+        BDOSales: flowBDO,
 
-    // Totals & net logic
-    TotalGross: totalGross,
-    TotalGrossMinusPetty,
-    TotalGrossMinusExpenses,
-    TakeHome: takeHome,
+        // Totals & net logic
+        TotalGross: totalGross,
+        TotalGrossMinusPetty,
+        TotalGrossMinusExpenses,
+        TakeHome: takeHome,
 
-    // Petty columns
-    PettyCash: pettyCash,
-    PettyCashTomorrow: pettyTomorrow,
+        // Petty columns
+        PettyCash: pettyCash,
+        PettyCashTomorrow: pettyTomorrow,
 
-    Remarks: flow.Remarks || '',
-  };
-});
+        Remarks: flow.Remarks || '',
+      };
+    });
 
   
   
@@ -1301,151 +1319,155 @@ const flowRows = filteredFlows.map((flow) => {
     buildConsolidatedRows(filteredFlows, filteredExpenses);
   }, [filteredFlows, filteredExpenses, showPettyCash, showExpenses, paymentFilter, bizFilter]);
   
-  function buildConsolidatedRows(flows, expenses) {
-  
-    // "groupedByDay" maps each date to 4 businesses only: Gym, Cafe, Yogurt, Yogurt Cafe
-    const groupedByDay = {};
-  
-    flows.forEach((flow) => {
-      const dateKey = (flow.Date || '').slice(0, 10);
-  
-      // [CHANGED] We only store Gym/Cafe/Yogurt/Yogurt Cafe in the aggregator, no Overall
-      if (!groupedByDay[dateKey]) {
-        groupedByDay[dateKey] = {
-          Gym:          { gross: 0, petty: 0, expenses: 0 },
-          Cafe:         { gross: 0, petty: 0, expenses: 0 },
-          'Yogurt':     { gross: 0, petty: 0, expenses: 0 },
-          'Yogurt Cafe':{ gross: 0, petty: 0, expenses: 0 },
-        };
-      }
-  
-      // 1) Compute "gross"
-      let gross = 0;
-      if (paymentFilter === 'all') {
-        gross = parseFloat(flow.TotalSales || 0);
-      } else {
-        const csh = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
-        const gch = parseFloat(flow.GCashSales || 0) + parseFloat(flow.WalkInGCashSales || 0);
-        const bpi = parseFloat(flow.BPISales   || 0) + parseFloat(flow.WalkInBPISales   || 0);
-        const bdo = parseFloat(flow.BDOSales   || 0) + parseFloat(flow.WalkInBDOSales   || 0);
-  
-        if (paymentFilter === 'Cash')  gross = csh;
-        if (paymentFilter === 'GCash') gross = gch;
-        if (paymentFilter === 'BPI')   gross = bpi;
-        if (paymentFilter === 'BDO')   gross = bdo;
-      }
-  
-      // 2) Petty
-      const pettyVal = showPettyCash ? parseFloat(flow.PettyCash || 0) : 0;
-  
-      // 3) Put into aggregator only if business is Gym/Cafe/Yogurt/Yogurt Cafe
-      //    If flow.BusinessType is something else, skip or handle conditionally.
-      const biz = flow.BusinessType;
-      if (biz && groupedByDay[dateKey][biz]) {
-        groupedByDay[dateKey][biz].gross   += gross;
-        groupedByDay[dateKey][biz].petty   += pettyVal;
-        // We no longer track "deposited" since we removed Overall.
-      }
+function buildConsolidatedRows(flows, expenses) {
+  // "groupedByDay" maps each date to 4 businesses only: Gym, Cafe, Yogurt, Yogurt Cafe
+  const groupedByDay = {};
+
+  flows.forEach((flow) => {
+    const dateKey = (flow.Date || '').slice(0, 10);
+
+    // Initialize the day if needed
+    if (!groupedByDay[dateKey]) {
+      groupedByDay[dateKey] = {
+        Gym:          { gross: 0, pettyToday: 0, pettyTomorrow: 0, expenses: 0 },
+        Cafe:         { gross: 0, pettyToday: 0, pettyTomorrow: 0, expenses: 0 },
+        Yogurt:       { gross: 0, pettyToday: 0, pettyTomorrow: 0, expenses: 0 },
+        'Yogurt Cafe':{ gross: 0, pettyToday: 0, pettyTomorrow: 0, expenses: 0 },
+      };
+    }
+
+    // 1) Compute "gross" based on paymentFilter
+    let gross = 0;
+    if (paymentFilter === 'all') {
+      gross = parseFloat(flow.TotalSales || 0);
+    } else {
+      const csh = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
+      const gch = parseFloat(flow.GCashSales || 0) + parseFloat(flow.WalkInGCashSales || 0);
+      const bpi = parseFloat(flow.BPISales || 0) + parseFloat(flow.WalkInBPISales || 0);
+      const bdo = parseFloat(flow.BDOSales || 0) + parseFloat(flow.WalkInBDOSales || 0);
+
+      if (paymentFilter === 'Cash')  gross = csh;
+      if (paymentFilter === 'GCash') gross = gch;
+      if (paymentFilter === 'BPI')   gross = bpi;
+      if (paymentFilter === 'BDO')   gross = bdo;
+    }
+
+    // 2) Petty values based on toggles
+    const pettyTodayVal = showPettyToday ? parseFloat(flow.PettyCash || 0) : 0;
+    const pettyTomorrowVal = showPettyTomorrow ? parseFloat(flow.PettyCashTomorrow || 0) : 0;
+
+    // 3) Add to aggregator only if BusinessType is one of our 4
+    const biz = flow.BusinessType;
+    if (biz && groupedByDay[dateKey][biz]) {
+      groupedByDay[dateKey][biz].gross += gross;
+      groupedByDay[dateKey][biz].pettyToday += pettyTodayVal;
+      groupedByDay[dateKey][biz].pettyTomorrow += pettyTomorrowVal;
+    }
+  });
+
+  // 4) Add expenses if showExpenses is true
+  if (showExpenses) {
+    expenses.forEach((exp) => {
+      const dateKey = (exp.ExpenseDate || '').slice(0, 10);
+      if (!groupedByDay[dateKey]) return;
+
+      const biz = exp.BusinessType; // 'Gym', 'Cafe', etc.
+      if (!biz || !groupedByDay[dateKey][biz]) return;
+
+      if (paymentFilter !== 'all' && exp.PaymentMethod !== paymentFilter) return;
+      groupedByDay[dateKey][biz].expenses += parseFloat(exp.Amount || 0);
     });
-  
-    // 4) Add expenses if showExpenses===true
-    if (showExpenses) {
-      expenses.forEach((exp) => {
-        const dateKey = (exp.ExpenseDate || '').slice(0, 10);
-        if (!groupedByDay[dateKey]) return;
-  
-        const biz = exp.BusinessType;  // 'Gym', 'Cafe', etc.
-        if (!biz || !groupedByDay[dateKey][biz]) return;
-  
-        if (paymentFilter !== 'all' && exp.PaymentMethod !== paymentFilter) {
-          return;
-        }
-        groupedByDay[dateKey][biz].expenses += parseFloat(exp.Amount || 0);
-      });
-    }
-  
-    // 5) Build final row objects
-    const resultRows = Object.keys(groupedByDay)
-      .sort((a, b) => new Date(a) - new Date(b))
-      .map((dt, idx) => {
-        // Finalize a single business’s net
-        function finalizeBiz(bizName) {
-          const rec = groupedByDay[dt][bizName];
-          const netVal = rec.gross - rec.petty - rec.expenses;
-          return {
-            gross: rec.gross,
-            petty: rec.petty,
-            expenses: rec.expenses,
-            net: netVal,
-          };
-        }
-  
-        // Get each business’s final
-        const gym    = finalizeBiz('Gym');
-        const cafe   = finalizeBiz('Cafe');
-        const yogurt = finalizeBiz('Yogurt');
-        const yCafe  = finalizeBiz('Yogurt Cafe');
-  
-        // Grand totals = sum across the 4 businesses
-        const grandGross    = gym.gross + cafe.gross + yogurt.gross + yCafe.gross;
-        const grandPetty    = gym.petty + cafe.petty + yogurt.petty + yCafe.petty;
-        const grandExpenses = gym.expenses + cafe.expenses + yogurt.expenses + yCafe.expenses;
-        const grandNet      = grandGross - grandPetty - grandExpenses;
-  
-        return {
-          id: idx,
-          Date: dt,
-  
-          // GYM columns
-          gymGross: gym.gross,
-          gymPetty: gym.petty,
-          gymExpenses: gym.expenses,
-          gymNet: gym.net,
-  
-          // Cafe
-          cafeGross: cafe.gross,
-          cafePetty: cafe.petty,
-          cafeExpenses: cafe.expenses,
-          cafeNet: cafe.net,
-  
-          // Yogurt
-          yogurtGross: yogurt.gross,
-          yogurtPetty: yogurt.petty,
-          yogurtExpenses: yogurt.expenses,
-          yogurtNet: yogurt.net,
-  
-          // Yogurt Cafe
-          yCafeGross: yCafe.gross,
-          yCafePetty: yCafe.petty,
-          yCafeExpenses: yCafe.expenses,
-          yCafeNet: yCafe.net,
-  
-          // Grand totals
-          grandGross,
-          grandPetty,
-          grandExpenses,
-          grandNet,
-        };
-      });
-  
-    // 6) If bizFilter != 'all', remove rows that have no data for that biz
-    let filteredRows = resultRows;
-    if (bizFilter !== 'all') {
-      let prefix = '';
-      if (bizFilter === 'Gym')         prefix = 'gym';
-      if (bizFilter === 'Cafe')        prefix = 'cafe';
-      if (bizFilter === 'Yogurt')      prefix = 'yogurt';
-      if (bizFilter === 'Yogurt Cafe') prefix = 'yCafe';
-  
-      filteredRows = resultRows.filter(r => {
-        const g = r[`${prefix}Gross`] || 0;
-        const n = r[`${prefix}Net`]   || 0;
-        return Math.abs(g) > 0.001 || Math.abs(n) > 0.001;
-      });
-    }
-  
-    setConsolidatedRows(filteredRows);
   }
+
+  // 5) Build final row objects
+  const resultRows = Object.keys(groupedByDay)
+    .sort((a, b) => new Date(a) - new Date(b))
+    .map((dt, idx) => {
+      // For each business, compute net as:
+      // net = gross + pettyToday - pettyTomorrow - expenses
+      function finalizeBiz(bizName) {
+        const rec = groupedByDay[dt][bizName];
+        const netVal = rec.gross + rec.pettyToday - rec.pettyTomorrow - rec.expenses;
+        return {
+          gross: rec.gross,
+          pettyToday: rec.pettyToday,
+          pettyTomorrow: rec.pettyTomorrow,
+          expenses: rec.expenses,
+          net: netVal,
+        };
+      }
+
+      const gym    = finalizeBiz('Gym');
+      const cafe   = finalizeBiz('Cafe');
+      const yogurt = finalizeBiz('Yogurt');
+      const yCafe  = finalizeBiz('Yogurt Cafe');
+
+      // Grand totals: Sum across all 4 businesses
+      const grandGross = gym.gross + cafe.gross + yogurt.gross + yCafe.gross;
+      const grandPettyToday = gym.pettyToday + cafe.pettyToday + yogurt.pettyToday + yCafe.pettyToday;
+      const grandPettyTomorrow = gym.pettyTomorrow + cafe.pettyTomorrow + yogurt.pettyTomorrow + yCafe.pettyTomorrow;
+      const grandExpenses = gym.expenses + cafe.expenses + yogurt.expenses + yCafe.expenses;
+      const grandNet = grandGross + grandPettyToday - grandPettyTomorrow - grandExpenses;
+
+      return {
+        id: idx,
+        Date: dt,
+
+        // Gym columns
+        gymGross: gym.gross,
+        gymPettyToday: gym.pettyToday,
+        gymPettyTomorrow: gym.pettyTomorrow,
+        gymExpenses: gym.expenses,
+        gymNet: gym.net,
+
+        // Cafe columns
+        cafeGross: cafe.gross,
+        cafePettyToday: cafe.pettyToday,
+        cafePettyTomorrow: cafe.pettyTomorrow,
+        cafeExpenses: cafe.expenses,
+        cafeNet: cafe.net,
+
+        // Yogurt columns
+        yogurtGross: yogurt.gross,
+        yogurtPettyToday: yogurt.pettyToday,
+        yogurtPettyTomorrow: yogurt.pettyTomorrow,
+        yogurtExpenses: yogurt.expenses,
+        yogurtNet: yogurt.net,
+
+        // Yogurt Cafe columns
+        yCafeGross: yCafe.gross,
+        yCafePettyToday: yCafe.pettyToday,
+        yCafePettyTomorrow: yCafe.pettyTomorrow,
+        yCafeExpenses: yCafe.expenses,
+        yCafeNet: yCafe.net,
+
+        // Grand totals
+        grandGross,
+        grandPettyToday,
+        grandPettyTomorrow,
+        grandExpenses,
+        grandNet,
+      };
+    });
+
+  // 6) Filter rows by bizFilter if needed
+  let filteredRows = resultRows;
+  if (bizFilter !== 'all') {
+    let prefix = '';
+    if (bizFilter === 'Gym') prefix = 'gym';
+    if (bizFilter === 'Cafe') prefix = 'cafe';
+    if (bizFilter === 'Yogurt') prefix = 'yogurt';
+    if (bizFilter === 'Yogurt Cafe') prefix = 'yCafe';
+
+    filteredRows = resultRows.filter((r) => {
+      const g = r[`${prefix}Gross`] || 0;
+      const n = r[`${prefix}Net`] || 0;
+      return Math.abs(g) > 0.001 || Math.abs(n) > 0.001;
+    });
+  }
+
+  setConsolidatedRows(filteredRows);
+}
   
   const buildNetProfitChart = (rows) => {
     // Suppose net = grandTakeHome (for demonstration)
@@ -1543,6 +1565,7 @@ const flowRows = filteredFlows.map((flow) => {
     function maybeAddBizColumns(bizKey, labelPrefix) {
       if (bizFilter !== 'all' && bizFilter !== labelPrefix) return;
   
+      // Gross column
       columns.push({
         field: `${bizKey}Gross`,
         headerName: `${labelPrefix} Gross`,
@@ -1550,11 +1573,22 @@ const flowRows = filteredFlows.map((flow) => {
         renderCell: (params) => formatCurrency(params.value),
       });
   
-      if (showPettyCash) {
+      // Petty Today column, using new toggle flag
+      if (showPettyToday) {
         columns.push({
-          field: `${bizKey}Petty`,
-          headerName: `${labelPrefix} Petty`,
-          width: 100,
+          field: `${bizKey}PettyToday`,
+          headerName: `${labelPrefix} Petty (Today)`,
+          width: 120,
+          renderCell: (params) => formatCurrency(params.value),
+        });
+      }
+  
+      // Petty Tomorrow column, using new toggle flag
+      if (showPettyTomorrow) {
+        columns.push({
+          field: `${bizKey}PettyTomorrow`,
+          headerName: `${labelPrefix} Petty (Tomorrow)`,
+          width: 140,
           renderCell: (params) => formatCurrency(params.value),
         });
       }
@@ -1568,7 +1602,7 @@ const flowRows = filteredFlows.map((flow) => {
         });
       }
   
-      // Net always
+      // Net column always
       columns.push({
         field: `${bizKey}Net`,
         headerName: `${labelPrefix} Net`,
@@ -1583,9 +1617,7 @@ const flowRows = filteredFlows.map((flow) => {
     maybeAddBizColumns('yogurt', 'Yogurt');
     maybeAddBizColumns('yCafe', 'Yogurt Cafe');
   
-    // [REMOVED] No "Overall" columns
-    // [REMOVED] No "Deposited" column
-    // Keep "Grand" columns if bizFilter==='all'
+    // Grand totals if bizFilter is 'all'
     if (bizFilter === 'all') {
       columns.push({
         field: 'grandGross',
@@ -1593,11 +1625,19 @@ const flowRows = filteredFlows.map((flow) => {
         width: 120,
         renderCell: (params) => formatCurrency(params.value),
       });
-      if (showPettyCash) {
+      if (showPettyToday) {
         columns.push({
-          field: 'grandPetty',
-          headerName: 'Grand Petty',
-          width: 110,
+          field: 'grandPettyToday',
+          headerName: 'Grand Petty (Today)',
+          width: 140,
+          renderCell: (params) => formatCurrency(params.value),
+        });
+      }
+      if (showPettyTomorrow) {
+        columns.push({
+          field: 'grandPettyTomorrow',
+          headerName: 'Grand Petty (Tomorrow)',
+          width: 160,
           renderCell: (params) => formatCurrency(params.value),
         });
       }
@@ -1619,6 +1659,7 @@ const flowRows = filteredFlows.map((flow) => {
   
     return [...baseDateCol, ...columns];
   }
+  
   
   function filterByDateRange(rows, dateFrom, dateTo) {
       if (!rows || rows.length === 0) return [];
@@ -2140,7 +2181,7 @@ useEffect(() => {
                       Recent Gym Transactions
                     </Typography>
                     <Box sx={{ flexGrow: 1, width: '100%' }}>
-                      <DataGrid
+                    <DataGrid
                         rows={recentTransactions}
                         columns={[
                           {
@@ -2526,14 +2567,23 @@ useEffect(() => {
                 </FormControl>
 
                 <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={showPettyCash}
-                      onChange={(e) => setShowPettyCash(e.target.checked)}
-                    />
-                  }
-                  label="Include Petty"
-                />
+                    control={
+                      <Checkbox
+                        checked={showPettyToday}
+                        onChange={(e) => setShowPettyToday(e.target.checked)}
+                      />
+                    }
+                    label="Include Petty Today"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={showPettyTomorrow}
+                        onChange={(e) => setShowPettyTomorrow(e.target.checked)}
+                      />
+                    }
+                    label="Include Petty Tomorrow"
+                  />
                 <FormControlLabel
                   control={
                     <Checkbox

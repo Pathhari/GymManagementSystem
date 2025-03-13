@@ -144,6 +144,8 @@ const Reports = () => {
   const [rawReportsData, setRawReportsData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  
+
   // Fetch unfiltered data once
   useEffect(() => {
     setLoading(true);
@@ -197,6 +199,35 @@ const Reports = () => {
   // MEMBERSHIP: Build Growth & Plan Dist from members
   // -------------------------------------------------
   // rawReportsData.membership.members => array of members
+
+  const filteredGymCashFlowRecords = useMemo(() => {
+    if (!rawReportsData) return [];
+    
+    const allRecords = rawReportsData.finance?.cashFlowRecords || [];
+    
+    return allRecords.filter((flow) => {
+      // Must be "Gym"
+      if (flow.BusinessType !== "Gym") return false;
+      
+      // Must meet branch filter
+      if (!meetsBranch(flow)) return false;
+      
+      // Must meet date range filter
+      if (!meetsDateRange(flow.Date)) return false;
+  
+      return true;
+    });
+  }, [rawReportsData, meetsBranch, meetsDateRange]);
+
+  const totalGymRevenue = useMemo(() => {
+    let sum = 0;
+    filteredGymCashFlowRecords.forEach((flow) => {
+      sum += Number(flow.TotalSales || 0);
+    });
+    return `₱${sum.toLocaleString()}`;
+  }, [filteredGymCashFlowRecords]);
+  
+
   const filteredMembers = useMemo(() => {
     if (!rawReportsData) return [];
     const all = rawReportsData.membership?.members || [];
@@ -472,8 +503,8 @@ const Reports = () => {
               ₱
             </Typography>
             <CardContent>
-              <Typography variant="h6">Total Revenue</Typography>
-              <Typography variant="h5">{totalRevenue}</Typography>
+              <Typography variant="h6">Total Gym Revenue</Typography>
+              <Typography variant="h5">{totalGymRevenue}</Typography>
             </CardContent>
           </Card>
         </Grid>

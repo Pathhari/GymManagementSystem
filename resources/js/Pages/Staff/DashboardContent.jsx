@@ -109,7 +109,7 @@ export default function StaffDashboard() {
   const [isClockedIn, setIsClockedIn] = useState(false);
 
   // Derived states for metrics
-  const todayString = new Date().toISOString().split("T")[0];
+  const todayString = dayjs().format('YYYY-MM-DD');  
   const walkInsTodayCount = walkIns.filter((w) => {
     return new Date(w.VisitDate).toISOString().split("T")[0] === todayString;
   }).length;

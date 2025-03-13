@@ -451,22 +451,6 @@ export default function LockerManagement() {
 
         {/* Header: Branch Filter, Add Locker, Activity Log */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
-          <FormControl sx={{ minWidth: 180 }}>
-            <InputLabel>Filter by Branch</InputLabel>
-            <Select
-              label="Filter by Branch"
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-            >
-              <MenuItem value="All Branches">All Branches</MenuItem>
-              {branches.map((branch) => (
-                <MenuItem key={branch.BranchID} value={branch.BranchID}>
-                  {branch.BranchName}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
           <Button
             variant="contained"
             startIcon={<AddIcon />}

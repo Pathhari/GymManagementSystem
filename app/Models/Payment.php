@@ -16,6 +16,7 @@ class Payment extends Model
         'BranchID',
         'MemberID',
         'WalkInName',
+        'PayerName',
         'BookingRef',
         'SessionRef',
         'MonthlyClientID',

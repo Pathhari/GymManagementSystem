@@ -492,6 +492,9 @@ use App\Http\Controllers\StaffController;
 // Everything under /staff
 Route::prefix('staff')->group(function () {
 
+    Route::get('/authuser', [StaffController::class, 'getAuthUser'])
+    ->middleware('multiGuard:owner,admin,staff'); // if you want to protect the route
+
     // 1) The routes for staff that owners, admins, and staff can all access:
     Route::middleware('multiGuard:owner,admin,staff')->group(function() {
         // Staff main CRUD
@@ -792,6 +795,10 @@ use App\Http\Controllers\FacilityController;
     use App\Http\Controllers\MonthlyClientController;   
 
     Route::prefix('monthly-clients')->group(function () {
+        // Define the literal route first
+        Route::get('/attendances-all', [MonthlyClientController::class, 'indexAllAttendances']);
+    
+        // Then define the routes with the dynamic parameter
         Route::get('/', [MonthlyClientController::class, 'index']);
         Route::get('/{id}', [MonthlyClientController::class, 'show']);
         Route::post('/', [MonthlyClientController::class, 'store']);
@@ -799,8 +806,8 @@ use App\Http\Controllers\FacilityController;
         Route::delete('/{id}', [MonthlyClientController::class, 'destroy']);
         Route::get('/{id}/attendances', [MonthlyClientController::class, 'indexAttendances']);
         Route::post('/{id}/attendances', [MonthlyClientController::class, 'storeAttendance']);
-        Route::get('/attendances-all', [MonthlyClientController::class, 'indexAllAttendances']);
     });
+    
     
     // Separate route for staff to create monthly clients
     Route::post('staff/monthly-clients', [MonthlyClientController::class, 'store']);

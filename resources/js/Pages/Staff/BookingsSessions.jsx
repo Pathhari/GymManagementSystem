@@ -151,12 +151,15 @@ function createCalendarEvents(bookings, sessions, sessionBookings) {
   });
 
   // 1) Convert facility bookings to events
-  const bookingEvents = bookings.map((b) => ({
-    id: `booking-${b.BookingID}`,
-    date: b.BookingDate,
-    title: `Booking: ${b.MemberName} (${formatTime(b.BookingTime)})`,
-    type: "booking",
-  }));
+  const bookingEvents = bookings.map((b) => {
+    const displayName = b.MemberName || b.GuestName || 'Unknown';
+    return {
+      id: `booking-${b.BookingID}`,
+      date: b.BookingDate,
+      title: `Booking: ${displayName} (${formatTime(b.BookingTime)})`,
+      type: "booking",
+    };
+  });
 
   // 2) Convert session bookings to events
   const sessionBookingEvents = sessionBookings.map((sb) => {
@@ -177,12 +180,12 @@ function createCalendarEvents(bookings, sessions, sessionBookings) {
     const timeFrame = sessionObj.StartTime && sessionObj.EndTime
       ? `(${dayjs(sessionObj.StartTime).format("h:mm A")} - ${dayjs(sessionObj.EndTime).format("h:mm A")})`
       : "";
-    const coachName = sessionObj.CoachName || "Unassigned";  // might be empty
+    const coachName = sessionObj.CoachName || "Unassigned";
     const sessionName = sessionObj.SessionName || "Unknown Session";
 
     return {
       id: `sb-${sb.SessionBookingID}`,
-      date: sb.BookingDate,  // or you can treat it as an allDay event
+      date: sb.BookingDate,
       title: `Session: ${sessionName} w/ Coach: ${coachName} → Booked by ${sb.MemberName} ${timeFrame}`,
       type: "sessionBooking",
     };
@@ -629,19 +632,17 @@ async function generateTimeslots() {
       };
   
       if (newBooking.bookingType === "member") {
-        // If user chose "Member", set MemberID; omit guest fields
         payload.MemberID = newBooking.MemberID || null;
         payload.GuestName = null;
         payload.GuestEmail = null;
       } else {
-        // If user chose "Guest", set Guest fields; omit MemberID
         payload.MemberID = null;
         payload.GuestName = newBooking.GuestName;
         payload.GuestEmail = newBooking.GuestEmail;
       }
   
+      console.log("Booking payload:", payload);
       await axios.post("/booking", payload);
-  
       setAddBookingOpen(false);
       fetchAllData();
       showSnack("Booking created successfully!", "success");
@@ -651,7 +652,7 @@ async function generateTimeslots() {
     }
   }
   
-
+  
   async function handleDeleteBooking(bookingId) {
     try {
       await axios.delete(`/booking/${bookingId}`);
@@ -957,6 +958,7 @@ async function handleBookSessionConfirm() {
       showSnack("Error creating coach. Check console.", "error");
     }
   };
+
   const handleUpdateCoach = async () => {
     if (!selectedCoach) return;
     try {

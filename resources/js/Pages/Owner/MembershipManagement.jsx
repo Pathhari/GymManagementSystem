@@ -28,7 +28,6 @@ import {
   Stack,
   IconButton,
   OutlinedInput,
-  Chip,
 } from "@mui/material";
 import '@fontsource/roboto';
 import Webcam from "react-webcam";
@@ -79,8 +78,6 @@ import "jspdf-autotable";
 import AddNewMemberLayout from "../../Layouts/AddNewMemberLayout";
 import ManagePlansLayout from "../../Layouts/ManagePlansLayout";
 
-
-
 export default function MembershipManagement() {
   const theme = useTheme();
 
@@ -108,10 +105,12 @@ export default function MembershipManagement() {
   const [memberStatuses, setMemberStatuses] = useState([]);
   const [branches, setBranches] = useState({});
 
+
   // Searching / filtering
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState(0);
   const [branchFilter, setBranchFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
 
   // Sub‐tab for memberships
   const [membershipSubTab, setMembershipSubTab] = useState(0);
@@ -1067,6 +1066,14 @@ useEffect(() => {
     return endDate > today && endDate <= next7;
   }).length;
 
+  const formatTime = (timeString) => {
+    if (!timeString) return "—";
+    let [hours, minutes] = timeString.split(":").map(Number);
+    const period = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12 || 12;
+    return `${hours}:${minutes.toString().padStart(2, "0")} ${period}`;
+  };
+
   // ─────────────────────────────────────────────────────────
   // DataGrid Columns
   // ─────────────────────────────────────────────────────────
@@ -1109,7 +1116,7 @@ useEffect(() => {
     {
       field: "MemberStatusID",
       headerName: "Status",
-      width: 150,
+      width: 120,
       renderCell: (params) => {
         const msid = params.value;
         const stName = getStatusNameByID(msid) ?? "—";
@@ -1121,26 +1128,17 @@ useEffect(() => {
               return "#f44336";
             case "frozen":
               return "#2196f3";
-            case "on-hold":
-              return "blue";
-            case "terminated":
-              return "gray";
             default:
-              return "black";
+              return "#757575";
           }
         };
-
         return (
-          <Chip
-            label={stName}
-            style={{
-              backgroundColor: getStatusColor(stName),
-              color: "white",
-            }}
-          />
+          <span style={{ color: getStatusColor(stName), fontWeight: "bold" }}>
+            {stName}
+          </span>
         );
       },
-    },    
+    },
     {
       field: "MembershipEndDate",
       headerName: "Ends",
@@ -1534,27 +1532,19 @@ useEffect(() => {
     {
       field: "VisitDate",
       headerName: "Date",
-      width: 140,
-      valueFormatter: ({ value }) => new Date(value).toLocaleDateString()
+      width: 180,
+      renderCell: (params) => (params.value ? formatDate(params.value) : "—"),
     },
     {
       field: "VisitTime",
       headerName: "Time",
-      width: 120,
-      valueFormatter: ({ value }) => {
-        // Ensure that value is a valid time string
-        if (!value || isNaN(new Date(`1970-01-01T${value}`).getTime())) {
-          return "—";
-        }
-        return new Date(`1970-01-01T${value}`).toLocaleTimeString();
-      }
+      width: 180,
+      renderCell: (params) => (params.value ? formatTime(params.value) : "—"),
     },
     { field: "CheckInMethod", headerName: "Check-in Method", width: 180 },
     { field: "BranchName", headerName: "Branch", width: 150 },
     { field: "Remarks", headerName: "Remarks", width: 250 },
   ];
-  
-  
   
   const monthlyAttendanceColumns = [
     { field: "MonthlyClientAttendanceID", headerName: "ID", width: 100 },

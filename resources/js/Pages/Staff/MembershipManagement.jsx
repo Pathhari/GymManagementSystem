@@ -105,23 +105,6 @@ export default function MembershipManagement() {
   const [memberStatuses, setMemberStatuses] = useState([]);
   const [branches, setBranches] = useState({});
 
-  useEffect(() => {
-    // Example: get the current staff with default branch
-    axios
-      .get("/authuser")
-      .then((res) => {
-        const { DefaultBranchID } = res.data;
-        // If there's a default branch, set the filter to that
-        if (DefaultBranchID) {
-          setBranchFilter(String(DefaultBranchID));
-        } else {
-          // If staff has no branch or something
-          setBranchFilter("all");
-        }
-      })
-      .catch((err) => console.error("Error:", err))
-      .finally(() => setLoading(false));
-  }, []);
 
   // Searching / filtering
   const [searchTerm, setSearchTerm] = useState("");

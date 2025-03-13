@@ -406,7 +406,7 @@ export default function PaymentsAndInvoices() {
   };
   
 
-  const fetchAllPayments = async () => {
+  async function fetchAllPayments() {
     try {
       const res = await axios.get("/payments");
       const mapped = res.data.map((p) => ({
@@ -414,11 +414,13 @@ export default function PaymentsAndInvoices() {
         memberId: p.MemberID ? p.MemberID.toString() : "",
         monthlyClientId: p.MonthlyClientID ? p.MonthlyClientID.toString() : "",
         payerName:
+          p.PayerName ??
           p.member?.FullName ??
-          p.monthly_client?.FullName ??  // note the underscore here
+          p.monthly_client?.FullName ??
           p.WalkInName ??
           "N/A",
-        paymentDate: new Date(p.PaymentDate).toISOString(),
+        // Store the raw PaymentDate => "2025-03-14 03:12:26"
+        paymentDate: p.PaymentDate,
         amountPaid: Number(p.Amount),
         method: p.PaymentMethod,
         status: p.Status,
@@ -426,11 +428,12 @@ export default function PaymentsAndInvoices() {
         paymentFor: Array.isArray(p.PaymentFor) ? p.PaymentFor : [],
       }));
       setAllPayments(mapped);
-      setFilteredPayments(mapped); // default
+      setFilteredPayments(mapped);
     } catch (err) {
       console.error(err);
     }
-  };
+  }
+
   
 
   const fetchAllInvoices = async () => {
@@ -581,23 +584,29 @@ export default function PaymentsAndInvoices() {
   function normalizePaymentMethod(method) {
     if (!method) return "";
     const lower = method.toLowerCase();
-    // Normalize common variations of payment methods:
-    if (lower.includes("cash") && !lower.includes("w-in")) return "Cash";
-    if (lower.includes("gcash") || lower.includes("w-in gcash")) return "GCash";
-    if (lower.includes("bpi") || lower.includes("w-in bpi")) return "BPI";
-    if (lower.includes("bdo") || lower.includes("w-in bdo")) return "BDO";
+  
+    // Check "gcash" first; it contains "cash" at the end, so we handle it first
+    if (lower.includes("gcash")) return "GCash";
+    if (lower.includes("bpi")) return "BPI";
+    if (lower.includes("bdo")) return "BDO";
+  
+    // Lastly, if it has "cash" (including "W-In Cash"), treat as Cash
+    if (lower.includes("cash")) return "Cash";
+  
     return method;
   }
   
+  
+  // ==================== Aggregation for Gym Cash Flows + Payments ====================
   function aggregateByDate(gymFlows, allPayments) {
     const resultsMap = {};
   
     // 1) Process daily flows
     gymFlows.forEach((flow) => {
-      // Use the "Date" field from the flow (e.g., "2025-03-13")
-      const dateStr = flow.Date;
+      const dateStr = flow.Date; // e.g. "2025-03-14"
       if (!resultsMap[dateStr]) {
         resultsMap[dateStr] = {
+          // basic skeleton
           CashFlowID: flow.CashFlowID,
           date: dateStr,
           totalCash: 0,
@@ -618,46 +627,36 @@ export default function PaymentsAndInvoices() {
         };
       }
   
-      // Parse the numeric values (they are returned as strings)
-      const cashSales = parseFloat(flow.CashSales || 0);
-      const walkInCashSales = parseFloat(flow.WalkInCashSales || 0);
-      const sumCash = cashSales + walkInCashSales;
-  
-      const gCashSales = parseFloat(flow.GCashSales || 0);
-      const walkInGCashSales = parseFloat(flow.WalkInGCashSales || 0);
-      const sumGCash = gCashSales + walkInGCashSales;
-  
-      const bpiSales = parseFloat(flow.BPISales || 0);
-      const walkInBPISales = parseFloat(flow.WalkInBPISales || 0);
-      const sumBPI = bpiSales + walkInBPISales;
-  
-      const bdoSales = parseFloat(flow.BDOSales || 0);
-      const walkInBDOSales = parseFloat(flow.WalkInBDOSales || 0);
-      const sumBDO = bdoSales + walkInBDOSales;
+      // Summation logic from each flow
+      const sumCash = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
+      const sumGCash = parseFloat(flow.GCashSales || 0) + parseFloat(flow.WalkInGCashSales || 0);
+      const sumBPI = parseFloat(flow.BPISales || 0) + parseFloat(flow.WalkInBPISales || 0);
+      const sumBDO = parseFloat(flow.BDOSales || 0) + parseFloat(flow.WalkInBDOSales || 0);
   
       const pettyVal = parseFloat(flow.PettyCash || 0);
       const pettyTmr = parseFloat(flow.PettyCashTomorrow || 0);
   
-      // Update aggregated row for this date
-      resultsMap[dateStr].totalCash += sumCash;
-      resultsMap[dateStr].totalGCash += sumGCash;
-      resultsMap[dateStr].totalBPI += sumBPI;
-      resultsMap[dateStr].totalBDO += sumBDO;
-      resultsMap[dateStr].pettyCash += pettyVal;
-      resultsMap[dateStr].pettyTomorrow += pettyTmr;
-      // Define cashPlusPetty as the sum of cash sales and petty cash
-      resultsMap[dateStr].cashPlusPetty += (sumCash + pettyVal);
+      resultsMap[dateStr].totalCash       += sumCash;
+      resultsMap[dateStr].totalGCash      += sumGCash;
+      resultsMap[dateStr].totalBPI        += sumBPI;
+      resultsMap[dateStr].totalBDO        += sumBDO;
+      resultsMap[dateStr].pettyCash       += pettyVal;
+      resultsMap[dateStr].pettyTomorrow   += pettyTmr;
+      resultsMap[dateStr].cashPlusPetty   += (sumCash + pettyVal);
     });
   
-    // 2) Process payments
+    // 2) Process payments, but SKIP if that date is already in daily flows:
     allPayments.forEach((pay) => {
-      let payDateStr = null;
-      if (pay.PaymentDate) {
-        // PaymentDate is something like "2025-03-13 22:01:41"; split on space:
-        payDateStr = pay.PaymentDate.split(" ")[0];
-      }
+      if (!pay.paymentDate) return;
+      const payDateStr = pay.paymentDate.split(" ")[0]; // e.g., "2025-03-14"
       if (!payDateStr) return;
   
+      // If daily flow for payDateStr exists, skip to prevent double-count
+      if (resultsMap[payDateStr]) {
+        return;
+      }
+  
+      // Otherwise, create or update aggregator row for that date
       if (!resultsMap[payDateStr]) {
         resultsMap[payDateStr] = {
           date: payDateStr,
@@ -679,36 +678,36 @@ export default function PaymentsAndInvoices() {
         };
       }
   
-      const payAmount = parseFloat(pay.Amount || 0);
-      const unifiedMethod = normalizePaymentMethod(pay.PaymentMethod);
+      const payAmount = pay.amountPaid || 0;
+      const method = normalizePaymentMethod(pay.method);
   
-      switch (unifiedMethod) {
+      switch (method) {
         case "Cash":
-          resultsMap[payDateStr].totalCash += payAmount;
+          resultsMap[payDateStr].totalCash     += payAmount;
           resultsMap[payDateStr].cashPlusPetty += payAmount;
           break;
         case "GCash":
           resultsMap[payDateStr].totalGCash += payAmount;
           break;
         case "BPI":
-          resultsMap[payDateStr].totalBPI += payAmount;
+          resultsMap[payDateStr].totalBPI   += payAmount;
           break;
         case "BDO":
-          resultsMap[payDateStr].totalBDO += payAmount;
+          resultsMap[payDateStr].totalBDO   += payAmount;
           break;
         default:
           break;
       }
   
-      // Count the categories in PaymentFor (if provided as an array)
-      if (Array.isArray(pay.PaymentFor)) {
-        pay.PaymentFor.forEach((cat) => {
+      // If you track PaymentFor categories here
+      if (Array.isArray(pay.paymentFor)) {
+        pay.paymentFor.forEach((cat) => {
           const c = cat.trim();
           if (c === "New Membership") {
             resultsMap[payDateStr].countNewMembership++;
           } else if (c === "Monthly Client Fee") {
             resultsMap[payDateStr].countMonthlyClientFee++;
-          } else if (c === "Walk-In Payment" || c === "Walkin Payment") {
+          } else if (c === "Walk-In Payment") {
             resultsMap[payDateStr].countWalkinPayment++;
           } else if (c === "Membership Renewal") {
             resultsMap[payDateStr].countMembershipRenewal++;
@@ -721,17 +720,17 @@ export default function PaymentsAndInvoices() {
       }
     });
   
-    // 3) Compute final totals for each date
+    // 3) Compute final totals
     Object.values(resultsMap).forEach((row) => {
-      // totalSales = (cashPlusPetty) + totalGCash + totalBPI + totalBDO
-      row.totalSales = row.cashPlusPetty + row.totalGCash + row.totalBPI + row.totalBDO;
-      // takeHome = totalSales - pettyTomorrow
+      row.totalSales =
+        row.cashPlusPetty + row.totalGCash + row.totalBPI + row.totalBDO;
       row.takeHome = row.totalSales - row.pettyTomorrow;
     });
   
-    // 4) Return a sorted array by date
+    // 4) Sort + return
     return Object.values(resultsMap).sort((a, b) => a.date.localeCompare(b.date));
   }
+  
   
   
 
@@ -1361,7 +1360,7 @@ export default function PaymentsAndInvoices() {
       {/* Tabs */}
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Typography variant="h4" gutterBottom>
-          Payments & Invoices
+          Sales Reports
         </Typography>
       </Box>
 
@@ -1432,9 +1431,6 @@ export default function PaymentsAndInvoices() {
   <>
     {/* 1) The existing "Sales Report (Gym)" pivot table */}
     <Box sx={{ mt: 2 }}>
-      <Typography variant="h5" gutterBottom>
-        Sales Report (Gym)
-      </Typography>
       <div style={{ height: 420, width: "100%" }}>
         <DataGrid
           rows={filteredGymSales}
@@ -1549,7 +1545,7 @@ export default function PaymentsAndInvoices() {
     {/* 2) The Detailed Breakdown: One table per PaymentFor for the selected day */}
     <Box sx={{ mt: 4 }}>
       <Typography variant="h5" gutterBottom>
-        Detailed Breakdown by PaymentFor
+        Detailed Breakdown
       </Typography>
       {/* Date picker to choose the day for which you want detailed breakdown */}
       <TextField
@@ -1566,9 +1562,8 @@ export default function PaymentsAndInvoices() {
       {/* Filter payments for the selected date */}
       {Object.entries(
         groupPaymentsByPaymentFor(
-          allPayments.filter(
-            (p) => p.paymentDate.split("T")[0] === selectedDetailDate
-          )
+          allPayments.filter((p) => p.paymentDate.split(" ")[0] === selectedDetailDate)
+
         )
       ).map(([categoryName, paymentRows]) => {
         // Compute sums for columns in this category

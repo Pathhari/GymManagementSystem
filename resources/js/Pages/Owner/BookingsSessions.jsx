@@ -151,12 +151,15 @@ function createCalendarEvents(bookings, sessions, sessionBookings) {
   });
 
   // 1) Convert facility bookings to events
-  const bookingEvents = bookings.map((b) => ({
-    id: `booking-${b.BookingID}`,
-    date: b.BookingDate,
-    title: `Booking: ${b.MemberName} (${formatTime(b.BookingTime)})`,
-    type: "booking",
-  }));
+  const bookingEvents = bookings.map((b) => {
+    const displayName = b.MemberName || b.GuestName || 'Unknown';
+    return {
+      id: `booking-${b.BookingID}`,
+      date: b.BookingDate,
+      title: `Booking: ${displayName} (${formatTime(b.BookingTime)})`,
+      type: "booking",
+    };
+  });
 
   // 2) Convert session bookings to events
   const sessionBookingEvents = sessionBookings.map((sb) => {
@@ -177,12 +180,12 @@ function createCalendarEvents(bookings, sessions, sessionBookings) {
     const timeFrame = sessionObj.StartTime && sessionObj.EndTime
       ? `(${dayjs(sessionObj.StartTime).format("h:mm A")} - ${dayjs(sessionObj.EndTime).format("h:mm A")})`
       : "";
-    const coachName = sessionObj.CoachName || "Unassigned";  // might be empty
+    const coachName = sessionObj.CoachName || "Unassigned";
     const sessionName = sessionObj.SessionName || "Unknown Session";
 
     return {
       id: `sb-${sb.SessionBookingID}`,
-      date: sb.BookingDate,  // or you can treat it as an allDay event
+      date: sb.BookingDate,
       title: `Session: ${sessionName} w/ Coach: ${coachName} → Booked by ${sb.MemberName} ${timeFrame}`,
       type: "sessionBooking",
     };
@@ -629,19 +632,17 @@ async function generateTimeslots() {
       };
   
       if (newBooking.bookingType === "member") {
-        // If user chose "Member", set MemberID; omit guest fields
         payload.MemberID = newBooking.MemberID || null;
         payload.GuestName = null;
         payload.GuestEmail = null;
       } else {
-        // If user chose "Guest", set Guest fields; omit MemberID
         payload.MemberID = null;
         payload.GuestName = newBooking.GuestName;
         payload.GuestEmail = newBooking.GuestEmail;
       }
   
+      console.log("Booking payload:", payload);
       await axios.post("/booking", payload);
-  
       setAddBookingOpen(false);
       fetchAllData();
       showSnack("Booking created successfully!", "success");
@@ -651,7 +652,7 @@ async function generateTimeslots() {
     }
   }
   
-
+  
   async function handleDeleteBooking(bookingId) {
     try {
       await axios.delete(`/booking/${bookingId}`);
@@ -863,12 +864,11 @@ async function handleUpdateBooking() {
       setBookSessionOpen(true);
     }
   }
-  
 // Inside your BookingsSessions component
 async function handleBookSessionConfirm() {
   if (!sessionToBook) return;
   try {
-    // Step 1: Create the session booking
+    // Step 1) Create the booking on backend
     await axios.post("/booking/sessions/book", {
       SessionID: sessionToBook.SessionID,
       MemberID: sessionBookingMemberID,
@@ -878,52 +878,36 @@ async function handleBookSessionConfirm() {
       Amount: Number(sessionBookingPaymentAmount) || 0,
     });
 
-    // Step 2: Notify the coach using the notify-coach endpoint
+    // Step 2) Immediately notify the coach (Mailjet) if the session has a valid coach
     if (sessionToBook.CoachID) {
+      // 2a) Find coach data from your coaches array
       const foundCoach = coaches.find(c => c.CoachID === sessionToBook.CoachID);
-      console.log("foundCoach =>", foundCoach);
-      // Check that the coach has a valid email address
-      if (foundCoach && foundCoach.Email && foundCoach.Email.includes("@")) {
+      if (foundCoach && foundCoach.ContactInfo && foundCoach.Email.includes("@")) {
+
+        // 2b) Find the member for a nice name display
         const foundMember = members.find(m => m.MemberID === Number(sessionBookingMemberID));
         const memberName = foundMember ? foundMember.FullName : "Unknown Member";
+
+        // 2c) Post to your new notify endpoint
         await axios.post("/notifications/notify-coach-booking-mailjet", {
-          coach_id: foundCoach.CoachID,
-          coach_name: foundCoach.FullName,
-          coach_email: foundCoach.Email,
-          member_name: memberName,
+          coach_id:     foundCoach.CoachID,
+          coach_name:   foundCoach.FullName,
+          coach_email:  foundCoach.Email,   // or foundCoach.Email if your DB has it
+          member_name:  memberName,
           session_name: sessionToBook.SessionName,
-          // Send times in 24-hour format as expected by the validator
-          start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD HH:mm:ss"),
-          end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD HH:mm:ss"),
+          start_time:   sessionToBook.StartTime,  // "YYYY-MM-DD HH:mm:ss"
+          end_time:     sessionToBook.EndTime,
         });
-      } else {
-        console.warn("Coach email not valid or missing:", foundCoach);
       }
     }
 
-    // Step 2b: Notify the member using a new endpoint (create this on your backend)
-    const foundMemberForNotification = members.find(m => m.MemberID === Number(sessionBookingMemberID));
-    if (foundMemberForNotification && foundMemberForNotification.Email && foundMemberForNotification.Email.includes("@")) {
-      await axios.post("/notifications/notify-member-booking-mailjet", {
-        member_id: foundMemberForNotification.MemberID,
-        member_name: foundMemberForNotification.FullName,
-        member_email: foundMemberForNotification.Email,
-        // Optionally include the coach's name for additional context
-        coach_name: coaches.find(c => c.CoachID === sessionToBook.CoachID)?.FullName || "",
-        session_name: sessionToBook.SessionName,
-        start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD HH:mm:ss"),
-        end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD HH:mm:ss"),
-      });
-    } else {
-      console.warn("Member email not valid or missing:", foundMemberForNotification);
-    }
-
-    // Step 3: Finalize booking process
+    // Step 3) Wrap up
     setBookSessionOpen(false);
     fetchAllData();
-    showSnack("Session booked successfully, coach and member notified by Mailjet!", "success");
+    showSnack("Session booked successfully, coach notified by Mailjet!", "success");
+
   } catch (err) {
-    console.error("Failed to book session or notify coach/member:", err);
+    console.error("Failed to book session or notify coach:", err);
     if (err.response && err.response.status === 422) {
       showSnack(err.response.data.message || "Capacity reached!", "warning");
     } else {
@@ -931,7 +915,6 @@ async function handleBookSessionConfirm() {
     }
   }
 }
-
 
 
   // Coaches
@@ -975,6 +958,7 @@ async function handleBookSessionConfirm() {
       showSnack("Error creating coach. Check console.", "error");
     }
   };
+
   const handleUpdateCoach = async () => {
     if (!selectedCoach) return;
     try {
@@ -1564,7 +1548,6 @@ async function handleBookSessionConfirm() {
           >
             <Tab icon={<CalendarTodayIcon />} label="Facility Bookings" />
             <Tab icon={<FitnessCenterIcon />} label="Coach Sessions" />
-            <Tab icon={<PersonIcon />} label="Coaches" />
           </Tabs>
         </Box>
 
