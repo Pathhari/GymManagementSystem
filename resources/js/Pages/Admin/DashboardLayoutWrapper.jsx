@@ -2,6 +2,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
+import { useTheme } from '@mui/material/styles';
 import Typography from '@mui/material/Typography';
 import { createTheme } from '@mui/material/styles';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -27,7 +28,6 @@ import MembershipManagement from './MembershipManagement';
 import StaffManagement from './StaffManagement';
 import Payments from './Payments';
 import BookingsSessions from './BookingsSessions';
-import LockerManagement from './LockerManagement';
 import Notifications from './Notifications';
 import MaintenanceEquip from './MaintenanceEquip';
 import Promotions from './Promotions';
@@ -41,7 +41,6 @@ const NAVIGATION = [
   { segment: 'staff-management', title: 'Staff Management', icon: <Diversity3Icon /> },
   { segment: 'payments', title: 'Payments & Invoices', icon: <PaymentsIcon /> },
   { segment: 'bookingsessions', title: 'Bookings & Sessions', icon: <EventNoteIcon /> },
-  { segment: 'lockermanagement', title: 'Locker Management', icon: <LockIcon /> },
   { segment: 'maintequip', title: 'Maintenance & Equipment', icon: <BuildIcon /> },
   { segment: 'reports', title: 'Reports & Analytics', icon: <BarChartIcon /> },
   { segment: 'notifications', title: 'Notifications', icon: <NotificationsIcon /> },
@@ -74,9 +73,7 @@ function DemoPageContent({ pathname }) {
       case '/payments':
         return <Payments />;
       case '/bookingsessions':
-        return <BookingsSessions />;
-      case '/lockermanagement':
-        return <LockerManagement />;
+        return <BookingsSessions />
       case '/notifications':
         return <Notifications />;
       case '/maintequip':
@@ -109,11 +106,17 @@ DemoPageContent.propTypes = {
   pathname: PropTypes.string.isRequired,
 };
 
+
 function CustomAppTitle() {
+  const theme = useTheme();
+  const logoSrc = theme.palette.mode === 'light' 
+    ? '/imgs/logo-mainb.png' // For light mode
+    : '/imgs/logo-main.png'; // For dark mode
+
   return (
     <Stack direction="row" alignItems="center" spacing={2}>
       <img
-        src="/imgs/logo-main.png" // Replace with your logo path
+        src={logoSrc}
         alt="Logo"
         style={{ height: '40px', width: 'auto' }}
       />
@@ -121,7 +124,6 @@ function CustomAppTitle() {
     </Stack>
   );
 }
-
 function SidebarFooter({ onLogout }) {
   return (
     <Box

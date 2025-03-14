@@ -8,7 +8,7 @@ use App\Models\Payment;
 use App\Models\Member;
 use App\Models\Invoice;
 use App\Models\PaymentInvoice;
-use App\Models\SystemSetting; // If storing PayMongo keys or fee rules in DB
+use App\Models\SystemSetting; // if storing keys or fee rules in the DB
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\DB;
 
@@ -19,8 +19,8 @@ class PaymentController extends Controller
      * ------------------------------------------------------------------ */
 
     /**
-     * 4. View all Payment Transactions
-     * Staff sees partial columns, Owner/Admin sees all.
+     * 4. View all Payment Transactions.
+     * Staff sees partial columns; Owner/Admin sees all.
      */
     public function indexTransactions()
     {
@@ -28,13 +28,13 @@ class PaymentController extends Controller
 
         if ($user && $user->role === 'Staff') {
             // Partial columns for staff
-            $payments = Payment::select('PaymentID','MemberID','Amount','Status','PaymentDate')
-                               ->orderBy('PaymentDate','desc')
+            $payments = Payment::select('PaymentID', 'MemberID', 'Amount', 'Status', 'PaymentDate')
+                               ->orderBy('PaymentDate', 'desc')
                                ->get();
         } else {
             // Owner/Admin => everything
             $payments = Payment::with('member')
-                               ->orderBy('PaymentDate','desc')
+                               ->orderBy('PaymentDate', 'desc')
                                ->get();
         }
 
@@ -44,13 +44,13 @@ class PaymentController extends Controller
     }
 
     /**
-     * 5. Export/Print transaction histories (Owner,Admin)
+     * 5. Export/Print transaction histories (Owner/Admin)
      */
     public function exportTransactions()
     {
-        $allPayments = Payment::orderBy('PaymentDate','desc')->get();
+        $allPayments = Payment::orderBy('PaymentDate', 'desc')->get();
 
-        $csvLines   = [];
+        $csvLines = [];
         $csvLines[] = "PaymentID,MemberID,Amount,Status,PaymentDate";
         foreach ($allPayments as $p) {
             $csvLines[] = "{$p->PaymentID},{$p->MemberID},{$p->Amount},{$p->Status},{$p->PaymentDate}";
@@ -72,7 +72,7 @@ class PaymentController extends Controller
      */
     public function create()
     {
-        $members = Member::orderBy('FullName','asc')->get();
+        $members = Member::orderBy('FullName', 'asc')->get();
 
         return Inertia::render('Payments/Direct/Create', compact('members'));
     }
@@ -83,7 +83,6 @@ class PaymentController extends Controller
      */
     public function store(Request $request)
     {
-        // Add BranchID if your system requires it, e.g.: 'BranchID' => 'required|exists:branches,BranchID',
         $data = $request->validate([
             'BranchID'     => 'nullable|exists:branches,BranchID',
             'MemberID'     => 'nullable|exists:members,MemberID',
@@ -99,43 +98,59 @@ class PaymentController extends Controller
             'FailureReason'=> 'nullable|string|max:255',
         ]);
 
+        // Convert the PaymentFor array to JSON string
         $data['PaymentFor'] = json_encode($data['PaymentFor']);
+
         Payment::create($data);
 
         return redirect()
             ->route('payments.index')
-            ->with('success','Payment created successfully.');
+            ->with('success', 'Payment created successfully.');
     }
 
     /**
-     * 28. Read Payment Records => all roles
+     * 28. Read Payment Records => all roles.
+     *
+     * This method now returns payments filtered by BranchID when an admin is logged in.
      */
     public function index()
     {
-        $payments = Payment::with('member', 'monthlyClient')
-            ->orderBy('PaymentDate','desc')
-            ->get();
-        
-    
+        // If an admin is logged in, return only payments for the admin’s assigned branches.
+        if (auth('admin')->check()) {
+            $admin = auth('admin')->user();
+            // Ensure your Admin model has a branches() relation returning the admin’s branches.
+            $branchIDs = $admin->branches->pluck('BranchID')->toArray();
+
+            $payments = Payment::with('member', 'monthlyClient')
+                ->whereIn('BranchID', $branchIDs)
+                ->orderBy('PaymentDate', 'desc')
+                ->get();
+        } else {
+            // For non-admin users (or when no admin guard is used), return all payments.
+            $payments = Payment::with('member', 'monthlyClient')
+                ->orderBy('PaymentDate', 'desc')
+                ->get();
+        }
+
         return response()->json($payments);
     }
 
     /**
-     * 29. Update Payment Info => all roles
-     * Show edit form & process update
+     * 29. Update Payment Info => all roles.
+     * Show edit form & process update.
      */
     public function edit($id)
     {
         $payment = Payment::findOrFail($id);
-        $members = Member::orderBy('FullName','asc')->get();
+        $members = Member::orderBy('FullName', 'asc')->get();
 
-        return Inertia::render('Payments/Direct/Edit', compact('payment','members'));
+        return Inertia::render('Payments/Direct/Edit', compact('payment', 'members'));
     }
 
     public function update(Request $request, $id)
     {
         $payment = Payment::findOrFail($id);
-        
+
         $data = $request->validate([
             'BranchID'     => 'nullable|exists:branches,BranchID',
             'MemberID'     => 'nullable|exists:members,MemberID',
@@ -155,55 +170,52 @@ class PaymentController extends Controller
 
         return redirect()
             ->route('payments.index')
-            ->with('success','Payment updated successfully.');
+            ->with('success', 'Payment updated successfully.');
     }
 
     /**
-     * 30. Delete Payment => all roles
+     * 30. Delete Payment => all roles.
      */
     public function destroy($id)
     {
-        // Load the payment along with its related invoices
+        // Load the payment along with its related invoices.
         $payment = Payment::with('invoices')->findOrFail($id);
-    
+
         DB::transaction(function () use ($payment) {
-            // Loop through each related invoice
+            // Loop through each related invoice.
             foreach ($payment->invoices as $invoice) {
-                // Count how many payments reference this invoice
+                // Count how many payments reference this invoice.
                 $paymentCount = $invoice->payments()->count();
-    
-                // If only this payment is linked, then delete the invoice
+
+                // If only this payment is linked, then delete the invoice.
                 if ($paymentCount <= 1) {
                     $invoice->delete();
                 }
-                // Otherwise, you might want to detach this payment's pivot record.
-                // (If your pivot table has proper ON DELETE CASCADE, this may be automatic.)
+                // Otherwise, you might want to detach this payment’s pivot record.
             }
-    
-            // Finally, delete the payment record
+
+            // Finally, delete the payment record.
             $payment->delete();
         });
-    
+
         return response()->json([
             'message' => 'Payment and associated invoice(s) (if unlinked) deleted successfully.'
         ], 200);
     }
-    
-    
 
     /* ------------------------------------------------------------------
      * M) Partial / Multiple Payments
      * ------------------------------------------------------------------ */
 
     /**
-     * 35. Create Partial Payments => all roles
+     * 35. Create Partial Payments => all roles.
      */
     public function createPartialPayment()
     {
-        // Possibly list open invoices
+        // Possibly list open invoices.
         $invoices = Invoice::whereNull('PaymentStatus')
-                    ->orWhere('PaymentStatus','!=','Paid')
-                    ->orderBy('InvoiceDate','desc')
+                    ->orWhere('PaymentStatus', '!=', 'Paid')
+                    ->orderBy('InvoiceDate', 'desc')
                     ->get();
 
         return Inertia::render('Payments/Partial/Create', [
@@ -221,12 +233,11 @@ class PaymentController extends Controller
             'Amount'            => 'required|numeric|min:0',
             'PaymentDate'       => 'required|date',
             'Status'            => 'required|string|max:50',
-            'allocatedInvoices' => 'required|array|min:1', 
-            // e.g. allocatedInvoices => [ {invoiceId:..., amountAllocated:...}, ... ]
+            'allocatedInvoices' => 'required|array|min:1', // e.g. [{ invoiceId: ..., amountAllocated: ...}, ...]
         ]);
 
         DB::transaction(function () use ($data) {
-            // 1) Create the Payment
+            // 1) Create the Payment.
             $payment = Payment::create([
                 'BranchID'      => $data['BranchID'] ?? null,
                 'MemberID'      => $data['MemberID'] ?? null,
@@ -237,10 +248,10 @@ class PaymentController extends Controller
                 'Status'        => $data['Status'],
             ]);
 
-            // 2) Link Payment to each Invoice
+            // 2) Link Payment to each Invoice.
             foreach ($data['allocatedInvoices'] as $alloc) {
-                $invoiceId   = $alloc['invoiceId'];
-                $allocated   = $alloc['amountAllocated'];
+                $invoiceId = $alloc['invoiceId'];
+                $allocated = $alloc['amountAllocated'];
 
                 PaymentInvoice::create([
                     'PaymentID'       => $payment->PaymentID,
@@ -248,7 +259,7 @@ class PaymentController extends Controller
                     'AmountAllocated' => $allocated,
                 ]);
 
-                // Optionally update invoice PaymentStatus 
+                // Optionally update the invoice's PaymentStatus.
                 $invoice = Invoice::findOrFail($invoiceId);
                 if ($allocated >= $invoice->InvoiceTotal) {
                     $invoice->update(['PaymentStatus' => 'Paid']);
@@ -260,20 +271,20 @@ class PaymentController extends Controller
 
         return redirect()
             ->route('payments.index')
-            ->with('success','Partial payment created and allocated successfully.');
+            ->with('success', 'Partial payment created and allocated successfully.');
     }
 
     /**
-     * 36. Link Multiple Payments => all roles
-     * Combine multiple Payment records for one Invoice
+     * 36. Link Multiple Payments => all roles.
+     * Combine multiple Payment records for one Invoice.
      */
     public function linkPaymentsToInvoice(Request $request, $invoiceId)
     {
         $invoice = Invoice::findOrFail($invoiceId);
 
         $data = $request->validate([
-            'paymentIds' => 'required|array|min:1',   // e.g. [ PaymentID1, PaymentID2 ]
-            'allocation' => 'required|array',         // keyed by PaymentID => amount
+            'paymentIds' => 'required|array|min:1', // e.g. [ PaymentID1, PaymentID2 ]
+            'allocation' => 'required|array',       // keyed by PaymentID => amount
         ]);
 
         DB::transaction(function () use ($invoice, $data) {
@@ -294,7 +305,7 @@ class PaymentController extends Controller
                 $sumAlloc += $allocAmount;
             }
 
-            // If the sum of allocated >= invoice total => 'Paid', else 'Partially Paid'
+            // If the sum allocated is greater than or equal to the invoice total, mark it as Paid.
             if ($sumAlloc >= $invoice->InvoiceTotal) {
                 $invoice->update(['PaymentStatus' => 'Paid']);
             } else {
@@ -304,6 +315,6 @@ class PaymentController extends Controller
 
         return redirect()
             ->route('invoices.show', $invoiceId)
-            ->with('success','Payments allocated successfully.');
+            ->with('success', 'Payments allocated successfully.');
     }
 }

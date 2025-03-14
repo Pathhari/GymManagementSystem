@@ -1544,111 +1544,121 @@ export default function PaymentsAndInvoices() {
 
     {/* 2) The Detailed Breakdown: One table per PaymentFor for the selected day */}
     <Box sx={{ mt: 4 }}>
-      <Typography variant="h5" gutterBottom>
-        Detailed Breakdown
-      </Typography>
-      {/* Date picker to choose the day for which you want detailed breakdown */}
-      <TextField
-        type="date"
-        value={selectedDetailDate}
-        onChange={(e) => setSelectedDetailDate(e.target.value)}
-        InputLabelProps={{ shrink: true }}
-        sx={{ mb: 2 }}
-      />
-      <Typography variant="subtitle1" sx={{ mb: 2 }}>
-        Detailed records for: {selectedDetailDate}
-      </Typography>
+  <Typography variant="h5" gutterBottom>
+    Detailed Breakdown
+  </Typography>
+  {/* Date picker to choose the day for which you want detailed breakdown */}
+  <TextField
+    type="date"
+    value={selectedDetailDate}
+    onChange={(e) => setSelectedDetailDate(e.target.value)}
+    InputLabelProps={{ shrink: true }}
+    sx={{ mb: 2 }}
+  />
+  <Typography variant="subtitle1" sx={{ mb: 2 }}>
+    Detailed records for: {selectedDetailDate}
+  </Typography>
 
-      {/* Filter payments for the selected date */}
-      {Object.entries(
-        groupPaymentsByPaymentFor(
-          allPayments.filter((p) => p.paymentDate.split(" ")[0] === selectedDetailDate)
+  {/* Filter payments for the selected date */}
+  {Object.entries(
+    groupPaymentsByPaymentFor(
+      allPayments.filter((p) => p.paymentDate.split(" ")[0] === selectedDetailDate)
+    )
+  ).map(([categoryName, paymentRows]) => {
+    // Compute sums for columns in this category
+    let sumCash = 0,
+      sumGCash = 0,
+      sumBPI = 0,
+      sumBDO = 0,
+      grandTotal = 0;
 
-        )
-      ).map(([categoryName, paymentRows]) => {
-        // Compute sums for columns in this category
-        let sumCash = 0,
-          sumGCash = 0,
-          sumBPI = 0,
-          sumBDO = 0,
-          grandTotal = 0;
+    paymentRows.forEach((r) => {
+      sumCash += r.cash;
+      sumGCash += r.gcash;
+      sumBPI += r.bpi;
+      sumBDO += r.bdo;
+      grandTotal += r.total;
+    });
 
-        paymentRows.forEach((r) => {
-          sumCash += r.cash;
-          sumGCash += r.gcash;
-          sumBPI += r.bpi;
-          sumBDO += r.bdo;
-          grandTotal += r.total;
-        });
-
-        return (
-          <Paper
-            key={categoryName}
-            sx={{ mt: 2, p: 2, border: "1px solid #ccc", borderRadius: 2 }}
-          >
-            <Typography variant="h6" sx={{ mb: 1 }}>
-              {categoryName}
-            </Typography>
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow sx={{ backgroundColor: "#f7f7f7" }}>
-                    <TableCell>Name</TableCell>
-                    <TableCell align="right">Cash</TableCell>
-                    <TableCell align="right">GCash</TableCell>
-                    <TableCell align="right">BPI</TableCell>
-                    <TableCell align="right">BDO</TableCell>
-                    <TableCell align="right">Row Total</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {paymentRows.map((r, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell>{r.payerName}</TableCell>
-                      <TableCell align="right">
-                        {r.cash > 0 ? r.cash.toLocaleString() : ""}
-                      </TableCell>
-                      <TableCell align="right">
-                        {r.gcash > 0 ? r.gcash.toLocaleString() : ""}
-                      </TableCell>
-                      <TableCell align="right">
-                        {r.bpi > 0 ? r.bpi.toLocaleString() : ""}
-                      </TableCell>
-                      <TableCell align="right">
-                        {r.bdo > 0 ? r.bdo.toLocaleString() : ""}
-                      </TableCell>
-                      <TableCell align="right">
-                        {r.total > 0 ? r.total.toLocaleString() : ""}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-                <TableFooter>
-                  <TableRow sx={{ fontWeight: "bold" }}>
-                    <TableCell sx={{ fontWeight: "bold" }}>Totals</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: "bold" }}>
-                      {sumCash.toLocaleString()}
-                    </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: "bold" }}>
-                      {sumGCash.toLocaleString()}
-                    </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: "bold" }}>
-                      {sumBPI.toLocaleString()}
-                    </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: "bold" }}>
-                      {sumBDO.toLocaleString()}
-                    </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: "bold" }}>
-                      {grandTotal.toLocaleString()}
-                    </TableCell>
-                  </TableRow>
-                </TableFooter>
-              </Table>
-            </TableContainer>
-          </Paper>
-        );
-      })}
-    </Box>
+    return (
+      <Paper
+        key={categoryName}
+        sx={{
+          mt: 2,
+          p: 2,
+          border: 1,
+          borderColor: theme.palette.divider,
+          borderRadius: 2,
+        }}
+      >
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          {categoryName}
+        </Typography>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow
+                sx={{
+                  backgroundColor:
+                    theme.palette.mode === "light" ? "#f7f7f7" : theme.palette.grey[800],
+                }}
+              >
+                <TableCell>Name</TableCell>
+                <TableCell align="right">Cash</TableCell>
+                <TableCell align="right">GCash</TableCell>
+                <TableCell align="right">BPI</TableCell>
+                <TableCell align="right">BDO</TableCell>
+                <TableCell align="right">Row Total</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {paymentRows.map((r, idx) => (
+                <TableRow key={idx}>
+                  <TableCell>{r.payerName}</TableCell>
+                  <TableCell align="right">
+                    {r.cash > 0 ? r.cash.toLocaleString() : ""}
+                  </TableCell>
+                  <TableCell align="right">
+                    {r.gcash > 0 ? r.gcash.toLocaleString() : ""}
+                  </TableCell>
+                  <TableCell align="right">
+                    {r.bpi > 0 ? r.bpi.toLocaleString() : ""}
+                  </TableCell>
+                  <TableCell align="right">
+                    {r.bdo > 0 ? r.bdo.toLocaleString() : ""}
+                  </TableCell>
+                  <TableCell align="right">
+                    {r.total > 0 ? r.total.toLocaleString() : ""}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow sx={{ fontWeight: "bold" }}>
+                <TableCell sx={{ fontWeight: "bold" }}>Totals</TableCell>
+                <TableCell align="right" sx={{ fontWeight: "bold" }}>
+                  {sumCash.toLocaleString()}
+                </TableCell>
+                <TableCell align="right" sx={{ fontWeight: "bold" }}>
+                  {sumGCash.toLocaleString()}
+                </TableCell>
+                <TableCell align="right" sx={{ fontWeight: "bold" }}>
+                  {sumBPI.toLocaleString()}
+                </TableCell>
+                <TableCell align="right" sx={{ fontWeight: "bold" }}>
+                  {sumBDO.toLocaleString()}
+                </TableCell>
+                <TableCell align="right" sx={{ fontWeight: "bold" }}>
+                  {grandTotal.toLocaleString()}
+                </TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </TableContainer>
+      </Paper>
+    );
+  })}
+</Box>
   </>
         )}     
       </Paper>

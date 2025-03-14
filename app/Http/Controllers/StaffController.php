@@ -84,21 +84,65 @@ class StaffController extends Controller
      */
     public function indexStaff()
     {
-        $staff = Staff::with(['branch', 'branches'])->orderBy('StaffID','desc')->get();
+        $admin = auth('admin')->user();
+        if ($admin) {
+            // Get an array of branch IDs assigned to the admin
+            $assignedBranchIDs = $admin->branches()->pluck('branches.BranchID')->toArray();
+    
+            // Query only those staff that belong to one or more of these branches
+            $staff = Staff::with(['branch', 'branches'])
+                ->whereHas('branches', function ($query) use ($assignedBranchIDs) {
+                    $query->whereIn('branches.BranchID', $assignedBranchIDs);
+                })
+                ->orderBy('StaffID', 'desc')
+                ->get();
+        } else {
+            // Fallback: if no admin is logged in, return all staff (or handle accordingly)
+            $staff = Staff::with(['branch', 'branches'])->orderBy('StaffID', 'desc')->get();
+        }
         return response()->json($staff);
     }
+    
 
     /**
      * LIST ALL STAFF JSON (REMOTE VERSION)
      */
     public function indexStaffJson()
     {
-        $staff = Staff::with(['branches' => function($query) {
-            $query->select('branches.BranchID', 'BranchName');
-        }])->orderBy('FullName')->get();
-
+        // 1) Check which guard is logged in
+        if (auth('admin')->check()) {
+            // 2) Grab the admin user and branch IDs
+            $admin = auth('admin')->user();
+            $assignedBranchIDs = $admin->branches()
+                ->pluck('branches.BranchID')
+                ->toArray();
+    
+            // 3) Filter staff by those branches
+            $staff = Staff::with(['branches' => function($query) {
+                        $query->select('branches.BranchID', 'BranchName');
+                    }])
+                    ->whereHas('branches', function($q) use ($assignedBranchIDs) {
+                        $q->whereIn('branches.BranchID', $assignedBranchIDs);
+                    })
+                    ->orderBy('FullName')
+                    ->get();
+    
+        } elseif (auth('owner')->check()) {
+            // For owners, show all staff
+            $staff = Staff::with(['branches' => function($query) {
+                        $query->select('branches.BranchID', 'BranchName');
+                    }])
+                    ->orderBy('FullName')
+                    ->get();
+    
+        } else {
+            // Possibly return empty or unauthorized for other cases
+            $staff = [];
+        }
+    
         return response()->json($staff);
     }
+    
 
     /**
      * (Optional) CREATE STAFF (REMOTE VERSION)
@@ -589,21 +633,35 @@ class StaffController extends Controller
      * STAFF TASKS (REMOTE VERSION)
      * ------------------------------------------------------------------ */
 
-    public function indexTasks()
-    {
-        $staff = auth('staff')->user();
-
-        if ($staff) {
-            $tasks = StaffTask::with('staff')
-                ->where('StaffID', $staff->StaffID)
-                ->orderBy('TaskDate','desc')
-                ->get();
-        } else {
-            $tasks = StaffTask::with('staff')->orderBy('TaskDate','desc')->get();
-        }
-
-        return response()->json($tasks);
-    }
+     public function indexTasks()
+     {
+         if (auth('admin')->check()) {
+             $admin = auth('admin')->user();
+             // Get an array of branch IDs assigned to the admin
+             $assignedBranchIDs = $admin->branches()->pluck('branches.BranchID')->toArray();
+     
+             // Filter tasks by ensuring the task’s associated staff belong to one of these branches
+             $tasks = StaffTask::with('staff')
+                 ->whereHas('staff.branches', function ($query) use ($assignedBranchIDs) {
+                     $query->whereIn('branches.BranchID', $assignedBranchIDs);
+                 })
+                 ->orderBy('TaskDate','desc')
+                 ->get();
+         } elseif (auth('staff')->check()) {
+             // For staff logins, return tasks for that specific staff member
+             $staff = auth('staff')->user();
+             $tasks = StaffTask::with('staff')
+                 ->where('StaffID', $staff->StaffID)
+                 ->orderBy('TaskDate','desc')
+                 ->get();
+         } else {
+             // Fallback: return all tasks if no admin or staff is logged in
+             $tasks = StaffTask::with('staff')->orderBy('TaskDate','desc')->get();
+         }
+     
+         return response()->json($tasks);
+     }
+     
 
     public function storeTask(Request $request)
     {
