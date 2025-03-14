@@ -1209,18 +1209,6 @@ useEffect(() => {
   ];
   const walkInColumns = [
     {
-      field: "WalkInID",
-      headerName: "Walk-In ID",
-      width: 100,
-      renderCell: (params) => params.value ?? "—",
-    },
-    {
-      field: "FullName",
-      headerName: "Full Name",
-      width: 160,
-      renderCell: (params) => params.value ?? "—",
-    },
-    {
       field: "VisitDate",
       headerName: "Visit Date",
       width: 300,
@@ -1228,9 +1216,9 @@ useEffect(() => {
         params.value ? formatDateTime(params.value) : "—",
     },
     {
-      field: "PaymentID",
-      headerName: "Payment ID",
-      width: 110,
+      field: "FullName",
+      headerName: "Full Name",
+      width: 160,
       renderCell: (params) => params.value ?? "—",
     },
     {

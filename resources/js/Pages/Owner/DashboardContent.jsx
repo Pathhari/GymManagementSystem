@@ -980,12 +980,6 @@ export default function OwnerDashboard(onClose) {
           const row = params.row;
           return (
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button variant="contained" size="small" onClick={() => openDailyPettyDialog(row)}>
-                Add Petty
-              </Button>
-              <Button variant="outlined" size="small" onClick={() => openEditFlowDialog(row)}>
-                Edit
-              </Button>
               <Button
                 variant="contained"
                 color="error"

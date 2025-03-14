@@ -603,70 +603,72 @@ export default function PaymentsAndInvoices() {
   
     // 1) Process daily flows
     gymFlows.forEach((flow) => {
-      const dateStr = flow.Date; // e.g. "2025-03-14"
+      const dateStr = flow.Date; // e.g., "2025-03-14"
       if (!resultsMap[dateStr]) {
         resultsMap[dateStr] = {
-          // basic skeleton
           CashFlowID: flow.CashFlowID,
           date: dateStr,
-          totalCash: 0,
-          totalGCash: 0,
-          totalBPI: 0,
-          totalBDO: 0,
-          pettyCash: 0,
-          pettyTomorrow: 0,
-          cashPlusPetty: 0,
+  
+          // Renamed to highlight they are raw (no petty subtraction):
+          rawCash: 0,
+          rawGCash: 0,
+          rawBPI: 0,
+          rawBDO: 0,
+  
+          pettyCash: 0,      // "today"
+          pettyTomorrow: 0,  // "tomorrow"
+  
+          // PaymentFor counters:
           countNewMembership: 0,
           countMonthlyClientFee: 0,
           countWalkinPayment: 0,
           countMembershipRenewal: 0,
           countBooking: 0,
           countCoachingSessionBooking: 0,
+  
+          // Final sums (will calculate below)
           totalSales: 0,
           takeHome: 0,
         };
       }
   
-      // Summation logic from each flow
       const sumCash = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
       const sumGCash = parseFloat(flow.GCashSales || 0) + parseFloat(flow.WalkInGCashSales || 0);
-      const sumBPI = parseFloat(flow.BPISales || 0) + parseFloat(flow.WalkInBPISales || 0);
-      const sumBDO = parseFloat(flow.BDOSales || 0) + parseFloat(flow.WalkInBDOSales || 0);
+      const sumBPI  = parseFloat(flow.BPISales || 0) + parseFloat(flow.WalkInBPISales || 0);
+      const sumBDO  = parseFloat(flow.BDOSales || 0) + parseFloat(flow.WalkInBDOSales || 0);
   
-      const pettyVal = parseFloat(flow.PettyCash || 0);
-      const pettyTmr = parseFloat(flow.PettyCashTomorrow || 0);
+      resultsMap[dateStr].rawCash  += sumCash;
+      resultsMap[dateStr].rawGCash += sumGCash;
+      resultsMap[dateStr].rawBPI   += sumBPI;
+      resultsMap[dateStr].rawBDO   += sumBDO;
   
-      resultsMap[dateStr].totalCash       += sumCash;
-      resultsMap[dateStr].totalGCash      += sumGCash;
-      resultsMap[dateStr].totalBPI        += sumBPI;
-      resultsMap[dateStr].totalBDO        += sumBDO;
-      resultsMap[dateStr].pettyCash       += pettyVal;
-      resultsMap[dateStr].pettyTomorrow   += pettyTmr;
-      resultsMap[dateStr].cashPlusPetty   += (sumCash + pettyVal);
+      // Store the petty amounts for reference
+      resultsMap[dateStr].pettyCash     = parseFloat(flow.PettyCash || 0);
+      resultsMap[dateStr].pettyTomorrow = parseFloat(flow.PettyCashTomorrow || 0);
     });
   
-    // 2) Process payments, but SKIP if that date is already in daily flows:
+    // 2) Process payments where there's NO existing daily flow for that date
     allPayments.forEach((pay) => {
       if (!pay.paymentDate) return;
-      const payDateStr = pay.paymentDate.split(" ")[0]; // e.g., "2025-03-14"
+      const payDateStr = pay.paymentDate.split(" ")[0];
       if (!payDateStr) return;
   
-      // If daily flow for payDateStr exists, skip to prevent double-count
+      // If daily flow for this date already exists, skip 
+      // (so we don't double-count the same day).
       if (resultsMap[payDateStr]) {
         return;
       }
   
-      // Otherwise, create or update aggregator row for that date
+      // Otherwise, create a new row
       if (!resultsMap[payDateStr]) {
         resultsMap[payDateStr] = {
           date: payDateStr,
-          totalCash: 0,
-          totalGCash: 0,
-          totalBPI: 0,
-          totalBDO: 0,
+          rawCash: 0,
+          rawGCash: 0,
+          rawBPI: 0,
+          rawBDO: 0,
           pettyCash: 0,
           pettyTomorrow: 0,
-          cashPlusPetty: 0,
           countNewMembership: 0,
           countMonthlyClientFee: 0,
           countWalkinPayment: 0,
@@ -683,53 +685,48 @@ export default function PaymentsAndInvoices() {
   
       switch (method) {
         case "Cash":
-          resultsMap[payDateStr].totalCash     += payAmount;
-          resultsMap[payDateStr].cashPlusPetty += payAmount;
+          resultsMap[payDateStr].rawCash += payAmount;
           break;
         case "GCash":
-          resultsMap[payDateStr].totalGCash += payAmount;
+          resultsMap[payDateStr].rawGCash += payAmount;
           break;
         case "BPI":
-          resultsMap[payDateStr].totalBPI   += payAmount;
+          resultsMap[payDateStr].rawBPI += payAmount;
           break;
         case "BDO":
-          resultsMap[payDateStr].totalBDO   += payAmount;
+          resultsMap[payDateStr].rawBDO += payAmount;
           break;
         default:
           break;
       }
   
-      // If you track PaymentFor categories here
+      // If you track PaymentFor categories:
       if (Array.isArray(pay.paymentFor)) {
         pay.paymentFor.forEach((cat) => {
           const c = cat.trim();
-          if (c === "New Membership") {
-            resultsMap[payDateStr].countNewMembership++;
-          } else if (c === "Monthly Client Fee") {
-            resultsMap[payDateStr].countMonthlyClientFee++;
-          } else if (c === "Walk-In Payment") {
-            resultsMap[payDateStr].countWalkinPayment++;
-          } else if (c === "Membership Renewal") {
-            resultsMap[payDateStr].countMembershipRenewal++;
-          } else if (c === "Booking") {
-            resultsMap[payDateStr].countBooking++;
-          } else if (c === "CoachingSessionBooking") {
-            resultsMap[payDateStr].countCoachingSessionBooking++;
-          }
+          if      (c === "New Membership")         resultsMap[payDateStr].countNewMembership++;
+          else if (c === "Monthly Client Fee")     resultsMap[payDateStr].countMonthlyClientFee++;
+          else if (c === "Walk-In Payment")        resultsMap[payDateStr].countWalkinPayment++;
+          else if (c === "Membership Renewal")     resultsMap[payDateStr].countMembershipRenewal++;
+          else if (c === "Booking")                resultsMap[payDateStr].countBooking++;
+          else if (c === "CoachingSessionBooking") resultsMap[payDateStr].countCoachingSessionBooking++;
         });
       }
     });
   
     // 3) Compute final totals
     Object.values(resultsMap).forEach((row) => {
-      row.totalSales =
-        row.cashPlusPetty + row.totalGCash + row.totalBPI + row.totalBDO;
-      row.takeHome = row.totalSales - row.pettyTomorrow;
+      // totalSales is the raw sum of all payment methods
+      row.totalSales = row.rawCash + row.rawGCash + row.rawBPI + row.rawBDO;
+  
+      // takeHome = totalSales + pettyCash (today) - pettyTomorrow
+      row.takeHome = row.totalSales + row.pettyCash - row.pettyTomorrow;
     });
   
-    // 4) Sort + return
+    // 4) Return sorted
     return Object.values(resultsMap).sort((a, b) => a.date.localeCompare(b.date));
   }
+  
   
   
   
@@ -1432,113 +1429,79 @@ export default function PaymentsAndInvoices() {
     {/* 1) The existing "Sales Report (Gym)" pivot table */}
     <Box sx={{ mt: 2 }}>
       <div style={{ height: 420, width: "100%" }}>
-        <DataGrid
-          rows={filteredGymSales}
-          columns={[
-            { 
-              field: 'date',
-              headerName: 'Date',
-              width: 130,
-            },
-            {
-              field: 'totalCash',  // aggregator’s “totalCash”
-              headerName: 'Cash',
-              width: 130,
-              renderCell: (params) =>
-                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-            },
-            {
-              field: 'totalGCash', // aggregator’s “totalGCash”
-              headerName: 'GCash',
-              width: 130,
-              renderCell: (params) =>
-                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-            },
-            {
-              field: 'totalBPI',   // aggregator’s “totalBPI”
-              headerName: 'BPI',
-              width: 130,
-              renderCell: (params) =>
-                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-            },
-            {
-              field: 'totalBDO',   // aggregator’s “totalBDO”
-              headerName: 'BDO',
-              width: 130,
-              renderCell: (params) =>
-                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-            },
+      <DataGrid
+        rows={filteredGymSales}
+        columns={[
+          {
+            field: 'date',
+            headerName: 'Date',
+            width: 130,
+          },
+          {
+            field: 'pettyCash',
+            headerName: 'PC',
+            width: 130,
+            renderCell: (params) =>
+              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+          },
+          {
+            field: 'rawCash',
+            headerName: 'Cash',
+            width: 130,
+            renderCell: (params) =>
+              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+          },
+          {
+            field: 'rawGCash',
+            headerName: 'GCash',
+            width: 130,
+            renderCell: (params) =>
+              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+          },
+          {
+            field: 'rawBPI',
+            headerName: 'BPI',
+            width: 130,
+            renderCell: (params) =>
+              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+          },
+          {
+            field: 'rawBDO',
+            headerName: 'BDO',
+            width: 130,
+            renderCell: (params) =>
+              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+          },
+          {
+            field: 'totalSales',
+            headerName: 'Total Sales',
+            width: 130,
+            renderCell: (params) =>
+              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+          },
+          {
+            field: 'salesPlusPetty',
+            headerName: 'Sales + PC',
+            width: 150,
+            renderCell: (params) => {
+              // Grab the row’s totalSales and pettyCash
+              const { totalSales, pettyCash } = params.row;
+              // Safely parse them as numbers
+              const sales = Number(totalSales) || 0;
+              const petty = Number(pettyCash) || 0;
           
-            //* --- PaymentFor counters --- 
-            //{ field: 'countNewMembership', headerName: 'New Memb.', width: 120 },
-            //{ field: 'countMonthlyClientFee', headerName: 'Monthly Fee', width: 120 },
-            //{ field: 'countWalkinPayment', headerName: 'Walk-Ins', width: 120 },
-            //{ field: 'countMembershipRenewal', headerName: 'Renewals', width: 120 },
-            //{ field: 'countBooking', headerName: 'Booking', width: 110 },
-            //{ field: 'countCoachingSessionBooking', headerName: 'Coaching', width: 120 },
+              // Calculate sum
+              const sum = sales + petty;
           
-            // --- Petty fields if you want to see them individually ---
-            {
-              field: 'pettyCash',
-              headerName: 'Petty (Today)',
-              width: 130,
-              renderCell: (params) =>
-                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+              // If sum is 0, you can show '—'; otherwise display the currency
+              return sum > 0 ? `₱${sum.toLocaleString()}` : '—';
             },
-            {
-              field: 'pettyTomorrow',
-              headerName: 'Petty (Tomorrow)',
-              width: 140,
-              renderCell: (params) =>
-                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-            },
-            {
-              field: 'cashPlusPetty',   // aggregator’s “cashPlusPetty”
-              headerName: 'Cash + Petty',
-              width: 130,
-              renderCell: (params) =>
-                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-            },
-          
-            // --- Totals & net ---
-            {
-              field: 'totalSales',      // aggregator’s “totalSales”
-              headerName: 'Total Sales',
-              width: 130,
-              renderCell: (params) =>
-                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-            },
-            {
-              field: 'takeHome',        // aggregator’s “takeHome”
-              headerName: 'Take Home',
-              width: 130,
-              renderCell: (params) =>
-                params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-            }, 
-            {
-              field: 'Actions',
-              headerName: 'Actions',
-              width: 150,
-              sortable: false,
-              renderCell: (params) => {
-                const row = params.row;
-                return (
-                  <Button
-                    variant="contained"
-                    size="small"
-                    onClick={() => openPettyDialog(row)}
-                  >
-                    Set Petty
-                  </Button>
-                );
-              },
-            },
-                     
-          ]}
-          getRowId={(row) => row.date}
-          pageSize={5}
-          rowsPerPageOptions={[5, 10]}
-        />
+          },          
+        ]}
+        getRowId={(row) => row.date}
+        pageSize={5}
+        rowsPerPageOptions={[5, 10]}
+      />
       </div>
     </Box>
 

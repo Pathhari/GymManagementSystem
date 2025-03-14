@@ -66,11 +66,25 @@ class PaymentObserver
 
         // 3) Add the Payment->Amount to the correct column
         switch ($payment->PaymentMethod) {
-            case 'Cash': $cashFlow->CashSales += $payment->Amount; break;
-            case 'GCash': $cashFlow->GCashSales += $payment->Amount; break;
-            case 'BPI': $cashFlow->BPISales += $payment->Amount; break;
-            case 'BDO': $cashFlow->BDOSales += $payment->Amount; break;
-            // etc.
+            case 'Cash':
+            case 'W-In Cash':
+                $cashFlow->CashSales += $payment->Amount;
+                break;
+            case 'GCash':
+            case 'W-In GCash':
+                $cashFlow->GCashSales += $payment->Amount;
+                break;
+            case 'BPI':
+            case 'W-In BPI':
+                $cashFlow->BPISales += $payment->Amount;
+                break;
+            case 'BDO':
+            case 'W-In BDO':
+                $cashFlow->BDOSales += $payment->Amount;
+                break;
+            default:
+                // Optionally handle other methods here.
+                break;
         }
 
         // 4) Recompute total
@@ -105,11 +119,27 @@ class PaymentObserver
         }
 
         switch ($oldData['PaymentMethod']) {
-            case 'Cash': $cashFlow->CashSales -= $oldData['Amount']; break;
-            case 'GCash': $cashFlow->GCashSales -= $oldData['Amount']; break;
-            case 'BPI': $cashFlow->BPISales -= $oldData['Amount']; break;
-            case 'BDO': $cashFlow->BDOSales -= $oldData['Amount']; break;
+            case 'Cash':
+            case 'W-In Cash':
+                $cashFlow->CashSales -= $oldData['Amount'];
+                break;
+        
+            case 'GCash':
+            case 'W-In GCash':
+                $cashFlow->GCashSales -= $oldData['Amount'];
+                break;
+        
+            case 'BPI':
+            case 'W-In BPI':
+                $cashFlow->BPISales -= $oldData['Amount'];
+                break;
+        
+            case 'BDO':
+            case 'W-In BDO':
+                $cashFlow->BDOSales -= $oldData['Amount'];
+                break;
         }
+        
 
         $cashFlow->TotalSales =
             ($cashFlow->CashSales ?? 0) +

@@ -70,10 +70,10 @@ class FinanceController extends Controller
                     ->where('BranchID', $branchId)
                     ->get();
     
-        $sumCash  = $payments->where('PaymentMethod', 'Cash')->sum('Amount');
-        $sumGCash = $payments->where('PaymentMethod', 'GCash')->sum('Amount');
-        $sumBPI   = $payments->where('PaymentMethod', 'BPI')->sum('Amount');
-        $sumBDO   = $payments->where('PaymentMethod', 'BDO')->sum('Amount');
+        $sumCash  = $payments->whereIn('PaymentMethod', ['Cash', 'W-In Cash'])->sum('Amount');
+        $sumGCash = $payments->where('PaymentMethod', ['GCash', 'W-In GCash'])->sum('Amount');
+        $sumBPI   = $payments->where('PaymentMethod', ['BPI', 'W-In BPI'])->sum('Amount');
+        $sumBDO   = $payments->where('PaymentMethod', ['BDO', 'W-In BDO'])->sum('Amount');
     
         $dailyFlow->CashSales  = $sumCash;
         $dailyFlow->GCashSales = $sumGCash;
@@ -85,15 +85,14 @@ class FinanceController extends Controller
         //             + (petty cash carried over from yesterday)
         //             - (petty cash for tomorrow entered today)
         $dailyFlow->TotalSales =
-           ($dailyFlow->CashSales ?? 0) +
-           ($dailyFlow->GCashSales ?? 0) +
-           ($dailyFlow->BPISales ?? 0) +
-           ($dailyFlow->BDOSales ?? 0) +
-           ($dailyFlow->WalkInCashSales ?? 0) +
-           ($dailyFlow->WalkInGCashSales ?? 0) +
-           ($dailyFlow->WalkInBPISales ?? 0) +
-           ($dailyFlow->WalkInBDOSales ?? 0) +
-           $pettyCashToday - $inputPettyCashTomorrow;
+        ($dailyFlow->CashSales ?? 0) +
+        ($dailyFlow->GCashSales ?? 0) +
+        ($dailyFlow->BPISales ?? 0) +
+        ($dailyFlow->BDOSales ?? 0) +
+        ($dailyFlow->WalkInCashSales ?? 0) +
+        ($dailyFlow->WalkInGCashSales ?? 0) +
+        ($dailyFlow->WalkInBPISales ?? 0) +
+        ($dailyFlow->WalkInBDOSales ?? 0);
     
         // Update today's record with the new petty cash for tomorrow input.
         $dailyFlow->PettyCashTomorrow = $inputPettyCashTomorrow;

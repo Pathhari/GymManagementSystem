@@ -888,70 +888,70 @@ class OperationsController extends Controller
             $walkIn->PaymentID = $payment->PaymentID;
             $walkIn->save();
     
-            $this->updateDailyFlowForWalkIn(
-                $branchID,
-                $data['VisitDate'],
-                $data['PaymentMethod'],
-                $data['PaymentAmount']
-            );
+            // $this->updateDailyFlowForWalkIn(
+            //     $branchID,
+            //     $data['VisitDate'],
+            //     $data['PaymentMethod'],
+            //     $data['PaymentAmount']
+            // );
         }
     
         return response()->json($walkIn, 201);
     }
     
     
-    /**
-     * Increment the daily cash flow for a Walk-In.
-     */
-    protected function updateDailyFlowForWalkIn($branchID, $visitDate, $method, $amount)
-    {
-        if (!$branchID) {
-            return;
-        }
+    // /**
+    //  * Increment the daily cash flow for a Walk-In.
+    //  */
+    // protected function updateDailyFlowForWalkIn($branchID, $visitDate, $method, $amount)
+    // {
+    //     if (!$branchID) {
+    //         return;
+    //     }
 
-        $flow = DailyCashFlow::firstOrNew([
-            'BranchID'     => $branchID,
-            'Date'         => date('Y-m-d', strtotime($visitDate)),
-            'BusinessType' => 'Gym',
-        ]);
+    //     $flow = DailyCashFlow::firstOrNew([
+    //         'BranchID'     => $branchID,
+    //         'Date'         => date('Y-m-d', strtotime($visitDate)),
+    //         'BusinessType' => 'Gym',
+    //     ]);
 
-        $field = null;
-        switch ($method) {
-            case 'W-In Cash':
-                $field = 'WalkInCashSales';
-                break;
-            case 'W-In GCash':
-                $field = 'WalkInGCashSales';
-                break;
-            case 'W-In BPI':
-                $field = 'WalkInBPISales';
-                break;
-            case 'W-In BDO':
-                $field = 'WalkInBDOSales';
-                break;
-            default:
-                $field = 'WalkInCashSales';
-                break;
-        }
+    //     $field = null;
+    //     switch ($method) {
+    //         case 'W-In Cash':
+    //             $field = 'WalkInCashSales';
+    //             break;
+    //         case 'W-In GCash':
+    //             $field = 'WalkInGCashSales';
+    //             break;
+    //         case 'W-In BPI':
+    //             $field = 'WalkInBPISales';
+    //             break;
+    //         case 'W-In BDO':
+    //             $field = 'WalkInBDOSales';
+    //             break;
+    //         default:
+    //             $field = 'WalkInCashSales';
+    //             break;
+    //     }
 
-        if ($field) {
-            $existing = (float) $flow->{$field};
-            $flow->{$field} = $existing + (float) $amount;
-        }
+    //     if ($field) {
+    //         $existing = (float) $flow->{$field};
+    //         $flow->{$field} = $existing + (float) $amount;
+    //     }
 
-        $flow->TotalSales = (
-            (float) $flow->CashSales
-            + (float) $flow->GCashSales
-            + (float) $flow->BPISales
-            + (float) $flow->BDOSales
-            + (float) $flow->WalkInCashSales
-            + (float) $flow->WalkInGCashSales
-            + (float) $flow->WalkInBPISales
-            + (float) $flow->WalkInBDOSales
-        );
+    //     $flow->TotalSales = (
+    //         (float) $flow->CashSales
+    //         + (float) $flow->GCashSales
+    //         + (float) $flow->BPISales
+    //         + (float) $flow->BDOSales
+    //         + (float) $flow->WalkInCashSales
+    //         + (float) $flow->WalkInGCashSales
+    //         + (float) $flow->WalkInBPISales
+    //         + (float) $flow->WalkInBDOSales
+    //     );
 
-        $flow->save();
-    }
+    //     $flow->save();
+    // }
 
     /**
      * Show the edit form for an existing Walk-In.
