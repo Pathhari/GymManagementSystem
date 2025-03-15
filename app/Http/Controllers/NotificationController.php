@@ -625,11 +625,11 @@ public function getStaffNotifications(Request $request)
             $variables = [];
             if (!empty($data['variables'])) {
                 foreach ($data['variables'] as $key => $value) {
-                    // If the value is a string key, try to extract it from the member model
+                    // If the value is a string and matches a column name, extract it from the member model
                     if (is_string($value) && isset($member->$value)) {
-                        $variables[$key] = $member->$value;
+                        $variables[$key] = strval($member->$value); // Convert to string
                     } else {
-                        $variables[$key] = $value; // Directly store provided values
+                        $variables[$key] = strval($value ?? ''); // Convert to string, prevent null
                     }
                 }
             }
@@ -637,7 +637,8 @@ public function getStaffNotifications(Request $request)
             // **Ensure some default variables are always included**
             $variables['member_name'] = $member->FullName ?? 'Valued Member';
             $variables['email'] = $email;
-    
+            $variables['expiry_date'] = \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y');
+
             $messages[] = [
                 'From' => [
                     'Email' => config('services.mailjet.from.address'),
