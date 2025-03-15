@@ -572,33 +572,32 @@ public function getStaffNotifications(Request $request)
         ], 200);
     }
 
-    private function getMailjetTemplateVariables($templateId)
-    {
-        $mj = new \Mailjet\Client(
-            config('services.mailjet.api_key'),
-            config('services.mailjet.secret_key'),
-            true,
-            ['version' => 'v3']
-        );
+    // private function getMailjetTemplateVariables($templateId)
+    // {
+    //     $mj = new \Mailjet\Client(
+    //         config('services.mailjet.api_key'),
+    //         config('services.mailjet.secret_key'),
+    //         true,
+    //         ['version' => 'v3']
+    //     );
 
-        // Fetch the template details
-        $response = $mj->get(\Mailjet\Resources::$Template, ['id' => $templateId]);
+    //     // Fetch the template details
+    //     $response = $mj->get(\Mailjet\Resources::$Template, ['id' => $templateId]);
 
-        if (!$response->success()) {
-            \Log::error('Mailjet Template Fetch Error:', $response->getData());
-            return null; // Return null if API request fails
-        }
+    //     if (!$response->success()) {
+    //         \Log::error('Mailjet Template Fetch Error:', $response->getData());
+    //         return null; // Return null if API request fails
+    //     }
 
-        $templateData = $response->getData();
+    //     $templateData = $response->getData();
         
-        if (!isset($templateData['Data'][0]['Variables'])) {
-            \Log::warning("Mailjet Template ID $templateId has no declared variables.");
-            return []; // No variables found in template
-        }
+    //     if (!isset($templateData['Data'][0]['Variables'])) {
+    //         \Log::warning("Mailjet Template ID $templateId has no declared variables.");
+    //         return []; // No variables found in template
+    //     }
 
-        return $templateData['Data'][0]['Variables']; // Returns array of required variables
-    }
-
+    //     return $templateData['Data'][0]['Variables']; // Returns array of required variables
+    // }
 
     public function sendMailjetTemplate(Request $request)
     {
@@ -789,329 +788,315 @@ public function getStaffNotifications(Request $request)
         ]);
     }
     
-    
+    // protected function resolvePlaceholder(Member $member, string $var): string
+    // {
+    //     try {
+    //         switch ($var) {
 
-    /****
-     * Resolve a Mailjet variable (placeholder) for a given $member.
-     *
-     * This uses the "latest" approach for sessionBookings(), bookings(), payments(), etc.
-     * If you want a specific booking or session, you'll need to pass an ID separately
-     * (e.g., sessionBookingId) and fetch that record instead. This method is just a
-     * generic fallback example.
-     *
-     * @param  Member  $member  The Member model instance
-     * @param  string  $var     The placeholder name from Mailjet
-     * @return string           The resolved string value (or "N/A")
-     */
-    protected function resolvePlaceholder(Member $member, string $var): string
-    {
-        try {
-            switch ($var) {
+    //             // -- General / Member Variables --
+    //             case 'member_name':
+    //                 return $member->FullName ?? 'Valued Member';
 
-                // -- General / Member Variables --
-                case 'member_name':
-                    return $member->FullName ?? 'Valued Member';
+    //             case 'member_email':
+    //                 return $member->Email ?? 'N/A';
 
-                case 'member_email':
-                    return $member->Email ?? 'N/A';
+    //             case 'member_phone':
+    //                 return $member->Phone ?? 'N/A';
 
-                case 'member_phone':
-                    return $member->Phone ?? 'N/A';
+    //             case 'membership_start_date':
+    //                 return $member->MembershipStartDate
+    //                     ? \Carbon\Carbon::parse($member->MembershipStartDate)->format('F j, Y')
+    //                     : 'N/A';
 
-                case 'membership_start_date':
-                    return $member->MembershipStartDate
-                        ? \Carbon\Carbon::parse($member->MembershipStartDate)->format('F j, Y')
-                        : 'N/A';
+    //             case 'expiry_date':
+    //                 return $member->MembershipEndDate
+    //                     ? \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y')
+    //                     : 'N/A';
 
-                case 'expiry_date':
-                    return $member->MembershipEndDate
-                        ? \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y')
-                        : 'N/A';
+    //             case 'membership_card_number':
+    //                 return $member->MembershipCardNumber ?? 'N/A';
 
-                case 'membership_card_number':
-                    return $member->MembershipCardNumber ?? 'N/A';
+    //             case 'membership_status':
+    //                 // If there's a status relationship
+    //                 return optional($member->status)->StatusName ?? 'N/A';
 
-                case 'membership_status':
-                    // If there's a status relationship
-                    return optional($member->status)->StatusName ?? 'N/A';
+    //             case 'plan_name':
+    //                 // If there's a plan relationship
+    //                 return optional($member->plan)->PlanName ?? 'N/A';
 
-                case 'plan_name':
-                    // If there's a plan relationship
-                    return optional($member->plan)->PlanName ?? 'N/A';
+    //             case 'gym_name':
+    //                 // If you have a single gym name or fetch from config
+    //                 return config('app.gym_name') ?? 'Contnental Fitness Gym';
 
-                case 'gym_name':
-                    // If you have a single gym name or fetch from config
-                    return config('app.gym_name') ?? 'Contnental Fitness Gym';
-
-                case 'branch_name':
-                    // The branch where the member started or is assigned
-                    return optional($member->startedBranch)->BranchName
-                        ?? optional($member->branch)->BranchName
-                        ?? 'N/A';
+    //             case 'branch_name':
+    //                 // The branch where the member started or is assigned
+    //                 return optional($member->startedBranch)->BranchName
+    //                     ?? optional($member->branch)->BranchName
+    //                     ?? 'N/A';
 
 
-                // -- Coach & Session Variables --
-                case 'coach_name':
-                    // Example: get the *latest* session booking, with coach
-                    $latestSession = $member->sessionBookings()
-                        ->with('session.coach')
-                        ->latest('BookingDate')
-                        ->first();
-                    return optional($latestSession->session->coach)->FullName ?? 'N/A';
+    //             // -- Coach & Session Variables --
+    //             case 'coach_name':
+    //                 // Example: get the *latest* session booking, with coach
+    //                 $latestSession = $member->sessionBookings()
+    //                     ->with('session.coach')
+    //                     ->latest('BookingDate')
+    //                     ->first();
+    //                 return optional($latestSession->session->coach)->FullName ?? 'N/A';
 
-                case 'coach_specialty':
-                    $latestSession = $member->sessionBookings()
-                        ->with('session.coach')
-                        ->latest('BookingDate')
-                        ->first();
-                    return optional($latestSession->session->coach)->Specialty ?? 'N/A';
+    //             case 'coach_specialty':
+    //                 $latestSession = $member->sessionBookings()
+    //                     ->with('session.coach')
+    //                     ->latest('BookingDate')
+    //                     ->first();
+    //                 return optional($latestSession->session->coach)->Specialty ?? 'N/A';
 
-                case 'session_name':
-                    $latestSession = $member->sessionBookings()
-                        ->with('session')
-                        ->latest('BookingDate')
-                        ->first();
-                    return optional($latestSession->session)->SessionName ?? 'N/A';
+    //             case 'session_name':
+    //                 $latestSession = $member->sessionBookings()
+    //                     ->with('session')
+    //                     ->latest('BookingDate')
+    //                     ->first();
+    //                 return optional($latestSession->session)->SessionName ?? 'N/A';
 
-                case 'session_type':
-                    $latestSession = $member->sessionBookings()
-                        ->with('session')
-                        ->latest('BookingDate')
-                        ->first();
-                    return optional($latestSession->session)->SessionType ?? 'N/A';
+    //             case 'session_type':
+    //                 $latestSession = $member->sessionBookings()
+    //                     ->with('session')
+    //                     ->latest('BookingDate')
+    //                     ->first();
+    //                 return optional($latestSession->session)->SessionType ?? 'N/A';
 
-                case 'start_time':
-                    $latestSession = $member->sessionBookings()
-                        ->with('session')
-                        ->latest('BookingDate')
-                        ->first();
-                    $start = optional($latestSession->session)->StartTime;
-                    return $start
-                        ? \Carbon\Carbon::parse($start)->format('F j, Y g:i A')
-                        : 'N/A';
+    //             case 'start_time':
+    //                 $latestSession = $member->sessionBookings()
+    //                     ->with('session')
+    //                     ->latest('BookingDate')
+    //                     ->first();
+    //                 $start = optional($latestSession->session)->StartTime;
+    //                 return $start
+    //                     ? \Carbon\Carbon::parse($start)->format('F j, Y g:i A')
+    //                     : 'N/A';
 
-                case 'end_time':
-                    $latestSession = $member->sessionBookings()
-                        ->with('session')
-                        ->latest('BookingDate')
-                        ->first();
-                    $end = optional($latestSession->session)->EndTime;
-                    return $end
-                        ? \Carbon\Carbon::parse($end)->format('F j, Y g:i A')
-                        : 'N/A';
+    //             case 'end_time':
+    //                 $latestSession = $member->sessionBookings()
+    //                     ->with('session')
+    //                     ->latest('BookingDate')
+    //                     ->first();
+    //                 $end = optional($latestSession->session)->EndTime;
+    //                 return $end
+    //                     ? \Carbon\Carbon::parse($end)->format('F j, Y g:i A')
+    //                     : 'N/A';
 
-                case 'session_location':
-                    $latestSession = $member->sessionBookings()
-                        ->with('session')
-                        ->latest('BookingDate')
-                        ->first();
-                    return optional($latestSession->session)->Location ?? 'N/A';
+    //             case 'session_location':
+    //                 $latestSession = $member->sessionBookings()
+    //                     ->with('session')
+    //                     ->latest('BookingDate')
+    //                     ->first();
+    //                 return optional($latestSession->session)->Location ?? 'N/A';
 
-                case 'session_fee':
-                    $latestSession = $member->sessionBookings()
-                        ->with('session')
-                        ->latest('BookingDate')
-                        ->first();
-                    return $latestSession && isset($latestSession->session->Fee)
-                        ? number_format($latestSession->session->Fee, 2)
-                        : '0.00';
-
-
-                // -- Facility Booking Variables --
-                case 'facility_name':
-                    // Example: fetch the latest facility booking
-                    $latestFacilityBooking = $member->bookings()
-                        ->with('facility')
-                        ->latest('BookingDate')
-                        ->first();
-                    return optional($latestFacilityBooking->facility)->FacilityName ?? 'N/A';
-
-                case 'facility_branch':
-                    $latestFacilityBooking = $member->bookings()
-                        ->with('facility.branch')
-                        ->latest('BookingDate')
-                        ->first();
-                    return optional($latestFacilityBooking->facility->branch)->BranchName ?? 'N/A';
-
-                case 'booking_date':
-                    // For a facility booking or session booking
-                    $latestBooking = $member->bookings()->latest('BookingDate')->first();
-                    if ($latestBooking && $latestBooking->BookingDate) {
-                        return \Carbon\Carbon::parse($latestBooking->BookingDate)->format('F j, Y');
-                    }
-                    return 'N/A';
-
-                case 'booking_time':
-                    $latestBooking = $member->bookings()->latest('BookingDate')->first();
-                    return $latestBooking && $latestBooking->BookingTime
-                        ? $latestBooking->BookingTime
-                        : 'N/A';
-
-                case 'booking_duration':
-                    $latestBooking = $member->bookings()->latest('BookingDate')->first();
-                    return $latestBooking && $latestBooking->Duration
-                        ? $latestBooking->Duration . ' mins'
-                        : 'N/A';
-
-                case 'guest_name':
-                    $latestBooking = $member->bookings()->latest('BookingDate')->first();
-                    return $latestBooking && $latestBooking->GuestName
-                        ? $latestBooking->GuestName
-                        : 'N/A';
-
-                case 'guest_email':
-                    $latestBooking = $member->bookings()->latest('BookingDate')->first();
-                    return $latestBooking && $latestBooking->GuestEmail
-                        ? $latestBooking->GuestEmail
-                        : 'N/A';
+    //             case 'session_fee':
+    //                 $latestSession = $member->sessionBookings()
+    //                     ->with('session')
+    //                     ->latest('BookingDate')
+    //                     ->first();
+    //                 return $latestSession && isset($latestSession->session->Fee)
+    //                     ? number_format($latestSession->session->Fee, 2)
+    //                     : '0.00';
 
 
-                // -- Membership Freeze Variables --
-                case 'freeze_start_date':
-                    // e.g., fetch the most recent freeze
-                    $freeze = $member->freezes()->latest('FreezeStartDate')->first();
-                    if ($freeze && $freeze->FreezeStartDate) {
-                        return \Carbon\Carbon::parse($freeze->FreezeStartDate)->format('F j, Y');
-                    }
-                    return 'N/A';
+    //             // -- Facility Booking Variables --
+    //             case 'facility_name':
+    //                 // Example: fetch the latest facility booking
+    //                 $latestFacilityBooking = $member->bookings()
+    //                     ->with('facility')
+    //                     ->latest('BookingDate')
+    //                     ->first();
+    //                 return optional($latestFacilityBooking->facility)->FacilityName ?? 'N/A';
 
-                case 'freeze_end_date':
-                    $freeze = $member->freezes()->latest('FreezeEndDate')->first();
-                    if ($freeze && $freeze->FreezeEndDate) {
-                        return \Carbon\Carbon::parse($freeze->FreezeEndDate)->format('F j, Y');
-                    }
-                    return 'N/A';
+    //             case 'facility_branch':
+    //                 $latestFacilityBooking = $member->bookings()
+    //                     ->with('facility.branch')
+    //                     ->latest('BookingDate')
+    //                     ->first();
+    //                 return optional($latestFacilityBooking->facility->branch)->BranchName ?? 'N/A';
 
-                case 'freeze_reason':
-                    $freeze = $member->freezes()->latest('FreezeStartDate')->first();
-                    return $freeze->Reason ?? 'N/A';
+    //             case 'booking_date':
+    //                 // For a facility booking or session booking
+    //                 $latestBooking = $member->bookings()->latest('BookingDate')->first();
+    //                 if ($latestBooking && $latestBooking->BookingDate) {
+    //                     return \Carbon\Carbon::parse($latestBooking->BookingDate)->format('F j, Y');
+    //                 }
+    //                 return 'N/A';
 
-                case 'original_end_date':
-                    $freeze = $member->freezes()->latest('FreezeStartDate')->first();
-                    if ($freeze && $freeze->OriginalEndDate) {
-                        return \Carbon\Carbon::parse($freeze->OriginalEndDate)->format('F j, Y');
-                    }
-                    return 'N/A';
+    //             case 'booking_time':
+    //                 $latestBooking = $member->bookings()->latest('BookingDate')->first();
+    //                 return $latestBooking && $latestBooking->BookingTime
+    //                     ? $latestBooking->BookingTime
+    //                     : 'N/A';
 
-                case 'payment_status':
-                    // This might be used in various contexts: freeze, payment, etc.
-                    // We'll just guess: the member’s latest Payment->Status
-                    $payment = $member->payments()->latest('PaymentDate')->first();
-                    return $payment ? $payment->Status : 'N/A';
+    //             case 'booking_duration':
+    //                 $latestBooking = $member->bookings()->latest('BookingDate')->first();
+    //                 return $latestBooking && $latestBooking->Duration
+    //                     ? $latestBooking->Duration . ' mins'
+    //                     : 'N/A';
 
+    //             case 'guest_name':
+    //                 $latestBooking = $member->bookings()->latest('BookingDate')->first();
+    //                 return $latestBooking && $latestBooking->GuestName
+    //                     ? $latestBooking->GuestName
+    //                     : 'N/A';
 
-                // -- Membership Renewal & Plan Variables --
-                case 'renewal_date':
-                    $renewal = $member->renewals()->latest('RenewalDate')->first();
-                    if ($renewal && $renewal->RenewalDate) {
-                        return \Carbon\Carbon::parse($renewal->RenewalDate)->format('F j, Y');
-                    }
-                    return 'N/A';
-
-                case 'renewal_start_date':
-                    $renewal = $member->renewals()->latest('RenewalDate')->first();
-                    if ($renewal && $renewal->RenewalStartDate) {
-                        return \Carbon\Carbon::parse($renewal->RenewalStartDate)->format('F j, Y');
-                    }
-                    return 'N/A';
-
-                case 'renewal_amount':
-                    $renewal = $member->renewals()->latest('RenewalDate')->first();
-                    return $renewal && $renewal->RenewalAmount
-                        ? number_format($renewal->RenewalAmount, 2)
-                        : '0.00';
-
-                case 'renewal_instructions':
-                    // Hardcode or store in config
-                    return 'Please visit our website or front desk to renew.';
-
-                case 'lock_in_months':
-                    // If needed from the plan
-                    return optional($member->plan)->LockInMonths
-                        ? (string) $member->plan->LockInMonths
-                        : 'N/A';
+    //             case 'guest_email':
+    //                 $latestBooking = $member->bookings()->latest('BookingDate')->first();
+    //                 return $latestBooking && $latestBooking->GuestEmail
+    //                     ? $latestBooking->GuestEmail
+    //                     : 'N/A';
 
 
-                // -- Payment & Invoice Variables --
-                case 'payment_amount':
-                    $latestPayment = $member->payments()->latest('PaymentDate')->first();
-                    return $latestPayment && $latestPayment->Amount
-                        ? number_format($latestPayment->Amount, 2)
-                        : '0.00';
+    //             // -- Membership Freeze Variables --
+    //             case 'freeze_start_date':
+    //                 // e.g., fetch the most recent freeze
+    //                 $freeze = $member->freezes()->latest('FreezeStartDate')->first();
+    //                 if ($freeze && $freeze->FreezeStartDate) {
+    //                     return \Carbon\Carbon::parse($freeze->FreezeStartDate)->format('F j, Y');
+    //                 }
+    //                 return 'N/A';
 
-                case 'payment_date':
-                    $latestPayment = $member->payments()->latest('PaymentDate')->first();
-                    if ($latestPayment && $latestPayment->PaymentDate) {
-                        return \Carbon\Carbon::parse($latestPayment->PaymentDate)->format('F j, Y');
-                    }
-                    return 'N/A';
+    //             case 'freeze_end_date':
+    //                 $freeze = $member->freezes()->latest('FreezeEndDate')->first();
+    //                 if ($freeze && $freeze->FreezeEndDate) {
+    //                     return \Carbon\Carbon::parse($freeze->FreezeEndDate)->format('F j, Y');
+    //                 }
+    //                 return 'N/A';
 
-                case 'payment_method':
-                    $latestPayment = $member->payments()->latest('PaymentDate')->first();
-                    return $latestPayment && $latestPayment->PaymentMethod
-                        ? $latestPayment->PaymentMethod
-                        : 'N/A';
+    //             case 'freeze_reason':
+    //                 $freeze = $member->freezes()->latest('FreezeStartDate')->first();
+    //                 return $freeze->Reason ?? 'N/A';
 
-                case 'failure_reason':
-                    $latestPayment = $member->payments()->latest('PaymentDate')->first();
-                    return $latestPayment->FailureReason ?? 'N/A';
+    //             case 'original_end_date':
+    //                 $freeze = $member->freezes()->latest('FreezeStartDate')->first();
+    //                 if ($freeze && $freeze->OriginalEndDate) {
+    //                     return \Carbon\Carbon::parse($freeze->OriginalEndDate)->format('F j, Y');
+    //                 }
+    //                 return 'N/A';
 
-                case 'invoice_number':
-                    // Example: last invoice
-                    $invoice = $member->invoices()->latest('InvoiceDate')->first();
-                    return $invoice
-                        ? 'INV-' . $invoice->InvoiceID
-                        : 'N/A';
-
-                case 'invoice_date':
-                    $invoice = $member->invoices()->latest('InvoiceDate')->first();
-                    if ($invoice && $invoice->InvoiceDate) {
-                        return \Carbon\Carbon::parse($invoice->InvoiceDate)->format('F j, Y');
-                    }
-                    return 'N/A';
-
-                case 'invoice_due_date':
-                    $invoice = $member->invoices()->latest('InvoiceDate')->first();
-                    if ($invoice && $invoice->DueDate) {
-                        return \Carbon\Carbon::parse($invoice->DueDate)->format('F j, Y');
-                    }
-                    return 'N/A';
-
-                case 'invoice_total':
-                    $invoice = $member->invoices()->latest('InvoiceDate')->first();
-                    return $invoice && $invoice->InvoiceTotal
-                        ? number_format($invoice->InvoiceTotal, 2)
-                        : '0.00';
+    //             case 'payment_status':
+    //                 // This might be used in various contexts: freeze, payment, etc.
+    //                 // We'll just guess: the member’s latest Payment->Status
+    //                 $payment = $member->payments()->latest('PaymentDate')->first();
+    //                 return $payment ? $payment->Status : 'N/A';
 
 
-                // -- Additional Gym Info & Defaults --
-                case 'gym_phone':
-                    return config('gym.phone') ?? '(555) 987-6543';
+    //             // -- Membership Renewal & Plan Variables --
+    //             case 'renewal_date':
+    //                 $renewal = $member->renewals()->latest('RenewalDate')->first();
+    //                 if ($renewal && $renewal->RenewalDate) {
+    //                     return \Carbon\Carbon::parse($renewal->RenewalDate)->format('F j, Y');
+    //                 }
+    //                 return 'N/A';
 
-                case 'gym_email':
-                    return config('gym.email') ?? 'info@contnentalfitness.com';
+    //             case 'renewal_start_date':
+    //                 $renewal = $member->renewals()->latest('RenewalDate')->first();
+    //                 if ($renewal && $renewal->RenewalStartDate) {
+    //                     return \Carbon\Carbon::parse($renewal->RenewalStartDate)->format('F j, Y');
+    //                 }
+    //                 return 'N/A';
 
-                case 'gym_website':
-                    return config('gym.website') ?? 'https://contnentalfitness.com';
+    //             case 'renewal_amount':
+    //                 $renewal = $member->renewals()->latest('RenewalDate')->first();
+    //                 return $renewal && $renewal->RenewalAmount
+    //                     ? number_format($renewal->RenewalAmount, 2)
+    //                     : '0.00';
 
-                case 'support_email':
-                    return config('gym.support_email') ?? 'support@contnentalfitness.com';
+    //             case 'renewal_instructions':
+    //                 // Hardcode or store in config
+    //                 return 'Please visit our website or front desk to renew.';
 
-                case 'customer_name':
-                    // If you want to address a generic user
-                    return 'Valued Customer';
+    //             case 'lock_in_months':
+    //                 // If needed from the plan
+    //                 return optional($member->plan)->LockInMonths
+    //                     ? (string) $member->plan->LockInMonths
+    //                     : 'N/A';
 
 
-                // -- If no matching case found, fallback --
-                default:
-                    return 'N/A';
-            }
-        } catch (\Exception $e) {
-            // If any unexpected error occurs, log and return fallback
-            \Log::error("Error resolving placeholder [$var]: " . $e->getMessage());
-            return 'N/A';
-        }
-    }
+    //             // -- Payment & Invoice Variables --
+    //             case 'payment_amount':
+    //                 $latestPayment = $member->payments()->latest('PaymentDate')->first();
+    //                 return $latestPayment && $latestPayment->Amount
+    //                     ? number_format($latestPayment->Amount, 2)
+    //                     : '0.00';
+
+    //             case 'payment_date':
+    //                 $latestPayment = $member->payments()->latest('PaymentDate')->first();
+    //                 if ($latestPayment && $latestPayment->PaymentDate) {
+    //                     return \Carbon\Carbon::parse($latestPayment->PaymentDate)->format('F j, Y');
+    //                 }
+    //                 return 'N/A';
+
+    //             case 'payment_method':
+    //                 $latestPayment = $member->payments()->latest('PaymentDate')->first();
+    //                 return $latestPayment && $latestPayment->PaymentMethod
+    //                     ? $latestPayment->PaymentMethod
+    //                     : 'N/A';
+
+    //             case 'failure_reason':
+    //                 $latestPayment = $member->payments()->latest('PaymentDate')->first();
+    //                 return $latestPayment->FailureReason ?? 'N/A';
+
+    //             case 'invoice_number':
+    //                 // Example: last invoice
+    //                 $invoice = $member->invoices()->latest('InvoiceDate')->first();
+    //                 return $invoice
+    //                     ? 'INV-' . $invoice->InvoiceID
+    //                     : 'N/A';
+
+    //             case 'invoice_date':
+    //                 $invoice = $member->invoices()->latest('InvoiceDate')->first();
+    //                 if ($invoice && $invoice->InvoiceDate) {
+    //                     return \Carbon\Carbon::parse($invoice->InvoiceDate)->format('F j, Y');
+    //                 }
+    //                 return 'N/A';
+
+    //             case 'invoice_due_date':
+    //                 $invoice = $member->invoices()->latest('InvoiceDate')->first();
+    //                 if ($invoice && $invoice->DueDate) {
+    //                     return \Carbon\Carbon::parse($invoice->DueDate)->format('F j, Y');
+    //                 }
+    //                 return 'N/A';
+
+    //             case 'invoice_total':
+    //                 $invoice = $member->invoices()->latest('InvoiceDate')->first();
+    //                 return $invoice && $invoice->InvoiceTotal
+    //                     ? number_format($invoice->InvoiceTotal, 2)
+    //                     : '0.00';
+
+
+    //             // -- Additional Gym Info & Defaults --
+    //             case 'gym_phone':
+    //                 return config('gym.phone') ?? '(555) 987-6543';
+
+    //             case 'gym_email':
+    //                 return config('gym.email') ?? 'info@contnentalfitness.com';
+
+    //             case 'gym_website':
+    //                 return config('gym.website') ?? 'https://contnentalfitness.com';
+
+    //             case 'support_email':
+    //                 return config('gym.support_email') ?? 'support@contnentalfitness.com';
+
+    //             case 'customer_name':
+    //                 // If you want to address a generic user
+    //                 return 'Valued Customer';
+
+
+    //             // -- If no matching case found, fallback --
+    //             default:
+    //                 return 'N/A';
+    //         }
+    //     } catch (\Exception $e) {
+    //         // If any unexpected error occurs, log and return fallback
+    //         \Log::error("Error resolving placeholder [$var]: " . $e->getMessage());
+    //         return 'N/A';
+    //     }
+    // }
 
     
     public function sendSemaphoreSMS(Request $request)
