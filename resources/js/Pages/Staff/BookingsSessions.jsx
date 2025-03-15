@@ -865,7 +865,7 @@ async function handleUpdateBooking() {
     }
   }
 // Inside your BookingsSessions component
-async function handleBookSessionConfirm() {
+  async function handleBookSessionConfirm() {
   if (!sessionToBook) return;
   try {
     // Step 1) Create the booking on backend
@@ -900,6 +900,24 @@ async function handleBookSessionConfirm() {
         });
       }
     }
+    
+    // Step 2b: Notify the member using a new endpoint (create this on your backend)
+    const foundMemberForNotification = members.find(m => m.MemberID === Number(sessionBookingMemberID));
+    if (foundMemberForNotification && foundMemberForNotification.Email && foundMemberForNotification.Email.includes("@")) {
+      await axios.post("/notifications/notify-member-booking-mailjet", {
+        member_id: foundMemberForNotification.MemberID,
+        member_name: foundMemberForNotification.FullName,
+        member_email: foundMemberForNotification.Email,
+        // Optionally include the coach's name for additional context
+        coach_name: coaches.find(c => c.CoachID === sessionToBook.CoachID)?.FullName || "",
+        session_name: sessionToBook.SessionName,
+        start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD HH:mm:ss"),
+        end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD HH:mm:ss"),
+      });
+    } else {
+      console.warn("Member email not valid or missing:", foundMemberForNotification);
+    }
+
 
     // Step 3) Wrap up
     setBookSessionOpen(false);
