@@ -1548,6 +1548,7 @@ async function handleBookSessionConfirm() {
           >
             <Tab icon={<CalendarTodayIcon />} label="Facility Bookings" />
             <Tab icon={<FitnessCenterIcon />} label="Coach Sessions" />
+            <Tab icon={<GroupsIcon />} label="Coaches" />
           </Tabs>
         </Box>
 
