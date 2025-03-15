@@ -405,6 +405,7 @@ public function getStaffNotifications(Request $request)
 
         return redirect()->back()->with('success','Template approved.');
     }
+
     public function sendExpiringMembershipReminder(Request $request)
     {
         // 1) Fetch members expiring in 7 days
@@ -490,86 +491,86 @@ public function getStaffNotifications(Request $request)
 
 
     public function sendExpiringMembershipReminderForSelected(Request $request)
-{
-    $data = $request->validate([
-        'memberIds' => 'required|array',
-    ]);
+    {
+        $data = $request->validate([
+            'memberIds' => 'required|array',
+        ]);
 
-    // Fetch only the selected members that are expiring in the next 7 days.
-    $expiringMembers = Member::whereIn('MemberID', $data['memberIds'])
-        ->whereBetween('MembershipEndDate', [now(), now()->addDays(7)])
-        ->get();
+        // Fetch only the selected members that are expiring in the next 7 days.
+        $expiringMembers = Member::whereIn('MemberID', $data['memberIds'])
+            ->whereBetween('MembershipEndDate', [now(), now()->addDays(7)])
+            ->get();
 
-    if ($expiringMembers->isEmpty()) {
-        return response()->json([
-            'status'  => 'no-action',
-            'message' => 'No selected members are expiring in 7 days.'
-        ], 200);
-    }
-
-    // Initialize Mailjet Client
-    $mj = new \Mailjet\Client(
-        config('services.mailjet.api_key'),
-        config('services.mailjet.secret_key'),
-        true,
-        ['version' => 'v3.1']
-    );
-
-    // Build the messages array
-    $messages = [];
-    foreach ($expiringMembers as $member) {
-        if (!empty($member->Email)) {
-            $memberName = $member->FullName ?: 'Valued Member';
-            $messages[] = [
-                'From' => [
-                    'Email' => config('services.mailjet.from.address'),
-                    'Name'  => config('services.mailjet.from.name'),
-                ],
-                'To' => [
-                    ['Email' => $member->Email, 'Name' => $memberName],
-                ],
-                'TemplateID'       => 6731692, // Your Mailjet Template ID for expiry reminder
-                'TemplateLanguage' => true,
-                'Subject'          => 'CONTNENTAL FITNESS GYM PAYMENT DUE',
-                'Variables'        => [
-                    'member_name' => $memberName,
-                    'expiry_date' => \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y'),
-                ],
-            ];
+        if ($expiringMembers->isEmpty()) {
+            return response()->json([
+                'status'  => 'no-action',
+                'message' => 'No selected members are expiring in 7 days.'
+            ], 200);
         }
-    }
 
-    if (empty($messages)) {
-        return response()->json([
-            'status'  => 'no-action',
-            'message' => 'No valid email recipients found among selected members.'
-        ], 200);
-    }
+        // Initialize Mailjet Client
+        $mj = new \Mailjet\Client(
+            config('services.mailjet.api_key'),
+            config('services.mailjet.secret_key'),
+            true,
+            ['version' => 'v3.1']
+        );
 
-    // Send emails in chunks to respect Mailjet limits
-    $chunks = array_chunk($messages, 50);
-    $overallSuccess = 0;
-    $overallFailed  = 0;
-    foreach ($chunks as $chunk) {
-        $body = ['Messages' => $chunk];
-        $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
-        $responseData = $response->getData();
-        foreach ($responseData['Messages'] as $msg) {
-            if (isset($msg['Status']) && strtolower($msg['Status']) === 'success') {
-                $overallSuccess++;
-            } else {
-                $overallFailed++;
+        // Build the messages array
+        $messages = [];
+        foreach ($expiringMembers as $member) {
+            if (!empty($member->Email)) {
+                $memberName = $member->FullName ?: 'Valued Member';
+                $messages[] = [
+                    'From' => [
+                        'Email' => config('services.mailjet.from.address'),
+                        'Name'  => config('services.mailjet.from.name'),
+                    ],
+                    'To' => [
+                        ['Email' => $member->Email, 'Name' => $memberName],
+                    ],
+                    'TemplateID'       => 6731692, // Your Mailjet Template ID for expiry reminder
+                    'TemplateLanguage' => true,
+                    'Subject'          => 'CONTNENTAL FITNESS GYM PAYMENT DUE',
+                    'Variables'        => [
+                        'member_name' => $memberName,
+                        'expiry_date' => \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y'),
+                    ],
+                ];
             }
         }
+
+        if (empty($messages)) {
+            return response()->json([
+                'status'  => 'no-action',
+                'message' => 'No valid email recipients found among selected members.'
+            ], 200);
+        }
+
+        // Send emails in chunks to respect Mailjet limits
+        $chunks = array_chunk($messages, 50);
+        $overallSuccess = 0;
+        $overallFailed  = 0;
+        foreach ($chunks as $chunk) {
+            $body = ['Messages' => $chunk];
+            $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
+            $responseData = $response->getData();
+            foreach ($responseData['Messages'] as $msg) {
+                if (isset($msg['Status']) && strtolower($msg['Status']) === 'success') {
+                    $overallSuccess++;
+                } else {
+                    $overallFailed++;
+                }
+            }
+        }
+        
+        $status = ($overallFailed === 0) ? 'success' : 'partial';
+        
+        return response()->json([
+            'status'  => $status,
+            'message' => "Expiry reminder emails sent for selected members! Success: {$overallSuccess}, Failed: {$overallFailed}",
+        ], 200);
     }
-    
-    $status = ($overallFailed === 0) ? 'success' : 'partial';
-    
-    return response()->json([
-        'status'  => $status,
-        'message' => "Expiry reminder emails sent for selected members! Success: {$overallSuccess}, Failed: {$overallFailed}",
-    ], 200);
-}
 
 
     public function sendMailjetTemplate(Request $request)
@@ -577,6 +578,7 @@ public function getStaffNotifications(Request $request)
         $data = $request->validate([
             'templateId' => 'required|integer',
             'memberIds'  => 'required|array',
+            'variables'  => 'nullable|array', // Allow dynamic variables
         ]);
     
         // 1) Fetch the members
@@ -605,7 +607,7 @@ public function getStaffNotifications(Request $request)
             ]);
         }
     
-        // 3) Prepare Mailjet client using the correct configuration keys
+        // 3) Prepare Mailjet client
         $mj = new \Mailjet\Client(
             config('services.mailjet.api_key'),
             config('services.mailjet.secret_key'),
@@ -613,11 +615,28 @@ public function getStaffNotifications(Request $request)
             ['version' => 'v3.1']
         );
     
-        // 4) Build the array of messages
+        // 4) Build messages array dynamically
         $messages = [];
         foreach ($localNotifs as $email => $notif) {
             $memberId = $notif->MemberID;
             $member   = $members->firstWhere('MemberID', $memberId);
+    
+            // **Dynamically include all requested variables**
+            $variables = [];
+            if (!empty($data['variables'])) {
+                foreach ($data['variables'] as $key => $value) {
+                    // If the value is a string key, try to extract it from the member model
+                    if (is_string($value) && isset($member->$value)) {
+                        $variables[$key] = $member->$value;
+                    } else {
+                        $variables[$key] = $value; // Directly store provided values
+                    }
+                }
+            }
+    
+            // **Ensure some default variables are always included**
+            $variables['member_name'] = $member->FullName ?? 'Valued Member';
+            $variables['email'] = $email;
     
             $messages[] = [
                 'From' => [
@@ -630,9 +649,7 @@ public function getStaffNotifications(Request $request)
                 'TemplateID'       => $data['templateId'],
                 'TemplateLanguage' => true,
                 'Subject'          => 'Contnental Fitness Gym',
-                'Variables'       => [
-                    'member_name' => $member->FullName,
-                ],
+                'Variables'        => $variables,
             ];
         }
     
@@ -656,7 +673,7 @@ public function getStaffNotifications(Request $request)
             ], 500);
         }
     
-        // 6) Parse partial results from Mailjet
+        // 6) Parse Mailjet results
         $responseData = $response->getData();
         $allMessages  = $responseData['Messages'] ?? [];
     
@@ -697,7 +714,7 @@ public function getStaffNotifications(Request $request)
             'mailjet_detail' => $responseData,
         ]);
     }
-
+    
     public function sendSemaphoreSMS(Request $request)
     {
         $data = $request->validate([
@@ -956,110 +973,110 @@ public function getStaffNotifications(Request $request)
     }
     
     public function notifyMemberOfBookingMailjet(Request $request)
-{
-    // Validate incoming request data for member notification
-    $data = $request->validate([
-        'member_id'    => 'required|exists:members,MemberID',
-        'member_name'  => 'required|string|max:255',
-        'member_email' => 'required|email',
-        'coach_name'   => 'required|string|max:255',
-        'session_name' => 'required|string|max:255',
-        'start_time'   => 'required|date_format:Y-m-d H:i:s',
-        'end_time'     => 'required|date_format:Y-m-d H:i:s',
-    ]);
+    {
+        // Validate incoming request data for member notification
+        $data = $request->validate([
+            'member_id'    => 'required|exists:members,MemberID',
+            'member_name'  => 'required|string|max:255',
+            'member_email' => 'required|email',
+            'coach_name'   => 'required|string|max:255',
+            'session_name' => 'required|string|max:255',
+            'start_time'   => 'required|date_format:Y-m-d H:i:s',
+            'end_time'     => 'required|date_format:Y-m-d H:i:s',
+        ]);
 
-    // Log incoming request data for debugging
-    \Log::info('notifyMemberOfBookingMailjet - Request Data:', $data);
+        // Log incoming request data for debugging
+        \Log::info('notifyMemberOfBookingMailjet - Request Data:', $data);
 
-    // Use Carbon to parse and format start and end times
-    $startTimeParsed = \Carbon\Carbon::parse($data['start_time'])->format('F j, Y g:i A');
-    $endTimeParsed  = \Carbon\Carbon::parse($data['end_time'])->format('F j, Y g:i A');
-    
-    // Initialize the Mailjet client
-    $mj = new \Mailjet\Client(
-        config('services.mailjet.api_key'),
-        config('services.mailjet.secret_key'),
-        true,
-        ['version' => 'v3.1']
-    );
+        // Use Carbon to parse and format start and end times
+        $startTimeParsed = \Carbon\Carbon::parse($data['start_time'])->format('F j, Y g:i A');
+        $endTimeParsed  = \Carbon\Carbon::parse($data['end_time'])->format('F j, Y g:i A');
+        
+        // Initialize the Mailjet client
+        $mj = new \Mailjet\Client(
+            config('services.mailjet.api_key'),
+            config('services.mailjet.secret_key'),
+            true,
+            ['version' => 'v3.1']
+        );
 
-    // Set the Mailjet template ID for the member notification (update this ID as needed)
-    $templateID =6807609; // Replace with your actual Mailjet template ID for member notifications
+        // Set the Mailjet template ID for the member notification (update this ID as needed)
+        $templateID =6807609; // Replace with your actual Mailjet template ID for member notifications
 
-    // Build the messages array (using the same logic as in your expiring-members function)
-    $messages = [];
-    $messages[] = [
-        'From' => [
-            'Email' => config('services.mailjet.from.address'),
-            'Name'  => config('services.mailjet.from.name'),
-        ],
-        'To' => [
-            [
-                'Email' => $data['member_email'],
-                'Name'  => $data['member_name'],
-            ]
-        ],
-        'TemplateID'       => $templateID,
-        'TemplateLanguage' => true,
-        'Subject'          => 'Your Session Booking Confirmation',
-        'Variables'        => [
-            'member_name'  => $data['member_name'],
-            'coach_name'   => $data['coach_name'],
-            'session_name' => $data['session_name'],
-            'start_time'   => $startTimeParsed,
-            'end_time'     => $endTimeParsed,
-        ],
-    ];
+        // Build the messages array (using the same logic as in your expiring-members function)
+        $messages = [];
+        $messages[] = [
+            'From' => [
+                'Email' => config('services.mailjet.from.address'),
+                'Name'  => config('services.mailjet.from.name'),
+            ],
+            'To' => [
+                [
+                    'Email' => $data['member_email'],
+                    'Name'  => $data['member_name'],
+                ]
+            ],
+            'TemplateID'       => $templateID,
+            'TemplateLanguage' => true,
+            'Subject'          => 'Your Session Booking Confirmation',
+            'Variables'        => [
+                'member_name'  => $data['member_name'],
+                'coach_name'   => $data['coach_name'],
+                'session_name' => $data['session_name'],
+                'start_time'   => $startTimeParsed,
+                'end_time'     => $endTimeParsed,
+            ],
+        ];
 
-    \Log::info('notifyMemberOfBookingMailjet - Messages Array:', $messages);
+        \Log::info('notifyMemberOfBookingMailjet - Messages Array:', $messages);
 
-    // Chunk messages into batches of 50 (this allows you to scale if needed)
-    $chunks = array_chunk($messages, 50);
-    $overallSuccess = 0;
-    $overallFailed  = 0;
-    $responses = [];
+        // Chunk messages into batches of 50 (this allows you to scale if needed)
+        $chunks = array_chunk($messages, 50);
+        $overallSuccess = 0;
+        $overallFailed  = 0;
+        $responses = [];
 
-    foreach ($chunks as $chunk) {
-        $body = ['Messages' => $chunk];
-        $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
-        $responseData = $response->getData();
+        foreach ($chunks as $chunk) {
+            $body = ['Messages' => $chunk];
+            $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
+            $responseData = $response->getData();
 
-        foreach ($responseData['Messages'] as $msg) {
-            if (isset($msg['Status']) && strtolower($msg['Status']) === 'success') {
-                $overallSuccess++;
-            } else {
-                $overallFailed++;
+            foreach ($responseData['Messages'] as $msg) {
+                if (isset($msg['Status']) && strtolower($msg['Status']) === 'success') {
+                    $overallSuccess++;
+                } else {
+                    $overallFailed++;
+                }
             }
+            $responses[] = $responseData;
         }
-        $responses[] = $responseData;
-    }
 
-    if ($overallFailed === 0) {
-        // Log the notification in your database
-        \App\Models\Notification::create([
-            'MemberID'           => $data['member_id'],
-            'EventTrigger'       => 'MemberBookedMailjet',
-            'Message'            => "Member #{$data['member_id']} => Booking confirmation email sent to {$data['member_email']}",
-            'NotificationMethod' => 'Email',
-            'SentDate'           => now(),
-            'Status'             => 'Sent',
-        ]);
+        if ($overallFailed === 0) {
+            // Log the notification in your database
+            \App\Models\Notification::create([
+                'MemberID'           => $data['member_id'],
+                'EventTrigger'       => 'MemberBookedMailjet',
+                'Message'            => "Member #{$data['member_id']} => Booking confirmation email sent to {$data['member_email']}",
+                'NotificationMethod' => 'Email',
+                'SentDate'           => now(),
+                'Status'             => 'Sent',
+            ]);
 
-        \Log::info('notifyMemberOfBookingMailjet - Email Sent Successfully.', $data);
+            \Log::info('notifyMemberOfBookingMailjet - Email Sent Successfully.', $data);
 
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Member booking confirmation email sent via Mailjet.',
+            ]);
+        }
+
+        \Log::error('notifyMemberOfBookingMailjet - Mailjet Error:', $responses);
         return response()->json([
-            'status'  => 'success',
-            'message' => 'Member booking confirmation email sent via Mailjet.',
-        ]);
+            'status'  => 'error',
+            'message' => 'Mailjet error when sending to member.',
+            'data'    => $responses,
+        ], 500);
     }
-
-    \Log::error('notifyMemberOfBookingMailjet - Mailjet Error:', $responses);
-    return response()->json([
-        'status'  => 'error',
-        'message' => 'Mailjet error when sending to member.',
-        'data'    => $responses,
-    ], 500);
-}
 
 
     public function getMailjetActivityLogs(Request $request)
