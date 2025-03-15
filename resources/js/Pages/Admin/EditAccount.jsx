@@ -7,39 +7,41 @@ import {
   TextField,
   Button,
   Grid,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Select,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   IconButton,
   InputAdornment
 } from "@mui/material";
-import AddIcon from "@mui/icons-material/Add";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import axios from "axios";
 
-// Role options for new staff.
-const roleOptions = ["Staff", "Admin", "Owner"];
-
 export default function EditProfile() {
-  // -------------------------- 1) MY ACCOUNT (CURRENT USER) --------------------------
+  const [userId, setUserId] = useState(null); // Store ID (AdminID, OwnerID, or StaffID)
+  const [userRole, setUserRole] = useState(""); // Store Role (Admin, Owner, or Staff)
   const [userEmail, setUserEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
-  // Fetch current profile details on mount.
   useEffect(() => {
     const fetchProfile = async () => {
       try {
         const res = await axios.get("/profile");
-        setUserEmail(res.data.email);
+        if (res.data) {
+          setUserEmail(res.data.Email || "");
+
+          // Identify user type and store the correct ID
+          if (res.data.AdminID) {
+            setUserId(res.data.AdminID);
+            setUserRole("admin");
+          } else if (res.data.OwnerID) {
+            setUserId(res.data.OwnerID);
+            setUserRole("owner");
+          } else if (res.data.StaffID) {
+            setUserId(res.data.StaffID);
+            setUserRole("staff");
+          }
+        }
       } catch (error) {
         console.error("Error fetching profile:", error);
       }
@@ -51,92 +53,39 @@ export default function EditProfile() {
   const handleToggleShowConfirmPass = () => setShowConfirmPass((prev) => !prev);
 
   const handleSaveMyAccount = async () => {
+    if (!userId) {
+      alert("Error: User ID not found.");
+      return;
+    }
+
     if (newPassword && newPassword !== confirmPass) {
       alert("New Password and Confirm Password do not match!");
       return;
     }
+
     try {
       await axios.put("/profile", {
+        id: userId, // Send correct ID
         email: userEmail.trim(),
-        password: newPassword.trim() ? newPassword.trim() : null
+        password: newPassword.trim() || null,
       });
+
       alert("Your account changes have been saved!");
       setNewPassword("");
       setConfirmPass("");
     } catch (error) {
-      console.error("Failed to update account:", error);
-      alert("Error updating your account. Check console.");
-    }
-  };
-
-  // -------------------------- 2) CREATE NEW STAFF --------------------------
-  const [isAddStaffOpen, setAddStaffOpen] = useState(false);
-  const [staffEmail, setStaffEmail] = useState("");
-  const [staffPassword, setStaffPassword] = useState("");
-  const [staffRole, setStaffRole] = useState("Staff");
-  const [staffName, setStaffName] = useState("");
-
-  // We'll fetch real branches via GET /owner/branches.
-  const [branchOptions, setBranchOptions] = useState([]);
-  const [staffBranch, setStaffBranch] = useState(""); // Will store the numeric BranchID
-
-  useEffect(() => {
-    const loadBranches = async () => {
-      try {
-        const res = await axios.get("/owner/branches");
-        // Depending on your BranchController, the response may be wrapped in a "branches" key.
-        setBranchOptions(res.data.branches || res.data);
-      } catch (err) {
-        console.error("Error loading branches:", err);
-        alert("Failed to load branches from server.");
-      }
-    };
-    loadBranches();
-  }, []);
-
-  const handleOpenAddStaff = () => {
-    setStaffEmail("");
-    setStaffPassword("");
-    setStaffRole("Staff");
-    setStaffName("");
-    setStaffBranch("");
-    setAddStaffOpen(true);
-  };
-
-  const handleAddStaff = async () => {
-    if (!staffName.trim() || !staffEmail.trim() || !staffPassword.trim() || !staffBranch) {
-      alert("Please fill out all fields for the staff.");
-      return;
-    }
-    try {
-      const res = await axios.post("/staff", {
-        FullName: staffName.trim(),
-        Email: staffEmail.trim(),
-        Role: staffRole,
-        password: staffPassword.trim(),
-        BranchID: staffBranch
-      });
-      alert(
-        `Staff created successfully!
-Name: ${res.data.FullName}
-Role: ${res.data.Role}
-BranchID: ${res.data.BranchID}`
-      );
-      setAddStaffOpen(false);
-    } catch (err) {
-      console.error("Failed to create staff:", err);
-      alert("Error creating staff. Check console for details.");
+      console.error("Failed to update account:", error.response?.data);
+      alert("Error updating your account.");
     }
   };
 
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
-        Edit Profile & Manage Staff
+        Edit Profile
       </Typography>
       <Divider sx={{ mb: 3 }} />
 
-      {/* ---------------- MY ACCOUNT SECTION ---------------- */}
       <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
         <Typography variant="h6" gutterBottom>
           My Account
@@ -168,7 +117,7 @@ BranchID: ${res.data.BranchID}`
                       {showNewPass ? <VisibilityOffIcon /> : <VisibilityIcon />}
                     </IconButton>
                   </InputAdornment>
-                )
+                ),
               }}
             />
           </Grid>
@@ -187,7 +136,7 @@ BranchID: ${res.data.BranchID}`
                       {showConfirmPass ? <VisibilityOffIcon /> : <VisibilityIcon />}
                     </IconButton>
                   </InputAdornment>
-                )
+                ),
               }}
             />
           </Grid>
@@ -198,7 +147,6 @@ BranchID: ${res.data.BranchID}`
           </Button>
         </Box>
       </Paper>
-
     </Box>
   );
 }
