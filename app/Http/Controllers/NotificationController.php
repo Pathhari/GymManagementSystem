@@ -769,7 +769,7 @@ public function getStaffNotifications(Request $request)
                         ? \Carbon\Carbon::parse($member->MembershipStartDate)->format('F j, Y')
                         : 'N/A';
 
-                case 'membership_end_date':
+                case 'expiry_date':
                     return $member->MembershipEndDate
                         ? \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y')
                         : 'N/A';
