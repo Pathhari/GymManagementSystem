@@ -572,19 +572,55 @@ public function getStaffNotifications(Request $request)
         ], 200);
     }
 
+    private function getMailjetTemplateVariables($templateId)
+    {
+        $mj = new \Mailjet\Client(
+            config('services.mailjet.api_key'),
+            config('services.mailjet.secret_key'),
+            true,
+            ['version' => 'v3']
+        );
+
+        // Fetch the template details
+        $response = $mj->get(\Mailjet\Resources::$Template, ['id' => $templateId]);
+
+        if (!$response->success()) {
+            \Log::error('Mailjet Template Fetch Error:', $response->getData());
+            return null; // Return null if API request fails
+        }
+
+        $templateData = $response->getData();
+        
+        if (!isset($templateData['Data'][0]['Variables'])) {
+            \Log::warning("Mailjet Template ID $templateId has no declared variables.");
+            return []; // No variables found in template
+        }
+
+        return $templateData['Data'][0]['Variables']; // Returns array of required variables
+    }
+
 
     public function sendMailjetTemplate(Request $request)
     {
         $data = $request->validate([
             'templateId' => 'required|integer',
             'memberIds'  => 'required|array',
-            'variables'  => 'nullable|array', // Allow dynamic variables
         ]);
-    
-        // 1) Fetch the members
+
+        // 1️⃣ Fetch members
         $members = Member::whereIn('MemberID', $data['memberIds'])->get();
-    
-        // 2) Create a Notification row for each member with a valid email
+
+        // 2️⃣ Get required template variables from Mailjet
+        $requiredVariables = $this->getMailjetTemplateVariables($data['templateId']);
+
+        if ($requiredVariables === null) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Failed to fetch Mailjet template variables.'
+            ], 500);
+        }
+
+        // 3️⃣ Create notifications for each member with a valid email
         $localNotifs = [];
         foreach ($members as $member) {
             if (!empty($member->Email)) {
@@ -599,45 +635,51 @@ public function getStaffNotifications(Request $request)
                 $localNotifs[$member->Email] = $notif;
             }
         }
-    
+
         if (count($localNotifs) === 0) {
             return response()->json([
                 'status'  => 'no-action',
                 'message' => 'No valid members or emails.',
             ]);
         }
-    
-        // 3) Prepare Mailjet client
+
+        // 4️⃣ Prepare Mailjet client
         $mj = new \Mailjet\Client(
             config('services.mailjet.api_key'),
             config('services.mailjet.secret_key'),
             true,
             ['version' => 'v3.1']
         );
-    
-        // 4) Build messages array dynamically
+
+        // 5️⃣ Build messages array dynamically
         $messages = [];
         foreach ($localNotifs as $email => $notif) {
             $memberId = $notif->MemberID;
             $member   = $members->firstWhere('MemberID', $memberId);
-    
-            // **Dynamically include all requested variables**
+
+            // 🔥 Automatically Fill in Required Variables 🔥
             $variables = [];
-            if (!empty($data['variables'])) {
-                foreach ($data['variables'] as $key => $value) {
-                    // If the value is a string and matches a column name, extract it from the member model
-                    if (is_string($value) && isset($member->$value)) {
-                        $variables[$key] = strval($member->$value); // Convert to string
-                    } else {
-                        $variables[$key] = strval($value ?? ''); // Convert to string, prevent null
+            foreach ($requiredVariables as $var) {
+                // Check if this variable exists in the Member model
+                if (isset($member->$var)) {
+                    $variables[$var] = strval($member->$var); // Convert to string
+                } else {
+                    // Default Fallback Values
+                    switch ($var) {
+                        case 'expiry_date':
+                            $variables[$var] = \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y');
+                            break;
+                        case 'member_name':
+                            $variables[$var] = $member->FullName ?? 'Valued Member';
+                            break;
+                        case 'latest_payment_date':
+                            $variables[$var] = \Carbon\Carbon::parse($member->latest_payment_date)->format('F j, Y');
+                            break;
+                        default:
+                            $variables[$var] = 'N/A'; // Default to prevent errors
                     }
                 }
             }
-    
-            // **Ensure some default variables are always included**
-            $variables['member_name'] = $member->FullName ?? 'Valued Member';
-            $variables['email'] = $email;
-            $variables['expiry_date'] = \Carbon\Carbon::parse($member->MembershipEndDate)->format('F j, Y');
 
             $messages[] = [
                 'From' => [
@@ -653,11 +695,11 @@ public function getStaffNotifications(Request $request)
                 'Variables'        => $variables,
             ];
         }
-    
-        // 5) Call the Mailjet API
+
+        // 6️⃣ Call the Mailjet API
         $body = ['Messages' => $messages];
         $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
-    
+
         if (!$response->success()) {
             foreach ($localNotifs as $notif) {
                 $notif->update([
@@ -666,55 +708,21 @@ public function getStaffNotifications(Request $request)
                     'SentDate'=> now(),
                 ]);
             }
-    
+
             return response()->json([
                 'status'  => 'error',
                 'message' => 'Mailjet API error on the entire request.',
                 'data'    => $response->getData(),
             ], 500);
         }
-    
-        // 6) Parse Mailjet results
-        $responseData = $response->getData();
-        $allMessages  = $responseData['Messages'] ?? [];
-    
-        foreach ($allMessages as $msg) {
-            $msgStatus = $msg['Status']; 
-            $msgTo     = $msg['To'];
-    
-            foreach ($msgTo as $rcpt) {
-                $rcptEmail = $rcpt['Email'];
-                $messageId = $rcpt['MessageUUID'] ?? null;
-    
-                if (isset($localNotifs[$rcptEmail])) {
-                    $notif = $localNotifs[$rcptEmail];
-                    $finalStatus = ($msgStatus === 'success') ? 'Sent' : 'Failed';
-                    $notif->update([
-                        'Status'  => $finalStatus,
-                        'Message' => ($finalStatus === 'Sent')
-                            ? "Mailjet Template #{$data['templateId']} delivered. (MsgID: $messageId)"
-                            : "Mailjet Template #{$data['templateId']} failed.",
-                        'SentDate' => now(),
-                    ]);
-                }
-            }
-        }
-    
-        // Count successes and failures
-        $successCount = Notification::whereIn('NotificationID', array_values(array_map(fn($n) => $n->NotificationID, $localNotifs)))
-                            ->where('Status', 'Sent')
-                            ->count();
-        $failCount = count($localNotifs) - $successCount;
-        $status = ($failCount === 0) ? 'success' : 'partial';
-    
+
         return response()->json([
-            'status'         => $status,
-            'message'        => "Mailjet sending complete. Success: {$successCount}, Failed: {$failCount}",
-            'success_count'  => $successCount,
-            'failed_count'   => $failCount,
-            'mailjet_detail' => $responseData,
+            'status' => 'success',
+            'message' => 'Emails successfully sent.',
+            'mailjet_response' => $response->getData(),
         ]);
     }
+
     
     public function sendSemaphoreSMS(Request $request)
     {
