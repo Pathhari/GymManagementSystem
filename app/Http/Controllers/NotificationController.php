@@ -603,25 +603,85 @@ public function getStaffNotifications(Request $request)
     public function sendMailjetTemplate(Request $request)
     {
         $data = $request->validate([
-            'templateId'        => 'required|integer',
-            'memberIds'         => 'required|array',
-            'bookingId'         => 'nullable|integer', // Facility booking
-            'sessionBookingId'  => 'nullable|integer', // Coaching session booking
+            'templateId'       => 'required|integer',
+            'memberIds'        => 'required|array',
+            'bookingId'        => 'nullable|integer',
+            'sessionBookingId' => 'nullable|integer',
         ]);
     
-        // 1️⃣ Fetch members
+        // 1) Fetch the members
         $members = Member::whereIn('MemberID', $data['memberIds'])->get();
     
-        // 2️⃣ Get required template variables from Mailjet
-        $requiredVariables = $this->getMailjetTemplateVariables($data['templateId']);
-        if ($requiredVariables === null) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Failed to fetch Mailjet template variables.'
-            ], 500);
-        }
+        // 2) Hard-code all placeholders from your cheat sheet:
+        $requiredVariables = [
+            // -- 1) General / Member Variables --
+            'member_name',
+            'member_email',
+            'member_phone',
+            'membership_start_date',
+            'expiry_date',
+            'membership_card_number',
+            'membership_status',
+            'plan_name',
+            'gym_name',
+            'branch_name',
     
-        // 3️⃣ Create notifications for each member with a valid email
+            // -- 2) Coach & Session Variables --
+            'coach_name',
+            'coach_specialty',
+            'session_name',
+            'session_type',
+            'start_time',
+            'end_time',
+            'session_location',
+            'session_fee',
+    
+            // -- 3) Facility Booking Variables --
+            'facility_name',
+            'facility_branch',
+            'booking_date',
+            'booking_time',
+            'booking_duration',
+            'guest_name',
+            'guest_email',
+    
+            // -- 4) Membership Freeze Variables --
+            'freeze_start_date',
+            'freeze_end_date',
+            'freeze_reason',
+            'original_end_date',
+            'payment_status', // Also used in freeze context
+    
+            // -- 5) Membership Renewal & Plan Variables --
+            'renewal_date',
+            'renewal_start_date',
+            'renewal_amount',
+            'renewal_instructions',
+            'lock_in_months',
+    
+            // -- 6) Payment & Invoice Variables --
+            'payment_amount',
+            'payment_date',
+            'payment_method',
+            'payment_status', // repeated, if you prefer
+            'failure_reason',
+            'invoice_number',
+            'invoice_date',
+            'invoice_due_date',
+            'invoice_total',
+    
+            // -- 7) SessionBooking placeholders (some repeated) --
+            'session_name',
+            'session_type',
+            'start_time',
+            'end_time',
+            'coach_name',
+            'booking_date',
+            'session_fee',
+            'member_name',
+        ];
+    
+        // 3) Create notifications for each valid-email member
         $localNotifs = [];
         foreach ($members as $member) {
             if (!empty($member->Email)) {
@@ -644,7 +704,7 @@ public function getStaffNotifications(Request $request)
             ]);
         }
     
-        // 4️⃣ Prepare Mailjet client
+        // 4) Prepare the Mailjet client
         $mj = new \Mailjet\Client(
             config('services.mailjet.api_key'),
             config('services.mailjet.secret_key'),
@@ -652,38 +712,32 @@ public function getStaffNotifications(Request $request)
             ['version' => 'v3.1']
         );
     
-        // 5️⃣ Build messages array dynamically
+        // 5) Build the messages array
         $messages = [];
-    
         foreach ($localNotifs as $email => $notif) {
             $memberId = $notif->MemberID;
             $member   = $members->firstWhere('MemberID', $memberId);
     
-            // --- Fetch the booking(s) relevant to this member --- //
-            // If you have 1 booking per member, you can do something like:
+            // (Optional) If you’re referencing facilityBooking or sessionBooking
             $facilityBooking = null;
             if (!empty($data['bookingId'])) {
-                // This fetches a single facility Booking record for the member
                 $facilityBooking = Booking::with('facility.branch')
                     ->where('MemberID', $member->MemberID)
                     ->where('BookingID', $data['bookingId'])
                     ->first();
             }
     
-            // If you have a session booking ID
             $sessionBooking = null;
             if (!empty($data['sessionBookingId'])) {
-                // This fetches a single SessionBooking record for the member
                 $sessionBooking = SessionBooking::with(['session.coach', 'member'])
                     ->where('MemberID', $member->MemberID)
                     ->where('BookingID', $data['sessionBookingId'])
                     ->first();
             }
     
-            // 🔥 Automatically fill placeholders
+            // Populate variables
             $variables = [];
             foreach ($requiredVariables as $var) {
-                // Pass everything needed to the resolver
                 $variables[$var] = $this->resolvePlaceholder(
                     $member,
                     $var,
@@ -707,12 +761,11 @@ public function getStaffNotifications(Request $request)
             ];
         }
     
-        // 6️⃣ Call the Mailjet API
+        // 6) Make the Mailjet API call
         $body = ['Messages' => $messages];
         \Log::info('Final Mailjet Payload: ', $body);
-        dd($body);
-        $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
     
+        $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
         if (!$response->success()) {
             foreach ($localNotifs as $notif) {
                 $notif->update([
@@ -735,6 +788,7 @@ public function getStaffNotifications(Request $request)
             'mailjet_response' => $response->getData(),
         ]);
     }
+    
     
 
     /****
@@ -1058,10 +1112,6 @@ public function getStaffNotifications(Request $request)
             return 'N/A';
         }
     }
-
-
-
-    
 
     
     public function sendSemaphoreSMS(Request $request)
