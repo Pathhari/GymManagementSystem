@@ -709,6 +709,8 @@ public function getStaffNotifications(Request $request)
     
         // 6️⃣ Call the Mailjet API
         $body = ['Messages' => $messages];
+        \Log::info('Final Mailjet Payload: ', $body);
+        dd($body);
         $response = $mj->post(\Mailjet\Resources::$Email, ['body' => $body]);
     
         if (!$response->success()) {
