@@ -17,20 +17,27 @@ import {
   Select,
   Chip,
   Tooltip,
+  Pagination,
+  Snackbar,
 } from "@mui/material";
-import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
+import { useTheme } from "@mui/material/styles";
+// Replace react-beautiful-dnd with @hello-pangea/dnd to avoid the defaultProps warning.
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank"; // For "Available"
-import BuildCircleIcon from "@mui/icons-material/BuildCircle"; // For "InMaintenance"
-import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline"; // For "OutOfService"
-import DomainIcon from "@mui/icons-material/Domain"; // For branch
-import ConfirmationNumberIcon from "@mui/icons-material/ConfirmationNumber"; // For SN
-import AccessTimeIcon from "@mui/icons-material/AccessTime"; // For clock
+import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
+import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank";
+import BuildCircleIcon from "@mui/icons-material/BuildCircle";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import BuildIcon from "@mui/icons-material/Build";
+import CloseIcon from "@mui/icons-material/Close";
+import SaveIcon from "@mui/icons-material/Save";
+import SyncAltIcon from "@mui/icons-material/SyncAlt";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import { grey } from "@mui/material/colors";
 
-// Reorder items in the same list
+// Global reorder function (for reordering an array)
 const reorder = (list, startIndex, endIndex) => {
   const result = Array.from(list);
   const [removed] = result.splice(startIndex, 1);
@@ -38,46 +45,18 @@ const reorder = (list, startIndex, endIndex) => {
   return result;
 };
 
-// You could also use more distinct backgrounds or a theme-based approach
+// Colors for droppable columns (light mode)
 const droppableBackground = {
-  availableList: "#c8e6c9",     // light-green
-  maintenanceList: "#fff9c4",  // light-yellow
-  outServiceList: "#ffccbc",   // light-orange
+  availableList: "#c8e6c9",
+  maintenanceList: "#fff9c4",
+  outServiceList: "#ffccbc",
 };
 
-const getItemStyle = (isDragging, draggableStyle) => ({
-  userSelect: "none",
-  padding: 12,
-  margin: "0 0 8px 0",
-  fontSize: "0.95rem",
-  background: isDragging ? "#9c27b0" : "#fafafa",
-  color: isDragging ? "#fff" : "#000",
-  border: "1px solid #ddd",
-  borderRadius: 6,
-  transition: "all 0.2s ease",
-  // Slight hover effect:
-  cursor: "grab",
-  "&:hover": {
-    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-  },
-  ...draggableStyle,
-});
-
-const getListStyle = (droppableId, isDraggingOver) => ({
-  background: isDraggingOver
-    ? grey[200]
-    : droppableBackground[droppableId] || "#f5f5f5",
-  padding: 8,
-  width: 300,
-  minHeight: 380,
-  borderRadius: 4,
-  transition: "background 0.2s",
-});
-
 export default function MaintenanceEquip() {
-  // --------------------------------------------------------------------------
+  const theme = useTheme();
+  const itemsPerPage = 5;
+
   // 1) Clock
-  // --------------------------------------------------------------------------
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -85,25 +64,19 @@ export default function MaintenanceEquip() {
   }, []);
   const clockString = currentTime.toLocaleTimeString();
 
-  // --------------------------------------------------------------------------
   // 2) Branches
-  // --------------------------------------------------------------------------
   const [branches, setBranches] = useState([]);
   useEffect(() => {
     fetch("/owner/branches")
       .then((res) => res.json())
-      .then((data) => {
-        setBranches(data.branches || []);
-      })
+      .then((data) => setBranches(data.branches || []))
       .catch((err) => console.error("Error fetching branches:", err));
   }, []);
 
-  // --------------------------------------------------------------------------
   // 3) Equipment
-  // --------------------------------------------------------------------------
   const csrfToken = document
     .querySelector('meta[name="csrf-token"]')
-    ?.getAttribute('content');
+    ?.getAttribute("content");
 
   const [equipment, setEquipment] = useState([]);
   const getEquipment = () => {
@@ -115,10 +88,9 @@ export default function MaintenanceEquip() {
       },
     })
       .then((res) => res.json())
-      .then((data) => {
-        const eq = data.equipment || data.props?.equipment || [];
-        setEquipment(eq);
-      })
+      .then((data) =>
+        setEquipment(data.equipment || data.props?.equipment || [])
+      )
       .catch((err) => console.error("Error fetching equipment:", err));
   };
 
@@ -126,16 +98,12 @@ export default function MaintenanceEquip() {
     getEquipment();
   }, []);
 
-  // --------------------------------------------------------------------------
   // 4) Maintenance Logs
-  // --------------------------------------------------------------------------
   const [logs, setLogs] = useState([]);
   const getLogs = () => {
     fetch("/operations/maintenance-logs")
       .then((res) => res.json())
-      .then((data) => {
-        setLogs(data.logs || []);
-      })
+      .then((data) => setLogs(data.logs || []))
       .catch((err) => console.error("Error fetching maintenance logs:", err));
   };
 
@@ -143,23 +111,51 @@ export default function MaintenanceEquip() {
     getLogs();
   }, []);
 
-  // --------------------------------------------------------------------------
   // 5) Branch Filter
-  // --------------------------------------------------------------------------
   const [selectedBranch, setSelectedBranch] = useState("All");
   const filteredEquipment =
     selectedBranch === "All"
       ? equipment
-      : equipment.filter((eq) => String(eq.BranchID) === String(selectedBranch));
+      : equipment.filter(
+          (eq) => String(eq.BranchID) === String(selectedBranch)
+        );
 
-  // Split into columns by status
-  const availableEquip = filteredEquipment.filter((eq) => eq.Status === "Available");
-  const maintenanceEquip = filteredEquipment.filter((eq) => eq.Status === "InMaintenance");
-  const outOfServiceEquip = filteredEquipment.filter((eq) => eq.Status === "OutOfService");
+  // Split equipment into status columns
+  const availableEquip = filteredEquipment.filter(
+    (eq) => eq.Status === "Available"
+  );
+  const maintenanceEquip = filteredEquipment.filter(
+    (eq) => eq.Status === "InMaintenance"
+  );
+  const outOfServiceEquip = filteredEquipment.filter(
+    (eq) => eq.Status === "OutOfService"
+  );
 
-  // --------------------------------------------------------------------------
-  // 6) Add Equipment
-  // --------------------------------------------------------------------------
+  // 6) Pagination States & Derived Data
+  const [availablePage, setAvailablePage] = useState(1);
+  const [maintenancePage, setMaintenancePage] = useState(1);
+  const [outOfServicePage, setOutOfServicePage] = useState(1);
+
+  const availableTotalPages = Math.ceil(availableEquip.length / itemsPerPage) || 1;
+  const maintenanceTotalPages =
+    Math.ceil(maintenanceEquip.length / itemsPerPage) || 1;
+  const outOfServiceTotalPages =
+    Math.ceil(outOfServiceEquip.length / itemsPerPage) || 1;
+
+  const availableEquipPageItems = availableEquip.slice(
+    (availablePage - 1) * itemsPerPage,
+    availablePage * itemsPerPage
+  );
+  const maintenanceEquipPageItems = maintenanceEquip.slice(
+    (maintenancePage - 1) * itemsPerPage,
+    maintenancePage * itemsPerPage
+  );
+  const outOfServiceEquipPageItems = outOfServiceEquip.slice(
+    (outOfServicePage - 1) * itemsPerPage,
+    outOfServicePage * itemsPerPage
+  );
+
+  // 7) Add Equipment
   const [isAddOpen, setAddOpen] = useState(false);
   const [newEquipData, setNewEquipData] = useState({
     Name: "",
@@ -182,10 +178,9 @@ export default function MaintenanceEquip() {
   const refetchEquipment = () => {
     fetch("/operations/equipment")
       .then((res) => res.json())
-      .then((data) => {
-        const eq = data.equipment || data.props?.equipment || [];
-        setEquipment(eq);
-      })
+      .then((data) =>
+        setEquipment(data.equipment || data.props?.equipment || [])
+      )
       .catch((err) => console.error("Error refetching equipment:", err));
   };
 
@@ -224,30 +219,47 @@ export default function MaintenanceEquip() {
       });
   };
 
-  // --------------------------------------------------------------------------
-  // 7) Drag & Drop
-  // --------------------------------------------------------------------------
+  // 8) Drag & Drop with Pagination Adjustment
   const onDragEnd = (result) => {
     const { source, destination } = result;
     if (!destination) return;
 
-    if (
-      source.droppableId === destination.droppableId &&
-      source.index !== destination.index
-    ) {
-      let updatedList = [];
+    // If reordering within the same droppable column
+    let updatedList = [];
+    if (source.droppableId === destination.droppableId) {
+      let offset = 0;
+      if (source.droppableId === "availableList")
+        offset = (availablePage - 1) * itemsPerPage;
+      if (source.droppableId === "maintenanceList")
+        offset = (maintenancePage - 1) * itemsPerPage;
+      if (source.droppableId === "outServiceList")
+        offset = (outOfServicePage - 1) * itemsPerPage;
+
       if (source.droppableId === "availableList") {
-        updatedList = reorder(availableEquip, source.index, destination.index);
+        updatedList = reorder(
+          availableEquip,
+          source.index + offset,
+          destination.index + offset
+        );
         applyReorderToEquipment(updatedList, "Available");
       } else if (source.droppableId === "maintenanceList") {
-        updatedList = reorder(maintenanceEquip, source.index, destination.index);
+        updatedList = reorder(
+          maintenanceEquip,
+          source.index + offset,
+          destination.index + offset
+        );
         applyReorderToEquipment(updatedList, "InMaintenance");
       } else if (source.droppableId === "outServiceList") {
-        updatedList = reorder(outOfServiceEquip, source.index, destination.index);
+        updatedList = reorder(
+          outOfServiceEquip,
+          source.index + offset,
+          destination.index + offset
+        );
         applyReorderToEquipment(updatedList, "OutOfService");
       }
       return;
     }
+    // If moving across columns, handle the status change
     if (source.droppableId !== destination.droppableId) {
       handleChangeStatus(source, destination);
     }
@@ -255,7 +267,10 @@ export default function MaintenanceEquip() {
 
   const applyReorderToEquipment = (newArr, status) => {
     const others = equipment.filter((eq) => eq.Status !== status);
-    const final = [...others, ...newArr.map((item) => ({ ...item, Status: status }))];
+    const final = [
+      ...others,
+      ...newArr.map((item) => ({ ...item, Status: status })),
+    ];
     setEquipment(final);
   };
 
@@ -265,9 +280,7 @@ export default function MaintenanceEquip() {
     return outOfServiceEquip;
   };
 
-  // --------------------------------------------------------------------------
-  // 8) Status-Change Modal
-  // --------------------------------------------------------------------------
+  // 9) Status-Change Modal
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState({
     EquipmentID: null,
@@ -281,11 +294,20 @@ export default function MaintenanceEquip() {
 
   const handleChangeStatus = (source, destination) => {
     const srcList = getListFromDroppable(source.droppableId);
-    const [movedItem] = srcList.splice(source.index, 1);
+    let offset = 0;
+    if (source.droppableId === "availableList")
+      offset = (availablePage - 1) * itemsPerPage;
+    if (source.droppableId === "maintenanceList")
+      offset = (maintenancePage - 1) * itemsPerPage;
+    if (source.droppableId === "outServiceList")
+      offset = (outOfServicePage - 1) * itemsPerPage;
 
+    const [movedItem] = srcList.splice(source.index + offset, 1);
     let newStatus = "Available";
-    if (destination.droppableId === "maintenanceList") newStatus = "InMaintenance";
-    if (destination.droppableId === "outServiceList") newStatus = "OutOfService";
+    if (destination.droppableId === "maintenanceList")
+      newStatus = "InMaintenance";
+    if (destination.droppableId === "outServiceList")
+      newStatus = "OutOfService";
 
     setModalEquipItem(movedItem);
     setModalData({
@@ -333,7 +355,8 @@ export default function MaintenanceEquip() {
       body: JSON.stringify(updatePayload),
     })
       .then((res) => {
-        if (!res.ok) throw new Error("Failed to update equipment status.");
+        if (!res.ok)
+          throw new Error("Failed to update equipment status.");
         return res;
       })
       .then(() => {
@@ -375,18 +398,27 @@ export default function MaintenanceEquip() {
       });
   };
 
-  // --------------------------------------------------------------------------
-  // 9) Remove Equipment (Optional)
-  // --------------------------------------------------------------------------
-  const removeEquipment = (EquipmentID) => {
-    if (!window.confirm("Are you sure you want to delete this equipment?")) return;
-    setEquipment((prev) => prev.filter((eq) => eq.EquipmentID !== EquipmentID));
-    // If you had a DELETE route, call it here.
+  // 10) Delete Confirmation & Removal
+  const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [equipmentToDelete, setEquipmentToDelete] = useState(null);
+  const [snackOpen, setSnackOpen] = useState(false);
+  const [snackMessage, setSnackMessage] = useState("");
+
+  const handleDeleteClick = (equipmentID) => {
+    setEquipmentToDelete(equipmentID);
+    setDeleteDialogOpen(true);
   };
 
-  // --------------------------------------------------------------------------
-  // 10) Activity Logs
-  // --------------------------------------------------------------------------
+  const confirmDelete = () => {
+    setEquipment((prev) =>
+      prev.filter((eq) => eq.EquipmentID !== equipmentToDelete)
+    );
+    setDeleteDialogOpen(false);
+    setSnackMessage("Equipment deleted successfully.");
+    setSnackOpen(true);
+  };
+
+  // 11) Activity Logs
   const [editLogIndex, setEditLogIndex] = useState(null);
   const [editLogText, setEditLogText] = useState("");
 
@@ -415,7 +447,8 @@ export default function MaintenanceEquip() {
       body: JSON.stringify(updatedLog),
     })
       .then((res) => {
-        if (!res.ok) throw new Error("Failed to update maintenance log.");
+        if (!res.ok)
+          throw new Error("Failed to update maintenance log.");
         return res.json();
       })
       .then(() => {
@@ -432,7 +465,8 @@ export default function MaintenanceEquip() {
   };
 
   const deleteLog = (logId) => {
-    if (!window.confirm("Are you sure you want to delete this log entry?")) return;
+    if (!window.confirm("Are you sure you want to delete this log entry?"))
+      return;
     fetch(`/operations/maintenance-logs/${logId}`, {
       method: "DELETE",
       headers: {
@@ -467,9 +501,20 @@ export default function MaintenanceEquip() {
 
   const truncatedLogs = logs.slice(0, 15);
 
-  // --------------------------------------------------------------------------
-  // 11) Rendering Draggable Items
-  // --------------------------------------------------------------------------
+  // 12) Styles and Render Functions
+  const getListStyle = (droppableId, isDraggingOver, theme) => ({
+    background: isDraggingOver
+      ? theme.palette.action.hover
+      : theme.palette.mode === "dark"
+      ? "#424242"
+      : droppableBackground[droppableId] || "#f5f5f5",
+    padding: 8,
+    width: 350,
+    height: 380,
+    borderRadius: 4,
+    transition: "background 0.2s",
+  });
+
   const statusChips = {
     Available: (
       <Chip
@@ -500,178 +545,266 @@ export default function MaintenanceEquip() {
     ),
   };
 
-  const renderDraggableItem = (item, index) => (
-    <Draggable
-      key={String(item.EquipmentID)}
-      draggableId={String(item.EquipmentID)}
-      index={index}
-    >
-      {(provided, snapshot) => (
-        <Paper
-          ref={provided.innerRef}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
-          variant="outlined"
-          sx={{
-            ...getItemStyle(snapshot.isDragging, provided.draggableProps.style),
-            p: 1.5,
-            mb: 1,
-          }}
-        >
-          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-            <Typography variant="subtitle2">
-              <strong>ID: {item.EquipmentID}</strong>
-            </Typography>
-            <IconButton
-              size="small"
-              onClick={() => removeEquipment(item.EquipmentID)}
-              sx={{ color: "red" }}
+  const renderDraggableItem = (item, index) => {
+    const isDark = theme.palette.mode === "dark";
+    return (
+      <Draggable
+        key={String(item.EquipmentID)}
+        draggableId={String(item.EquipmentID)}
+        index={index}
+      >
+        {(provided, snapshot) => (
+          <Paper
+            ref={provided.innerRef}
+            {...provided.draggableProps}
+            {...provided.dragHandleProps}
+            elevation={snapshot.isDragging ? 4 : 1}
+            sx={{
+              p: 2,
+              mb: 2,
+              borderRadius: 2,
+              width: "100%",
+              backgroundColor: isDark
+                ? theme.palette.background.paper
+                : "white",
+              transition: "box-shadow 0.2s",
+              cursor: "grab",
+              position: "relative",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                mb: 1,
+              }}
             >
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Box>
-          <Box sx={{ mb: 0.5 }}>
-            <Typography variant="subtitle2" sx={{ lineHeight: 1.2 }}>
               {statusChips[item.Status]}
+              <IconButton
+                size="small"
+                onClick={() => handleDeleteClick(item.EquipmentID)}
+                sx={{
+                  color: isDark ? "grey.300" : "grey.600",
+                }}
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Box>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: "bold",
+                mb: 0.5,
+                color: isDark ? "grey.100" : "grey.900",
+              }}
+            >
+              {item.Name}
             </Typography>
-          </Box>
-          <Typography variant="body2" sx={{ lineHeight: 1.4, mb: 0.5 }}>
-            <Tooltip title="Equipment Name">
-              <strong>{item.Name}</strong>
-            </Tooltip>
-          </Typography>
-          <Typography variant="body2" sx={{ fontSize: "0.8rem", color: "text.secondary" }}>
-            <Tooltip title="Serial Number">
-              <span>
-                <ConfirmationNumberIcon fontSize="inherit" sx={{ mr: 0.5 }} />
-                {item.SerialNumber}
-              </span>
-            </Tooltip>
-          </Typography>
-          <Typography variant="body2" sx={{ fontSize: "0.8rem" }}>
-            <Tooltip title="Branch">
-              <span>
-                <DomainIcon fontSize="inherit" sx={{ mr: 0.5 }} />
-                {item.BranchID}
-              </span>
-            </Tooltip>
-          </Typography>
-        </Paper>
-      )}
-    </Draggable>
-  );
+            <Typography
+              variant="body2"
+              color={isDark ? "grey.400" : "text.secondary"}
+            >
+              SN: {item.SerialNumber}
+            </Typography>
+            <Typography
+              variant="body2"
+              color={isDark ? "grey.400" : "text.secondary"}
+            >
+              Branch: {item.BranchID}
+            </Typography>
+          </Paper>
+        )}
+      </Draggable>
+    );
+  };
 
-  // --------------------------------------------------------------------------
-  // 12) Final Return
-  // --------------------------------------------------------------------------
+  // 13) Final Return
   return (
     <Box sx={{ display: "flex", gap: 3, p: 4, flexWrap: "wrap" }}>
-      {/* Left side: Equipment DnD */}
+      {/* Left: Equipment Drag & Drop */}
       <Box flex={1} minWidth={600}>
-        <FormControl sx={{ mb: 2, minWidth: 180 }}>
-          <InputLabel>Filter by Branch</InputLabel>
-          <Select
-            label="Filter by Branch"
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-          >
-            <MenuItem value="All">All Branches</MenuItem>
-            {branches.map((b) => (
-              <MenuItem key={b.BranchID} value={String(b.BranchID)}>
-                {b.BranchName}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
         <Typography variant="h4" gutterBottom fontWeight="bold">
           Equipment Management
         </Typography>
         <Divider sx={{ mb: 2 }} />
-
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleAddOpen}
-          sx={{ mb: 3 }}
-        >
-          Add Equipment
-        </Button>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+          <FormControl sx={{ minWidth: 180 }}>
+            <InputLabel>Filter by Branch</InputLabel>
+            <Select
+              label="Filter by Branch"
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+            >
+              <MenuItem value="All">All Branches</MenuItem>
+              {branches.map((b) => (
+                <MenuItem key={b.BranchID} value={String(b.BranchID)}>
+                  {b.BranchName}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleAddOpen}
+          >
+            Add Equipment
+          </Button>
+        </Box>
 
         <DragDropContext onDragEnd={onDragEnd}>
           <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
             {/* Available */}
-            <Droppable droppableId="availableList">
-              {(provided, snapshot) => (
-                <Paper
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  sx={{ p: 2 }}
-                  style={getListStyle("availableList", snapshot.isDraggingOver)}
-                >
-                  <Typography variant="h6" gutterBottom textAlign="center">
-                    <CheckBoxOutlineBlankIcon /> Available
-                  </Typography>
-                  {availableEquip.map((eq, idx) => renderDraggableItem(eq, idx))}
-                  {provided.placeholder}
-                </Paper>
-              )}
-            </Droppable>
+            <Box>
+              <Droppable droppableId="availableList">
+                {(provided, snapshot) => (
+                  <Paper
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    sx={{ p: 2 }}
+                    style={getListStyle(
+                      "availableList",
+                      snapshot.isDraggingOver,
+                      theme
+                    )}
+                  >
+                    <Typography variant="h6" gutterBottom textAlign="center">
+                      <CheckBoxOutlineBlankIcon sx={{ mr: 1 }} />
+                      Available
+                    </Typography>
+                    <Box
+                      sx={{
+                        height: "calc(100% - 60px)",
+                        overflowY: "auto",
+                      }}
+                    >
+                      {availableEquipPageItems.map((eq, idx) =>
+                        renderDraggableItem(eq, idx)
+                      )}
+                      {provided.placeholder}
+                    </Box>
+                  </Paper>
+                )}
+              </Droppable>
+              <Box sx={{ mt: 2, display: "flex", justifyContent: "center" }}>
+                <Pagination
+                  count={availableTotalPages}
+                  page={availablePage}
+                  onChange={(e, value) => setAvailablePage(value)}
+                  size="small"
+                />
+              </Box>
+            </Box>
 
             {/* In Maintenance */}
-            <Droppable droppableId="maintenanceList">
-              {(provided, snapshot) => (
-                <Paper
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  sx={{ p: 2 }}
-                  style={getListStyle("maintenanceList", snapshot.isDraggingOver)}
-                >
-                  <Typography variant="h6" gutterBottom textAlign="center">
-                    <BuildCircleIcon /> In Maintenance
-                  </Typography>
-                  {maintenanceEquip.map((eq, idx) => renderDraggableItem(eq, idx))}
-                  {provided.placeholder}
-                </Paper>
-              )}
-            </Droppable>
+            <Box>
+              <Droppable droppableId="maintenanceList">
+                {(provided, snapshot) => (
+                  <Paper
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    sx={{ p: 2 }}
+                    style={getListStyle(
+                      "maintenanceList",
+                      snapshot.isDraggingOver,
+                      theme
+                    )}
+                  >
+                    <Typography variant="h6" gutterBottom textAlign="center">
+                      <BuildCircleIcon sx={{ mr: 1 }} />
+                      In Maintenance
+                    </Typography>
+                    <Box
+                      sx={{
+                        height: "calc(100% - 60px)",
+                        overflowY: "auto",
+                      }}
+                    >
+                      {maintenanceEquipPageItems.map((eq, idx) =>
+                        renderDraggableItem(eq, idx)
+                      )}
+                      {provided.placeholder}
+                    </Box>
+                  </Paper>
+                )}
+              </Droppable>
+              <Box sx={{ mt: 2, display: "flex", justifyContent: "center" }}>
+                <Pagination
+                  count={maintenanceTotalPages}
+                  page={maintenancePage}
+                  onChange={(e, value) => setMaintenancePage(value)}
+                  size="small"
+                />
+              </Box>
+            </Box>
 
             {/* Out of Service */}
-            <Droppable droppableId="outServiceList">
-              {(provided, snapshot) => (
-                <Paper
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  sx={{ p: 2 }}
-                  style={getListStyle("outServiceList", snapshot.isDraggingOver)}
-                >
-                  <Typography variant="h6" gutterBottom textAlign="center">
-                    <ErrorOutlineIcon /> Out of Service
-                  </Typography>
-                  {outOfServiceEquip.map((eq, idx) => renderDraggableItem(eq, idx))}
-                  {provided.placeholder}
-                </Paper>
-              )}
-            </Droppable>
+            <Box>
+              <Droppable droppableId="outServiceList">
+                {(provided, snapshot) => (
+                  <Paper
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    sx={{ p: 2 }}
+                    style={getListStyle(
+                      "outServiceList",
+                      snapshot.isDraggingOver,
+                      theme
+                    )}
+                  >
+                    <Typography variant="h6" gutterBottom textAlign="center">
+                      <ErrorOutlineIcon sx={{ mr: 1 }} />
+                      Out of Service
+                    </Typography>
+                    <Box
+                      sx={{
+                        height: "calc(100% - 60px)",
+                        overflowY: "auto",
+                      }}
+                    >
+                      {outOfServiceEquipPageItems.map((eq, idx) =>
+                        renderDraggableItem(eq, idx)
+                      )}
+                      {provided.placeholder}
+                    </Box>
+                  </Paper>
+                )}
+              </Droppable>
+              <Box sx={{ mt: 2, display: "flex", justifyContent: "center" }}>
+                <Pagination
+                  count={outOfServiceTotalPages}
+                  page={outOfServicePage}
+                  onChange={(e, value) => setOutOfServicePage(value)}
+                  size="small"
+                />
+              </Box>
+            </Box>
           </Box>
         </DragDropContext>
       </Box>
 
-      {/* Right side: Activity Logs & Clock */}
+      {/* Right: Activity Logs & Clock */}
       <Box sx={{ width: 360, maxWidth: "100%" }}>
-        {/* Real-Time Clock */}
         <Paper
           sx={{
             p: 1.5,
             mb: 2,
-            backgroundColor: "#424242",
+            backgroundColor:
+              theme.palette.mode === "dark" ? "#424242" : "#424242",
             color: "#fff",
             textAlign: "center",
             borderRadius: 2,
           }}
           elevation={3}
         >
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             <AccessTimeIcon sx={{ mr: 1 }} />
             <Typography variant="h6" sx={{ fontWeight: "bold", mb: 0 }}>
               {clockString}
@@ -683,7 +816,6 @@ export default function MaintenanceEquip() {
           Activity
         </Typography>
         <Divider sx={{ mb: 2 }} />
-
         <Box sx={{ textAlign: "right", mb: 1 }}>
           <Button variant="outlined" color="secondary" onClick={clearAllLogs}>
             Clear All
@@ -694,15 +826,19 @@ export default function MaintenanceEquip() {
           sx={{
             p: 2,
             borderRadius: 2,
-            backgroundColor: "#212121",
-            color: "#fafafa",
+            backgroundColor:
+              theme.palette.mode === "dark" ? "#212121" : "#fafafa",
+            color: theme.palette.mode === "dark" ? "#fafafa" : "#212121",
             maxHeight: 600,
             overflowY: "auto",
           }}
           elevation={4}
         >
           {truncatedLogs.length === 0 ? (
-            <Typography variant="body2" color="#ccc">
+            <Typography
+              variant="body2"
+              color={theme.palette.mode === "dark" ? "#ccc" : "text.secondary"}
+            >
               No recent logs...
             </Typography>
           ) : (
@@ -713,9 +849,11 @@ export default function MaintenanceEquip() {
                 sx={{
                   p: 1.5,
                   mb: 2,
-                  backgroundColor: "#333",
+                  backgroundColor:
+                    theme.palette.mode === "dark" ? "#333" : "#fff",
                   borderRadius: 2,
-                  borderColor: "#555",
+                  borderColor:
+                    theme.palette.mode === "dark" ? "#555" : "#ddd",
                 }}
               >
                 <Box
@@ -726,7 +864,13 @@ export default function MaintenanceEquip() {
                     mb: 1,
                   }}
                 >
-                  <Typography variant="subtitle2" sx={{ color: "#ccc" }}>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{
+                      color:
+                        theme.palette.mode === "dark" ? "#ccc" : "grey.700",
+                    }}
+                  >
                     <strong>Log #{log.MaintenanceID}</strong>
                   </Typography>
                   <Box>
@@ -734,7 +878,13 @@ export default function MaintenanceEquip() {
                       size="small"
                       color="inherit"
                       onClick={() => handleEditLog(log, idx)}
-                      sx={{ ml: 1, color: "#aaa" }}
+                      sx={{
+                        ml: 1,
+                        color:
+                          theme.palette.mode === "dark"
+                            ? "#aaa"
+                            : "grey.600",
+                      }}
                     >
                       <EditIcon fontSize="small" />
                     </IconButton>
@@ -748,16 +898,47 @@ export default function MaintenanceEquip() {
                     </IconButton>
                   </Box>
                 </Box>
-                <Divider sx={{ mb: 1, borderColor: "#444" }} />
-                <Typography variant="body2" sx={{ fontSize: "0.8rem", color: "#ddd" }}>
-                  <strong>Equipment #{log.EquipmentID}</strong> | Date: {log.MaintenanceDate}
+                <Divider
+                  sx={{
+                    mb: 1,
+                    borderColor:
+                      theme.palette.mode === "dark" ? "#444" : "#ddd",
+                  }}
+                />
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontSize: "0.8rem",
+                    color: theme.palette.mode === "dark"
+                      ? "#ddd"
+                      : "text.secondary",
+                  }}
+                >
+                  <strong>Equipment #{log.EquipmentID}</strong> | Date:{" "}
+                  {log.MaintenanceDate}
                 </Typography>
-                <Typography variant="body2" sx={{ fontSize: "0.8rem", color: "#ddd" }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontSize: "0.8rem",
+                    color: theme.palette.mode === "dark"
+                      ? "#ddd"
+                      : "text.secondary",
+                  }}
+                >
                   Issue: {log.IssueDescription || "N/A"}
                   <br />
                   Resolution: {log.Resolution || "N/A"}
                 </Typography>
-                <Typography variant="body2" sx={{ fontSize: "0.8rem", color: "#bbb" }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontSize: "0.8rem",
+                    color: theme.palette.mode === "dark"
+                      ? "#bbb"
+                      : "text.secondary",
+                  }}
+                >
                   Notes: {log.Notes || ""}
                 </Typography>
               </Paper>
@@ -767,31 +948,69 @@ export default function MaintenanceEquip() {
       </Box>
 
       {/* Dialog: Add Equipment */}
-      <Dialog open={isAddOpen} onClose={() => setAddOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Add Equipment</DialogTitle>
-        <DialogContent dividers>
+      <Dialog
+        open={isAddOpen}
+        onClose={() => setAddOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle sx={{ p: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <BuildIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Add Equipment
+              </Typography>
+            </Box>
+            <IconButton
+              onClick={() => setAddOpen(false)}
+              sx={{
+                "&:hover": { color: theme.palette.error.main },
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent dividers sx={{ p: 4 }}>
           <TextField
-            label="Name"
+            label="Equipment Name"
             name="Name"
             fullWidth
             margin="normal"
-            value={newEquipData.Name}
+            value={newEquipData.Name || ""}
             onChange={handleAddEquipChange}
           />
+
           <TextField
             label="Serial Number"
             name="SerialNumber"
             fullWidth
             margin="normal"
-            value={newEquipData.SerialNumber}
+            value={newEquipData.SerialNumber || ""}
             onChange={handleAddEquipChange}
           />
+
           <FormControl fullWidth margin="normal">
             <InputLabel>Select Branch</InputLabel>
             <Select
-              label="Select Branch"
               name="BranchID"
-              value={newEquipData.BranchID}
+              value={newEquipData.BranchID || ""}
               onChange={handleAddEquipChange}
             >
               {branches.map((b) => (
@@ -801,29 +1020,82 @@ export default function MaintenanceEquip() {
               ))}
             </Select>
           </FormControl>
+
           {addError && (
             <Typography variant="body2" color="error" sx={{ mt: 1 }}>
               {addError}
             </Typography>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleAddEquipSubmit}>
-            Save
+
+        <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleAddEquipSubmit}
+            disabled={!newEquipData.Name?.trim() || !newEquipData.SerialNumber?.trim() || !newEquipData.BranchID}
+            sx={{
+              textTransform: "none",
+              fontWeight: "bold",
+              px: 4,
+              py: 1,
+              borderRadius: 2,
+            }}
+          >
+            <SaveIcon sx={{ mr: 1 }} /> Save Equipment
           </Button>
         </DialogActions>
+
       </Dialog>
 
-      {/* Dialog: Status Transition */}
-      <Dialog open={modalOpen} onClose={handleModalCancel} fullWidth maxWidth="sm">
-        <DialogTitle>Change Status</DialogTitle>
-        <DialogContent dividers>
-          <Typography variant="body2" gutterBottom>
-            Equipment: {modalData.EquipmentID}
-            <br />
-            Changing from "{modalData.oldStatus}" to "{modalData.newStatus}".
+      {/* STATUS TRANSITION DIALOG */}
+      <Dialog
+        open={modalOpen}
+        onClose={handleModalCancel}
+        fullWidth
+        maxWidth="sm"
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle sx={{ p: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <SyncAltIcon sx={{ fontSize: 32, color: "primary.main" }} />
+              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                Change Equipment Status
+              </Typography>
+            </Box>
+            <IconButton
+              onClick={handleModalCancel}
+              sx={{
+                "&:hover": { color: theme.palette.error.main },
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent dividers sx={{ p: 4 }}>
+          <Typography variant="body1" gutterBottom sx={{ fontWeight: "bold" }}>
+            Equipment ID: <span style={{ fontWeight: "normal" }}>{modalData.EquipmentID || "—"}</span>
           </Typography>
+          <Typography variant="body1" gutterBottom>
+            Changing from <strong>{modalData.oldStatus || "—"}</strong> to <strong>{modalData.newStatus || "—"}</strong>.
+          </Typography>
+
           <TextField
             label="Date"
             name="date"
@@ -831,9 +1103,10 @@ export default function MaintenanceEquip() {
             margin="normal"
             fullWidth
             InputLabelProps={{ shrink: true }}
-            value={modalData.date}
+            value={modalData.date || ""}
             onChange={handleModalChange}
           />
+
           <TextField
             label="Time"
             name="time"
@@ -841,9 +1114,10 @@ export default function MaintenanceEquip() {
             margin="normal"
             fullWidth
             InputLabelProps={{ shrink: true }}
-            value={modalData.time}
+            value={modalData.time || ""}
             onChange={handleModalChange}
           />
+
           <TextField
             label="Reason / Notes"
             name="reason"
@@ -851,34 +1125,30 @@ export default function MaintenanceEquip() {
             fullWidth
             multiline
             rows={3}
-            value={modalData.reason}
+            value={modalData.reason || ""}
             onChange={handleModalChange}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleModalCancel}>Cancel</Button>
-          <Button variant="contained" onClick={handleModalSave}>
-            Save
+
+        <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleModalSave}
+            sx={{
+              textTransform: "none",
+            }}
+          >
+            <SaveIcon sx={{ mr: 1 }} /> Save Changes
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Dialog: Edit Log Entry */}
-      <Dialog
-        open={editLogIndex !== null}
-        onClose={handleCancelLogEdit}
-        fullWidth
-        maxWidth="sm"
-      >
+      <Dialog open={editLogIndex !== null} onClose={handleCancelLogEdit} fullWidth maxWidth="sm">
         <DialogTitle>Edit Maintenance Log</DialogTitle>
         <DialogContent dividers>
-          <TextField
-            fullWidth
-            multiline
-            rows={3}
-            value={editLogText}
-            onChange={(e) => setEditLogText(e.target.value)}
-          />
+          <TextField fullWidth multiline rows={3} value={editLogText} onChange={(e) => setEditLogText(e.target.value)} />
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCancelLogEdit}>Cancel</Button>
@@ -887,6 +1157,46 @@ export default function MaintenanceEquip() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* DELETE CONFIRMATION DIALOG */}
+      <Dialog
+        open={isDeleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            fontWeight: "bold",
+          }}
+        >
+          <DeleteForeverIcon color="error" />
+          Confirm Deletion
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography>
+            Are you sure you want to delete this record? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: "gray" }}>
+            Cancel
+          </Button>
+          <Button variant="contained" color="error" onClick={confirmDelete}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackOpen}
+        autoHideDuration={3000}
+        onClose={() => setSnackOpen(false)}
+        message={snackMessage}
+      />
     </Box>
   );
 }
