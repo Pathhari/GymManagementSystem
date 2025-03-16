@@ -174,7 +174,7 @@ class OperationsController extends Controller
     public function indexLockers()
     {
         $staff = auth('staff')->user();
-
+    
         $query = Locker::with([
             'lockerUsages' => function ($q) {
                 $q->where('Returned', false)
@@ -182,13 +182,13 @@ class OperationsController extends Controller
                   ->orderBy('BorrowDate', 'desc');
             }
         ]);
-
+    
         if ($staff) {
             $branchIDs = $staff->branches->pluck('BranchID');
             $query->whereIn('BranchID', $branchIDs);
         }
         $lockers = $query->get();
-
+    
         $response = $lockers->map(function ($locker) {
             $activeUsage = $locker->lockerUsages->first();
             return [
@@ -197,15 +197,16 @@ class OperationsController extends Controller
                 'Status'       => $locker->Status,
                 'BranchID'     => $locker->BranchID,
                 'occupant'     => $activeUsage ? [
-                    'UsageID'  => $activeUsage->UsageID,
-                    'MemberID' => $activeUsage->MemberID,
-                    'FullName' => $activeUsage->member->FullName ?? '',
+                    'UsageID'    => $activeUsage->UsageID,
+                    'MemberID'   => $activeUsage->MemberID,
+                    'FullName'   => $activeUsage->member->FullName ?? $activeUsage->WalkInName ?? '', // Fix: Include WalkInName
                 ] : null,
             ];
         });
-
+    
         return response()->json(['lockers' => $response], 200);
     }
+    
 
     /**
      * Create or update a locker. Staff can only operate on their own branches.
@@ -279,40 +280,48 @@ class OperationsController extends Controller
     {
         try {
             $staff = auth('staff')->user();
-
+    
             $data = $request->validate([
-                'LockerID' => 'required|exists:lockers,LockerID',
-                'MemberID' => 'required|exists:members,MemberID',
-                'Notes'    => 'nullable|string',
+                'LockerID'   => 'required|exists:lockers,LockerID',
+                'MemberID'   => 'nullable|exists:members,MemberID',
+                'WalkInName' => 'nullable|string',
+                'Notes'      => 'nullable|string',
             ]);
-
+    
+            if (!$data['MemberID'] && !$data['WalkInName']) {
+                return response()->json([
+                    'error' => 'Either MemberID or WalkInName is required.',
+                ], 400);
+            }
+    
             if ($staff) {
                 $branchIDs = $staff->branches->pluck('BranchID');
                 $lockerCheck = Locker::where('LockerID', $data['LockerID'])
-                                     ->whereIn('BranchID', $branchIDs)
-                                     ->first();
+                    ->whereIn('BranchID', $branchIDs)
+                    ->first();
                 if (!$lockerCheck) {
                     return response()->json([
                         'error' => 'Cannot borrow a locker from another branch.'
                     ], 403);
                 }
             }
-
+    
             LockerUsage::create([
                 'LockerID'    => $data['LockerID'],
                 'MemberID'    => $data['MemberID'],
+                'WalkInName'  => $data['WalkInName'],
                 'KeyBorrowed' => true,
                 'BorrowDate'  => now(),
                 'Returned'    => false,
                 'Notes'       => $data['Notes'] ?? null,
             ]);
-
+    
             Locker::where('LockerID', $data['LockerID'])->update(['Status' => 'Occupied']);
-
+    
             return response()->json([
                 'message' => 'Locker key borrowed successfully.'
             ], 200);
-
+    
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'error'  => 'Validation failed.',
@@ -325,6 +334,7 @@ class OperationsController extends Controller
             ], 500);
         }
     }
+    
 
     /**
      * Return a locker key. Staff can only return lockers from their own branches.
@@ -379,29 +389,43 @@ class OperationsController extends Controller
      * Display locker activity logs. Staff see only logs from their branches.
      */
     public function lockerActivityLog()
-    {
-        try {
-            $staff = auth('staff')->user();
+{
+    try {
+        $staff = auth('staff')->user();
 
-            $query = LockerUsage::with(['member', 'locker']);
+        $query = LockerUsage::with(['member', 'locker']);
 
-            if ($staff) {
-                $branchIDs = $staff->branches->pluck('BranchID');
-                $query->whereHas('locker', function ($q) use ($branchIDs) {
-                    $q->whereIn('BranchID', $branchIDs);
-                });
-            }
-
-            $usageLogs = $query->orderBy('BorrowDate', 'desc')->get();
-
-            return response()->json(['usages' => $usageLogs], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'error'   => 'Server error.',
-                'message' => $e->getMessage()
-            ], 500);
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID');
+            $query->whereHas('locker', function ($q) use ($branchIDs) {
+                $q->whereIn('BranchID', $branchIDs);
+            });
         }
+
+        $usageLogs = $query->orderBy('BorrowDate', 'desc')->get();
+
+        // Fix: Merge Member Name and Walk-In Name
+        $formattedLogs = $usageLogs->map(function ($usage) {
+            return [
+                'UsageID'      => $usage->UsageID,
+                'LockerID'     => $usage->LockerID,
+                'OccupantName' => $usage->member->FullName ?? $usage->WalkInName ?? '—', // Fix: Show either Member or Walk-In
+                'BorrowDate'   => $usage->BorrowDate,
+                'ReturnDate'   => $usage->ReturnDate,
+                'Returned'     => $usage->Returned,
+                'Notes'        => $usage->Notes,
+            ];
+        });
+
+        return response()->json(['usages' => $formattedLogs], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error'   => 'Server error.',
+            'message' => $e->getMessage()
+        ], 500);
     }
+}
+
 
     /* ------------------------------------------------------------------
      * Q. EQUIPMENT & MAINTENANCE

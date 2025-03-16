@@ -1539,11 +1539,11 @@ export default function PaymentsAndInvoices() {
     </Box>
 
     {/* 2) The Detailed Breakdown: One table per PaymentFor for the selected day */}
-    <Box sx={{ mt: 4 }}>
+    <Box sx={{ mt: 4, textAlign: "center" }}>
   <Typography variant="h5" gutterBottom>
     Detailed Breakdown
   </Typography>
-  {/* Date picker to choose the day for which you want detailed breakdown */}
+  {/* Date picker to choose the day for which you want a detailed breakdown */}
   <TextField
     type="date"
     value={selectedDetailDate}
@@ -1551,9 +1551,18 @@ export default function PaymentsAndInvoices() {
     InputLabelProps={{ shrink: true }}
     sx={{ mb: 2 }}
   />
-  <Typography variant="subtitle1" sx={{ mb: 2 }}>
-  Detailed records for: {formatDate(selectedDetailDate)}
-</Typography>
+  <Typography 
+    variant="subtitle1" 
+    sx={{ 
+      mb: 2, 
+      fontWeight: "bold", 
+      color: "primary.main", 
+      fontSize: "1.2rem"
+    }}
+  >
+    Detailed records for: {formatDate(selectedDetailDate)}
+  </Typography>
+
 
   {/* Filter payments for the selected date */}
   {Object.entries(

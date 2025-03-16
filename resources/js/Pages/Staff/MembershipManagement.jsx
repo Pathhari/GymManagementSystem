@@ -1152,6 +1152,13 @@ useEffect(() => {
       },
     },
     {
+      field: "MembershipStartDate",
+      headerName: "Start",
+      width: 150,
+      renderCell: (params) =>
+        params.value ? formatDate(params.value) : "—",
+    },
+    {
       field: "MembershipEndDate",
       headerName: "Ends",
       width: 150,

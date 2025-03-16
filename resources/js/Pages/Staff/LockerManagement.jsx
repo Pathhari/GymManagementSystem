@@ -24,6 +24,8 @@ import {
   TableBody,
   TablePagination,
   TableSortLabel,
+  FormControlLabel,
+  Checkbox,
 } from "@mui/material";
 import {
   styled,
@@ -104,16 +106,11 @@ const StatusBadge = styled(Box)(({ theme, status }) => ({
 }));
 
 export default function LockerManagement() {
-  // Local mode state and theme
   const [mode, setMode] = useState("light");
-  const customTheme = createTheme({
-    palette: {
-      mode: mode,
-    },
-  });
-  const theme = customTheme; // Use our custom theme
+  const customTheme = createTheme({ palette: { mode } });
+  const theme = customTheme;
 
-  // -------------- ACTIVITY LOG SORTING --------------
+  // ---------- ACTIVITY LOG SORT ----------
   const [order, setOrder] = useState("asc");
   const [orderBy, setOrderBy] = useState("UsageID");
 
@@ -122,23 +119,16 @@ export default function LockerManagement() {
     setOrder(isAsc ? "desc" : "asc");
     setOrderBy(property);
   };
-
   function descendingComparator(a, b, orderBy) {
-    if (b[orderBy] < a[orderBy]) {
-      return -1;
-    }
-    if (b[orderBy] > a[orderBy]) {
-      return 1;
-    }
+    if (b[orderBy] < a[orderBy]) return -1;
+    if (b[orderBy] > a[orderBy]) return 1;
     return 0;
   }
-
   function getComparator(order, orderBy) {
     return order === "desc"
       ? (a, b) => descendingComparator(a, b, orderBy)
       : (a, b) => -descendingComparator(a, b, orderBy);
   }
-
   function stableSort(array, comparator) {
     const stabilizedThis = array.map((el, index) => [el, index]);
     stabilizedThis.sort((a, b) => {
@@ -149,7 +139,7 @@ export default function LockerManagement() {
     return stabilizedThis.map((el) => el[0]);
   }
 
-  // ----------------- 1) CLOCK ------------------
+  // ---------- 1) CLOCK ----------
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -157,7 +147,7 @@ export default function LockerManagement() {
   }, []);
   const clockString = currentTime.toLocaleTimeString();
 
-  // ----------------- 2) LOCKERS & BRANCHES ------------------
+  // ---------- 2) LOCKERS & BRANCHES ----------
   const [lockers, setLockers] = useState([]);
   const [branches, setBranches] = useState([]);
 
@@ -173,36 +163,27 @@ export default function LockerManagement() {
       .catch((err) => console.error("Error fetching branches:", err));
   }, []);
 
-  // ----------------- 3) BRANCH FILTER ------------------
+  // ---------- 3) BRANCH FILTER ----------
   const [selectedBranch, setSelectedBranch] = useState("All Branches");
   const filteredLockers =
     selectedBranch === "All Branches"
       ? lockers
-      : lockers.filter(
-          (lk) => String(lk.BranchID) === String(selectedBranch)
-        );
+      : lockers.filter((lk) => String(lk.BranchID) === String(selectedBranch));
 
-  // ----------------- 4) SORT & CHUNK LOCKERS ------------------
+  // ---------- 4) SORT & CHUNK LOCKERS ----------
   const sortedLockers = filteredLockers.slice().sort(
-    (a, b) =>
-      parseInt(a.LockerNumber, 10) - parseInt(b.LockerNumber, 10)
+    (a, b) => parseInt(a.LockerNumber, 10) - parseInt(b.LockerNumber, 10)
   );
-
-  // Chunk lockers into rows of 9 per row
-  const chunkArray = (array, chunkSize) => {
+  function chunkArray(arr, size) {
     const chunks = [];
-    for (let i = 0; i < array.length; i += chunkSize) {
-      chunks.push(array.slice(i, i + chunkSize));
+    for (let i = 0; i < arr.length; i += size) {
+      chunks.push(arr.slice(i, i + size));
     }
     return chunks;
-  };
+  }
   const chunkedLockers = chunkArray(sortedLockers, 8);
 
-  const cardWidth = 200;
-  const cardHeight = 250; // Fixed height for each locker card
-  const gap = 16;
-
-  // ----------------- 5) ADD LOCKER ------------------
+  // ---------- 5) ADD LOCKER ----------
   const [isAddLockerOpen, setAddLockerOpen] = useState(false);
   const [newLockerNumber, setNewLockerNumber] = useState("");
   const [newLockerBranch, setNewLockerBranch] = useState("");
@@ -214,7 +195,6 @@ export default function LockerManagement() {
     setAddError("");
     setAddLockerOpen(true);
   };
-
   const handleAddLocker = () => {
     const numVal = parseInt(newLockerNumber, 10);
     if (!numVal || numVal <= 0) {
@@ -244,18 +224,44 @@ export default function LockerManagement() {
       });
   };
 
-  // ----------------- 6) BORROW LOCKER ------------------
+  // ---------- 6) BORROW LOCKER ----------
   const [borrowOpen, setBorrowOpen] = useState(false);
+
+  // Toggle: walk-in occupant
+  const [isWalkIn, setIsWalkIn] = useState(false);
+
   const [borrowData, setBorrowData] = useState({
     LockerID: "",
     MemberID: "",
+    WalkInName: "",
     Notes: "",
   });
+
   const [searchBranchID, setSearchBranchID] = useState(null);
   const [memberSearch, setMemberSearch] = useState("");
   const [memberOptions, setMemberOptions] = useState([]);
 
+  // NEW: For walk-in occupant options
+  const [walkInOptions, setWalkInOptions] = useState([]);
+
+  // Borrow form open => if isWalkIn, fetch /operations/walk-ins
   useEffect(() => {
+    if (borrowOpen && isWalkIn) {
+      axios
+        .get("/operations/walk-ins")
+        .then((res) => setWalkInOptions(res.data || []))
+        .catch((err) => console.error("Error fetching walk-ins:", err));
+    }
+  }, [borrowOpen, isWalkIn]);
+
+  // If not walk-in => fetch members
+  useEffect(() => {
+    if (!borrowOpen) return;
+    if (isWalkIn) {
+      // do nothing, we already fetch walkIns above
+      return;
+    }
+    // else fetch members
     if (memberSearch.trim().length > 0 && searchBranchID) {
       axios
         .get(
@@ -263,35 +269,27 @@ export default function LockerManagement() {
         )
         .then((res) => setMemberOptions(res.data))
         .catch((err) => console.error("Error searching members:", err));
-    } else {
-      setMemberOptions([]);
-    }
-  }, [memberSearch, searchBranchID]);
-
-  useEffect(() => {
-    if (borrowOpen && searchBranchID) {
+    } else if (searchBranchID) {
+      // fetch entire branch
       axios
         .get(`/membership/members?branchId=${searchBranchID}`)
-        .then((res) => {
-          // if res.data is { members: [...] }
-          setMemberOptions(res.data.members || []);
-        })
-        .catch((err) =>
-          console.error("Error fetching members for branch:", err)
-        );
+        .then((res) => setMemberOptions(res.data.members || []))
+        .catch((err) => console.error("Error fetching members for branch:", err));
     }
-  }, [borrowOpen, searchBranchID]);
+  }, [borrowOpen, isWalkIn, memberSearch, searchBranchID]);
 
   const openBorrowForm = (lockerItem) => {
     setBorrowData({
       LockerID: lockerItem.LockerID,
       MemberID: "",
+      WalkInName: "",
       Notes: "",
     });
-    setMemberSearch(""); // Clear any previous search text
-    setMemberOptions([]); // Clear member list (will be refetched)
+    setMemberSearch("");
+    setMemberOptions([]);
     setSearchBranchID(lockerItem.BranchID || null);
-    setBorrowOpen(true); // This triggers the preload useEffect above
+    setIsWalkIn(false);
+    setBorrowOpen(true);
   };
 
   const handleBorrowChange = (e) => {
@@ -299,12 +297,27 @@ export default function LockerManagement() {
   };
 
   const handleBorrowSubmit = () => {
-    if (!borrowData.LockerID || !borrowData.MemberID) {
-      alert("LockerID and MemberID are required.");
+    if (!borrowData.LockerID) {
+      alert("LockerID is required.");
       return;
     }
+    if (!isWalkIn && !borrowData.MemberID) {
+      alert("Please select a member.");
+      return;
+    }
+    if (isWalkIn && !borrowData.WalkInName.trim()) {
+      alert("Please provide the walk-in occupant’s name.");
+      return;
+    }
+    // Construct request payload
+    const payload = {
+      LockerID: borrowData.LockerID,
+      MemberID: isWalkIn ? null : borrowData.MemberID,
+      WalkInName: isWalkIn ? borrowData.WalkInName : "",
+      Notes: borrowData.Notes,
+    };
     axios
-      .post("/operations/lockers/borrow", borrowData)
+      .post("/operations/lockers/borrow", payload)
       .then(() => axios.get("/operations/lockers"))
       .then((res) => {
         setLockers(res.data.lockers || []);
@@ -313,7 +326,7 @@ export default function LockerManagement() {
       .catch((err) => console.error("Error borrowing locker:", err));
   };
 
-  // ----------------- 7) RETURN LOCKER ------------------
+  // ---------- 7) RETURN LOCKER ----------
   const [returnOpen, setReturnOpen] = useState(false);
   const [returnData, setReturnData] = useState({
     usageId: "",
@@ -351,7 +364,7 @@ export default function LockerManagement() {
       .catch((err) => console.error("Error returning locker:", err));
   };
 
-  // ----------------- 8) DELETE CONFIRMATION ------------------
+  // ---------- 8) DELETE CONFIRM ----------
   const [lockerToDelete, setLockerToDelete] = useState(null);
   const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -359,7 +372,6 @@ export default function LockerManagement() {
     setLockerToDelete(lockerID);
     setDeleteDialogOpen(true);
   };
-
   const confirmDelete = () => {
     if (!lockerToDelete) return;
     axios
@@ -380,7 +392,7 @@ export default function LockerManagement() {
       });
   };
 
-  // ----------------- 9) ACTIVITY LOG (ALL USAGES) ------------------
+  // ---------- 9) ACTIVITY LOG ----------
   const [logOpen, setLogOpen] = useState(false);
   const [usageHistory, setUsageHistory] = useState([]);
   const [logPage, setLogPage] = useState(0);
@@ -394,34 +406,30 @@ export default function LockerManagement() {
       .then((res) => setUsageHistory(res.data.usages || []))
       .catch((err) => console.error("Error fetching usage history:", err));
   };
-
   const handleCloseLog = () => {
     setLogOpen(false);
     setUsageHistory([]);
   };
 
-  // Columns configuration for sorting
+  // Columns for sorting
   const headCells = [
     { id: "UsageID", label: "Usage ID" },
     { id: "LockerID", label: "Locker ID" },
-    { id: "Member", label: "Member" },
+    { id: "OccupantName", label: "Occupant" }, // Updated: Now shows both Members & Walk-Ins
     { id: "BorrowDate", label: "Borrow Date" },
     { id: "ReturnDate", label: "Return Date" },
     { id: "Returned", label: "Returned?" },
     { id: "Notes", label: "Notes" },
   ];
-
   return (
-    <ThemeProvider theme={customTheme}>
+    <ThemeProvider theme={theme}>
       <Box sx={{ p: 4 }}>
-        {/* Toggle Light/Dark Mode Button */}
+        {/* Toggle Light/Dark */}
         <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
           <Button
             variant="outlined"
             onClick={() => setMode(mode === "light" ? "dark" : "light")}
-            startIcon={
-              mode === "light" ? <Brightness4Icon /> : <Brightness7Icon />
-            }
+            startIcon={mode === "light" ? <Brightness4Icon /> : <Brightness7Icon />}
           >
             {mode === "light" ? "Dark Mode" : "Light Mode"}
           </Button>
@@ -450,7 +458,7 @@ export default function LockerManagement() {
         </Typography>
         <Divider sx={{ mb: 2 }} />
 
-        {/* Header: Branch Filter, Add Locker, Activity Log */}
+        {/* Header */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
           <Button
             variant="contained"
@@ -461,104 +469,101 @@ export default function LockerManagement() {
             Add Locker
           </Button>
 
-          <Button
-            variant="outlined"
-            startIcon={<RestoreIcon />}
-            onClick={handleOpenLog}
-          >
+          <Button variant="outlined" startIcon={<RestoreIcon />} onClick={handleOpenLog}>
             View Activity Log
           </Button>
         </Box>
 
+        {/* Branch Filter */}
+        <FormControl sx={{ mb: 2, width: 200 }}>
+          <InputLabel>Branch Filter</InputLabel>
+          <Select
+            value={selectedBranch}
+            onChange={(e) => setSelectedBranch(e.target.value)}
+            label="Branch Filter"
+          >
+            <MenuItem value="All Branches">All Branches</MenuItem>
+            {branches.map((b) => (
+              <MenuItem key={b.BranchID} value={String(b.BranchID)}>
+                {b.BranchName}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        {/* Locker Grid */}
         <Box sx={{ overflowY: "auto", mb: 3, maxHeight: "80vh" }}>
-          {/* Outer container in column layout */}
           <Box sx={{ display: "flex", flexDirection: "column" }}>
-            {chunkedLockers.map((rowLockers, rowIndex) => {
-              // Each row contains up to 9 lockers
-              return (
-                <Box
-                  key={rowIndex}
-                  sx={{
-                    display: "flex",
-                    gap: 2,
-                    mb: 2,
-                  }}
-                >
-                  {rowLockers.map((locker) => (
-                    <Box key={locker.LockerID} sx={{ flex: "0 0 auto" }}>
-                      <LockerCard
-                        sx={{ width: cardWidth, height: cardHeight }}
-                        onClick={() => {
-                          if (locker.Status === "Available") {
-                            openBorrowForm(locker);
-                          } else if (locker.Status === "Occupied") {
-                            const usageId = locker.occupant?.UsageID || "";
-                            const occupantName =
-                              locker.occupant?.FullName || "";
-                            openReturnForm(usageId, occupantName);
-                          }
+            {chunkedLockers.map((rowLockers, rowIndex) => (
+              <Box key={rowIndex} sx={{ display: "flex", gap: 2, mb: 2 }}>
+                {rowLockers.map((locker) => (
+                  <Box key={locker.LockerID} sx={{ flex: "0 0 auto" }}>
+                    <LockerCard
+                      sx={{ width: 200, height: 250 }}
+                      onClick={() => {
+                        if (locker.Status === "Available") {
+                          openBorrowForm(locker);
+                        } else if (locker.Status === "Occupied") {
+                          const usageId = locker.occupant?.UsageID || "";
+                          const occupantName = locker.occupant?.FullName || "";
+                          openReturnForm(usageId, occupantName);
+                        }
+                      }}
+                    >
+                      <StatusBadge status={locker.Status}>{locker.Status}</StatusBadge>
+
+                      {/* Delete Button */}
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteClick(locker.LockerID);
+                        }}
+                        sx={{
+                          position: "absolute",
+                          top: theme.spacing(1),
+                          right: theme.spacing(1),
+                          color: theme.palette.mode === "dark" ? "#fff" : "#000",
                         }}
                       >
-                        {/* Status badge */}
-                        <StatusBadge status={locker.Status}>
-                          {locker.Status}
-                        </StatusBadge>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
 
-                        {/* Delete Button in top-right */}
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteClick(locker.LockerID);
-                          }}
+                      {/* Locker Number */}
+                      <Box
+                        sx={{
+                          height: "100%",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "center",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Typography
+                          variant="h4"
                           sx={{
-                            position: "absolute",
-                            top: theme.spacing(1),
-                            right: theme.spacing(1),
-                            color:
-                              theme.palette.mode === "dark" ? "#fff" : "#000",
+                            fontWeight: "bold",
+                            color: theme.palette.mode === "dark" ? "#fff" : "#333",
+                            textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
+                            letterSpacing: "2px",
                           }}
                         >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-
-                        {/* Locker Number */}
-                        <Box
-                          sx={{
-                            height: "100%",
-                            display: "flex",
-                            flexDirection: "column",
-                            justifyContent: "center",
-                            alignItems: "center",
-                          }}
-                        >
-                          <Typography
-                            variant="h4"
-                            sx={{
-                              fontWeight: "bold",
-                              color:
-                                theme.palette.mode === "dark" ? "#fff" : "#333",
-                              textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
-                              letterSpacing: "2px",
-                            }}
-                          >
-                            {locker.LockerNumber}
+                          {locker.LockerNumber}
+                        </Typography>
+                        {locker.Status === "Occupied" && locker.occupant && (
+                          <Typography variant="subtitle2" sx={{ mt: 1 }}>
+                            {locker.occupant.FullName}
                           </Typography>
-                          {locker.Status === "Occupied" && locker.occupant && (
-                            <Typography variant="subtitle2" sx={{ mt: 1 }}>
-                              {locker.occupant.FullName}
-                            </Typography>
-                          )}
-                          <Typography variant="caption" sx={{ mt: 1, display: "block" }}>
-                            Branch: {locker.BranchID}
-                          </Typography>
-                        </Box>
-                      </LockerCard>
-                    </Box>
-                  ))}
-                </Box>
-              );
-            })}
+                        )}
+                        <Typography variant="caption" sx={{ mt: 1 }}>
+                          Branch: {locker.BranchID}
+                        </Typography>
+                      </Box>
+                    </LockerCard>
+                  </Box>
+                ))}
+              </Box>
+            ))}
           </Box>
         </Box>
 
@@ -661,27 +666,60 @@ export default function LockerManagement() {
               disabled
             />
 
-            <Autocomplete
-              options={memberOptions}
-              getOptionLabel={(option) => option.FullName}
-              onInputChange={(event, newInputValue) =>
-                setMemberSearch(newInputValue)
-              }
-              onChange={(event, newValue) => {
-                setBorrowData((prev) => ({
-                  ...prev,
-                  MemberID: newValue ? newValue.MemberID : "",
-                }));
-              }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Search Member"
-                  margin="normal"
-                  fullWidth
+            {/* Checkbox -> isWalkIn? */}
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={isWalkIn}
+                  onChange={() => setIsWalkIn((prev) => !prev)}
                 />
-              )}
+              }
+              label="Walk-in occupant?"
+              sx={{ mt: 1 }}
             />
+
+            {isWalkIn ? (
+              // ------------- Autocomplete for Walk-Ins -------------
+              <Autocomplete
+                options={walkInOptions}
+                getOptionLabel={(option) => option.FullName || "No Name"}
+                onChange={(event, newValue) => {
+                  setBorrowData((prev) => ({
+                    ...prev,
+                    WalkInName: newValue ? newValue.FullName : "",
+                  }));
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Search Walk-Ins"
+                    margin="normal"
+                    fullWidth
+                  />
+                )}
+              />
+            ) : (
+              // ------------- Autocomplete for Members -------------
+              <Autocomplete
+                options={memberOptions}
+                getOptionLabel={(option) => option.FullName}
+                onInputChange={(event, newInputValue) => setMemberSearch(newInputValue)}
+                onChange={(event, newValue) => {
+                  setBorrowData((prev) => ({
+                    ...prev,
+                    MemberID: newValue ? newValue.MemberID : "",
+                  }));
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Search Member"
+                    margin="normal"
+                    fullWidth
+                  />
+                )}
+              />
+            )}
 
             <TextField
               label="Notes"
@@ -785,7 +823,10 @@ export default function LockerManagement() {
             </Typography>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: "gray" }}>
+            <Button
+              onClick={() => setDeleteDialogOpen(false)}
+              sx={{ color: "gray" }}
+            >
               Cancel
             </Button>
             <Button variant="contained" color="error" onClick={confirmDelete}>
@@ -835,7 +876,11 @@ export default function LockerManagement() {
                         <TableCell
                           key={headCell.id}
                           sortDirection={orderBy === headCell.id ? order : false}
-                          align={headCell.id === "Member" || headCell.id === "Notes" ? "left" : "center"}
+                          align={
+                            headCell.id === "Member" || headCell.id === "Notes"
+                              ? "left"
+                              : "center"
+                          }
                         >
                           <TableSortLabel
                             active={orderBy === headCell.id}
@@ -849,32 +894,24 @@ export default function LockerManagement() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {stableSort(usageHistory, getComparator(order, orderBy))
-                      .slice(logPage * rowsPerPage, logPage * rowsPerPage + rowsPerPage)
-                      .map((usage) => (
-                        <TableRow key={usage.UsageID} hover>
-                          <TableCell align="center">{usage.UsageID}</TableCell>
-                          <TableCell align="center">{usage.LockerID}</TableCell>
-                          <TableCell>
-                            {usage.member?.FullName || "—"}
-                          </TableCell>
-                          <TableCell align="center">
-                            {usage.BorrowDate
-                              ? new Date(usage.BorrowDate).toLocaleString()
-                              : "—"}
-                          </TableCell>
-                          <TableCell align="center">
-                            {usage.ReturnDate
-                              ? new Date(usage.ReturnDate).toLocaleString()
-                              : "—"}
-                          </TableCell>
-                          <TableCell align="center">
-                            {usage.Returned ? "Yes" : "No"}
-                          </TableCell>
-                          <TableCell>{usage.Notes || "—"}</TableCell>
-                        </TableRow>
-                      ))}
-                  </TableBody>
+                {stableSort(usageHistory, getComparator(order, orderBy))
+                  .slice(logPage * rowsPerPage, logPage * rowsPerPage + rowsPerPage)
+                  .map((usage) => (
+                    <TableRow key={usage.UsageID} hover>
+                      <TableCell align="center">{usage.UsageID}</TableCell>
+                      <TableCell align="center">{usage.LockerID}</TableCell>
+                      <TableCell>{usage.OccupantName || "—"}</TableCell> {/* Now correctly shows name */}
+                      <TableCell align="center">
+                        {usage.BorrowDate ? new Date(usage.BorrowDate).toLocaleString() : "—"}
+                      </TableCell>
+                      <TableCell align="center">
+                        {usage.ReturnDate ? new Date(usage.ReturnDate).toLocaleString() : "—"}
+                      </TableCell>
+                      <TableCell align="center">{usage.Returned ? "Yes" : "No"}</TableCell>
+                      <TableCell>{usage.Notes || "—"}</TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
                 </Table>
                 <TablePagination
                   component="div"
