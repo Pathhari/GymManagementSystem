@@ -22,19 +22,8 @@ class MonthlyClientController extends Controller
      */
     public function index()
     {
-        $staff = auth('staff')->user();
-
-        if ($staff) {
-            // Show only the monthly clients in staff's branch(es)
-            $branchIDs = $staff->branches->pluck('BranchID');
-            $clients = MonthlyClient::whereIn('BranchID', $branchIDs)
-                ->orderBy('MonthlyClientID','desc')
-                ->get();
-        } else {
-            // Admin => show all
-            $clients = MonthlyClient::orderBy('MonthlyClientID','desc')->get();
-        }
-
+        
+        $clients = MonthlyClient::orderBy('MonthlyClientID','desc')->get();
         return response()->json($clients);
     }
 
@@ -264,34 +253,28 @@ class MonthlyClientController extends Controller
      * Create a new attendance record (like "Check-In").
      */
     public function storeAttendance(Request $request, $monthlyClientID)
-{
-    $client = MonthlyClient::findOrFail($monthlyClientID);
-    $staff = auth('staff')->user();
-
-    if ($staff) {
-        if ($client->BranchID != $staff->BranchID) {
-            // Sync the branch if desired:
-            $client->BranchID = $staff->BranchID;
-            $client->save();
-        }
+    {
+        $client = MonthlyClient::findOrFail($monthlyClientID);
+    
+        // Validate the request data
+        $data = $request->validate([
+            'VisitDateTime' => 'required|date',
+            'Notes'         => 'nullable|string|max:255',
+        ]);
+    
+        // Convert the ISO8601 datetime to MySQL datetime format
+        $formattedVisitDateTime = Carbon::parse($data['VisitDateTime'])->format('Y-m-d H:i:s');
+    
+        // Create the attendance record for the monthly client
+        $attendance = MonthlyClientAttendance::create([
+            'MonthlyClientID' => $client->MonthlyClientID,
+            'VisitDateTime'   => $formattedVisitDateTime,
+            'Notes'           => $data['Notes'] ?? null,
+        ]);
+    
+        return response()->json($attendance, 201);
     }
-
-    $data = $request->validate([
-        'VisitDateTime' => 'required|date',
-        'Notes'         => 'nullable|string|max:255',
-    ]);
-
-    // Convert the ISO8601 datetime to MySQL datetime format
-    $formattedVisitDateTime = Carbon::parse($data['VisitDateTime'])->format('Y-m-d H:i:s');
-
-    $attendance = MonthlyClientAttendance::create([
-        'MonthlyClientID' => $client->MonthlyClientID,
-        'VisitDateTime'   => $formattedVisitDateTime,
-        'Notes'           => $data['Notes'] ?? null,
-    ]);
-
-    return response()->json($attendance, 201);
-}
+    
 
     
 }

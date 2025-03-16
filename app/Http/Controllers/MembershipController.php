@@ -48,44 +48,14 @@ class MembershipController extends Controller
             'status',
         ];
     
-        $staff = auth('staff')->user();
+        // Regardless of the logged-in user, fetch all members along with the defined relationships
+        $members  = Member::with($relations)
+                    ->orderBy('MemberID', 'desc')
+                    ->get();
     
-        if ($staff) {
-            $branchIDs = $staff->branches->pluck('BranchID');
-    
-            // Filter members by those branches + eager load
-            $members = Member::with($relations)
-                ->whereIn('StartedBranchID', $branchIDs)
-                ->orderBy('MemberID', 'desc')
-                ->get();
-    
-            $freezes = MembershipFreeze::whereHas('member', function ($q) use ($branchIDs) {
-                    $q->whereIn('StartedBranchID', $branchIDs);
-                })
-                ->orderBy('FreezeID', 'desc')
-                ->get();
-    
-            $renewals = MembershipRenewal::whereIn('MemberID', function ($sub) use ($branchIDs) {
-                    $sub->select('MemberID')
-                        ->from('members')
-                        ->whereIn('StartedBranchID', $branchIDs);
-                })
-                ->orderBy('RenewalID', 'desc')
-                ->get();
-    
-            $walkIns = WalkIn::whereIn('BranchID', $branchIDs)
-                ->orderBy('WalkInID', 'desc')
-                ->get();
-    
-        } else {
-            // Admin or Owner => see all, including eager-loaded relationships
-            $members  = Member::with($relations)
-                ->orderBy('MemberID','desc')
-                ->get();
-            $freezes  = MembershipFreeze::orderBy('FreezeID','desc')->get();
-            $renewals = MembershipRenewal::orderBy('RenewalID','desc')->get();
-            $walkIns  = WalkIn::orderBy('WalkInID','desc')->get();
-        }
+        $freezes  = MembershipFreeze::orderBy('FreezeID', 'desc')->get();
+        $renewals = MembershipRenewal::orderBy('RenewalID', 'desc')->get();
+        $walkIns  = WalkIn::orderBy('WalkInID', 'desc')->get();
     
         return response()->json([
             'members'  => $members,
@@ -680,49 +650,43 @@ class MembershipController extends Controller
 /* ------------------------------------------------------------------
  * 4) MEMBERSHIP FREEZE
  * ------------------------------------------------------------------ */
+public function storeFreeze(Request $request)
+{
+    $staff = auth('staff')->user();
 
- public function storeFreeze(Request $request)
- {
-     $staff = auth('staff')->user();
- 
-     $data = $request->validate([
-         'MemberID'        => 'required|exists:members,MemberID',
-         'FreezeStartDate' => 'required|date',
-         'FreezeEndDate'   => 'nullable|date|after_or_equal:FreezeStartDate',
-         'Reason'          => 'nullable|string|max:255',
-     ]);
- 
-     $member = Member::findOrFail($data['MemberID']);
- 
-     // Check if the member belongs to one of the staff's branches.
-     if ($staff && !$staff->branches->pluck('BranchID')->contains($member->StartedBranchID)) {
-         abort(403, 'Not your branch.');
-     }
- 
-     // Attach the member's branch to the freeze record.
-     $data['StartedBranchID'] = $member->StartedBranchID;
- 
-     $freeze = MembershipFreeze::create($data);
- 
-     // Update the member’s status to Frozen (assuming 2 = Frozen).
-     $member->MemberStatusID = 2;
-     $member->save();
- 
-     // Extend the MembershipEndDate by the freeze duration.
-     $freezeStart = Carbon::parse($data['FreezeStartDate']);
-     $freezeEnd   = $data['FreezeEndDate'] ? Carbon::parse($data['FreezeEndDate']) : $freezeStart;
-     $freezeDays  = $freezeStart->diffInDays($freezeEnd) + 1;
- 
-     if ($member->MembershipEndDate) {
-         $currentEnd = Carbon::parse($member->MembershipEndDate);
-         $newEnd = $currentEnd->addDays($freezeDays);
-         $member->MembershipEndDate = $newEnd->format('Y-m-d');
-         $member->save();
-     }
- 
-     return response()->json($freeze, 201);
- }
- 
+    $data = $request->validate([
+        'MemberID'        => 'required|exists:members,MemberID',
+        'FreezeStartDate' => 'required|date',
+        'FreezeEndDate'   => 'nullable|date|after_or_equal:FreezeStartDate',
+        'Reason'          => 'nullable|string|max:255',
+    ]);
+
+    $member = Member::findOrFail($data['MemberID']);
+
+    // Attach the member's branch to the freeze record.
+    $data['StartedBranchID'] = $member->StartedBranchID;
+
+    $freeze = MembershipFreeze::create($data);
+
+    // Update the member’s status to Frozen (assuming 2 = Frozen).
+    $member->MemberStatusID = 2;
+    $member->save();
+
+    // Extend the MembershipEndDate by the freeze duration.
+    $freezeStart = Carbon::parse($data['FreezeStartDate']);
+    $freezeEnd   = $data['FreezeEndDate'] ? Carbon::parse($data['FreezeEndDate']) : $freezeStart;
+    $freezeDays  = $freezeStart->diffInDays($freezeEnd) + 1;
+
+    if ($member->MembershipEndDate) {
+        $currentEnd = Carbon::parse($member->MembershipEndDate);
+        $newEnd = $currentEnd->addDays($freezeDays);
+        $member->MembershipEndDate = $newEnd->format('Y-m-d');
+        $member->save();
+    }
+
+    return response()->json($freeze, 201);
+}
+
 // 2) UPDATE an existing freeze
 public function updateFreeze(Request $request, $id)
 {

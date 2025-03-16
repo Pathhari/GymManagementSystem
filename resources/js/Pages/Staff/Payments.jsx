@@ -1438,65 +1438,55 @@ export default function PaymentsAndInvoices() {
             width: 130,
           },
           {
-            field: 'pettyCash',
-            headerName: 'PC',
-            width: 130,
-            renderCell: (params) =>
-              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-          },
-          {
-            field: 'rawCash',
+            field: 'totalCash',
             headerName: 'Cash',
             width: 130,
             renderCell: (params) =>
               params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
           },
           {
-            field: 'rawGCash',
-            headerName: 'GCash',
+            field: 'pettyCash',
+            headerName: 'PC(Today)',
             width: 130,
             renderCell: (params) =>
               params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
           },
           {
-            field: 'rawBPI',
-            headerName: 'BPI',
+            field: 'cashPlusPetty',
+            headerName: 'Cash + PC Today',
             width: 130,
             renderCell: (params) =>
               params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
           },
           {
-            field: 'rawBDO',
-            headerName: 'BDO',
+            field: 'pettyTomorrow',
+            headerName: 'PC for (Tomorrow)',
+            width: 140,
+            renderCell: (params) =>
+              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+          },
+          {
+            field: 'totalGCash',
+            headerName: 'Total GCash',
             width: 130,
             renderCell: (params) =>
               params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
           },
           {
-            field: 'totalSales',
-            headerName: 'Total Sales',
+            field: 'totalBPI',
+            headerName: 'Total BPI',
             width: 130,
             renderCell: (params) =>
               params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
           },
           {
-            field: 'salesPlusPetty',
-            headerName: 'Sales + PC',
-            width: 150,
-            renderCell: (params) => {
-              // Grab the row’s totalSales and pettyCash
-              const { totalSales, pettyCash } = params.row;
-              // Safely parse them as numbers
-              const sales = Number(totalSales) || 0;
-              const petty = Number(pettyCash) || 0;
-          
-              // Calculate sum
-              const sum = sales + petty;
-          
-              // If sum is 0, you can show '—'; otherwise display the currency
-              return sum > 0 ? `₱${sum.toLocaleString()}` : '—';
-            },
-          },          
+            field: 'totalBDO',
+            headerName: 'Total BDO',
+            width: 130,
+            renderCell: (params) =>
+              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+          },
+          // You can add more columns (e.g., Total Sales, Take Home) if needed
         ]}
         getRowId={(row) => row.date}
         pageSize={5}

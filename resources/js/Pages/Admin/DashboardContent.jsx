@@ -545,13 +545,14 @@ function closeDailyPettyDialog() {
 
         // 1. branches & staff
         const [branchRes, staffRes] = await Promise.all([
-          axios.get('/admin/branches'),
+          axios.get('/owner/branches?context=dashboard'),
           axios.get('/staff'),
         ]);
         const bOptions = branchRes.data.branches.map((b) => ({
           value: b.BranchID.toString(),
           label: b.BranchName,
         }));
+        
         setBranchOptions([{ value: 'all', label: 'All Branches' }, ...bOptions]);
         setStaff(staffRes.data.staff || staffRes.data || []);
 
@@ -2038,23 +2039,21 @@ useEffect(() => {
             <Box sx={{ mt: 1 }}>
             {/* [NEW STUFF] Filter by Branch + Biz for Overview */}
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
-              <FormControl size="small" sx={{ minWidth: 150 }}>
-                <InputLabel>Branch</InputLabel>
-                <Select
-                  label="Branch"
-                  value={overviewBranchFilter}
-                  onChange={(e) => setOverviewBranchFilter(e.target.value)}
-                >
-                  <MenuItem value="all">All Branches</MenuItem>
-                  {branchOptions
-                    .filter((b) => b.value !== 'all') // or show them all if you want
-                    .map((b) => (
-                      <MenuItem key={b.value} value={b.value}>
-                        {b.label}
-                      </MenuItem>
-                    ))}
-                </Select>
-              </FormControl>
+            <FormControl size="small">
+            <InputLabel>Branch</InputLabel>
+            <Select
+              label="Branch"
+              value={overviewBranchFilter}
+              onChange={(e) => setOverviewBranchFilter(e.target.value)}
+            >
+              {branchOptions.map((b) => (
+                <MenuItem key={b.value} value={b.value}>
+                  {b.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
 
               <FormControl size="small" sx={{ minWidth: 150 }}>
                 <InputLabel>Business</InputLabel>

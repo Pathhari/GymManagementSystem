@@ -623,14 +623,11 @@ class OperationsController extends Controller
      */
     public function storeVisit(Request $request)
     {
-        // Attempt to get the authenticated staff user
-        $staff = auth('staff')->user();
-    
         // Validate input
         $data = $request->validate([
             'MemberID'      => 'required|exists:members,MemberID',
-            'VisitDate'     => 'nullable|date',       // If omitted, defaults to today
-            'VisitTime'     => 'nullable',            // If omitted, defaults to now
+            'VisitDate'     => 'nullable|date',       // Defaults to today if omitted
+            'VisitTime'     => 'nullable',            // Defaults to now if omitted
             'CheckInMethod' => 'nullable|string|max:50', // e.g. "biometric", "card", "manual"
             'Remarks'       => 'nullable|string',
             'BranchID'      => 'nullable|exists:branches,BranchID',
@@ -641,29 +638,14 @@ class OperationsController extends Controller
         $data['VisitTime']     = $data['VisitTime']     ?? Carbon::now()->format('H:i:s');
         $data['CheckInMethod'] = $data['CheckInMethod'] ?? 'card';
     
-        // If staff is logged in, override BranchID with the staff’s branch
-        if ($staff) {
-            // If staff->BranchID is stored directly on staff, do:
-            // $data['BranchID'] = $staff->BranchID;
-            
-            // OR if you use many-to-many pivot for staff->branches():
-            // $branch = $staff->branches()->first();
-            // $data['BranchID'] = $branch ? $branch->BranchID : null;
-        }
-    
-        // If still no BranchID (e.g. not staff or staff has no branch), we can fail or set a default
-        if (empty($data['BranchID'])) {
-            return response()->json([
-                'message' => 'BranchID is required (none provided).'
-            ], 422);
-        }
+        // We no longer override BranchID with the staff's branch.
+        // This allows a staff member to check in a member from any branch.
     
         try {
-            // Create the visit record
+            // Create the visit record using the provided data
             $visit = MemberVisit::create($data);
         } catch (\Illuminate\Database\QueryException $e) {
-            // For example, if you have a unique constraint for (MemberID, BranchID, VisitDate),
-            // you could interpret code 23000 as "already checked in"
+            // If a unique constraint is in place (for example, MemberID, BranchID, VisitDate)
             if ($e->getCode() === '23000') {
                 return response()->json([
                     'message' => 'Member is already checked in for today.'
@@ -677,6 +659,7 @@ class OperationsController extends Controller
             'visit'   => $visit
         ], 201);
     }
+    
     /**
      * Display a list of visit logs.
      */

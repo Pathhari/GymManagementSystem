@@ -1534,12 +1534,43 @@ useEffect(() => {
     { field: "Remarks", headerName: "Remarks", width: 250 },
   ];
   
+ 
   const monthlyAttendanceColumns = [
-    { field: "MonthlyClientAttendanceID", headerName: "ID", width: 100 },
-    { field: "FullName", headerName: "Monthly Client", width: 200 },
-    { field: "VisitDateTime", headerName: "Visit Date & Time", width: 200,
-      valueFormatter: ({ value }) => new Date(value).toLocaleString() },
-    { field: "Notes", headerName: "Notes", width: 250 },
+    {
+      field: "MonthlyClientAttendanceID",
+      headerName: "ID",
+      width: 100,
+    },
+    {
+      field: "monthlyClientName",
+      headerName: "Monthly Client",
+      width: 200,
+      renderCell: (params) => {
+        // If row or row.monthly_client is undefined, fallback to "N/A"
+        return params.row?.monthly_client?.FullName || "N/A";
+      },
+    },
+    {
+      field: "VisitDate",
+      headerName: "Date",
+      width: 150,
+      renderCell: (params) => {
+        // params.row.VisitDateTime has "2025-03-16 06:57:54"
+        const val = params.row.VisitDateTime;
+        if (!val) return "—";
+        // For example, split by space:
+        const [rawDate] = val.split(" "); 
+        // "2025-03-16"
+        return formatDate(rawDate); // your existing formatDate utility
+      },
+    },
+    
+    {
+      field: "Notes",
+      headerName: "Notes",
+      width: 250,
+      renderCell: (params) => params.value || "—",
+    },
   ];
   
   

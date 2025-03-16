@@ -106,18 +106,11 @@ export default function MembershipManagement() {
   const [branches, setBranches] = useState({});
 
   useEffect(() => {
-    // Example: get the current staff with default branch
-    axios
-      .get("/authuser")
+    axios.get("/staff/authuser")
       .then((res) => {
-        const { DefaultBranchID } = res.data;
-        // If there's a default branch, set the filter to that
-        if (DefaultBranchID) {
-          setBranchFilter(String(DefaultBranchID));
-        } else {
-          // If staff has no branch or something
-          setBranchFilter("all");
-        }
+        // Instead of setting branchFilter to the DefaultBranchID,
+        // we set it to "all" so that all members show by default.
+        setBranchFilter("all");
       })
       .catch((err) => console.error("Error:", err))
       .finally(() => setLoading(false));
@@ -319,8 +312,10 @@ export default function MembershipManagement() {
           // Assuming the response is in the format: { member_visits: [ ... ] }
           setMemberVisitLogs(res.data.visits || []);
         } else if (activeTab === 6) {
-          const res = await axios.get("/monthly-clients/attendances-all");
-          setMonthlyClientAttendances(res.data.attendances || []);
+          const res =await axios.get("/monthly-clients/attendances-all")
+          .then((resp) => {
+            setMonthlyClientAttendances(resp.data.attendances || []);
+          });
         }
       } catch (error) {
         console.error("Error fetching tab data:", error);
@@ -1562,7 +1557,7 @@ useEffect(() => {
     { field: "BranchName", headerName: "Branch", width: 150 },
     { field: "Remarks", headerName: "Remarks", width: 250 },
   ];
-  
+
   const monthlyAttendanceColumns = [
     {
       field: "MonthlyClientAttendanceID",
@@ -1570,27 +1565,29 @@ useEffect(() => {
       width: 100,
     },
     {
-      field: "FullName",
+      field: "monthlyClientName",
       headerName: "Monthly Client",
       width: 200,
-      valueGetter: (params = {}) => {
-        // Ensure params and params.row exist before accessing monthlyClient
-        if (params.row && params.row.monthlyClient && params.row.monthlyClient.FullName) {
-          return params.row.monthlyClient.FullName;
-        }
-        return "N/A";
+      renderCell: (params) => {
+        // If row or row.monthly_client is undefined, fallback to "N/A"
+        return params.row?.monthly_client?.FullName || "N/A";
       },
     },
     {
-      field: "VisitDateTime",
-      headerName: "Visit Date & Time",
-      width: 200,
-      valueFormatter: ({ value }) => {
-        if (!value) return "—";
-        const date = new Date(value);
-        return isNaN(date.getTime()) ? "Invalid Date" : date.toLocaleString();
+      field: "VisitDate",
+      headerName: "Date",
+      width: 150,
+      renderCell: (params) => {
+        // params.row.VisitDateTime has "2025-03-16 06:57:54"
+        const val = params.row.VisitDateTime;
+        if (!val) return "—";
+        // For example, split by space:
+        const [rawDate] = val.split(" "); 
+        // "2025-03-16"
+        return formatDate(rawDate); // your existing formatDate utility
       },
     },
+    
     {
       field: "Notes",
       headerName: "Notes",
@@ -1598,6 +1595,7 @@ useEffect(() => {
       renderCell: (params) => params.value || "—",
     },
   ];
+  
   
   
 
@@ -2078,15 +2076,33 @@ useEffect(() => {
         return data.filter(item =>
           Object.values(item).some(val => String(val).toLowerCase().includes(searchTerm))
         );
-      } else if (activeTab === 6) { // Monthly Client Attendance
+      } else if (activeTab === 6) {
         let data = monthlyClientAttendances.slice();
+      
+        // 1) Filter by branch
         if (branchFilter !== "all") {
-          data = data.filter(item => String(item.BranchID) === branchFilter);
+          data = data.filter(
+            attendance => String(attendance.monthly_client?.BranchID) === branchFilter
+          );
         }
-        return data.filter(item =>
-          Object.values(item).some(val => String(val).toLowerCase().includes(searchTerm))
-        );
-      } else {
+      
+        // 2) Search filter
+        return data.filter(attendance => {
+          // Convert top-level fields to string
+          const topLevelMatch = Object.values(attendance).some(val =>
+            String(val).toLowerCase().includes(searchTerm)
+          );
+      
+          // Convert nested monthly_client fields to string
+          const monthlyClientMatch = attendance.monthly_client &&
+            Object.values(attendance.monthly_client).some(val =>
+              String(val).toLowerCase().includes(searchTerm)
+            );
+      
+          return topLevelMatch || monthlyClientMatch;
+        });
+      }
+       else {
         return rows; // your existing filtered data for other tabs
       }
     };
