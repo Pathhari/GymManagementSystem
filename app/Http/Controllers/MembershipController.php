@@ -107,6 +107,7 @@ class MembershipController extends Controller
              'Biometrics'           => 'nullable|string',
              'FreeSessions'         => 'nullable|integer',
              'Notes'                => 'nullable|string',
+             
              'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048',
      
              // Payment & multi-month
@@ -116,15 +117,8 @@ class MembershipController extends Controller
              'MonthsToPayUpfront'           => 'nullable|integer|min:1', // e.g. 3 or 6
          ]);
      
-         // If staff => override BranchID
-         $staff = auth('staff')->user();
-         if ($staff) {
-             // Retrieve the branch id from the staff's associated branches.
-             $branch = $staff->branches()->first();
-             $data['StartedBranchID'] = $branch ? $branch->BranchID : null;
-         } else {
-             $data['StartedBranchID'] = $data['BranchID'] ?? null;
-         }
+            $data['StartedBranchID'] = $data['BranchID'] ?? null;
+        
          
          // Handle photo upload
          if ($request->hasFile('PhotoFile')) {
