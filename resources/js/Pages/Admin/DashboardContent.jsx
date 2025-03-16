@@ -1026,12 +1026,6 @@ function closeDailyPettyDialog() {
         width: 110,
       },
       {
-        field: 'PettyCash',
-        headerName: 'PettyCash',
-        width: 100,
-        renderCell: (params) => formatCurrency(params.value),
-      },
-      {
         // Now “Cash” displays the *raw* cashSales value
         field: 'CashSales',
         headerName: 'Cash',
@@ -1039,12 +1033,24 @@ function closeDailyPettyDialog() {
         renderCell: (params) => formatCurrency(params.value),
       },
       {
+        field: 'PettyCash',
+        headerName: 'PC(Today)',
+        width: 100,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      {
         field: 'CashPlusPetty',
-        headerName: 'Cash + Petty',
-        width: 120,
+        headerName: 'Cash+PC Today',
+        width: 160,
         renderCell: (params) => (params.value != null
           ? `₱${Number(params.value).toLocaleString()}`
           : '—'),
+      },
+      {
+        field: 'PettyCashTomorrow',
+        headerName: 'PC(Tomorrow)',
+        width: 130,
+        renderCell: (params) => formatCurrency(params.value),
       },
       {
         field: 'GCashSales',
@@ -1071,15 +1077,9 @@ function closeDailyPettyDialog() {
         renderCell: (params) => formatCurrency(params.value),
       },
       {
-        field: 'PettyCashTomorrow',
-        headerName: 'Petty Tomorrow',
-        width: 130,
-        renderCell: (params) => formatCurrency(params.value),
-      },
-      {
         field: 'TotalGrossMinusPetty',
-        headerName: 'Gross - Petty',
-        width: 120,
+        headerName: 'Gross - PC(Tomorrow)',
+        width: 160,
         renderCell: (params) => formatCurrency(params.value),
       },
       {

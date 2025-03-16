@@ -609,16 +609,17 @@ export default function PaymentsAndInvoices() {
           CashFlowID: flow.CashFlowID,
           date: dateStr,
   
-          // Renamed to highlight they are raw (no petty subtraction):
+          // "raw" payment totals from the flow (no petty factoring)
           rawCash: 0,
           rawGCash: 0,
           rawBPI: 0,
           rawBDO: 0,
   
-          pettyCash: 0,      // "today"
-          pettyTomorrow: 0,  // "tomorrow"
+          // Petty cash today / tomorrow
+          pettyCash: 0,
+          pettyTomorrow: 0,
   
-          // PaymentFor counters:
+          // Counters for "PaymentFor" categories (optional)
           countNewMembership: 0,
           countMonthlyClientFee: 0,
           countWalkinPayment: 0,
@@ -626,12 +627,15 @@ export default function PaymentsAndInvoices() {
           countBooking: 0,
           countCoachingSessionBooking: 0,
   
-          // Final sums (will calculate below)
+          // We will calculate these below
           totalSales: 0,
           takeHome: 0,
+          cashPlusPetty: 0,               // <--- NEW
+          cashPlusPettyMinusTomorrow: 0,  // <--- NEW
         };
       }
   
+      // Summation of Cash, GCash, etc. from flow
       const sumCash = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
       const sumGCash = parseFloat(flow.GCashSales || 0) + parseFloat(flow.WalkInGCashSales || 0);
       const sumBPI  = parseFloat(flow.BPISales || 0) + parseFloat(flow.WalkInBPISales || 0);
@@ -642,24 +646,23 @@ export default function PaymentsAndInvoices() {
       resultsMap[dateStr].rawBPI   += sumBPI;
       resultsMap[dateStr].rawBDO   += sumBDO;
   
-      // Store the petty amounts for reference
+      // PettyCash from the flow
       resultsMap[dateStr].pettyCash     = parseFloat(flow.PettyCash || 0);
       resultsMap[dateStr].pettyTomorrow = parseFloat(flow.PettyCashTomorrow || 0);
     });
   
-    // 2) Process payments where there's NO existing daily flow for that date
+    // 2) Process Payments that don’t match an existing daily flow
     allPayments.forEach((pay) => {
       if (!pay.paymentDate) return;
       const payDateStr = pay.paymentDate.split(" ")[0];
       if (!payDateStr) return;
   
-      // If daily flow for this date already exists, skip 
-      // (so we don't double-count the same day).
+      // If we already have a flow for this day, skip to avoid double counting
       if (resultsMap[payDateStr]) {
         return;
       }
   
-      // Otherwise, create a new row
+      // Otherwise, create a placeholder row for that date
       if (!resultsMap[payDateStr]) {
         resultsMap[payDateStr] = {
           date: payDateStr,
@@ -677,6 +680,8 @@ export default function PaymentsAndInvoices() {
           countCoachingSessionBooking: 0,
           totalSales: 0,
           takeHome: 0,
+          cashPlusPetty: 0,              
+          cashPlusPettyMinusTomorrow: 0,
         };
       }
   
@@ -700,7 +705,7 @@ export default function PaymentsAndInvoices() {
           break;
       }
   
-      // If you track PaymentFor categories:
+      // If you track PaymentFor
       if (Array.isArray(pay.paymentFor)) {
         pay.paymentFor.forEach((cat) => {
           const c = cat.trim();
@@ -714,23 +719,23 @@ export default function PaymentsAndInvoices() {
       }
     });
   
-    // 3) Compute final totals
+    // 3) Compute final totals, including your new columns
     Object.values(resultsMap).forEach((row) => {
-      // totalSales is the raw sum of all payment methods
+      // totalSales = sum of all payment methods
       row.totalSales = row.rawCash + row.rawGCash + row.rawBPI + row.rawBDO;
   
-      // takeHome = totalSales + pettyCash (today) - pettyTomorrow
+      // For reference: was total of all sales + petty - tomorrow
       row.takeHome = row.totalSales + row.pettyCash - row.pettyTomorrow;
+  
+      // NEW columns
+      row.cashPlusPetty = row.rawCash + row.pettyCash;
+      row.cashPlusPettyMinusTomorrow = row.cashPlusPetty - row.pettyTomorrow;
     });
   
-    // 4) Return sorted
+    // 4) Return sorted list of rows
     return Object.values(resultsMap).sort((a, b) => a.date.localeCompare(b.date));
   }
   
-  
-  
-  
-
   // ==================== Tab Logic ====================
   const handleTabChange = (event, newValue) => {
     setActiveTab(2);
@@ -1438,56 +1443,92 @@ export default function PaymentsAndInvoices() {
             width: 130,
           },
           {
-            field: 'totalCash',
+            field: 'rawCash',                 // use aggregator's field
             headerName: 'Cash',
-            width: 130,
+            width: 120,
             renderCell: (params) =>
               params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
           },
           {
             field: 'pettyCash',
-            headerName: 'PC(Today)',
+            headerName: 'PC (Today)',
             width: 130,
-            renderCell: (params) =>
-              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+            renderCell: ({ value }) =>
+              value ? `₱${Number(value).toLocaleString()}` : '—',
           },
           {
             field: 'cashPlusPetty',
-            headerName: 'Cash + PC Today',
-            width: 130,
-            renderCell: (params) =>
-              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+            headerName: 'Cash+PC Today',
+            width: 150,
+            renderCell: ({ value }) =>
+              value ? `₱${Number(value).toLocaleString()}` : '—',
           },
           {
             field: 'pettyTomorrow',
-            headerName: 'PC for (Tomorrow)',
+            headerName: 'PC (Tomorrow)',
             width: 140,
-            renderCell: (params) =>
-              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+            renderCell: ({ value }) =>
+              value ? `₱${Number(value).toLocaleString()}` : '—',
           },
           {
-            field: 'totalGCash',
-            headerName: 'Total GCash',
+            // 2) (Cash+PC Today) - PC Tomorrow
+            field: 'cashPlusPettyMinusTomorrow',
+            headerName: 'Cash+PC - PC Tomorrow',
+            width: 180,
+            renderCell: ({ value }) =>
+              value ? `₱${Number(value).toLocaleString()}` : '—',
+          },
+          {
+            field: 'rawGCash',
+            headerName: 'GCash',
             width: 130,
             renderCell: (params) =>
               params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
           },
           {
-            field: 'totalBPI',
-            headerName: 'Total BPI',
+            field: 'rawBPI',
+            headerName: 'BPI',
             width: 130,
             renderCell: (params) =>
               params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
           },
           {
-            field: 'totalBDO',
-            headerName: 'Total BDO',
+            field: 'rawBDO',
+            headerName: 'BDO',
             width: 130,
             renderCell: (params) =>
               params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
           },
-          // You can add more columns (e.g., Total Sales, Take Home) if needed
-        ]}
+          {
+            field: 'totalSales',
+            headerName: 'Total Sales',
+            width: 130,
+            renderCell: (params) =>
+              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+          },
+          {
+            field: 'takeHome',
+            headerName: 'Take-Home',
+            width: 130,
+            renderCell: (params) =>
+              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
+          },
+          {
+            field: 'actions',
+            headerName: 'Actions',
+            width: 120,
+            sortable: false,
+            renderCell: (params) => (
+              <Button 
+                variant="contained" 
+                size="small" 
+                onClick={() => openPettyDialog(params.row)}
+              >
+                Add Petty
+              </Button>
+            ),
+          },
+        ]}        
         getRowId={(row) => row.date}
         pageSize={5}
         rowsPerPageOptions={[5, 10]}
