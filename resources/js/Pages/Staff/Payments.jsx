@@ -1435,7 +1435,9 @@ export default function PaymentsAndInvoices() {
           {
             field: 'date',
             headerName: 'Date',
-            width: 130,
+            width: 250,
+            renderCell: (params) =>
+              params.value ? formatDate(params.value) : "—",
           },
           {
             field: 'totalCash',
@@ -1509,8 +1511,8 @@ export default function PaymentsAndInvoices() {
     sx={{ mb: 2 }}
   />
   <Typography variant="subtitle1" sx={{ mb: 2 }}>
-    Detailed records for: {selectedDetailDate}
-  </Typography>
+  Detailed records for: {formatDate(selectedDetailDate)}
+</Typography>
 
   {/* Filter payments for the selected date */}
   {Object.entries(
