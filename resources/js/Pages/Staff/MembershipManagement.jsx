@@ -105,6 +105,23 @@ export default function MembershipManagement() {
   const [memberStatuses, setMemberStatuses] = useState([]);
   const [branches, setBranches] = useState({});
 
+  useEffect(() => {
+    // Example: get the current staff with default branch
+    axios
+      .get("/authuser")
+      .then((res) => {
+        const { DefaultBranchID } = res.data;
+        // If there's a default branch, set the filter to that
+        if (DefaultBranchID) {
+          setBranchFilter(String(DefaultBranchID));
+        } else {
+          // If staff has no branch or something
+          setBranchFilter("all");
+        }
+      })
+      .catch((err) => console.error("Error:", err))
+      .finally(() => setLoading(false));
+  }, []);
 
   // Searching / filtering
   const [searchTerm, setSearchTerm] = useState("");
@@ -1528,13 +1545,7 @@ useEffect(() => {
 
   const memberVisitLogColumns = [
     { field: "VisitID", headerName: "Visit ID", width: 120 },
-    {
-      field: "FullName",
-      headerName: "Monthly Client",
-      width: 200,
-      valueGetter: (params) =>
-        params.row.monthlyClient ? params.row.monthlyClient.FullName : "N/A",
-    },    
+    { field: "FullName", headerName: "Member Name", flex: 1 },
     {
       field: "VisitDate",
       headerName: "Date",
@@ -1562,8 +1573,13 @@ useEffect(() => {
       field: "FullName",
       headerName: "Monthly Client",
       width: 200,
-      valueGetter: (params) =>
-        params.row.monthlyClient ? params.row.monthlyClient.FullName : "N/A",
+      valueGetter: (params = {}) => {
+        // Ensure params and params.row exist before accessing monthlyClient
+        if (params.row && params.row.monthlyClient && params.row.monthlyClient.FullName) {
+          return params.row.monthlyClient.FullName;
+        }
+        return "N/A";
+      },
     },
     {
       field: "VisitDateTime",
