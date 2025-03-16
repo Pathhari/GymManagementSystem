@@ -1528,7 +1528,13 @@ useEffect(() => {
 
   const memberVisitLogColumns = [
     { field: "VisitID", headerName: "Visit ID", width: 120 },
-    { field: "FullName", headerName: "Member Name", flex: 1 },
+    {
+      field: "FullName",
+      headerName: "Monthly Client",
+      width: 200,
+      valueGetter: (params) =>
+        params.row.monthlyClient ? params.row.monthlyClient.FullName : "N/A",
+    },    
     {
       field: "VisitDate",
       headerName: "Date",
@@ -1547,11 +1553,34 @@ useEffect(() => {
   ];
   
   const monthlyAttendanceColumns = [
-    { field: "MonthlyClientAttendanceID", headerName: "ID", width: 100 },
-    { field: "FullName", headerName: "Monthly Client", width: 200 },
-    { field: "VisitDateTime", headerName: "Visit Date & Time", width: 200,
-      valueFormatter: ({ value }) => new Date(value).toLocaleString() },
-    { field: "Notes", headerName: "Notes", width: 250 },
+    {
+      field: "MonthlyClientAttendanceID",
+      headerName: "ID",
+      width: 100,
+    },
+    {
+      field: "FullName",
+      headerName: "Monthly Client",
+      width: 200,
+      valueGetter: (params) =>
+        params.row.monthlyClient ? params.row.monthlyClient.FullName : "N/A",
+    },
+    {
+      field: "VisitDateTime",
+      headerName: "Visit Date & Time",
+      width: 200,
+      valueFormatter: ({ value }) => {
+        if (!value) return "—";
+        const date = new Date(value);
+        return isNaN(date.getTime()) ? "Invalid Date" : date.toLocaleString();
+      },
+    },
+    {
+      field: "Notes",
+      headerName: "Notes",
+      width: 250,
+      renderCell: (params) => params.value || "—",
+    },
   ];
   
   
