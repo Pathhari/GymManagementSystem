@@ -656,158 +656,46 @@ const filteredLogs = transposedLogs.filter(
       </Tabs>
 
       {/* ---------------------- TAB 0: Announcements & Staff Notifications ---------------------- */}
-      {activeTab === 0 && (
-        <Grid container spacing={3}>
-          {/* ==================== Add a General Announcement ==================== */}
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2, mb: 2 }}>
-              <Typography variant="h6">Add Announcement</Typography>
-              <Stack spacing={2} sx={{ mt: 1 }}>
-                <TextField
-                  label="Topic"
-                  fullWidth
-                  value={newTopic}
-                  onChange={(e) => setNewTopic(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <CampaignIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <TextField
-                  label="Message"
-                  fullWidth
-                  multiline
-                  rows={2}
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                />
-                <Button
-                  variant="contained"
-                  startIcon={<AddCircleOutlineIcon />}
-                  onClick={handleAddAnnouncement}
-                >
-                  Add Announcement
-                </Button>
-              </Stack>
-            </Paper>
-            {/* =============== STAFF-SPECIFIC ANNOUNCEMENT MODULE =============== */}
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                Send Announcement to Specific Staff
-              </Typography>
-              <Stack spacing={2} sx={{ mb: 2 }}>
-                <TextField
-                  label="Subject"
-                  fullWidth
-                  value={staffSubject}
-                  onChange={(e) => setStaffSubject(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <CampaignIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <TextField
-                  label="Message"
-                  fullWidth
-                  multiline
-                  rows={2}
-                  value={staffMessage}
-                  onChange={(e) => setStaffMessage(e.target.value)}
-                />
-              </Stack>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Select Staff to Receive This Announcement
-              </Typography>
-              <div style={{ width: "100%", height: 300, marginBottom: 16 }}>
-                <DataGrid
-                  rows={staffList}
-                  columns={staffColumns}
-                  getRowId={(row) => row.StaffID}
-                  checkboxSelection
-                  rowSelectionModel={selectedStaff}
-                  onRowSelectionModelChange={(newSelection) => {
-                    const numericIDs = newSelection.map(Number);
-                    handleStaffSelection(numericIDs);
-                  }}
-                  pageSize={5}
-                  rowsPerPageOptions={[5, 10]}
-                />
-              </div>
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<SendIcon />}
-                onClick={handleSendStaffAnnouncement}
+     {/* ---------------------- TAB 0: Announcements ---------------------- */}
+{activeTab === 0 && (
+  <Grid container spacing={3}>
+    <Grid item xs={12}>
+      <Paper sx={{ p: 2, height: "100%" }}>
+        <Typography variant="h6" gutterBottom>
+          Announcements
+        </Typography>
+        {announcements.length === 0 ? (
+          <Typography>No announcements yet...</Typography>
+        ) : (
+          announcements.map((ann) => {
+            const lines = ann.Message.split("\n");
+            const parsedTopic = lines[0].replace("Topic: ", "").trim();
+            const parsedMsg = lines.slice(1).join("\n").trim();
+            return (
+              <Box
+                key={ann.NotificationID}
+                sx={{
+                  border: "1px solid #ccc",
+                  borderRadius: 1,
+                  p: 1,
+                  mb: 1,
+                }}
               >
-                Send to Staff
-              </Button>
-            </Paper>
-          </Grid>
+                <Typography variant="subtitle1" fontWeight="bold">
+                  {parsedTopic}
+                </Typography>
+                <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
+                  {parsedMsg}
+                </Typography>
+              </Box>
+            );
+          })
+        )}
+      </Paper>
+    </Grid>
+  </Grid>
+)}
 
-          {/* ==================== Display Recent Announcements ==================== */}
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2, height: "100%" }}>
-              <Typography variant="h6" gutterBottom>
-                Recent Announcements
-              </Typography>
-              {announcements.length === 0 ? (
-                <Typography>No announcements yet...</Typography>
-              ) : (
-                announcements.map((ann) => {
-                  const lines = ann.Message.split("\n");
-                  const parsedTopic = lines[0].replace("Topic: ", "").trim();
-                  const parsedMsg = lines.slice(1).join("\n").trim();
-                  return (
-                    <Box
-                      key={ann.NotificationID}
-                      sx={{
-                        border: "1px solid #ccc",
-                        borderRadius: 1,
-                        p: 1,
-                        mb: 1,
-                      }}
-                    >
-                      <Typography variant="subtitle1" fontWeight="bold">
-                        {parsedTopic}
-                      </Typography>
-                      <Typography variant="body2" sx={{ whiteSpace: "pre-line" }}>
-                        {parsedMsg}
-                      </Typography>
-                      <Box sx={{ mt: 1 }}>
-                        <Tooltip title="Edit">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleEditOpen(ann)}
-                          >
-                            <EditIcon fontSize="inherit" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Delete">
-                          <IconButton
-                            size="small"
-                            sx={{ color: "red", ml: 1 }}
-                            onClick={() =>
-                              handleDeleteAnnouncement(ann.NotificationID)
-                            }
-                          >
-                            <DeleteIcon fontSize="inherit" />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    </Box>
-                  );
-                })
-              )}
-            </Paper>
-          </Grid>
-        </Grid>
-      )}
 
       {/* ---------------------- TAB 1: Mailjet ---------------------- */}
       {activeTab === 1 && (

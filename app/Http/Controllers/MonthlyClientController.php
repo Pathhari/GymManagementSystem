@@ -265,26 +265,28 @@ class MonthlyClientController extends Controller
     public function storeAttendance(Request $request, $monthlyClientID)
     {
         $client = MonthlyClient::findOrFail($monthlyClientID);
-
-        // Staff branch check
         $staff = auth('staff')->user();
-        if ($staff && $client->BranchID != $staff->BranchID) {
-            abort(403, 'Not your branch');
+    
+        if ($staff) {
+            // If the client’s branch does not match the staff’s, sync it
+            if ($client->BranchID != $staff->BranchID) {
+                $client->BranchID = $staff->BranchID;
+                $client->save();
+            }
         }
-
-        // Validate
+    
         $data = $request->validate([
             'VisitDateTime' => 'required|date',
             'Notes'         => 'nullable|string|max:255',
         ]);
-
-        // Create the attendance record
+    
         $attendance = MonthlyClientAttendance::create([
             'MonthlyClientID' => $client->MonthlyClientID,
             'VisitDateTime'   => $data['VisitDateTime'],
             'Notes'           => $data['Notes'] ?? null,
         ]);
-
+    
         return response()->json($attendance, 201);
     }
+    
 }
