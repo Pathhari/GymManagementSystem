@@ -109,39 +109,44 @@ class StaffController extends Controller
      */
     public function indexStaffJson()
     {
-        // 1) Check which guard is logged in
         if (auth('admin')->check()) {
-            // 2) Grab the admin user and branch IDs
             $admin = auth('admin')->user();
-            $assignedBranchIDs = $admin->branches()
-                ->pluck('branches.BranchID')
-                ->toArray();
+            $assignedBranchIDs = $admin->branches()->pluck('branches.BranchID')->toArray();
     
-            // 3) Filter staff by those branches
             $staff = Staff::with(['branches' => function($query) {
-                        $query->select('branches.BranchID', 'BranchName');
-                    }])
-                    ->whereHas('branches', function($q) use ($assignedBranchIDs) {
-                        $q->whereIn('branches.BranchID', $assignedBranchIDs);
-                    })
-                    ->orderBy('FullName')
-                    ->get();
+                            $query->select('branches.BranchID', 'BranchName');
+                        }])
+                        ->whereHas('branches', function($q) use ($assignedBranchIDs) {
+                            $q->whereIn('branches.BranchID', $assignedBranchIDs);
+                        })
+                        ->orderBy('FullName')
+                        ->get();
+        } elseif (auth('staff')->check()) {
+            // For logged-in staff, filter by the branch(es) assigned to that staff account.
+            $staffUser = auth('staff')->user();
+            $assignedBranchIDs = $staffUser->branches()->pluck('branches.BranchID')->toArray();
     
+            $staff = Staff::with(['branches' => function($query) {
+                            $query->select('branches.BranchID', 'BranchName');
+                        }])
+                        ->whereHas('branches', function($q) use ($assignedBranchIDs) {
+                            $q->whereIn('branches.BranchID', $assignedBranchIDs);
+                        })
+                        ->orderBy('FullName')
+                        ->get();
         } elseif (auth('owner')->check()) {
-            // For owners, show all staff
             $staff = Staff::with(['branches' => function($query) {
-                        $query->select('branches.BranchID', 'BranchName');
-                    }])
-                    ->orderBy('FullName')
-                    ->get();
-    
+                            $query->select('branches.BranchID', 'BranchName');
+                        }])
+                        ->orderBy('FullName')
+                        ->get();
         } else {
-            // Possibly return empty or unauthorized for other cases
             $staff = [];
         }
     
         return response()->json($staff);
     }
+    
     
 
     /**

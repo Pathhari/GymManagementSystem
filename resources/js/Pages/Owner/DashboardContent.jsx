@@ -898,25 +898,30 @@ export default function OwnerDashboard(onClose) {
         width: 110,
       },
       {
-        field: 'PettyCash',
-        headerName: 'PettyCash',
-        width: 100,
-        renderCell: (params) => formatCurrency(params.value),
-      },
-      {
         field: 'CashSales',
         headerName: 'Cash',
         width: 80,
         renderCell: (params) => formatCurrency(params.value),
       },
       {
+        field: 'PettyCash',
+        headerName: 'PC(Today)',
+        width: 100,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      {
         field: 'CashPlusPetty',
-        headerName: 'Cash + Petty',
+        headerName: 'Cash+PC Today',
         width: 120,
         // optional formatting
         renderCell: (params) => `₱${params.value.toLocaleString()}`
       },
-
+      {
+        field: 'PettyCashTomorrow',
+        headerName: 'PC(Tomorrow)',
+        width: 130,
+        renderCell: (params) => formatCurrency(params.value),
+      },
       {
         field: 'GCashSales',
         headerName: 'GCash',
@@ -941,17 +946,9 @@ export default function OwnerDashboard(onClose) {
         width: 110,
         renderCell: (params) => formatCurrency(params.value),
       },
-      /* NEW COLUMN FOR PETTY CASH TOMORROW */
-      {
-        field: 'PettyCashTomorrow',
-        headerName: 'Petty Tomorrow',
-        width: 130,
-        renderCell: (params) => formatCurrency(params.value),
-      },
-
       {
         field: 'TotalGrossMinusPetty',
-        headerName: 'Gross - Petty',
+        headerName: 'Gross - PC(Tomorrow)',
         width: 120,
         renderCell: (params) => formatCurrency(params.value),
       },
