@@ -14,6 +14,7 @@ use App\Models\Branch; // if needed
 use App\Models\MonthlyClientAttendance;
 
 
+
 class MonthlyClientController extends Controller
 {
     /**
@@ -263,30 +264,34 @@ class MonthlyClientController extends Controller
      * Create a new attendance record (like "Check-In").
      */
     public function storeAttendance(Request $request, $monthlyClientID)
-    {
-        $client = MonthlyClient::findOrFail($monthlyClientID);
-        $staff = auth('staff')->user();
-    
-        if ($staff) {
-            // If the client’s branch does not match the staff’s, sync it
-            if ($client->BranchID != $staff->BranchID) {
-                $client->BranchID = $staff->BranchID;
-                $client->save();
-            }
+{
+    $client = MonthlyClient::findOrFail($monthlyClientID);
+    $staff = auth('staff')->user();
+
+    if ($staff) {
+        if ($client->BranchID != $staff->BranchID) {
+            // Sync the branch if desired:
+            $client->BranchID = $staff->BranchID;
+            $client->save();
         }
-    
-        $data = $request->validate([
-            'VisitDateTime' => 'required|date',
-            'Notes'         => 'nullable|string|max:255',
-        ]);
-    
-        $attendance = MonthlyClientAttendance::create([
-            'MonthlyClientID' => $client->MonthlyClientID,
-            'VisitDateTime'   => $data['VisitDateTime'],
-            'Notes'           => $data['Notes'] ?? null,
-        ]);
-    
-        return response()->json($attendance, 201);
     }
+
+    $data = $request->validate([
+        'VisitDateTime' => 'required|date',
+        'Notes'         => 'nullable|string|max:255',
+    ]);
+
+    // Convert the ISO8601 datetime to MySQL datetime format
+    $formattedVisitDateTime = Carbon::parse($data['VisitDateTime'])->format('Y-m-d H:i:s');
+
+    $attendance = MonthlyClientAttendance::create([
+        'MonthlyClientID' => $client->MonthlyClientID,
+        'VisitDateTime'   => $formattedVisitDateTime,
+        'Notes'           => $data['Notes'] ?? null,
+    ]);
+
+    return response()->json($attendance, 201);
+}
+
     
 }

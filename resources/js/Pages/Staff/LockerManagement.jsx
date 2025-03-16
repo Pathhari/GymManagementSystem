@@ -188,18 +188,19 @@ export default function LockerManagement() {
       parseInt(a.LockerNumber, 10) - parseInt(b.LockerNumber, 10)
   );
 
-  const maxColumns = sortedLockers.length
-    ? Math.ceil(sortedLockers.length / 3)
-    : 0;
-  const row1 = sortedLockers.slice(0, maxColumns);
-  const row2 = sortedLockers.slice(maxColumns, 2 * maxColumns);
-  const row3 = sortedLockers.slice(2 * maxColumns, 3 * maxColumns);
-  const chunkedLockers = [row1, row2, row3];
+  // Chunk lockers into rows of 9 per row
+  const chunkArray = (array, chunkSize) => {
+    const chunks = [];
+    for (let i = 0; i < array.length; i += chunkSize) {
+      chunks.push(array.slice(i, i + chunkSize));
+    }
+    return chunks;
+  };
+  const chunkedLockers = chunkArray(sortedLockers, 8);
 
   const cardWidth = 200;
   const cardHeight = 250; // Fixed height for each locker card
   const gap = 16;
-  const containerWidth = maxColumns * (cardWidth + gap);
 
   // ----------------- 5) ADD LOCKER ------------------
   const [isAddLockerOpen, setAddLockerOpen] = useState(false);
@@ -269,16 +270,17 @@ export default function LockerManagement() {
 
   useEffect(() => {
     if (borrowOpen && searchBranchID) {
-      axios.get(`/membership/members?branchId=${searchBranchID}`)
+      axios
+        .get(`/membership/members?branchId=${searchBranchID}`)
         .then((res) => {
           // if res.data is { members: [...] }
-          setMemberOptions(res.data.members || []);  
+          setMemberOptions(res.data.members || []);
         })
-        .catch((err) => console.error("Error fetching members for branch:", err));
+        .catch((err) =>
+          console.error("Error fetching members for branch:", err)
+        );
     }
   }, [borrowOpen, searchBranchID]);
-  
-
 
   const openBorrowForm = (lockerItem) => {
     setBorrowData({
@@ -286,12 +288,11 @@ export default function LockerManagement() {
       MemberID: "",
       Notes: "",
     });
-    setMemberSearch("");       // Clear any previous search text
-    setMemberOptions([]);      // Clear member list (will be refetched)
+    setMemberSearch(""); // Clear any previous search text
+    setMemberOptions([]); // Clear member list (will be refetched)
     setSearchBranchID(lockerItem.BranchID || null);
-    setBorrowOpen(true);       // This triggers the preload useEffect above
+    setBorrowOpen(true); // This triggers the preload useEffect above
   };
-
 
   const handleBorrowChange = (e) => {
     setBorrowData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -469,79 +470,97 @@ export default function LockerManagement() {
           </Button>
         </Box>
 
-    {/* Outer container with vertical scroll */}
-      <Box sx={{ overflowY: "auto", maxHeight: 600, mb: 3 }}>
-        {/* Inner container: vertical stacking */}
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {sortedLockers.map((locker) => (
-            <Box key={locker.LockerID}>
-              <LockerCard
-                sx={{ width: cardWidth, height: cardHeight }}
-                onClick={() => {
-                  if (locker.Status === "Available") {
-                    openBorrowForm(locker);
-                  } else if (locker.Status === "Occupied") {
-                    const usageId = locker.occupant?.UsageID || "";
-                    const occupantName = locker.occupant?.FullName || "";
-                    openReturnForm(usageId, occupantName);
-                  }
-                }}
-              >
-                {/* Status badge */}
-                <StatusBadge status={locker.Status}>
-                  {locker.Status}
-                </StatusBadge>
-                {/* Delete Button */}
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteClick(locker.LockerID);
-                  }}
-                  sx={{
-                    position: "absolute",
-                    top: theme.spacing(1),
-                    right: theme.spacing(1),
-                    color: theme.palette.mode === "dark" ? "#fff" : "#000",
-                  }}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-                {/* Locker Number displayed prominently */}
+        <Box sx={{ overflowY: "auto", mb: 3, maxHeight: "80vh" }}>
+          {/* Outer container in column layout */}
+          <Box sx={{ display: "flex", flexDirection: "column" }}>
+            {chunkedLockers.map((rowLockers, rowIndex) => {
+              // Each row contains up to 9 lockers
+              return (
                 <Box
+                  key={rowIndex}
                   sx={{
-                    height: "100%",
                     display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    alignItems: "center",
+                    gap: 2,
+                    mb: 2,
                   }}
                 >
-                  <Typography
-                    variant="h4"
-                    sx={{
-                      fontWeight: "bold",
-                      color: theme.palette.mode === "dark" ? "#fff" : "#333",
-                      textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
-                      letterSpacing: "2px",
-                    }}
-                  >
-                    {locker.LockerNumber}
-                  </Typography>
-                  {locker.Status === "Occupied" && locker.occupant && (
-                    <Typography variant="subtitle2" sx={{ mt: 1 }}>
-                      {locker.occupant.FullName}
-                    </Typography>
-                  )}
-                  <Typography variant="caption" sx={{ mt: 1, display: "block" }}>
-                    Branch: {locker.BranchID}
-                  </Typography>
+                  {rowLockers.map((locker) => (
+                    <Box key={locker.LockerID} sx={{ flex: "0 0 auto" }}>
+                      <LockerCard
+                        sx={{ width: cardWidth, height: cardHeight }}
+                        onClick={() => {
+                          if (locker.Status === "Available") {
+                            openBorrowForm(locker);
+                          } else if (locker.Status === "Occupied") {
+                            const usageId = locker.occupant?.UsageID || "";
+                            const occupantName =
+                              locker.occupant?.FullName || "";
+                            openReturnForm(usageId, occupantName);
+                          }
+                        }}
+                      >
+                        {/* Status badge */}
+                        <StatusBadge status={locker.Status}>
+                          {locker.Status}
+                        </StatusBadge>
+
+                        {/* Delete Button in top-right */}
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteClick(locker.LockerID);
+                          }}
+                          sx={{
+                            position: "absolute",
+                            top: theme.spacing(1),
+                            right: theme.spacing(1),
+                            color:
+                              theme.palette.mode === "dark" ? "#fff" : "#000",
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+
+                        {/* Locker Number */}
+                        <Box
+                          sx={{
+                            height: "100%",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "center",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Typography
+                            variant="h4"
+                            sx={{
+                              fontWeight: "bold",
+                              color:
+                                theme.palette.mode === "dark" ? "#fff" : "#333",
+                              textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
+                              letterSpacing: "2px",
+                            }}
+                          >
+                            {locker.LockerNumber}
+                          </Typography>
+                          {locker.Status === "Occupied" && locker.occupant && (
+                            <Typography variant="subtitle2" sx={{ mt: 1 }}>
+                              {locker.occupant.FullName}
+                            </Typography>
+                          )}
+                          <Typography variant="caption" sx={{ mt: 1, display: "block" }}>
+                            Branch: {locker.BranchID}
+                          </Typography>
+                        </Box>
+                      </LockerCard>
+                    </Box>
+                  ))}
                 </Box>
-              </LockerCard>
-            </Box>
-          ))}
+              );
+            })}
+          </Box>
         </Box>
-      </Box>
 
         {/* ADD LOCKER DIALOG */}
         <Dialog
@@ -645,7 +664,9 @@ export default function LockerManagement() {
             <Autocomplete
               options={memberOptions}
               getOptionLabel={(option) => option.FullName}
-              onInputChange={(event, newInputValue) => setMemberSearch(newInputValue)}
+              onInputChange={(event, newInputValue) =>
+                setMemberSearch(newInputValue)
+              }
               onChange={(event, newValue) => {
                 setBorrowData((prev) => ({
                   ...prev,
@@ -661,7 +682,6 @@ export default function LockerManagement() {
                 />
               )}
             />
-
 
             <TextField
               label="Notes"
