@@ -211,6 +211,9 @@ Route::prefix('payments')->group(function() {
     Route::put('{id}', [PaymentController::class, 'update'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.update');
+        
+    Route::patch('/{id}/note', [PaymentController::class, 'updateNote']);
+
     Route::delete('{id}', [PaymentController::class, 'destroy'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.destroy');

@@ -1018,11 +1018,6 @@ class OperationsController extends Controller
     {
         $staff = auth('staff')->user();
         $walkIn = WalkIn::findOrFail($id);
-
-        if ($staff && $walkIn->BranchID != $staff->BranchID) {
-            abort(403, 'Cannot delete a walk-in from another branch.');
-        }
-
         $walkIn->delete();
 
         return redirect()

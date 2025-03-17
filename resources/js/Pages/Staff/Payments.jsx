@@ -193,6 +193,13 @@ export default function PaymentsAndInvoices() {
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
   const openExportMenu = Boolean(exportAnchorEl);
 
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [noteData, setNoteData] = useState({
+    paymentId: null,
+    note: '',
+  });
+
+
   // ==================== Utility/Helper Functions ====================
   const formatDateTime = (dateString) => {
     if (!dateString) return "—";
@@ -299,7 +306,9 @@ export default function PaymentsAndInvoices() {
         const method = normalizePaymentMethod(pay.method);
         // Prepare a row object with all method columns = 0
         const row = {
+          paymentId: pay.paymentId,      // store PaymentID
           payerName: pay.payerName || pay.walkInName || "N/A",
+          note: pay.note || "",     
           cash: 0,
           gcash: 0,
           bpi: 0,
@@ -469,6 +478,7 @@ export default function PaymentsAndInvoices() {
         status: p.Status,
         branchId: p.BranchID ? p.BranchID.toString() : "",
         paymentFor: Array.isArray(p.PaymentFor) ? p.PaymentFor : [],
+        note: p.Note,
       }));
       setAllPayments(mapped);
       setFilteredPayments(mapped);
@@ -784,6 +794,46 @@ export default function PaymentsAndInvoices() {
     setActiveTab(2);
     setSearchTerm("");
   };
+
+
+  function openEditNoteDialog(paymentId, currentNote) {
+    setNoteData({ paymentId, note: currentNote });
+    setNoteDialogOpen(true);
+  }
+
+  function closeEditNoteDialog() {
+    setNoteDialogOpen(false);
+    setNoteData({ paymentId: null, note: '' });
+  }
+
+  async function handleSaveNote() {
+    try {
+      await axios.patch(`/payments/${noteData.paymentId}/note`, {
+        Note: noteData.note,
+      });
+  
+      // Option A: fetchAllPayments() again to refresh local data
+      // Option B: patch local data so we don't have to re-fetch everything
+      // We'll do Option B quickly:
+  
+      setAllPayments((prev) =>
+        prev.map((p) =>
+          p.paymentId === noteData.paymentId
+            ? { ...p, note: noteData.note }
+            : p
+        )
+      );
+  
+      // Also update the “Detailed Breakdown” aggregator if needed
+      // Probably you already recalc it from allPayments, so
+      // the next time you do a setAllPayments, the aggregator sees the new note.
+  
+      closeEditNoteDialog();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save note');
+    }
+  }
 
   // ==================== Table Columns ====================
   // Payment columns
@@ -1350,8 +1400,7 @@ export default function PaymentsAndInvoices() {
         </Box>
       );
     }
-  
-  
+    
     return (
       <Box sx={{ p: 3 }}>
         {/* ---------- FILTERS SECTION ---------- */}
@@ -1543,156 +1592,131 @@ export default function PaymentsAndInvoices() {
                 </div>
               </Box>
     
-              {/* DETAILED BREAKDOWN */}
-              <Box sx={{ mt: 4 }}>
-                <Typography variant="h5" gutterBottom>
-                  Detailed Breakdown
-                </Typography>
-                <TextField
-                  type="date"
-                  value={selectedDetailDate}
-                  onChange={(e) => setSelectedDetailDate(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ mb: 2 }}
-                />
-                <Typography
-                  variant="subtitle1"
-                  sx={{
-                    mb: 2,
-                    fontWeight: "bold",
-                    color: "primary.main",
-                    fontSize: "1.2rem",
-                  }}
-                >
-                  Detailed records for: {formatDate(selectedDetailDate)}
-                </Typography>
-    
-                {/* Map through PaymentFor categories */}
-                {Object.entries(
-                  groupPaymentsByPaymentFor(
-                    allPayments.filter((p) => {
-                      // Match selected date
-                      if (p.paymentDate.split(" ")[0] !== selectedDetailDate)
-                        return false;
-                      // Match selected branch
-                      if (branch !== "all" && p.branchId !== branch) return false;
-                      return true;
-                    })
-                  )
-                ).map(([categoryName, paymentRows]) => {
-                  // Compute sums for columns in this category
-                  let sumCash = 0,
-                    sumGCash = 0,
-                    sumBPI = 0,
-                    sumBDO = 0,
-                    grandTotal = 0;
-    
-                  paymentRows.forEach((r) => {
-                    sumCash += r.cash;
-                    sumGCash += r.gcash;
-                    sumBPI += r.bpi;
-                    sumBDO += r.bdo;
-                    grandTotal += r.total;
-                  });
-    
-                  return (
-                    <Paper
-                      key={categoryName}
-                      sx={{
-                        mt: 2,
-                        p: 2,
-                        border: 1,
-                        borderColor: theme.palette.divider,
-                        borderRadius: 2,
-                      }}
-                    >
-                      <Typography variant="h6" sx={{ mb: 1 }}>
-                        {categoryName}
-                      </Typography>
-                      <TableContainer>
-                        <Table size="small">
-                          <TableHead>
-                            <TableRow
-                              sx={{
-                                backgroundColor:
-                                  theme.palette.mode === "light"
-                                    ? "#f7f7f7"
-                                    : theme.palette.grey[800],
-                              }}
-                            >
-                              <TableCell>Name</TableCell>
-                              <TableCell align="right">Cash</TableCell>
-                              <TableCell align="right">GCash</TableCell>
-                              <TableCell align="right">BPI</TableCell>
-                              <TableCell align="right">BDO</TableCell>
-                              <TableCell align="right">Row Total</TableCell>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {paymentRows.map((r, idx) => (
-                              <TableRow key={idx}>
-                                <TableCell>{r.payerName}</TableCell>
-                                <TableCell align="right">
-                                  {r.cash > 0 ? r.cash.toLocaleString() : ""}
-                                </TableCell>
-                                <TableCell align="right">
-                                  {r.gcash > 0 ? r.gcash.toLocaleString() : ""}
-                                </TableCell>
-                                <TableCell align="right">
-                                  {r.bpi > 0 ? r.bpi.toLocaleString() : ""}
-                                </TableCell>
-                                <TableCell align="right">
-                                  {r.bdo > 0 ? r.bdo.toLocaleString() : ""}
-                                </TableCell>
-                                <TableCell align="right">
-                                  {r.total > 0 ? r.total.toLocaleString() : ""}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                          <TableFooter>
-                            <TableRow sx={{ fontWeight: "bold" }}>
-                              <TableCell sx={{ fontWeight: "bold" }}>
-                                Totals
-                              </TableCell>
-                              <TableCell
-                                align="right"
-                                sx={{ fontWeight: "bold" }}
+            {/* DETAILED BREAKDOWN */}
+            <Box sx={{ mt: 4 }}>
+              <Typography variant="h5" gutterBottom>
+                Detailed Breakdown
+              </Typography>
+              <TextField
+                type="date"
+                value={selectedDetailDate}
+                onChange={(e) => setSelectedDetailDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ mb: 2 }}
+              />
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  mb: 2,
+                  fontWeight: "bold",
+                  color: "primary.main",
+                  fontSize: "1.2rem",
+                }}
+              >
+                Detailed records for: {formatDate(selectedDetailDate)}
+              </Typography>
+
+              {/* Map through PaymentFor categories */}
+              {Object.entries(
+                groupPaymentsByPaymentFor(
+                  allPayments.filter((p) => {
+                    // Match selected date
+                    if (p.paymentDate.split(" ")[0] !== selectedDetailDate) return false;
+                    // Match selected branch
+                    if (branch !== "all" && p.branchId !== branch) return false;
+                    return true;
+                  })
+                )
+              ).map(([categoryName, paymentRows]) => {
+                // Compute sums for columns in this category
+                let sumCash = 0,
+                  sumGCash = 0,
+                  sumBPI = 0,
+                  sumBDO = 0,
+                  grandTotal = 0;
+
+                paymentRows.forEach((r) => {
+                  sumCash += r.cash;
+                  sumGCash += r.gcash;
+                  sumBPI += r.bpi;
+                  sumBDO += r.bdo;
+                  grandTotal += r.total;
+                });
+
+                return (
+                  <Paper
+                    key={categoryName}
+                    sx={{
+                      mt: 2,
+                      p: 2,
+                      border: 1,
+                      borderColor: theme.palette.divider,
+                      borderRadius: 2,
+                    }}
+                  >
+                    <Typography variant="h6" sx={{ mb: 1 }}>
+                      {categoryName}
+                    </Typography>
+
+                    <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow
+                          sx={{
+                            backgroundColor:
+                              theme.palette.mode === "light" ? "#f7f7f7" : theme.palette.grey[800],
+                          }}
+                        >
+                          <TableCell>Name</TableCell>
+                          <TableCell align="right">Cash</TableCell>
+                          <TableCell align="right">GCash</TableCell>
+                          <TableCell align="right">BPI</TableCell>
+                          <TableCell align="right">BDO</TableCell>
+                          <TableCell align="right">Row Total</TableCell>
+                          <TableCell align="right">Note</TableCell>
+                          <TableCell align="right">Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {paymentRows.map((r, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>{r.payerName}</TableCell>
+                            <TableCell align="right">{r.cash > 0 ? r.cash.toLocaleString() : ""}</TableCell>
+                            <TableCell align="right">{r.gcash > 0 ? r.gcash.toLocaleString() : ""}</TableCell>
+                            <TableCell align="right">{r.bpi > 0 ? r.bpi.toLocaleString() : ""}</TableCell>
+                            <TableCell align="right">{r.bdo > 0 ? r.bdo.toLocaleString() : ""}</TableCell>
+                            <TableCell align="right">{r.total > 0 ? r.total.toLocaleString() : ""}</TableCell>
+                            <TableCell align="right">{r.note || 'No Note'}</TableCell>
+                            <TableCell align="right">
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={() => openEditNoteDialog(r.paymentId, r.note)}
                               >
-                                {sumCash.toLocaleString()}
-                              </TableCell>
-                              <TableCell
-                                align="right"
-                                sx={{ fontWeight: "bold" }}
-                              >
-                                {sumGCash.toLocaleString()}
-                              </TableCell>
-                              <TableCell
-                                align="right"
-                                sx={{ fontWeight: "bold" }}
-                              >
-                                {sumBPI.toLocaleString()}
-                              </TableCell>
-                              <TableCell
-                                align="right"
-                                sx={{ fontWeight: "bold" }}
-                              >
-                                {sumBDO.toLocaleString()}
-                              </TableCell>
-                              <TableCell
-                                align="right"
-                                sx={{ fontWeight: "bold" }}
-                              >
-                                {grandTotal.toLocaleString()}
-                              </TableCell>
-                            </TableRow>
-                          </TableFooter>
-                        </Table>
-                      </TableContainer>
-                    </Paper>
-                  );
-                })}
-              </Box>
+                                {r.note ? 'Edit Note' : 'Add Note'}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                      <TableFooter>
+                        <TableRow sx={{ fontWeight: "bold" }}>
+                          <TableCell>Totals</TableCell>
+                          <TableCell align="right">{sumCash.toLocaleString()}</TableCell>
+                          <TableCell align="right">{sumGCash.toLocaleString()}</TableCell>
+                          <TableCell align="right">{sumBPI.toLocaleString()}</TableCell>
+                          <TableCell align="right">{sumBDO.toLocaleString()}</TableCell>
+                          <TableCell align="right">{grandTotal.toLocaleString()}</TableCell>
+                          <TableCell colSpan={2} /> {/* Empty cells for 'Note' and 'Actions' in totals row */}
+                        </TableRow>
+                      </TableFooter>
+                    </Table>
+                  </TableContainer>
+                  </Paper>
+                );
+              })}
+            </Box>
+
             </>
           )}
         </Paper>
@@ -1903,6 +1927,33 @@ export default function PaymentsAndInvoices() {
             </Button>
           </DialogActions>
         </Dialog>
+
+        <Dialog
+            open={noteDialogOpen}
+            onClose={closeEditNoteDialog}
+            fullWidth
+            maxWidth="sm"
+          >
+            <DialogTitle>Edit Note</DialogTitle>
+            <DialogContent dividers>
+              <TextField
+                label="Note"
+                multiline
+                minRows={3}
+                fullWidth
+                value={noteData.note}
+                onChange={(e) =>
+                  setNoteData((prev) => ({ ...prev, note: e.target.value }))
+                }
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={closeEditNoteDialog}>Cancel</Button>
+              <Button variant="contained" onClick={handleSaveNote}>
+                Save
+              </Button>
+            </DialogActions>
+          </Dialog>
       </Box>
     );
     

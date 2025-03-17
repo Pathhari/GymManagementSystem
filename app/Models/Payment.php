@@ -26,6 +26,7 @@ class Payment extends Model
         'PaymentDate',
         'Status',
         'FailureReason',
+        'Note',  // <-- New field added here
     ];
 
     protected $casts = [
@@ -70,5 +71,4 @@ class Payment extends Model
         $branchId = $this->BranchID;
         $activity->properties = $activity->properties->put('branch_id', $branchId);
     }
-
 }

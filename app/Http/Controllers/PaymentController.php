@@ -84,29 +84,31 @@ class PaymentController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'BranchID'     => 'nullable|exists:branches,BranchID',
-            'MemberID'     => 'nullable|exists:members,MemberID',
-            'WalkInName'   => 'nullable|string|max:100',
-            'BookingRef'   => 'nullable|string|max:100',
-            'SessionRef'   => 'nullable|string|max:100',
-            'PaymentFor'   => 'required|array|min:1',
-            'PaymentFor.*' => 'string|max:50',
-            'PaymentMethod'=> 'required|string|max:50',
-            'Amount'       => 'required|numeric|min:0',
-            'PaymentDate'  => 'required|date',
-            'Status'       => 'required|string|max:50',
-            'FailureReason'=> 'nullable|string|max:255',
+            'BranchID'      => 'nullable|exists:branches,BranchID',
+            'MemberID'      => 'nullable|exists:members,MemberID',
+            'WalkInName'    => 'nullable|string|max:100',
+            'BookingRef'    => 'nullable|string|max:100',
+            'SessionRef'    => 'nullable|string|max:100',
+            'PaymentFor'    => 'required|array|min:1',
+            'PaymentFor.*'  => 'string|max:50',
+            'PaymentMethod' => 'required|string|max:50',
+            'Amount'        => 'required|numeric|min:0',
+            'PaymentDate'   => 'required|date',
+            'Status'        => 'required|string|max:50',
+            'FailureReason' => 'nullable|string|max:255',
+            'Note'          => 'nullable|string', // <-- New validation rule
         ]);
-
-        // Convert the PaymentFor array to JSON string
+    
+        // Convert the PaymentFor array to JSON string if needed.
         $data['PaymentFor'] = json_encode($data['PaymentFor']);
-
+    
         Payment::create($data);
-
+    
         return redirect()
             ->route('payments.index')
             ->with('success', 'Payment created successfully.');
     }
+    
 
     /**
      * 28. Read Payment Records => all roles.
@@ -138,28 +140,52 @@ class PaymentController extends Controller
     public function update(Request $request, $id)
     {
         $payment = Payment::findOrFail($id);
-
+    
         $data = $request->validate([
-            'BranchID'     => 'nullable|exists:branches,BranchID',
-            'MemberID'     => 'nullable|exists:members,MemberID',
-            'WalkInName'   => 'nullable|string|max:100',
-            'BookingRef'   => 'nullable|string|max:100',
-            'SessionRef'   => 'nullable|string|max:100',
-            'PaymentFor'   => 'required|array|min:1',
-            'PaymentFor.*' => 'string|max:50',
-            'PaymentMethod'=> 'required|string|max:50',
-            'Amount'       => 'required|numeric|min:0',
-            'PaymentDate'  => 'required|date',
-            'Status'       => 'required|string|max:50',
-            'FailureReason'=> 'nullable|string|max:255',
+            'BranchID'      => 'nullable|exists:branches,BranchID',
+            'MemberID'      => 'nullable|exists:members,MemberID',
+            'WalkInName'    => 'nullable|string|max:100',
+            'BookingRef'    => 'nullable|string|max:100',
+            'SessionRef'    => 'nullable|string|max:100',
+            'PaymentFor'    => 'required|array|min:1',
+            'PaymentFor.*'  => 'string|max:50',
+            'PaymentMethod' => 'required|string|max:50',
+            'Amount'        => 'required|numeric|min:0',
+            'PaymentDate'   => 'required|date',
+            'Status'        => 'required|string|max:50',
+            'FailureReason' => 'nullable|string|max:255',
+            'Note'          => 'nullable|string', // <-- New validation rule
         ]);
-
+    
+        // If you store PaymentFor as JSON, you may want to encode it as in store():
+        $data['PaymentFor'] = json_encode($data['PaymentFor']);
+    
         $payment->update($data);
-
+    
         return redirect()
             ->route('payments.index')
             ->with('success', 'Payment updated successfully.');
     }
+
+    public function updateNote(Request $request, $id)
+    {
+        $payment = Payment::findOrFail($id);
+
+        // Only validate Note
+        $data = $request->validate([
+            'Note' => 'nullable|string',
+        ]);
+
+        // Update just the Note
+        $payment->update($data);
+
+        // Return JSON for immediate reactivity on frontend
+        return response()->json([
+            'message' => 'Note updated successfully.',
+            'payment' => $payment,
+        ], 200);
+    }
+
 
     /**
      * 30. Delete Payment => all roles.
