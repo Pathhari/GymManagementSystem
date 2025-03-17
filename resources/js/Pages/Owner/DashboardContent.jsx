@@ -380,6 +380,7 @@ export default function OwnerDashboard(onClose) {
   // [NEW STUFF] Overview Filters
   const [overviewBranchFilter, setOverviewBranchFilter] = useState('all');
   const [overviewBizFilter, setOverviewBizFilter] = useState('all');
+  const [consolidatedBranchFilter, setConsolidatedBranchFilter] = useState('all');
 
   // Charts
   const [cashFlows, setCashFlows] = useState([]);
@@ -571,7 +572,7 @@ export default function OwnerDashboard(onClose) {
   // Rebuild consolidated if flows/expenses/paymentFilter change
     useEffect(() => {
       buildConsolidatedRows(filteredFlows, filteredExpenses);
-    }, [filteredFlows, filteredExpenses, showPettyToday, showPettyTomorrow, paymentFilter, bizFilter]);
+    }, [filteredFlows, filteredExpenses, showPettyCash, showExpenses, paymentFilter, bizFilter, consolidatedBranchFilter]);
 
     const consolidatedColumns = useMemo(() => {
       return getDynamicConsolidatedColumns();
@@ -1306,15 +1307,19 @@ export default function OwnerDashboard(onClose) {
     setFilteredExpenses(newFiltered);
   };
 
-  useEffect(() => {
-    buildConsolidatedRows(filteredFlows, filteredExpenses);
-  }, [filteredFlows, filteredExpenses, showPettyCash, showExpenses, paymentFilter, bizFilter]);
-  
 function buildConsolidatedRows(flows, expenses) {
-  // "groupedByDay" maps each date to 4 businesses only: Gym, Cafe, Yogurt, Yogurt Cafe
+
+// First, filter by branch if not 'all'
+  let relevantFlows = flows;
+  let relevantExpenses = expenses;
+  if (consolidatedBranchFilter !== 'all') {
+    relevantFlows = flows.filter((f) => String(f.BranchID) === String(consolidatedBranchFilter));
+    relevantExpenses = expenses.filter((e) => String(e.BranchID) === String(consolidatedBranchFilter));
+  }
+
   const groupedByDay = {};
 
-  flows.forEach((flow) => {
+  relevantFlows.forEach((flow) => {
     const dateKey = (flow.Date || '').slice(0, 10);
 
     // Initialize the day if needed
@@ -1358,7 +1363,7 @@ function buildConsolidatedRows(flows, expenses) {
 
   // 4) Add expenses if showExpenses is true
   if (showExpenses) {
-    expenses.forEach((exp) => {
+    relevantExpenses.forEach((exp) => {
       const dateKey = (exp.ExpenseDate || '').slice(0, 10);
       if (!groupedByDay[dateKey]) return;
 
@@ -2525,6 +2530,24 @@ useEffect(() => {
                   onChange={(e) => setDateTo(e.target.value)}
                   InputLabelProps={{ shrink: true }}
                 />
+               <FormControl size="small">
+                  <InputLabel>Branch</InputLabel>
+                  <Select
+                    label="Branch"
+                    value={consolidatedBranchFilter}
+                    onChange={(e) => setConsolidatedBranchFilter(e.target.value)}
+                    sx={{ width: 120 }}
+                  >
+                    <MenuItem value="all">All Branches</MenuItem>
+                    {branchOptions
+                      .filter((b) => b.value !== 'all')
+                      .map((b) => (
+                        <MenuItem key={b.value} value={b.value}>
+                          {b.label}
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
                 <FormControl size="small">
                   <InputLabel>Payment</InputLabel>
                   <Select

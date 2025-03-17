@@ -493,6 +493,9 @@ class MembershipController extends Controller
 
     public function storeRenewal(Request $request)
     {
+        $staff = auth('staff')->user();
+    
+        // 1) Validate incoming data
         $data = $request->validate([
             'MemberID'           => 'required|exists:members,MemberID',
             'RenewalStartDate'   => 'required|date|after_or_equal:today',
@@ -502,34 +505,53 @@ class MembershipController extends Controller
             'Payments.*.PaymentMethod' => 'string|max:50',
             'Payments.*.PaymentAmount' => 'numeric|min:0',
             'PaymentFor'         => 'nullable|string',
+    
+            // NEW FIELD: which branch is performing the renewal
+            'RenewalBranchID'    => 'nullable|exists:branches,BranchID',
         ]);
     
-        // 1) Fetch the member
+        // 2) Fetch the member
         $member = Member::findOrFail($data['MemberID']);
     
-        // 2) Update membership end date with the user-chosen new end date
+        // 3) Decide which branch to use for the invoice/payment
+        //    - If the request included 'RenewalBranchID', we use that
+        //    - Otherwise, you could use staff->branches->first() if staff has only one branch
+        //    - Fallback: use the original $member->StartedBranchID if none provided
+        $branchForRenewal = $request->input('RenewalBranchID') ?? $member->StartedBranchID;
+        if (!empty($data['RenewalBranchID'])) {
+            // If staff must only use a branch they belong to, check that here:
+            if ($staff && !$staff->branches->pluck('BranchID')->contains($data['RenewalBranchID'])) {
+                abort(403, 'Staff cannot assign a branch they do not belong to.');
+            }
+            $branchForRenewal = $data['RenewalBranchID'];
+        } elseif ($staff && $staff->branches->count() === 1) {
+            $branchForRenewal = $staff->branches->first()->BranchID;
+        }
+    
+        // 4) Update membership end date with the user-chosen new end date
         $member->MembershipEndDate = $data['NewEndDate'];
-        // Save the member after setting end date
         $member->save();
     
-        // 3) Create a renewal record, capturing the RenewalStartDate
+        // 5) Create a renewal record (still referencing the old plan, if any)
         $renewal = MembershipRenewal::create([
             'MemberID'         => $member->MemberID,
             'PlanID'           => $member->PlanID,      // keep existing plan
             'RenewalAmount'    => $data['RenewalAmount'],
             'RenewalDate'      => now(),                // date of this renewal action
             'RenewalStartDate' => $data['RenewalStartDate'],
+            'BranchID'         => $branchForRenewal, // new column
         ]);
     
-        // 4) Create an invoice + line item
+        // 6) Create an invoice in the *renewal* branch, not the original StartedBranchID
         $invoice = Invoice::create([
-            'BranchID'     => $member->StartedBranchID,
+            'BranchID'     => $branchForRenewal,
             'MemberID'     => $member->MemberID,
             'InvoiceDate'  => now(),
             'DueDate'      => now(),
             'InvoiceTotal' => $data['RenewalAmount'],
         ]);
     
+        // 7) Attach a line item
         InvoiceLineItem::create([
             'InvoiceID'   => $invoice->InvoiceID,
             'ItemType'    => 'Renewal',
@@ -540,7 +562,7 @@ class MembershipController extends Controller
             'Subtotal'    => $data['RenewalAmount'],
         ]);
     
-        // 5) Payment logic
+        // 8) Payment logic
         $paymentsData   = $data['Payments'] ?? [];
         $allocatedSoFar = 0;
         $payment        = null;
@@ -554,9 +576,10 @@ class MembershipController extends Controller
                 ? json_decode($data['PaymentFor'], true)
                 : ["Membership Renewal"];
     
+            // Create a Payment in the *renewal* branch
             $payment = Payment::create([
                 'MemberID'      => $member->MemberID,
-                'BranchID'      => $member->StartedBranchID,
+                'BranchID'      => $branchForRenewal,
                 'PaymentMethod' => $payItem['PaymentMethod'],
                 'Amount'        => $payItem['PaymentAmount'],
                 'PaymentDate'   => now(),
@@ -564,6 +587,7 @@ class MembershipController extends Controller
                 'Status'        => 'Completed',
             ]);
     
+            // Link payment to invoice
             PaymentInvoice::create([
                 'PaymentID'       => $payment->PaymentID,
                 'InvoiceID'       => $invoice->InvoiceID,
@@ -573,7 +597,7 @@ class MembershipController extends Controller
             $allocatedSoFar += $payItem['PaymentAmount'];
         }
     
-        // Update the invoice payment status
+        // 9) Update invoice payment status
         if ($allocatedSoFar >= $data['RenewalAmount']) {
             $invoice->update(['PaymentStatus' => 'Paid']);
         } elseif ($allocatedSoFar > 0) {
@@ -582,18 +606,18 @@ class MembershipController extends Controller
             $invoice->update(['PaymentStatus' => 'Unpaid']);
         }
     
-        // 6) Decide if the member can become Active
+        // 10) Decide if the member can become Active
         $monthsPaidSoFar = $this->calculateMonthsPaidSoFar($member);
     
-        // Example rule: if they've effectively paid >= 3 months, set to Active
         if ($monthsPaidSoFar >= 3 && $invoice->PaymentStatus === 'Paid') {
             $member->MemberStatusID = 1; // 1 = ACTIVE
         } else {
-            $member->MemberStatusID = 6; // 6 = "NEW MEMBER", or keep existing
+            // For example, 6 = "NEW MEMBER" or you can keep the existing
+            $member->MemberStatusID = 6;
         }
         $member->save();
     
-        // 7) Return JSON response
+        // 11) Return JSON
         return response()->json([
             'renewal' => $renewal,
             'invoice' => $invoice,
@@ -601,6 +625,7 @@ class MembershipController extends Controller
             'member'  => $member,
         ], 201);
     }
+    
     
         public function updateRenewal(Request $request, $id)
     {

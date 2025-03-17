@@ -115,23 +115,11 @@ class PaymentController extends Controller
      */
     public function index()
     {
-        // If an admin is logged in, return only payments for the admin’s assigned branches.
-        if (auth('admin')->check()) {
-            $admin = auth('admin')->user();
-            // Ensure your Admin model has a branches() relation returning the admin’s branches.
-            $branchIDs = $admin->branches->pluck('BranchID')->toArray();
-
-            $payments = Payment::with('member', 'monthlyClient')
-                ->whereIn('BranchID', $branchIDs)
-                ->orderBy('PaymentDate', 'desc')
-                ->get();
-        } else {
-            // For non-admin users (or when no admin guard is used), return all payments.
-            $payments = Payment::with('member', 'monthlyClient')
-                ->orderBy('PaymentDate', 'desc')
-                ->get();
-        }
-
+        // Always return all payments, regardless of which admin is logged in
+        $payments = Payment::with(['member', 'monthlyClient'])
+            ->orderBy('PaymentDate', 'desc')
+            ->get();
+    
         return response()->json($payments);
     }
 

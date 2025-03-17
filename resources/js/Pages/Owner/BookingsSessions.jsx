@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo} from "react";
 import axios from "axios";
 import {
   Box,
@@ -199,7 +199,6 @@ export default function BookingsSessions() {
   const theme = useTheme();
   const isSmall = useMediaQuery(theme.breakpoints.down("md"));
 
-  // Core state
   const [bookings, setBookings] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [sessionBookings, setSessionBookings] = useState([]);
@@ -208,17 +207,44 @@ export default function BookingsSessions() {
   const [coaches, setCoaches] = useState([]);
   const [members, setMembers] = useState([]);
   const [facilities, setFacilities] = useState([]);
+
+  // We’ll keep "all" as the initial value, then override it once we fetch the staff data.
+  const [branchFilter, setBranchFilter] = useState("all");
+  
+  // Example: You can track loading if needed
+  const [loading, setLoading] = useState(true);
+
+  // For the sake of example, you have branches hardcoded:
   const [branches] = useState([
     { value: "1", label: "Contnental Branch 1" },
     { value: "2", label: "Contnental Branch 2" },
   ]);
 
-  // Filters
-  const [branchFilter, setBranchFilter] = useState("all");
+  // (1) Fetch the staff’s default branch from /staff/authuser
+  //     and override branchFilter if we succeed.
+  useEffect(() => {
+    axios
+      .get("/staff/authuser")
+      .then((res) => {
+        const staffData = res.data;
+        if (staffData.DefaultBranchID) {
+          setBranchFilter(String(staffData.DefaultBranchID));
+        }
+      })
+      .catch((err) => {
+        console.error("Error fetching default branch:", err);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Then your existing fetchAllData call (which does not conflict with setting branchFilter)
+  useEffect(() => {
+    fetchAllData();
+  }, []);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState(0);
 
-  // Export anchor
   const [exportAnchor, setExportAnchor] = useState(null);
   const openExport = Boolean(exportAnchor);
 
@@ -233,8 +259,6 @@ export default function BookingsSessions() {
   const [viewBookingModal, setViewBookingModal] = useState(false);
   const [editBookingModal, setEditBookingModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
-
-  
 
   // Confirmation
   const [openConfirmation, setOpenConfirmation] = useState(false);
@@ -252,60 +276,20 @@ export default function BookingsSessions() {
   const [sessionBookingMemberID, setSessionBookingMemberID] = useState("");
   const [sessionBookingDate, setSessionBookingDate] = useState("");
   const [sessionBookingStatus, setSessionBookingStatus] = useState("Confirmed");
-  const [sessionBookingPaymentMethod, setSessionBookingPaymentMethod] =
-    useState("Cash");
-  const [sessionBookingPaymentAmount, setSessionBookingPaymentAmount] =
-    useState("");
+  const [sessionBookingPaymentMethod, setSessionBookingPaymentMethod] = useState("Cash");
+  const [sessionBookingPaymentAmount, setSessionBookingPaymentAmount] = useState("");
 
+  // Timeslot generation
   const [isGenerateModalOpen, setGenerateModalOpen] = useState(false);
   const [generateForm, setGenerateForm] = useState({
-  coachId: "",
-  startDate: "",
-  endDate: "",
-  branchId: "",
-  location: "",
-  sessionType: "Regular",
-  fee: 0,
-  });
-
-  // 2. A helper to open the modal for a specific coach
-function handleGenerateTimeslotsClick(coachId) {
-  setGenerateForm({
-    coachId: coachId,
-    startDate: dayjs().format("YYYY-MM-DD"),         // default
-    endDate: dayjs().add(7, "day").format("YYYY-MM-DD"), // default
-    branchId: "",       // or your default branch
-    location: "",       // optional
+    coachId: "",
+    startDate: "",
+    endDate: "",
+    branchId: "",
+    location: "",
     sessionType: "Regular",
     fee: 0,
   });
-  setGenerateModalOpen(true);
-}
-
-// 3. The actual function to do the POST
-async function generateTimeslots() {
-  if (!generateForm.coachId) {
-    showSnack("No coach selected!", "error");
-    return;
-  }
-  try {
-    const payload = {
-      start_date: generateForm.startDate,
-      end_date: generateForm.endDate,
-      branch_id: generateForm.branchId,
-      location: generateForm.location,
-      session_type: generateForm.sessionType,
-      fee: Number(generateForm.fee),
-    };
-    await axios.post(`/coaches/${generateForm.coachId}/generate-timeslots`, payload);
-    showSnack("Timeslots generated successfully!", "success");
-    setGenerateModalOpen(false);
-    fetchAllData(); // refresh your sessions list, etc.
-  } catch (err) {
-    console.error("Error generating timeslots:", err);
-    showSnack("Failed to generate timeslots. Check console.", "error");
-  }
-}
 
   // Coach dialogs
   const [isAddCoachOpen, setAddCoachOpen] = useState(false);
@@ -316,6 +300,7 @@ async function generateTimeslots() {
     FullName: "",
     Specialty: "",
     ContactInfo: "",
+    // Email is also used in the form below
   });
 
   // New booking
@@ -332,8 +317,7 @@ async function generateTimeslots() {
     PaymentMethod: "Cash",
     PaymentAmount: "",
   });
-
-  const [selectedBranchForBooking, setSelectedBranchForBooking] = useState(""); // CHANGED
+  const [selectedBranchForBooking, setSelectedBranchForBooking] = useState(""); // ?
 
   // New session
   const [newSession, setNewSession] = useState({
@@ -348,14 +332,12 @@ async function generateTimeslots() {
     Fee: "",
   });
 
-  // Status & Payment constants
   const STATUS_OPTIONS = ["Confirmed", "Pending", "Cancelled", "Completed"];
   const PAYMENT_METHODS = ["Cash", "GCash", "BPI", "BDO"];
 
-  // Real-time validation
+  // Form validations
   const isValidBooking = () => {
     if (newBooking.bookingType === "member") {
-      // For a member booking, we need a MemberID
       return (
         newBooking.MemberID &&
         newBooking.FacilityID &&
@@ -365,7 +347,6 @@ async function generateTimeslots() {
         Number(newBooking.PaymentAmount) > 0
       );
     } else {
-      // For a guest booking, we need GuestName, GuestEmail
       return (
         newBooking.GuestName.trim() !== "" &&
         newBooking.GuestEmail.trim() !== "" &&
@@ -377,7 +358,6 @@ async function generateTimeslots() {
       );
     }
   };
-  
   const [isSubmitEnabledBooking, setIsSubmitEnabledBooking] = useState(false);
   useEffect(() => {
     setIsSubmitEnabledBooking(isValidBooking());
@@ -421,8 +401,46 @@ async function generateTimeslots() {
     setSnackSeverity(severity);
     setSnackOpen(true);
   };
+  
+  useEffect(() => {
+    // 'getBranchLabel' is your helper that converts branchFilter to "Contnental Branch 1", etc.
+    const selectedBranchLabel = getBranchLabel(branchFilter);
+  
+    // 1) Filter bookings
+    //   (Here, we assume each booking has a .Branch that’s a human-readable string like "Contnental Branch 1".)
+    const filteredBookings = bookings.filter(b => {
+      if (branchFilter === "all") return true;
+      return b.Branch === selectedBranchLabel; 
+    });
+  
+    // 2) Filter sessions
+    const filteredSessions = sessions.filter(s => {
+      if (branchFilter === "all") return true;
+      return s.Branch === selectedBranchLabel;
+    });
+  
+    // 3) Filter sessionBookings
+    //    (sessionBookings might not directly contain .Branch,
+    //     so we find the corresponding session to check its branch.)
+    const filteredSessionBookings = sessionBookings.filter(sb => {
+      const sessionObj = sessions.find(s => s.SessionID === sb.SessionID);
+      if (!sessionObj) return false; // or true/false depending on your logic
+      if (branchFilter === "all") return true;
+      return sessionObj.Branch === selectedBranchLabel;
+    });
+  
+    // 4) Now build the calendar events from these filtered arrays
+    const mergedEvents = createCalendarEvents(
+      filteredBookings,
+      filteredSessions,
+      filteredSessionBookings
+    );
+  
+    // 5) Update state
+    setCalendarEvents(mergedEvents);
+  
+  }, [branchFilter, bookings, sessions, sessionBookings]);
 
-  // Fetch data
   async function fetchAllData() {
     try {
       // 1) Bookings
@@ -462,22 +480,11 @@ async function generateTimeslots() {
       setFacilities(loadedFacilities);
       setCoaches(loadedCoaches);
 
-      // Build calendar events
-      const mergedEvents = createCalendarEvents(
-        loadedBookings,
-        loadedSessions,
-        loadedSessionBookings
-      );
-      setCalendarEvents(mergedEvents);
     } catch (err) {
       console.error("Failed to load data:", err);
       showSnack("Failed to load data. Check console.", "error");
     }
   }
-  
-  useEffect(() => {
-    fetchAllData();  // call the function
-  }, []); 
 
   // Format helpers
   const formatDate = (dateString) => {
@@ -497,77 +504,58 @@ async function generateTimeslots() {
   }
 
   // ---------- FILTERS ----------
-    // Filtered Bookings
-    const filteredBookings = React.useMemo(() => {
-      const lowerSearch = searchTerm.toLowerCase();
-      const selectedBranchLabel = getBranchLabel(branchFilter); // e.g. "Contnental Branch 1"
+  const filteredBookings = useMemo(() => {
+    const lowerSearch = searchTerm.toLowerCase();
+    const selectedBranchLabel = getBranchLabel(branchFilter);
 
-      return bookings.filter((b) => {
-        // Branch
-        const branchMatches =
-          branchFilter === "all" || (b.Branch === selectedBranchLabel);
+    return bookings.filter((b) => {
+      const branchMatches =
+        branchFilter === "all" || b.Branch === selectedBranchLabel;
+      const textFields = [b.MemberName, b.FacilityName, b.Status].join(" ");
+      const searchMatches = textFields.toLowerCase().includes(lowerSearch);
 
-        // Search
-        const textFields = [b.MemberName, b.FacilityName, b.Status].join(" ");
-        const searchMatches = textFields.toLowerCase().includes(lowerSearch);
+      return branchMatches && searchMatches;
+    });
+  }, [bookings, branchFilter, searchTerm]);
 
-        return branchMatches && searchMatches;
-      });
-    }, [bookings, branchFilter, searchTerm]);
+  const filteredSessions = useMemo(() => {
+    const lowerSearch = searchTerm.toLowerCase();
+    const selectedBranchLabel = getBranchLabel(branchFilter);
 
-    // Filtered Sessions
-    const filteredSessions = React.useMemo(() => {
-      const lowerSearch = searchTerm.toLowerCase();
-      const selectedBranchLabel = getBranchLabel(branchFilter);
+    return sessions.filter((s) => {
+      const branchMatches =
+        branchFilter === "all" || s.Branch === selectedBranchLabel;
+      const textFields = [s.SessionName, s.CoachName, s.Location, s.Status].join(" ");
+      const searchMatches = textFields.toLowerCase().includes(lowerSearch);
 
-      return sessions.filter((s) => {
-        const branchMatches =
-          branchFilter === "all" || (s.Branch === selectedBranchLabel);
+      return branchMatches && searchMatches;
+    });
+  }, [sessions, branchFilter, searchTerm]);
 
-        // We only search certain fields
-        const textFields = [s.SessionName, s.CoachName, s.Location, s.Status].join(" ");
-        const searchMatches = textFields.toLowerCase().includes(lowerSearch);
-
-        return branchMatches && searchMatches;
-      });
-    }, [sessions, branchFilter, searchTerm]);
-
-    // Filtered Coaches
-    const filteredCoaches = React.useMemo(() => {
-      const lowerSearch = searchTerm.toLowerCase();
-
-      return coaches.filter((c) => {
-        // For coaches, there's no branch logic in your data. (If you had c.Branch?)
-        // If you had c.Branch or c.BranchID, you'd check it here, too.
-        // But your snippet shows "BranchID": null, so you might skip branch filtering.
-
-        // Just do the search
-        const textFields = [
-          c.FullName || "",
-          c.Specialty || "",
-          c.ContactInfo || "",
-        ].join(" ");
-        const searchMatches = textFields.toLowerCase().includes(lowerSearch);
-
-        return searchMatches;
-      });
-    }, [coaches, searchTerm]);
+  const filteredCoaches = useMemo(() => {
+    const lowerSearch = searchTerm.toLowerCase();
+    // Possibly no branch logic for coaches in your data:
+    return coaches.filter((c) => {
+      const textFields = [
+        c.FullName || "",
+        c.Specialty || "",
+        c.ContactInfo || "",
+      ].join(" ");
+      return textFields.toLowerCase().includes(lowerSearch);
+    });
+  }, [coaches, searchTerm]);
 
   // ---------- CALENDAR EVENTS ----------
   const bigCalendarEvents = calendarEvents.map((event) => {
     if (event.start && event.end) {
-      // session event with start/end
       return { ...event, start: new Date(event.start), end: new Date(event.end) };
     } else if (event.date) {
-      // booking or sessionBooking with date only
       const d = new Date(event.date);
       return { ...event, start: d, end: d, allDay: true };
     }
     return event;
   });
 
-
-  // Calendar
   const handleDateClick = (info) => {
     const clickedDate = new Date(info.dateStr);
     if (clickedDate < new Date()) return;
@@ -582,7 +570,6 @@ async function generateTimeslots() {
     );
   };
   const handleSaveCalendarEvent = (title, desc, start, end) => {
-    // example only
     const newEv = {
       id: Date.now().toString(),
       date: selectedDate?.toISOString().split("T")[0] || "2025-01-01",
@@ -618,7 +605,6 @@ async function generateTimeslots() {
       setViewBookingModal(true);
     }
   }
-
   async function handleCreateBooking() {
     try {
       const payload = {
@@ -630,7 +616,7 @@ async function generateTimeslots() {
         PaymentMethod: newBooking.PaymentMethod || "Cash",
         Amount: Number(newBooking.PaymentAmount) || 0,
       };
-  
+
       if (newBooking.bookingType === "member") {
         payload.MemberID = newBooking.MemberID || null;
         payload.GuestName = null;
@@ -640,8 +626,7 @@ async function generateTimeslots() {
         payload.GuestName = newBooking.GuestName;
         payload.GuestEmail = newBooking.GuestEmail;
       }
-  
-      console.log("Booking payload:", payload);
+
       await axios.post("/booking", payload);
       setAddBookingOpen(false);
       fetchAllData();
@@ -651,8 +636,6 @@ async function generateTimeslots() {
       showSnack("Error creating booking. Check console.", "error");
     }
   }
-  
-  
   async function handleDeleteBooking(bookingId) {
     try {
       await axios.delete(`/booking/${bookingId}`);
@@ -664,71 +647,51 @@ async function generateTimeslots() {
       showSnack("Error deleting booking. Check console.", "error");
     }
   }
-
-  // 4) Edit Booking (UPDATED)
   function handleEditBooking(bookingId) {
     const found = bookings.find((b) => b.BookingID === bookingId);
     if (!found) return;
-
-    // Decide if booking is "member" or "guest"
-    const isMember = !!found.MemberID; // true if found.MemberID is present
-
-    // Build a single object for selectedBooking
+    const isMember = !!found.MemberID;
     setSelectedBooking({
       ...found,
-      // If it’s a member booking
       bookingType: isMember ? "member" : "guest",
-
-      // If isMember is true, blank out any GuestName/GuestEmail,
-      // else fill them from found (if present).
-      GuestName:  isMember ? "" : (found.GuestName || ""),
-      GuestEmail: isMember ? "" : (found.GuestEmail || ""),
-
-      // If you have PaymentMethod/PaymentAmount stored in "found" from the DB,
-      // you can set them here. Otherwise default them:
+      GuestName: isMember ? "" : found.GuestName || "",
+      GuestEmail: isMember ? "" : found.GuestEmail || "",
       PaymentMethod: found.PaymentMethod || "Cash",
       PaymentAmount: found.PaymentAmount || "",
     });
-
     setEditBookingModal(true);
-  }  
-  
-// 5) Update Booking (IMPORTANT FIX: reference selectedBooking, not setSelectedBooking)
-async function handleUpdateBooking() {
-  if (!selectedBooking) return;
-
-  // Build the payload from selectedBooking (NOT setSelectedBooking)
-  const payload = {
-    FacilityID:  selectedBooking.FacilityID,
-    BookingDate: selectedBooking.BookingDate,
-    BookingTime: selectedBooking.BookingTime,
-    Duration:    selectedBooking.Duration,
-    Status:      selectedBooking.Status,
-    PaymentMethod: selectedBooking.PaymentMethod,
-    Amount:      Number(selectedBooking.PaymentAmount) || 0,
-  };
-
-  if (selectedBooking.bookingType === "member") {
-    payload.MemberID   = selectedBooking.MemberID;
-    payload.GuestName  = null;
-    payload.GuestEmail = null;
-  } else {
-    payload.MemberID   = null;
-    payload.GuestName  = selectedBooking.GuestName;
-    payload.GuestEmail = selectedBooking.GuestEmail;
   }
+  async function handleUpdateBooking() {
+    if (!selectedBooking) return;
+    const payload = {
+      FacilityID: selectedBooking.FacilityID,
+      BookingDate: selectedBooking.BookingDate,
+      BookingTime: selectedBooking.BookingTime,
+      Duration: selectedBooking.Duration,
+      Status: selectedBooking.Status,
+      PaymentMethod: selectedBooking.PaymentMethod,
+      Amount: Number(selectedBooking.PaymentAmount) || 0,
+    };
+    if (selectedBooking.bookingType === "member") {
+      payload.MemberID = selectedBooking.MemberID;
+      payload.GuestName = null;
+      payload.GuestEmail = null;
+    } else {
+      payload.MemberID = null;
+      payload.GuestName = selectedBooking.GuestName;
+      payload.GuestEmail = selectedBooking.GuestEmail;
+    }
 
-  try {
-    await axios.put(`/booking/${selectedBooking.BookingID}`, payload);
-    setEditBookingModal(false);
-    fetchAllData();
-    showSnack("Booking updated!", "success");
-  } catch (err) {
-    console.error("Failed to update booking:", err);
-    showSnack("Error updating booking.", "error");
+    try {
+      await axios.put(`/booking/${selectedBooking.BookingID}`, payload);
+      setEditBookingModal(false);
+      fetchAllData();
+      showSnack("Booking updated!", "success");
+    } catch (err) {
+      console.error("Failed to update booking:", err);
+      showSnack("Error updating booking.", "error");
+    }
   }
-}
-  
 
   // ---------- SESSIONS ----------
   function handleViewSession(sessionId) {
@@ -738,11 +701,9 @@ async function handleUpdateBooking() {
       setViewSessionModal(true);
     }
   }
-
   function handleEditSession(sessionId) {
     const found = sessions.find((s) => s.SessionID === sessionId);
     if (found) {
-      // Convert times for the DesktopDateTimePicker
       setSelectedSession({
         ...found,
         StartTime: dayjs(found.StartTime).format("YYYY-MM-DD HH:mm:ss"),
@@ -751,34 +712,23 @@ async function handleUpdateBooking() {
       setEditSessionModal(true);
     }
   }
-
   async function handleCreateSession() {
-    // Get the selected coach for this session
     const coach = coaches.find((c) => c.CoachID === newSession.CoachID);
     if (!coach) {
       showSnack("Please select a valid coach.", "error");
       return;
     }
-    
     const sessionStart = dayjs(newSession.StartTime);
     const sessionEnd = dayjs(newSession.EndTime);
-  
-    // Check if the session fits within one of the coach’s availability slots
     const validSlot = coach.availabilities?.some((slot) => {
       const slotStart = dayjs(slot.Start);
       const slotEnd = dayjs(slot.End);
-    
-      // This means "sessionStart >= slotStart and sessionEnd <= slotEnd" 
-      // by flipping the logic:
       return !sessionStart.isBefore(slotStart) && !sessionEnd.isAfter(slotEnd);
     });
-    
     if (!validSlot) {
       showSnack("Session time is outside the coach's availability window!", "error");
       return;
     }
-    
-    // If validation passes, proceed with creating the session
     try {
       await axios.post("/booking/sessions", {
         BranchID: newSession.BranchID,
@@ -799,39 +749,31 @@ async function handleUpdateBooking() {
       showSnack("Error creating session. Check console for details.", "error");
     }
   }
-
   async function handleUpdateSession() {
     if (!selectedSession) return;
-  
-    // Retrieve the coach for the selected session
     const coach = coaches.find((c) => c.CoachID === selectedSession.CoachID);
     if (!coach) {
       showSnack("Please select a valid coach.", "error");
       return;
     }
-  
     const sessionStart = dayjs(selectedSession.StartTime);
     const sessionEnd = dayjs(selectedSession.EndTime);
-  
-    // Validate that the session falls within one of the coach's availability slots
     const validSlot = coach.availabilities?.some((slot) => {
       const slotStart = dayjs(slot.Start);
       const slotEnd = dayjs(slot.End);
       return sessionStart.isSameOrAfter(slotStart) && sessionEnd.isSameOrBefore(slotEnd);
     });
-  
     if (!validSlot) {
       showSnack("Session time is outside the coach's availability window!", "error");
       return;
     }
-  
     try {
       await axios.put(`/booking/sessions/${selectedSession.SessionID}`, {
         SessionName: selectedSession.SessionName,
         BranchID: selectedSession.BranchID,
         SessionType: selectedSession.SessionType,
         CoachID: selectedSession.CoachID,
-        StartTime: selectedSession.StartTime, // "YYYY-MM-DD HH:mm:ss"
+        StartTime: selectedSession.StartTime,
         EndTime: selectedSession.EndTime,
         Capacity: selectedSession.Capacity,
         Location: selectedSession.Location,
@@ -843,10 +785,10 @@ async function handleUpdateBooking() {
       showSnack("Session updated!", "success");
     } catch (err) {
       console.error("Failed to update session:", err);
-      showSnack("Error updating session. Check console for details.", "error");
+      showSnack("Error updating session. Check console.", "error");
     }
   }
-  
+
   // ---------- BOOK SESSION ----------
   function handleOpenBookSession(sessionId) {
     const found = sessions.find((s) => s.SessionID === sessionId);
@@ -864,78 +806,71 @@ async function handleUpdateBooking() {
       setBookSessionOpen(true);
     }
   }
-// Inside your BookingsSessions component
- async function handleBookSessionConfirm() {
-  if (!sessionToBook) return;
-  try {
-    // Step 1) Create the booking on backend
-    await axios.post("/booking/sessions/book", {
-      SessionID: sessionToBook.SessionID,
-      MemberID: sessionBookingMemberID,
-      BookingDate: dayjs(sessionBookingDate).format("YYYY-MM-DD"),
-      Status: sessionBookingStatus,
-      PaymentMethod: sessionBookingPaymentMethod,
-      Amount: Number(sessionBookingPaymentAmount) || 0,
-    });
+  async function handleBookSessionConfirm() {
+    if (!sessionToBook) return;
+    try {
+      await axios.post("/booking/sessions/book", {
+        SessionID: sessionToBook.SessionID,
+        MemberID: sessionBookingMemberID,
+        BookingDate: dayjs(sessionBookingDate).format("YYYY-MM-DD"),
+        Status: sessionBookingStatus,
+        PaymentMethod: sessionBookingPaymentMethod,
+        Amount: Number(sessionBookingPaymentAmount) || 0,
+      });
 
-    // Step 2) Immediately notify the coach (Mailjet) if the session has a valid coach
-    if (sessionToBook.CoachID) {
-      // 2a) Find coach data from your coaches array
-      const foundCoach = coaches.find(c => c.CoachID === sessionToBook.CoachID);
-      if (foundCoach && foundCoach.ContactInfo && foundCoach.Email.includes("@")) {
+      // Step 2: Notify the coach
+      if (sessionToBook.CoachID) {
+        const foundCoach = coaches.find((c) => c.CoachID === sessionToBook.CoachID);
+        if (foundCoach && foundCoach.ContactInfo && foundCoach.Email?.includes("@")) {
+          const foundMember = members.find((m) => m.MemberID === Number(sessionBookingMemberID));
+          const memberName = foundMember ? foundMember.FullName : "Unknown Member";
 
-        // 2b) Find the member for a nice name display
-        const foundMember = members.find(m => m.MemberID === Number(sessionBookingMemberID));
-        const memberName = foundMember ? foundMember.FullName : "Unknown Member";
-
-        // 2c) Post to your new notify endpoint
-        await axios.post("/notifications/notify-coach-booking-mailjet", {
-          coach_id:     foundCoach.CoachID,
-          coach_name:   foundCoach.FullName,
-          coach_email:  foundCoach.Email,   // or foundCoach.Email if your DB has it
-          member_name:  memberName,
+          await axios.post("/notifications/notify-coach-booking-mailjet", {
+            coach_id: foundCoach.CoachID,
+            coach_name: foundCoach.FullName,
+            coach_email: foundCoach.Email,
+            member_name: memberName,
+            session_name: sessionToBook.SessionName,
+            start_time: sessionToBook.StartTime,
+            end_time: sessionToBook.EndTime,
+          });
+        }
+      }
+      // Step 2b: Notify the member
+      const foundMemberForNotification = members.find(
+        (m) => m.MemberID === Number(sessionBookingMemberID)
+      );
+      if (
+        foundMemberForNotification &&
+        foundMemberForNotification.Email &&
+        foundMemberForNotification.Email.includes("@")
+      ) {
+        await axios.post("/notifications/notify-member-booking-mailjet", {
+          member_id: foundMemberForNotification.MemberID,
+          member_name: foundMemberForNotification.FullName,
+          member_email: foundMemberForNotification.Email,
+          coach_name:
+            coaches.find((c) => c.CoachID === sessionToBook.CoachID)?.FullName || "",
           session_name: sessionToBook.SessionName,
-          start_time:   sessionToBook.StartTime,  // "YYYY-MM-DD HH:mm:ss"
-          end_time:     sessionToBook.EndTime,
+          start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD HH:mm:ss"),
+          end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD HH:mm:ss"),
         });
       }
-    }
-    
-    // Step 2b: Notify the member using a new endpoint (create this on your backend)
-    const foundMemberForNotification = members.find(m => m.MemberID === Number(sessionBookingMemberID));
-    if (foundMemberForNotification && foundMemberForNotification.Email && foundMemberForNotification.Email.includes("@")) {
-      await axios.post("/notifications/notify-member-booking-mailjet", {
-        member_id: foundMemberForNotification.MemberID,
-        member_name: foundMemberForNotification.FullName,
-        member_email: foundMemberForNotification.Email,
-        // Optionally include the coach's name for additional context
-        coach_name: coaches.find(c => c.CoachID === sessionToBook.CoachID)?.FullName || "",
-        session_name: sessionToBook.SessionName,
-        start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD HH:mm:ss"),
-        end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD HH:mm:ss"),
-      });
-    } else {
-      console.warn("Member email not valid or missing:", foundMemberForNotification);
-    }
 
-
-    // Step 3) Wrap up
-    setBookSessionOpen(false);
-    fetchAllData();
-    showSnack("Session booked successfully, coach notified by Mailjet!", "success");
-
-  } catch (err) {
-    console.error("Failed to book session or notify coach:", err);
-    if (err.response && err.response.status === 422) {
-      showSnack(err.response.data.message || "Capacity reached!", "warning");
-    } else {
-      showSnack("Error booking session. Check console for details.", "error");
+      setBookSessionOpen(false);
+      fetchAllData();
+      showSnack("Session booked successfully, coach notified by Mailjet!", "success");
+    } catch (err) {
+      console.error("Failed to book session or notify coach:", err);
+      if (err.response && err.response.status === 422) {
+        showSnack(err.response.data.message || "Capacity reached!", "warning");
+      } else {
+        showSnack("Error booking session. Check console for details.", "error");
+      }
     }
   }
-}
 
-
-  // Coaches
+  // ---------- COACHES ----------
   const handleViewCoach = (coachId) => {
     const found = coaches.find((c) => c.CoachID === coachId);
     if (found) {
@@ -976,7 +911,6 @@ async function handleUpdateBooking() {
       showSnack("Error creating coach. Check console.", "error");
     }
   };
-
   const handleUpdateCoach = async () => {
     if (!selectedCoach) return;
     try {
@@ -1074,9 +1008,7 @@ async function handleUpdateBooking() {
             <Button
               variant="contained"
               color="error"
-              onClick={() =>
-                handleOpenDeleteDialog("booking", params.row.BookingID)
-              }
+              onClick={() => handleOpenDeleteDialog("booking", params.row.BookingID)}
             >
               <DeleteIcon fontSize="small" />
             </Button>
@@ -1142,9 +1074,7 @@ async function handleUpdateBooking() {
             <Button
               variant="contained"
               color="error"
-              onClick={() =>
-                handleOpenDeleteDialog("session", params.row.SessionID)
-              }
+              onClick={() => handleOpenDeleteDialog("session", params.row.SessionID)}
             >
               <DeleteIcon fontSize="small" />
             </Button>
@@ -1154,16 +1084,10 @@ async function handleUpdateBooking() {
     },
   ];
 
-  function formatCoachAvailability(dateString) {
-    if (!dateString) return "—";
-    const parsed = dayjs(dateString);
-    return parsed.isValid() ? parsed.format("MMM D, YYYY h:mm A") : "Invalid";
-  }
-
   const coachesColumns = [
     { field: "CoachID", headerName: "ID", width: 80 },
     { field: "FullName", headerName: "Name", width: 150 },
-    { field: "Specialty", headerName: "Specialty", width: 130 }, 
+    { field: "Specialty", headerName: "Specialty", width: 130 },
     { field: "ContactInfo", headerName: "Contact Info", width: 150 },
     {
       field: "Actions",
@@ -1209,30 +1133,30 @@ async function handleUpdateBooking() {
             </Button>
           </Tooltip>
           <Tooltip title="Generate Timeslots">
-          <Button
-            variant="contained"
-            color="info"
-            onClick={() => handleGenerateTimeslotsClick(params.row.CoachID)}
-          >
-          Timeslots
-        </Button>
-      </Tooltip>
+            <Button
+              variant="contained"
+              color="info"
+              onClick={() => handleGenerateTimeslotsClick(params.row.CoachID)}
+            >
+              Timeslots
+            </Button>
+          </Tooltip>
         </Box>
       ),
     },
   ];
 
   const columns =
-  activeTab === 0
-    ? bookingColumns
-    : activeTab === 1
-    ? sessionColumns
-    : coachesColumns;
+    activeTab === 0
+      ? bookingColumns
+      : activeTab === 1
+      ? sessionColumns
+      : coachesColumns;
 
-    let rows = [];
-    if (activeTab === 0) rows = filteredBookings;
-    else if (activeTab === 1) rows = filteredSessions;
-    else rows = filteredCoaches;
+  let rows = [];
+  if (activeTab === 0) rows = filteredBookings;
+  else if (activeTab === 1) rows = filteredSessions;
+  else rows = filteredCoaches;
 
   const getRowId = (row) =>
     activeTab === 0 ? row.BookingID : activeTab === 1 ? row.SessionID : row.CoachID;
@@ -1272,16 +1196,7 @@ async function handleUpdateBooking() {
     if (activeTab === 0) {
       title = "Facility Bookings Report";
       filename = "BookingsReport.pdf";
-      tableHeaders = [
-        "Booking ID",
-        "Branch",
-        "Member Name",
-        "Facility",
-        "Date",
-        "Time",
-        "Duration",
-        "Status",
-      ];
+      tableHeaders = ["Booking ID", "Branch", "Member Name", "Facility", "Date", "Time", "Duration", "Status"];
       tableBody = filteredBookings.map((b) => [
         b.BookingID || "N/A",
         b.Branch || "—",
@@ -1295,15 +1210,7 @@ async function handleUpdateBooking() {
     } else if (activeTab === 1) {
       title = "Coach Sessions Report";
       filename = "SessionsReport.pdf";
-      tableHeaders = [
-        "Session ID",
-        "Branch",
-        "Session Name",
-        "Coach Name",
-        "Start",
-        "End",
-        "Capacity",
-      ];
+      tableHeaders = ["Session ID", "Branch", "Session Name", "Coach Name", "Start", "End", "Capacity"];
       tableBody = filteredSessions.map((s) => [
         s.SessionID || "N/A",
         s.Branch || "—",
@@ -1316,14 +1223,8 @@ async function handleUpdateBooking() {
     } else {
       title = "Coaches Report";
       filename = "CoachesReport.pdf";
-      tableHeaders = [
-        "Coach ID",
-        "Full Name",
-        "Specialty",
-        "Availability",
-        "Contact Info",
-      ];
-      tableBody = coaches.map((c) => [
+      tableHeaders = ["Coach ID", "Full Name", "Specialty", "Availability", "Contact Info"];
+      tableBody = filteredCoaches.map((c) => [
         c.CoachID || "N/A",
         c.FullName || "—",
         c.Specialty || "—",
@@ -1352,9 +1253,12 @@ async function handleUpdateBooking() {
     doc.setTextColor("#ffffff");
     doc.text(title, pageWidth / 2, 100, { align: "center" });
     doc.setFontSize(14);
-    doc.text("Generated on: " + new Date().toLocaleDateString(), pageWidth / 2, 130, {
-      align: "center",
-    });
+    doc.text(
+      "Generated on: " + new Date().toLocaleDateString(),
+      pageWidth / 2,
+      130,
+      { align: "center" }
+    );
 
     doc.autoTable({
       head: [tableHeaders],
@@ -1407,65 +1311,91 @@ async function handleUpdateBooking() {
     borderRadius: 4,
   };
 
-  // ---------- COACH AVAILABILITIES (Optional) ----------
+  // ---------- COACH AVAILABILITIES ----------
   const [manageAvailOpen, setManageAvailOpen] = useState(false);
   const [coachToManage, setCoachToManage] = useState(null);
 
   async function openManageAvailability(coachId) {
     try {
-      // fetch a single coach (with availabilities)
       const res = await axios.get(`/coaches/${coachId}?include=availabilities`);
-      setCoachToManage(res.data.coach);  // or however your API returns it
+      setCoachToManage(res.data.coach);
       setManageAvailOpen(true);
     } catch (err) {
       console.error("Error fetching coach + availabilities", err);
       alert("Failed to fetch coach. See console.");
     }
   }
-  
   function closeManageAvailability() {
     setManageAvailOpen(false);
     setCoachToManage(null);
-    // optionally fetchAllData if changes
+    // optionally fetchAllData again if needed
   }
 
   const [coachAvailability, setCoachAvailability] = useState([]);
   const [selectedTimeslotId, setSelectedTimeslotId] = useState("");
 
-  // When user picks a coach in the Autocomplete
   function handleCoachChange(newValue) {
     setNewSession({
       ...newSession,
       CoachID: newValue?.CoachID ?? "",
     });
-    // Save the availability array so we can display it
     if (newValue?.availabilities) {
       setCoachAvailability(newValue.availabilities);
     } else {
       setCoachAvailability([]);
     }
-    // reset the timeslot selection
     setSelectedTimeslotId("");
   }
-
-  // When user picks a timeslot from the availability dropdown
   function handleTimeslotSelect(slotId) {
     setSelectedTimeslotId(slotId);
-    const slot = coachAvailability.find((slot) => slot.id === slotId);
+    const slot = coachAvailability.find((s) => s.id === slotId);
     if (!slot) return;
-    // set newSession StartTime/EndTime
     setNewSession({
       ...newSession,
       StartTime: dayjs(slot.Start).format("YYYY-MM-DD HH:mm:ss"),
       EndTime: dayjs(slot.End).format("YYYY-MM-DD HH:mm:ss"),
     });
   }
-
-  // A helper to format timeslot labels
   function timeslotLabel(slot) {
     const startFmt = dayjs(slot.Start).format("MMM D, h:mm A");
     const endFmt = dayjs(slot.End).format("MMM D, h:mm A");
     return `${startFmt} – ${endFmt}`;
+  }
+
+  function handleGenerateTimeslotsClick(coachId) {
+    setGenerateForm({
+      coachId: coachId,
+      startDate: dayjs().format("YYYY-MM-DD"),
+      endDate: dayjs().add(7, "day").format("YYYY-MM-DD"),
+      branchId: "",
+      location: "",
+      sessionType: "Regular",
+      fee: 0,
+    });
+    setGenerateModalOpen(true);
+  }
+  async function generateTimeslots() {
+    if (!generateForm.coachId) {
+      showSnack("No coach selected!", "error");
+      return;
+    }
+    try {
+      const payload = {
+        start_date: generateForm.startDate,
+        end_date: generateForm.endDate,
+        branch_id: generateForm.branchId,
+        location: generateForm.location,
+        session_type: generateForm.sessionType,
+        fee: Number(generateForm.fee),
+      };
+      await axios.post(`/coaches/${generateForm.coachId}/generate-timeslots`, payload);
+      showSnack("Timeslots generated successfully!", "success");
+      setGenerateModalOpen(false);
+      fetchAllData();
+    } catch (err) {
+      console.error("Error generating timeslots:", err);
+      showSnack("Failed to generate timeslots. Check console.", "error");
+    }
   }
 
   return (
@@ -1700,16 +1630,16 @@ async function handleUpdateBooking() {
           </Box>
         </Paper>
 
-                {/* MANAGE AVAILABILITY DIALOG */}
-                <ManageAvailabilityDialog
-                  open={manageAvailOpen}
-                  onClose={closeManageAvailability}
-                  coach={coachToManage}
-                  onSave={() => {
-                    // optional callback to refresh
-                    fetchAllData();
-                  }}
-                />
+        {/* MANAGE AVAILABILITY DIALOG */}
+        <ManageAvailabilityDialog
+          open={manageAvailOpen}
+          onClose={closeManageAvailability}
+          coach={coachToManage}
+          onSave={() => {
+            // optional callback to refresh
+            fetchAllData();
+          }}
+        />
 
           {/* ADD BOOKING DIALOG */}
 <Dialog

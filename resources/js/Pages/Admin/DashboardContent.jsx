@@ -123,6 +123,7 @@ export default function AdminDashboard(onClose) {
   );
   const [allPayments, setAllPayments] = useState([]); // you may already have similar data or need to fetch it separately
   const [filteredGymSales, setFilteredGymSales] = useState([]);
+  const [adminBranchFilter, setAdminBranchFilter] = useState('all');
   
 
   // ----------------- SNACKBAR STATES & HELPER (for success messages) -----------------
@@ -335,6 +336,23 @@ export default function AdminDashboard(onClose) {
   const [allExpenses, setAllExpenses] = useState([]);
   const [filteredExpenses, setFilteredExpenses] = useState([]);
 
+  function applyDateFilterAndBranch(arr, fromDate, toDate) {
+    // 1) Filter by date
+    let result = arr.filter((item) => {
+      const d = new Date(item.Date || item.ExpenseDate);
+      if (fromDate && d < new Date(fromDate)) return false;
+      if (toDate && d > new Date(toDate)) return false;
+      return true;
+    });
+  
+    // 2) Filter by the adminBranchFilter
+    if (adminBranchFilter !== 'all') {
+      result = result.filter(
+        (item) => String(item.BranchID) === String(adminBranchFilter)
+      );
+    }
+    return result;
+  }
   // Dialogs for cash flow
   const [cashFlowDialogOpen, setCashFlowDialogOpen] = useState(false);
   const [cashFlowForm, setCashFlowForm] = useState({
@@ -643,6 +661,7 @@ function closeDailyPettyDialog() {
           method: payment.PaymentMethod,
           status: payment.Status,
           paymentFor: Array.isArray(payment.PaymentFor) ? payment.PaymentFor : [],
+          branchId: payment.BranchID ? payment.BranchID.toString() : "0",
         }));
         setAllPayments(mappedPayments);
       })
@@ -653,47 +672,49 @@ function closeDailyPettyDialog() {
 
   useEffect(() => {
     if (activeTab === 4) { // Sales Report tab index
-      const branchId = overviewBranchFilter;
+      const branchId = adminBranchFilter;
   
-      const aggregated = allFlows
-        .filter((flow) =>
+      // 1) Filter to just Gym flows, matching selected branch (or all).
+      const gymFlows = allFlows.filter(
+        (flow) =>
           (branchId === 'all' || String(flow.BranchID) === String(branchId)) &&
           flow.BusinessType === 'Gym'
-        )
-        .map((flow) => {
-          // 1. Raw cash from flows (total cash payments)
-          const flowCash = Number(flow.CashSales || 0);
+      );
   
-          // 2. Petty values
-          const pettyCash = Number(flow.PettyCash || 0);
-          const pettyTomorrow = Number(flow.PettyCashTomorrow || 0);
-  
-          // 3. totalCash is just the raw cash payments
-          const totalCash = flowCash;
-  
-          // 4. “Cash + Petty” = flowCash + pettyCash (today’s petty)
-          const cashPlusPetty = flowCash + pettyCash;
-  
-          // 5. Other payment methods
-          const totalGCash = Number(flow.GCashSales || 0);
-          const totalBPI = Number(flow.BPISales || 0);
-          const totalBDO = Number(flow.BDOSales || 0);
-  
-          return {
-            date: flow.Date,
-            totalCash,         // raw cash only
-            totalGCash,
-            totalBPI,
-            totalBDO,
-            pettyCash,
-            pettyTomorrow,
-            cashPlusPetty,     // flowCash + pettyCash
+      // 2) Group flows by Date, summing up amounts so each date is only one row.
+      const grouped = gymFlows.reduce((acc, flow) => {
+        const d = flow.Date; // or flow.Date.slice(0,10) if you need only YYYY-MM-DD
+        if (!acc[d]) {
+          acc[d] = {
+            date: d,
+            totalCash: 0,
+            totalGCash: 0,
+            totalBPI: 0,
+            totalBDO: 0,
+            pettyCash: 0,
+            pettyTomorrow: 0
           };
-        });
+        }
+        acc[d].totalCash       += Number(flow.CashSales || 0);
+        acc[d].totalGCash      += Number(flow.GCashSales || 0);
+        acc[d].totalBPI        += Number(flow.BPISales || 0);
+        acc[d].totalBDO        += Number(flow.BDOSales || 0);
+        acc[d].pettyCash       += Number(flow.PettyCash || 0);
+        acc[d].pettyTomorrow   += Number(flow.PettyCashTomorrow || 0);
+        return acc;
+      }, {});
   
+      // 3) Convert that object back into an array of row objects.
+      const aggregated = Object.values(grouped).map(entry => ({
+        ...entry,
+        cashPlusPetty: entry.totalCash + entry.pettyCash
+      }));
+  
+      // 4) Finally, store them as the rows for your DataGrid
       setFilteredGymSales(aggregated);
     }
-  }, [activeTab, allFlows, overviewBranchFilter]);
+  }, [activeTab, allFlows, adminBranchFilter]);
+  
   
   
   // Rebuild consolidated if flows/expenses/paymentFilter change
@@ -1430,28 +1451,39 @@ function closeDailyPettyDialog() {
       return true;
     });
   }
-
-  const handleFilterCashFlow = () => {
-    const newFiltered = applyDateFilter(allFlows, dateFrom, dateTo);
+  function handleFilterCashFlow() {
+    const newFiltered = applyDateFilterAndBranch(allFlows, dateFrom, dateTo);
     setFilteredFlows(newFiltered);
     buildRevenueTrends(newFiltered);
     buildPaymentPie(newFiltered);
     buildBusinessCharts(newFiltered);
-  };
+  }
 
-  const handleFilterExpenses = () => {
-    const newFiltered = applyDateFilter(allExpenses, dateFrom, dateTo);
+  function handleFilterExpenses() {
+    const newFiltered = applyDateFilterAndBranch(allExpenses, dateFrom, dateTo);
     setFilteredExpenses(newFiltered);
-  };
-
+  }
+  
   useEffect(() => {
     buildConsolidatedRows(filteredFlows, filteredExpenses);
-  }, [filteredFlows, filteredExpenses, showPettyCash, showExpenses, paymentFilter, bizFilter]);
+  }, [filteredFlows, filteredExpenses, showPettyToday, showPettyTomorrow, paymentFilter, bizFilter, adminBranchFilter]);
   
   function buildConsolidatedRows(flows, expenses) {
+    // First, filter by the adminBranchFilter if it's not 'all'
+  let relevantFlows = flows;
+  let relevantExpenses = expenses;
+
+  if (adminBranchFilter !== 'all') {
+    relevantFlows = flows.filter(
+      (flow) => String(flow.BranchID) === String(adminBranchFilter)
+    );
+    relevantExpenses = expenses.filter(
+      (exp) => String(exp.BranchID) === String(adminBranchFilter)
+    );
+  }
     const groupedByDay = {};
   
-    flows.forEach((flow) => {
+    relevantFlows.forEach((flow) => {
       const dateKey = (flow.Date || "").slice(0, 10);
   
       if (!groupedByDay[dateKey]) {
@@ -1519,7 +1551,7 @@ function closeDailyPettyDialog() {
   
     // 5) Accumulate expenses (if showExpenses) 
     if (showExpenses) {
-      expenses.forEach((exp) => {
+      relevantExpenses.forEach((exp) => {
         const dateKey = (exp.ExpenseDate || "").slice(0, 10);
         if (!groupedByDay[dateKey]) return;
   
@@ -2001,10 +2033,10 @@ useEffect(() => {
           <Typography variant="body2">Key performance overview and quick actions</Typography>
         </Box>
       </Box>
-
+      
+      
       {/* Main Tabs */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-center' }}>
-      
         <Tabs
           value={activeTab}
           onChange={handleTabChange}
@@ -2693,6 +2725,26 @@ useEffect(() => {
                   onChange={(e) => setDateTo(e.target.value)}
                   InputLabelProps={{ shrink: true }}
                 />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <FormControl size="small">
+                    <InputLabel>Filter by Branch</InputLabel>
+                    <Select
+                      label="Filter by Branch"
+                      value={adminBranchFilter}
+                      onChange={(e) => setAdminBranchFilter(e.target.value)}
+                      sx={{ width: 180 }}
+                    >
+                      <MenuItem value="all">All Branches</MenuItem>
+                      {branchOptions
+                        .filter((b) => b.value !== 'all') // if you have 'all' in the array, skip or keep
+                        .map((b) => (
+                          <MenuItem key={b.value} value={b.value}>
+                            {b.label}
+                          </MenuItem>
+                        ))}
+                    </Select>
+                  </FormControl>
+                </Box>
                 <FormControl size="small">
                   <InputLabel>Payment</InputLabel>
                   <Select
@@ -2799,6 +2851,27 @@ useEffect(() => {
           <>
                   {/* 1) Pivot Table for Gym Sales */}
                   <Box sx={{ mt: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+  <FormControl size="small">
+    <InputLabel>Filter by Branch</InputLabel>
+    <Select
+      label="Filter by Branch"
+      value={adminBranchFilter}
+      onChange={(e) => setAdminBranchFilter(e.target.value)}
+      sx={{ width: 180 }}
+    >
+      <MenuItem value="all">All Branches</MenuItem>
+      {branchOptions
+        .filter((b) => b.value !== 'all') // if you have 'all' in the array, skip or keep
+        .map((b) => (
+          <MenuItem key={b.value} value={b.value}>
+            {b.label}
+          </MenuItem>
+        ))}
+    </Select>
+  </FormControl>
+</Box>
+
                     <div style={{ height: 420, width: "100%" }}>
                       <DataGrid
                         rows={filteredGymSales}
@@ -2884,11 +2957,18 @@ useEffect(() => {
                     </Typography>
                     {Object.entries(
                       groupPaymentsByPaymentFor(
-                        allPayments.filter(
-                          (p) =>
-                            p.paymentDate &&
-                            p.paymentDate.split(" ")[0] === selectedDetailDate
-                        )
+                        allPayments.filter((p) => {
+                          // 1) Payment date must match selectedDetailDate
+                          if (!p.paymentDate) return false;
+                          const payDate = p.paymentDate.split(" ")[0];
+                          if (payDate !== selectedDetailDate) return false;
+
+                          // 2) Branch filter (unless set to 'all')
+                          if (adminBranchFilter !== "all" && p.branchId !== adminBranchFilter) {
+                            return false;
+                          }
+                          return true;
+                        })
                       )
                     ).map(([categoryName, paymentRows]) => {
                       // Compute the sums for each payment method

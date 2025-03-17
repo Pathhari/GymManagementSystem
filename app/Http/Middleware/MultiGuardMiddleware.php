@@ -15,13 +15,13 @@ class MultiGuardMiddleware
     public function handle(Request $request, Closure $next, ...$guards)
     {
         foreach ($guards as $guard) {
-            // If this user is authenticated with one of these guards, allow
             if (Auth::guard($guard)->check()) {
+                // Ensure subsequent Auth:: calls use this guard
+                Auth::shouldUse($guard);
                 return $next($request);
             }
         }
 
-        // If no guard matched, reject
         abort(403, 'Unauthorized. None of the specified guards are logged in.');
     }
 }

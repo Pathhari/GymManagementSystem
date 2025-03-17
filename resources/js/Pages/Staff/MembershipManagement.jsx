@@ -184,13 +184,14 @@ export default function MembershipManagement() {
   const [isEditRenewalOpen, setEditRenewalOpen] = useState(false);
   const [isAddRenewalOpen, setAddRenewalOpen] = useState(false);
 
-  const [newRenewal, setNewRenewal] = useState({
-    MemberID: "",
-    RenewalStartDate: "", // <--- new
-    NewEndDate: "",
-    RenewalAmount: 0,
-    PaymentFor: '["Membership Renewal"]',
-  });
+const [newRenewal, setNewRenewal] = useState({
+  MemberID: "",
+  RenewalStartDate: "",
+  NewEndDate: "",
+  RenewalAmount: 0,
+  PaymentFor: '["Membership Renewal"]',
+  RenewalBranchID: "",   // <--- new state field
+});
     
   const [renewalPayments, setRenewalPayments] = useState([
     { PaymentMethod: "", PaymentAmount: "" },
@@ -241,8 +242,26 @@ export default function MembershipManagement() {
   // For Monthly Client Attendance
   const [monthlyClientAttendances, setMonthlyClientAttendances] = useState([]);
 
+  const [loggedInStaff, setLoggedInStaff] = useState(null);
+
+    // ─────────────────────────────────────────────────────────
+  // 1) Fetch the logged-in staff’s default branch and set branchFilter
   // ─────────────────────────────────────────────────────────
-  // Lifecycle: Fetch data on mount
+  useEffect(() => {
+    axios
+      .get("/staff/authuser")
+      .then((res) => {
+        const staffData = res.data;
+        setLoggedInStaff(staffData);                 // Store entire staff object
+        setBranchFilter(String(staffData.DefaultBranchID)); // (Your existing logic)
+      })
+      .catch((err) => console.error("Error:", err))
+      .finally(() => setLoading(false));
+  }, []);
+
+
+  // ─────────────────────────────────────────────────────────
+  // 2) Fetch membership data, plans, statuses, etc.
   // ─────────────────────────────────────────────────────────
   useEffect(() => {
     axios
@@ -292,7 +311,7 @@ export default function MembershipManagement() {
       })
       .catch((err) => console.error("Error fetching branches:", err));
 
-    // Auto-refresh membershipRecords
+    // Auto-refresh membershipRecords every 100 seconds
     const intervalId = setInterval(() => {
       axios
         .get("/membership/members")
@@ -303,28 +322,28 @@ export default function MembershipManagement() {
     return () => clearInterval(intervalId);
   }, []);
 
+  // ─────────────────────────────────────────────────────────
+  // 3) Tab-specific data fetch (member visit logs, monthly client attendance)
+  // ─────────────────────────────────────────────────────────
   useEffect(() => {
     const fetchDataForTab = async () => {
       try {
         if (activeTab === 5) {
-          // Fetch member visit logs from the correct endpoint.
           const res = await axios.get("/operations/visits");
-          // Assuming the response is in the format: { member_visits: [ ... ] }
           setMemberVisitLogs(res.data.visits || []);
         } else if (activeTab === 6) {
-          const res =await axios.get("/monthly-clients/attendances-all")
-          .then((resp) => {
-            setMonthlyClientAttendances(resp.data.attendances || []);
-          });
+          await axios
+            .get("/monthly-clients/attendances-all")
+            .then((resp) => {
+              setMonthlyClientAttendances(resp.data.attendances || []);
+            });
         }
       } catch (error) {
         console.error("Error fetching tab data:", error);
       }
     };
-  
     fetchDataForTab();
   }, [activeTab]);
-  
   
 
   // ─────────────────────────────────────────────────────────
@@ -871,7 +890,6 @@ useEffect(() => {
     return errors;
   }
   
-
   async function handleAddRenewal() {
     const errors = validateRenewal();
     if (Object.keys(errors).length > 0) {
@@ -879,6 +897,7 @@ useEffect(() => {
       return;
     }
     try {
+      const staffBranchID = loggedInStaff?.DefaultBranchID;
       const body = {
         MemberID: newRenewal.MemberID,
         RenewalStartDate: newRenewal.RenewalStartDate,        
@@ -886,6 +905,7 @@ useEffect(() => {
         RenewalAmount: Number(newRenewal.RenewalAmount),
         PaymentFor: newRenewal.PaymentFor,
         Payments: renewalPayments,
+        RenewalBranchID: staffBranchID,
       };
       const res = await axios.post("/membership/renewals", body);
       const { renewal, member } = res.data;

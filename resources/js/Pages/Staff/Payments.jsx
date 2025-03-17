@@ -61,6 +61,8 @@ import dayjs from "dayjs";
 import { CSVLink } from "react-csv";
 import { AttachMoney } from "@mui/icons-material";
 
+
+
 export default function PaymentsAndInvoices() {
   const theme = useTheme();
 
@@ -68,13 +70,41 @@ export default function PaymentsAndInvoices() {
 
 
   const [loading, setLoading] = useState(true);
+  const [loadingStaff, setLoadingStaff] = useState(true);
+  const [staff, setStaff] = useState(null);
+
   // For unfiltered data from server
   const [allPayments, setAllPayments] = useState([]);
   const [allInvoices, setAllInvoices] = useState([]);
   const [selectedDetailDate, setSelectedDetailDate] = useState(
     new Date().toISOString().split("T")[0]
   );
-  
+
+  useEffect(() => {
+    async function fetchStaffInfo() {
+      try {
+        const res = await axios.get("/staff/authuser");
+        const staffData = res.data;
+        setStaff(staffData);
+
+        // If the staff user has a DefaultBranchID, set that as our `branch`.
+        if (staffData.DefaultBranchID) {
+          setBranch(staffData.DefaultBranchID.toString());
+        } else {
+          // If no default, you might fallback to "all" or the first branch in your dropdown
+          setBranch("all");
+        }
+      } catch (error) {
+        console.error("Error fetching staff info:", error);
+        // handle error: possibly show an error message or redirect
+      } finally {
+        setLoadingStaff(false);
+      }
+    }
+
+    fetchStaffInfo();
+  }, []);
+
 
   // For filtered data displayed in the table
   const [filteredPayments, setFilteredPayments] = useState([]);
@@ -92,7 +122,7 @@ export default function PaymentsAndInvoices() {
   // Active tab, search, and branch
   const [activeTab, setActiveTab] = useState(2);
   const [searchTerm, setSearchTerm] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState("");
   const [branchOptions, setBranchOptions] = useState([]);
 
   // Date range
@@ -370,13 +400,26 @@ export default function PaymentsAndInvoices() {
   
   useEffect(() => {
     if (activeTab === 2) {
-      // pivot everything into a single row per date
-      const aggregated = aggregateByDate(gymCashFlows, allPayments);
-      // optionally filter by date range
+      // 1) Filter gymFlows by branch
+      const filteredFlows =
+        branch === "all"
+          ? gymCashFlows
+          : gymCashFlows.filter((flow) => flow.BranchID?.toString() === branch);
+  
+      // 2) Filter allPayments by branch
+      const filteredPayments =
+        branch === "all"
+          ? allPayments
+          : allPayments.filter((p) => p.branchId === branch);
+  
+      // 3) Aggregate
+      const aggregated = aggregateByDate(filteredFlows, filteredPayments);
+  
+      // 4) Then still apply your existing date-range filter
       const dateFiltered = filterSalesByDateRange(aggregated, dateFrom, dateTo);
       setFilteredGymSales(dateFiltered);
     }
-  }, [activeTab, gymCashFlows, allPayments, dateFrom, dateTo]);
+  }, [activeTab, gymCashFlows, allPayments, dateFrom, dateTo, branch]);
   
 
   // 1) MEMBERS
@@ -1309,1340 +1352,508 @@ export default function PaymentsAndInvoices() {
     }
   
   
-  // ==================== JSX Return ====================
-  return (
-    <Box sx={{ p: 3 }}>
-      {/* Date and Branch Filter Section */}
-     
-      {/* <Paper sx={{ p: 3, mb: 2, boxShadow: 3, borderRadius: 2 }}>
-        <Grid container spacing={2}>
-          
-          <Grid item xs={12} sm={6} md={3}>
-            <TextField
-              label="From Date"
-              type="date"
-              fullWidth
-              size="small"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Grid>
-      
-          <Grid item xs={12} sm={6} md={3}>
-            <TextField
-              label="To Date"
-              type="date"
-              fullWidth
-              size="small"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Grid>
-        
-          <Grid item xs={12} sm={6} md={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Branch</InputLabel>
-              <Select
-                label="Branch"
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-              >
-                {branchOptions.map((b) => (
-                  <MenuItem key={b.value} value={b.value}>
-                    {b.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
-      </Paper>  */}
-      {/* Tabs */}
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Typography variant="h4" gutterBottom>
-          Sales Reports
-        </Typography>
-      </Box>
-
-      {/* Search + Export + Add Buttons */}
-      <Paper elevation={2} sx={{ mt: 3, p: 2 }}>
-        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
-          {/* Search Field */}
-          <Grid item xs sx={{ mr: 2 }}>
-            <TextField
-              variant="outlined"
-              size="small"
-              placeholder="Search..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value); // or e.target.value.toLowerCase()
-              }}
-              fullWidth
-              sx={{ maxWidth: 350 }}
-            />
-          </Grid>
-
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExportMenuOpen}>
-              Export
-            </Button>
-            <Menu
-              anchorEl={exportAnchorEl}
-              open={openExportMenu}
-              onClose={handleExportMenuClose}
-              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-            >
-              <MenuItem onClick={handleExportCSV}>
-                <CSVLink
-                  data={activeTab === 0 ? filteredPayments : filteredInvoices}
-                  headers={activeTab === 0 ? csvHeadersPayments : csvHeadersInvoices}
-                  filename={activeTab === 0 ? "Payments.csv" : "Invoices.csv"}
-                  style={{ textDecoration: "none", color: "inherit" }}
-                >
-                  Export CSV
-                </CSVLink>
-              </MenuItem>
-              <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
-            </Menu>
-
-            {activeTab === 0 && (
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => handleAddPaymentOpen("partial")}
-              >
-                Make Partial Payment
-              </Button>
-            )}
-            {activeTab === 1 && (
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => setAddInvoiceOpen(true)}
-              >
-                Add Invoice
-              </Button>
-            )}
-          </Box>
-        </Box>
-        {activeTab === 2 && (
-  <>
-    {/* 1) The existing "Sales Report (Gym)" pivot table */}
-    <Box sx={{ mt: 2 }}>
-      <div style={{ height: 420, width: "100%" }}>
-      <DataGrid
-        rows={filteredGymSales}
-        columns={[
-          {
-            field: 'date',
-            headerName: 'Date',
-            width: 250,
-            renderCell: (params) =>
-              params.value ? formatDate(params.value) : "—",
-          },
-          {
-            field: 'rawCash',                 // use aggregator's field
-            headerName: 'Cash',
-            width: 120,
-            renderCell: (params) =>
-              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-          },
-          {
-            field: 'pettyCash',
-            headerName: 'PC (Today)',
-            width: 130,
-            renderCell: ({ value }) =>
-              value ? `₱${Number(value).toLocaleString()}` : '—',
-          },
-          {
-            field: 'cashPlusPetty',
-            headerName: 'Cash+PC Today',
-            width: 150,
-            renderCell: ({ value }) =>
-              value ? `₱${Number(value).toLocaleString()}` : '—',
-          },
-          {
-            field: 'pettyTomorrow',
-            headerName: 'PC (Tomorrow)',
-            width: 140,
-            renderCell: ({ value }) =>
-              value ? `₱${Number(value).toLocaleString()}` : '—',
-          },
-          {
-            // 2) (Cash+PC Today) - PC Tomorrow
-            field: 'cashPlusPettyMinusTomorrow',
-            headerName: 'Cash+PC - PC Tomorrow',
-            width: 180,
-            renderCell: ({ value }) =>
-              value ? `₱${Number(value).toLocaleString()}` : '—',
-          },
-          {
-            field: 'rawGCash',
-            headerName: 'GCash',
-            width: 130,
-            renderCell: (params) =>
-              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-          },
-          {
-            field: 'rawBPI',
-            headerName: 'BPI',
-            width: 130,
-            renderCell: (params) =>
-              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-          },
-          {
-            field: 'rawBDO',
-            headerName: 'BDO',
-            width: 130,
-            renderCell: (params) =>
-              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-          },
-          {
-            field: 'totalSales',
-            headerName: 'Total Sales',
-            width: 130,
-            renderCell: (params) =>
-              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-          },
-          {
-            field: 'takeHome',
-            headerName: 'Take-Home',
-            width: 130,
-            renderCell: (params) =>
-              params.value ? `₱${Number(params.value).toLocaleString()}` : '—',
-          },
-          {
-            field: 'actions',
-            headerName: 'Actions',
-            width: 120,
-            sortable: false,
-            renderCell: (params) => (
-              <Button 
-                variant="contained" 
-                size="small" 
-                onClick={() => openPettyDialog(params.row)}
-              >
-                Add Petty
-              </Button>
-            ),
-          },
-        ]}        
-        getRowId={(row) => row.date}
-        pageSize={5}
-        rowsPerPageOptions={[5, 10]}
-      />
-      </div>
-    </Box>
-
-    {/* 2) The Detailed Breakdown: One table per PaymentFor for the selected day */}
-    <Box sx={{ mt: 4, textAlign: "center" }}>
-  <Typography variant="h5" gutterBottom>
-    Detailed Breakdown
-  </Typography>
-  {/* Date picker to choose the day for which you want a detailed breakdown */}
-  <TextField
-    type="date"
-    value={selectedDetailDate}
-    onChange={(e) => setSelectedDetailDate(e.target.value)}
-    InputLabelProps={{ shrink: true }}
-    sx={{ mb: 2 }}
-  />
-  <Typography 
-    variant="subtitle1" 
-    sx={{ 
-      mb: 2, 
-      fontWeight: "bold", 
-      color: "primary.main", 
-      fontSize: "1.2rem"
-    }}
-  >
-    Detailed records for: {formatDate(selectedDetailDate)}
-  </Typography>
-
-
-  {/* Filter payments for the selected date */}
-  {Object.entries(
-    groupPaymentsByPaymentFor(
-      allPayments.filter((p) => p.paymentDate.split(" ")[0] === selectedDetailDate)
-    )
-  ).map(([categoryName, paymentRows]) => {
-    // Compute sums for columns in this category
-    let sumCash = 0,
-      sumGCash = 0,
-      sumBPI = 0,
-      sumBDO = 0,
-      grandTotal = 0;
-
-    paymentRows.forEach((r) => {
-      sumCash += r.cash;
-      sumGCash += r.gcash;
-      sumBPI += r.bpi;
-      sumBDO += r.bdo;
-      grandTotal += r.total;
-    });
-
     return (
-      <Paper
-        key={categoryName}
-        sx={{
-          mt: 2,
-          p: 2,
-          border: 1,
-          borderColor: theme.palette.divider,
-          borderRadius: 2,
-        }}
-      >
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          {categoryName}
-        </Typography>
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow
-                sx={{
-                  backgroundColor:
-                    theme.palette.mode === "light" ? "#f7f7f7" : theme.palette.grey[800],
-                }}
-              >
-                <TableCell>Name</TableCell>
-                <TableCell align="right">Cash</TableCell>
-                <TableCell align="right">GCash</TableCell>
-                <TableCell align="right">BPI</TableCell>
-                <TableCell align="right">BDO</TableCell>
-                <TableCell align="right">Row Total</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {paymentRows.map((r, idx) => (
-                <TableRow key={idx}>
-                  <TableCell>{r.payerName}</TableCell>
-                  <TableCell align="right">
-                    {r.cash > 0 ? r.cash.toLocaleString() : ""}
-                  </TableCell>
-                  <TableCell align="right">
-                    {r.gcash > 0 ? r.gcash.toLocaleString() : ""}
-                  </TableCell>
-                  <TableCell align="right">
-                    {r.bpi > 0 ? r.bpi.toLocaleString() : ""}
-                  </TableCell>
-                  <TableCell align="right">
-                    {r.bdo > 0 ? r.bdo.toLocaleString() : ""}
-                  </TableCell>
-                  <TableCell align="right">
-                    {r.total > 0 ? r.total.toLocaleString() : ""}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-            <TableFooter>
-              <TableRow sx={{ fontWeight: "bold" }}>
-                <TableCell sx={{ fontWeight: "bold" }}>Totals</TableCell>
-                <TableCell align="right" sx={{ fontWeight: "bold" }}>
-                  {sumCash.toLocaleString()}
-                </TableCell>
-                <TableCell align="right" sx={{ fontWeight: "bold" }}>
-                  {sumGCash.toLocaleString()}
-                </TableCell>
-                <TableCell align="right" sx={{ fontWeight: "bold" }}>
-                  {sumBPI.toLocaleString()}
-                </TableCell>
-                <TableCell align="right" sx={{ fontWeight: "bold" }}>
-                  {sumBDO.toLocaleString()}
-                </TableCell>
-                <TableCell align="right" sx={{ fontWeight: "bold" }}>
-                  {grandTotal.toLocaleString()}
-                </TableCell>
-              </TableRow>
-            </TableFooter>
-          </Table>
-        </TableContainer>
-      </Paper>
-    );
-  })}
-</Box>
-  </>
-        )}     
-      </Paper>
-      
-
-      {/* ==================== Payment / Invoice Dialogs below ==================== */}
-
-      {/* ADD Payment Dialog (non-partial) */}
-      <Dialog open={isAddPaymentOpen} onClose={closePaymentDialog}>
-        <DialogTitle>
-          {paymentMode === "member" && "Add Member Payment"}
-          {paymentMode === "walkIn" && "Add Walk-In Payment"}
-          {paymentMode === "booking" && "Add Booking Payment"}
-          {paymentMode === "session" && "Add Session Payment"}
-        </DialogTitle>
-        <DialogContent dividers>
-          {paymentMode !== "walkIn" && (
-            <FormControl fullWidth margin="normal">
-              <InputLabel>Member Name</InputLabel>
-              <Select
-                label="Member Name"
-                name="memberId"
-                value={newPayment.memberId}
-                onChange={handleAddPaymentChange}
-              >
-                <MenuItem value="">
-                  <em>-- Select Member --</em>
-                </MenuItem>
-                {members.map((m) => (
-                  <MenuItem key={m.MemberID} value={m.MemberID}>
-                    {m.FullName}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-
-          {paymentMode === "walkIn" && (
-            <TextField
-              fullWidth
-              margin="normal"
-              label="Walk-In Name"
-              name="walkInName"
-              value={newPayment.walkInName}
-              onChange={handleAddPaymentChange}
-            />
-          )}
-          {paymentMode === "booking" && (
-            <TextField
-              fullWidth
-              margin="normal"
-              label="Booking Reference"
-              name="bookingRef"
-              value={newPayment.bookingRef}
-              onChange={handleAddPaymentChange}
-            />
-          )}
-          {paymentMode === "session" && (
-            <TextField
-              fullWidth
-              margin="normal"
-              label="Session Reference"
-              name="sessionRef"
-              value={newPayment.sessionRef}
-              onChange={handleAddPaymentChange}
-            />
-          )}
-
-          <TextField
-            fullWidth
-            margin="normal"
-            type="date"
-            label="Payment Date"
-            name="paymentDate"
-            InputLabelProps={{ shrink: true }}
-            value={newPayment.paymentDate}
-            onChange={handleAddPaymentChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Amount Paid"
-            name="amountPaid"
-            type="number"
-            value={newPayment.amountPaid}
-            onChange={handleAddPaymentChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Method"
-            name="method"
-            value={newPayment.method}
-            onChange={handleAddPaymentChange}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Status"
-            name="status"
-            value={newPayment.status}
-            onChange={handleAddPaymentChange}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closePaymentDialog}>Cancel</Button>
-          <Button variant="contained" onClick={handleAddPaymentSubmit}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* PARTIAL Payment Dialog */}
-      <Dialog open={partialDialogOpen} onClose={closePartialDialog} fullWidth maxWidth="lg">
-        <DialogTitle>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="h5">
-              <AttachMoney sx={{ verticalAlign: "middle", mr: 1 }} />
-              Create Partial Payment
-            </Typography>
-            <IconButton
-              onClick={closePartialDialog}
-              sx={{
-                color: "inherit",
-                "&:hover": { color: "red" },
-              }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent dividers>
-          <Box sx={{ p: 2 }}>
-            <Divider sx={{ mb: 3 }} />
-            <form onSubmit={(e) => e.preventDefault()}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth required>
-                    <InputLabel>Member</InputLabel>
-                    <Select
-                      name="memberId"
-                      value={partialPayment.memberId}
-                      onChange={(e) =>
-                        setPartialPayment((prev) => ({
-                          ...prev,
-                          memberId: e.target.value,
-                        }))
-                      }
-                      input={
-                        <OutlinedInput
-                          label="Member"
-                          startAdornment={
-                            <InputAdornment position="start">
-                              <PersonIcon />
-                            </InputAdornment>
-                          }
-                        />
-                      }
-                    >
-                      <MenuItem value="">
-                        <em>-- None --</em>
-                      </MenuItem>
-                      {members.map((m) => (
-                        <MenuItem key={m.MemberID} value={m.MemberID}>
-                          {m.FullName}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label="Payment Date"
-                    name="paymentDate"
-                    type="date"
-                    fullWidth
-                    required
-                    value={partialPayment.paymentDate}
-                    onChange={(e) =>
-                      setPartialPayment((prev) => ({ ...prev, paymentDate: e.target.value }))
-                    }
-                    InputLabelProps={{ shrink: true }}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <EventIcon />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth required>
-                    <InputLabel>Payment Method</InputLabel>
-                    <Select
-                      name="method"
-                      value={partialPayment.method}
-                      onChange={(e) =>
-                        setPartialPayment((prev) => ({ ...prev, method: e.target.value }))
-                      }
-                      input={
-                        <OutlinedInput
-                          label="Payment Method"
-                          startAdornment={
-                            <InputAdornment position="start">
-                              <PaymentIcon />
-                            </InputAdornment>
-                          }
-                        />
-                      }
-                    >
-                      <MenuItem value="Cash">Cash</MenuItem>
-                      <MenuItem value="BDO">BDO</MenuItem>
-                      <MenuItem value="BPI">BPI</MenuItem>
-                      <MenuItem value="GCash">GCash</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth required>
-                    <InputLabel>Payment Status</InputLabel>
-                    <Select
-                      name="status"
-                      value={partialPayment.status}
-                      onChange={(e) =>
-                        setPartialPayment((prev) => ({ ...prev, status: e.target.value }))
-                      }
-                      input={
-                        <OutlinedInput
-                          label="Payment Status"
-                          startAdornment={
-                            <InputAdornment position="start">
-                              <InfoIcon />
-                            </InputAdornment>
-                          }
-                        />
-                      }
-                    >
-                      <MenuItem value="Pending">Pending</MenuItem>
-                      <MenuItem value="Completed">Completed</MenuItem>
-                      <MenuItem value="Failed">Failed</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-
-                <Grid item xs={12}>
-                  <TextField
-                    label="Total Amount"
-                    name="amount"
-                    type="number"
-                    fullWidth
-                    required
-                    value={partialPayment.amount}
-                    onChange={(e) =>
-                      setPartialPayment((prev) => ({ ...prev, amount: e.target.value }))
-                    }
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Typography variant="body1">₱</Typography>
-                        </InputAdornment>
-                      ),
-                    }}
-                    helperText="Sum allocated to each invoice doesn't have to match exactly, depending on your logic."
-                  />
-                </Grid>
-              </Grid>
-
-              {/* Invoice Allocation */}
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="subtitle1">Allocate to these Invoices</Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
-                      Unpaid Invoices (select to add):
-                    </Typography>
-                    <Paper sx={{ maxHeight: 250, overflowY: "auto", p: 1 }}>
-                      {unpaidInvoices.map((inv) => (
-                        <Box
-                          key={inv.invoiceId}
-                          sx={{
-                            mb: 1,
-                            border: "1px solid #ccc",
-                            p: 1,
-                            borderRadius: 1,
-                            cursor: "pointer",
-                            "&:hover": { backgroundColor: "#f5f5f5" },
-                          }}
-                          onClick={() =>
-                            handleAddInvoiceAlloc({
-                              invoiceId: inv.invoiceId,
-                              invoiceTotal: inv.invoiceTotal,
-                            })
-                          }
-                        >
-                          Invoice #{inv.invoiceId} for {inv.memberName} — ₱{inv.invoiceTotal} —{" "}
-                          {inv.paymentStatus}
-                        </Box>
-                      ))}
-                    </Paper>
-                  </Grid>
-
-                  <Grid item xs={12} sm={6}>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
-                      Allocated Invoices:
-                    </Typography>
-                    <Paper sx={{ maxHeight: 250, overflowY: "auto", p: 1 }}>
-                      {partialPayment.allocatedInvoices.map((alloc, idx) => (
-                        <Box
-                          key={`${alloc.invoiceId}-${idx}`}
-                          sx={{ mb: 1, p: 1, border: "1px solid #ccc", borderRadius: 1 }}
-                        >
-                          Invoice #{alloc.invoiceId}
-                          <TextField
-                            label="Amount Allocated"
-                            type="number"
-                            size="small"
-                            value={alloc.amountAllocated}
-                            onChange={(e) => {
-                              const newAlloc = [...partialPayment.allocatedInvoices];
-                              newAlloc[idx].amountAllocated = e.target.value;
-                              setPartialPayment((prev) => ({
-                                ...prev,
-                                allocatedInvoices: newAlloc,
-                              }));
-                            }}
-                            sx={{ ml: 2, width: 100 }}
-                          />
-                        </Box>
-                      ))}
-                    </Paper>
-                  </Grid>
-                </Grid>
-              </Box>
-
-              {/* Submit */}
-              <Box sx={{ mt: 4, display: "flex", justifyContent: "flex-end", gap: 3 }}>
-                <Button variant="contained" color="primary" onClick={() => setOpenConfirmation(true)}>
-                  <SaveIcon /> Submit Partial Payment
-                </Button>
-              </Box>
-            </form>
-          </Box>
-        </DialogContent>
-      </Dialog>
-
-      {/* EDIT Payment Dialog */}
-      <Dialog
-        open={isEditPaymentOpen}
-        onClose={() => setEditPaymentOpen(false)}
-        fullWidth
-        maxWidth="sm"
-        sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3, overflow: "hidden" } }}
-      >
-        <DialogTitle>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <MonetizationOnIcon sx={{ fontSize: 32, color: "primary.main" }} />
-              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                Edit Payment
-              </Typography>
-            </Box>
-            <IconButton onClick={() => setEditPaymentOpen(false)}>
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: 4 }}>
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Payment ID"
-            name="paymentId"
-            variant="filled"
-            InputProps={{ readOnly: true }}
-            value={editPayment.paymentId || ""}
-            sx={{ mb: 2 }}
-          />
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Member Name</InputLabel>
-            <Select
-              name="memberId"
-              value={editPayment.memberId || ""}
-              onChange={handleEditPaymentChange}
-              label="Member Name"
-            >
-              <MenuItem value="">
-                <em>-- Select Member --</em>
-              </MenuItem>
-              {members.map((m) => (
-                <MenuItem key={m.MemberID} value={m.MemberID}>
-                  {m.FullName}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          <TextField
-            fullWidth
-            margin="normal"
-            type="date"
-            label="Payment Date"
-            name="paymentDate"
-            InputLabelProps={{ shrink: true }}
-            value={editPayment.paymentDate ? editPayment.paymentDate.split("T")[0] : ""}
-            onChange={handleEditPaymentChange}
-            sx={{ mb: 2 }}
-          />
-
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Amount Paid"
-            name="amountPaid"
-            type="number"
-            value={editPayment.amountPaid || ""}
-            onChange={handleEditPaymentChange}
-            sx={{ mb: 2 }}
-          />
-
-          <FormControl fullWidth margin="normal" sx={{ mb: 2 }}>
-            <InputLabel>Payment Method</InputLabel>
-            <Select
-              name="method"
-              value={editPayment.method || ""}
-              onChange={handleEditPaymentChange}
-              label="Payment Method"
-            >
-              <MenuItem value="">-- Select Method --</MenuItem>
-              <MenuItem value="Cash">Cash</MenuItem>
-              <MenuItem value="BDO">BDO</MenuItem>
-              <MenuItem value="BPI">BPI</MenuItem>
-              <MenuItem value="GCash">GCash</MenuItem>
-            </Select>
-          </FormControl>
-
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Payment Status</InputLabel>
-            <Select
-              name="status"
-              value={editPayment.status || ""}
-              onChange={handleEditPaymentChange}
-              label="Payment Status"
-            >
-              <MenuItem value="Pending">Pending</MenuItem>
-              <MenuItem value="Completed">Completed</MenuItem>
-              <MenuItem value="Refunded">Refunded</MenuItem>
-              <MenuItem value="Failed">Failed</MenuItem>
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
-          <Button variant="contained" color="primary" onClick={handleEditPaymentSubmit}>
-            <SaveIcon sx={{ mr: 1 }} />
-            Save Changes
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* VIEW Payment Dialog */}
-      <Dialog
-        open={isViewPaymentOpen}
-        onClose={() => setViewPaymentOpen(false)}
-        fullWidth
-        maxWidth="sm"
-        sx={{ "& .MuiDialog-paper": { borderRadius: 3, boxShadow: 6, p: 3, overflow: "hidden" } }}
-      >
-        <DialogTitle>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <MonetizationOnIcon sx={{ fontSize: 32, color: "primary.main" }} />
-              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                Payment Details
-              </Typography>
-            </Box>
-            <IconButton onClick={() => setViewPaymentOpen(false)}>
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: 4 }}>
-          {viewPayment && (
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Payment ID"
-                  variant="filled"
-                  InputProps={{ readOnly: true }}
-                  value={viewPayment.paymentId || "—"}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Payer Name"
-                  variant="filled"
-                  InputProps={{ readOnly: true }}
-                  value={viewPayment.payerName || "—"}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Payment Date"
-                  variant="filled"
-                  InputProps={{ readOnly: true }}
-                  value={
-                    viewPayment.paymentDate
-                      ? dayjs(viewPayment.paymentDate).format("YYYY-MM-DD")
-                      : "—"
-                  }
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Amount Paid"
-                  variant="filled"
-                  InputProps={{ readOnly: true }}
-                  value={viewPayment.amountPaid ? `₱${viewPayment.amountPaid}` : "—"}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Payment Method"
-                  variant="filled"
-                  InputProps={{ readOnly: true }}
-                  value={viewPayment.method || "—"}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Status"
-                  variant="filled"
-                  InputProps={{ readOnly: true }}
-                  value={viewPayment.status || "—"}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              {viewPayment.paymentFor && viewPayment.paymentFor.length > 0 && (
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Payment For"
-                    variant="filled"
-                    InputProps={{ readOnly: true }}
-                    value={viewPayment.paymentFor.join(", ") || "—"}
-                  />
-                </Grid>
-              )}
+      <Box sx={{ p: 3 }}>
+        {/* ---------- FILTERS SECTION ---------- */}
+        <Paper sx={{ p: 3, mb: 3, boxShadow: 3, borderRadius: 2 }}>
+          <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
+            Sales Report Filters
+          </Typography>
+          <Grid container spacing={2}>
+            {/* From Date */}
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                label="From Date"
+                type="date"
+                fullWidth
+                size="small"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
             </Grid>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ADD Invoice Dialog */}
-      <Dialog open={isAddInvoiceOpen} onClose={() => setAddInvoiceOpen(false)} fullWidth maxWidth="md">
-        <DialogTitle>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="h5">
-              <ReceiptIcon sx={{ verticalAlign: "middle", mr: 1 }} />
-              Add Invoice
-            </Typography>
-            <IconButton
-              onClick={() => setAddInvoiceOpen(false)}
-              sx={{
-                color: "inherit",
-                "&:hover": { color: "red" },
-              }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent dividers>
-          <Box sx={{ p: 2 }}>
-            <Divider sx={{ mb: 3 }} />
-            <form onSubmit={(e) => e.preventDefault()}>
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <FormControl fullWidth required>
-                  <InputLabel>Member Name</InputLabel>
-                  <Select
-                    name="memberId"
-                    value={newInvoice.memberId || ""}
-                    onChange={handleAddInvoiceChange}
-                    input={
-                      <OutlinedInput
-                        label="Member Name"
-                        startAdornment={
-                          <InputAdornment position="start">
-                            <PersonIcon />
-                          </InputAdornment>
-                        }
-                      />
-                    }
-                  >
-                    {(members || []).map((m) => (
-                      <MenuItem key={m.MemberID} value={m.MemberID}>
-                        {m.FullName}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <TextField
-                  label="Invoice Date"
-                  name="invoiceDate"
-                  type="date"
-                  fullWidth
-                  required
-                  value={newInvoice.invoiceDate}
-                  onChange={handleAddInvoiceChange}
-                  InputLabelProps={{ shrink: true }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <EventIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <TextField
-                  label="Due Date"
-                  name="dueDate"
-                  type="date"
-                  fullWidth
-                  required
-                  value={newInvoice.dueDate}
-                  onChange={handleAddInvoiceChange}
-                  InputLabelProps={{ shrink: true }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <CalendarTodayIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <TextField
-                  label="Total Amount"
-                  name="invoiceTotal"
-                  type="number"
-                  fullWidth
-                  required
-                  value={newInvoice.invoiceTotal}
-                  onChange={handleAddInvoiceChange}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Typography variant="body1">₱</Typography>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Box>
-
-              <Box sx={{ mt: 4, display: "flex", justifyContent: "flex-end", gap: 3 }}>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={() => setOpenConfirmation(true)}
-                disabled={
-                  !newInvoice.memberId ||
-                  !newInvoice.invoiceDate ||
-                  !newInvoice.dueDate ||
-                  !newInvoice.invoiceTotal ||
-                  Number(newInvoice.invoiceTotal) <= 0
-                }
-                sx={{
-                  textTransform: "none",
             
-                  px: 4,
-                  py: 1,
-              
-                }}
-              >
-                <SaveIcon sx={{ mr: 1 }} /> SAVE INVOICE
-              </Button>
-            </Box>
-
-            </form>
-          </Box>
-        </DialogContent>
-      </Dialog>
-
-      {/* CONFIRMATION DIALOG */}
-      <Dialog
-        open={openConfirmation}
-        onClose={() => setOpenConfirmation(false)}
-        PaperProps={{
-          sx: { borderRadius: 3, minWidth: 350 },
-        }}
-      >
-        <DialogTitle sx={{ textAlign: "center", p: 3 }}>
-          <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
-            <CheckCircleOutlineIcon sx={{ fontSize: 50, color: "primary.main" }} />
-            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-              Confirm Submission
-            </Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent dividers sx={{ textAlign: "center", py: 2 }}>
-          <Typography variant="body1">Are you sure you want to add this invoice?</Typography>
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: "center", gap: 2, py: 2 }}>
-          <Button onClick={() => setOpenConfirmation(false)} sx={{ textTransform: "none" }} style={{ color: "red" }}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            sx={{ textTransform: "none" }}
-            onClick={async () => {
-              await handleAddInvoiceSubmit();
-              setOpenConfirmation(false);
-            }}
-          >
-            Confirm
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* EDIT Invoice Dialog */}
-      <Dialog
-        open={isEditInvoiceOpen}
-        onClose={() => setEditInvoiceOpen(false)}
-        fullWidth
-        maxWidth="sm"
-        sx={{
-          "& .MuiDialog-paper": {
-            borderRadius: 3,
-            boxShadow: 6,
-            p: 3,
-            overflow: "hidden",
-          },
-        }}
-      >
-        <DialogTitle sx={{ p: 2 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <ReceiptLongIcon sx={{ fontSize: 32, color: "primary.main" }} />
-              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                Edit Invoice
-              </Typography>
-            </Box>
-            <IconButton onClick={() => setEditInvoiceOpen(false)}>
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: 4 }}>
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Invoice ID"
-            name="invoiceId"
-            variant="filled"
-            InputProps={{ readOnly: true }}
-            value={editInvoice.invoiceId || ""}
-            sx={{ mb: 2 }}
-          />
-          <FormControl fullWidth margin="normal" sx={{ mb: 2 }}>
-            <InputLabel>Member Name</InputLabel>
-            <Select
-              name="memberId"
-              value={editInvoice.memberId || ""}
-              onChange={handleEditInvoiceChange}
-            >
-              {(members || []).map((m) => (
-                <MenuItem key={m.MemberID} value={m.MemberID}>
-                  {m.FullName}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <TextField
-            fullWidth
-            margin="normal"
-            type="date"
-            label="Invoice Date"
-            name="invoiceDate"
-            InputLabelProps={{ shrink: true }}
-            value={editInvoice.invoiceDate || ""}
-            onChange={handleEditInvoiceChange}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            type="date"
-            label="Due Date"
-            name="dueDate"
-            InputLabelProps={{ shrink: true }}
-            value={editInvoice.dueDate || ""}
-            onChange={handleEditInvoiceChange}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            fullWidth
-            margin="normal"
-            label="Total Amount"
-            name="invoiceTotal"
-            type="number"
-            value={editInvoice.invoiceTotal || ""}
-            onChange={handleEditInvoiceChange}
-            sx={{ mb: 2 }}
-          />
-        </DialogContent>
-        <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
-          <Button variant="contained" color="primary" onClick={handleEditInvoiceSubmit}>
-            <SaveIcon sx={{ mr: 1 }} /> Save Changes
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* VIEW Invoice Dialog */}
-      <Dialog
-        open={isViewInvoiceOpen}
-        onClose={() => setViewInvoiceOpen(false)}
-        fullWidth
-        maxWidth="sm"
-        sx={{
-          "& .MuiDialog-paper": {
-            borderRadius: 3,
-            boxShadow: 6,
-            p: 3,
-            overflow: "hidden",
-          },
-        }}
-      >
-        <DialogTitle sx={{ p: 2 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <ReceiptLongIcon sx={{ fontSize: 32, color: "primary.main" }} />
-              <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                Invoice Details
-              </Typography>
-            </Box>
-            <IconButton onClick={() => setViewInvoiceOpen(false)}>
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: 4 }}>
-          {viewInvoice && (
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Invoice ID"
-                  variant="filled"
-                  InputProps={{ readOnly: true }}
-                  value={viewInvoice.invoiceId || "—"}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Member Name"
-                  variant="filled"
-                  InputProps={{ readOnly: true }}
-                  value={viewInvoice.memberName || "—"}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Invoice Date"
-                  variant="filled"
-                  InputProps={{ readOnly: true }}
-                  value={formatDate(viewInvoice.invoiceDate || "—")}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  label="Due Date"
-                  variant="filled"
-                  InputProps={{ readOnly: true }}
-                  value={formatDate(viewInvoice.dueDate || "—")}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Total Amount"
-                  variant="filled"
-                  InputProps={{ readOnly: true }}
-                  value={viewInvoice.invoiceTotal ? `₱${viewInvoice.invoiceTotal}` : "—"}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
+            {/* To Date */}
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                label="To Date"
+                type="date"
+                fullWidth
+                size="small"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
             </Grid>
+            
+            {/* Branch */}
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Branch</InputLabel>
+                <Select
+                  label="Branch"
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                >
+                  {branchOptions.map((b) => (
+                    <MenuItem key={b.value} value={b.value}>
+                      {b.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </Paper>
+    
+        {/* ---------- SALES REPORT HEADER ---------- */}
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            mb: 2,
+          }}
+        >
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+            Sales Reports
+          </Typography>
+          {/* You could add a button or secondary action here if needed */}
+        </Box>
+        
+        {/* ---------- MAIN DATA DISPLAY ---------- */}
+        <Paper sx={{ p: 2, boxShadow: 3, borderRadius: 2 }}>
+          {activeTab === 2 && (
+            <>
+              {/* PIVOT TABLE / DATA GRID */}
+              <Box sx={{ mt: 2 }}>
+                <div style={{ height: 420, width: "100%" }}>
+                  <DataGrid
+                    rows={filteredGymSales}
+                    columns={[
+                      {
+                        field: "date",
+                        headerName: "Date",
+                        width: 250,
+                        renderCell: (params) =>
+                          params.value ? formatDate(params.value) : "—",
+                      },
+                      {
+                        field: "rawCash",
+                        headerName: "Cash",
+                        width: 120,
+                        renderCell: (params) =>
+                          params.value
+                            ? `₱${Number(params.value).toLocaleString()}`
+                            : "—",
+                      },
+                      {
+                        field: "pettyCash",
+                        headerName: "PC (Today)",
+                        width: 130,
+                        renderCell: ({ value }) =>
+                          value ? `₱${Number(value).toLocaleString()}` : "—",
+                      },
+                      {
+                        field: "cashPlusPetty",
+                        headerName: "Cash+PC Today",
+                        width: 150,
+                        renderCell: ({ value }) =>
+                          value ? `₱${Number(value).toLocaleString()}` : "—",
+                      },
+                      {
+                        field: "pettyTomorrow",
+                        headerName: "PC (Tomorrow)",
+                        width: 140,
+                        renderCell: ({ value }) =>
+                          value ? `₱${Number(value).toLocaleString()}` : "—",
+                      },
+                      {
+                        field: "cashPlusPettyMinusTomorrow",
+                        headerName: "Cash+PC - PC Tomorrow",
+                        width: 180,
+                        renderCell: ({ value }) =>
+                          value ? `₱${Number(value).toLocaleString()}` : "—",
+                      },
+                      {
+                        field: "rawGCash",
+                        headerName: "GCash",
+                        width: 130,
+                        renderCell: (params) =>
+                          params.value
+                            ? `₱${Number(params.value).toLocaleString()}`
+                            : "—",
+                      },
+                      {
+                        field: "rawBPI",
+                        headerName: "BPI",
+                        width: 130,
+                        renderCell: (params) =>
+                          params.value
+                            ? `₱${Number(params.value).toLocaleString()}`
+                            : "—",
+                      },
+                      {
+                        field: "rawBDO",
+                        headerName: "BDO",
+                        width: 130,
+                        renderCell: (params) =>
+                          params.value
+                            ? `₱${Number(params.value).toLocaleString()}`
+                            : "—",
+                      },
+                      {
+                        field: "totalSales",
+                        headerName: "Total Sales",
+                        width: 130,
+                        renderCell: (params) =>
+                          params.value
+                            ? `₱${Number(params.value).toLocaleString()}`
+                            : "—",
+                      },
+                      {
+                        field: "takeHome",
+                        headerName: "Take-Home",
+                        width: 130,
+                        renderCell: (params) =>
+                          params.value
+                            ? `₱${Number(params.value).toLocaleString()}`
+                            : "—",
+                      },
+                      {
+                        field: "actions",
+                        headerName: "Actions",
+                        width: 120,
+                        sortable: false,
+                        renderCell: (params) => (
+                          <Button
+                            variant="contained"
+                            size="small"
+                            onClick={() => openPettyDialog(params.row)}
+                          >
+                            Add Petty
+                          </Button>
+                        ),
+                      },
+                    ]}
+                    getRowId={(row) => row.date}
+                    pageSize={5}
+                    rowsPerPageOptions={[5, 10]}
+                  />
+                </div>
+              </Box>
+    
+              {/* DETAILED BREAKDOWN */}
+              <Box sx={{ mt: 4 }}>
+                <Typography variant="h5" gutterBottom>
+                  Detailed Breakdown
+                </Typography>
+                <TextField
+                  type="date"
+                  value={selectedDetailDate}
+                  onChange={(e) => setSelectedDetailDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ mb: 2 }}
+                />
+                <Typography
+                  variant="subtitle1"
+                  sx={{
+                    mb: 2,
+                    fontWeight: "bold",
+                    color: "primary.main",
+                    fontSize: "1.2rem",
+                  }}
+                >
+                  Detailed records for: {formatDate(selectedDetailDate)}
+                </Typography>
+    
+                {/* Map through PaymentFor categories */}
+                {Object.entries(
+                  groupPaymentsByPaymentFor(
+                    allPayments.filter((p) => {
+                      // Match selected date
+                      if (p.paymentDate.split(" ")[0] !== selectedDetailDate)
+                        return false;
+                      // Match selected branch
+                      if (branch !== "all" && p.branchId !== branch) return false;
+                      return true;
+                    })
+                  )
+                ).map(([categoryName, paymentRows]) => {
+                  // Compute sums for columns in this category
+                  let sumCash = 0,
+                    sumGCash = 0,
+                    sumBPI = 0,
+                    sumBDO = 0,
+                    grandTotal = 0;
+    
+                  paymentRows.forEach((r) => {
+                    sumCash += r.cash;
+                    sumGCash += r.gcash;
+                    sumBPI += r.bpi;
+                    sumBDO += r.bdo;
+                    grandTotal += r.total;
+                  });
+    
+                  return (
+                    <Paper
+                      key={categoryName}
+                      sx={{
+                        mt: 2,
+                        p: 2,
+                        border: 1,
+                        borderColor: theme.palette.divider,
+                        borderRadius: 2,
+                      }}
+                    >
+                      <Typography variant="h6" sx={{ mb: 1 }}>
+                        {categoryName}
+                      </Typography>
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow
+                              sx={{
+                                backgroundColor:
+                                  theme.palette.mode === "light"
+                                    ? "#f7f7f7"
+                                    : theme.palette.grey[800],
+                              }}
+                            >
+                              <TableCell>Name</TableCell>
+                              <TableCell align="right">Cash</TableCell>
+                              <TableCell align="right">GCash</TableCell>
+                              <TableCell align="right">BPI</TableCell>
+                              <TableCell align="right">BDO</TableCell>
+                              <TableCell align="right">Row Total</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {paymentRows.map((r, idx) => (
+                              <TableRow key={idx}>
+                                <TableCell>{r.payerName}</TableCell>
+                                <TableCell align="right">
+                                  {r.cash > 0 ? r.cash.toLocaleString() : ""}
+                                </TableCell>
+                                <TableCell align="right">
+                                  {r.gcash > 0 ? r.gcash.toLocaleString() : ""}
+                                </TableCell>
+                                <TableCell align="right">
+                                  {r.bpi > 0 ? r.bpi.toLocaleString() : ""}
+                                </TableCell>
+                                <TableCell align="right">
+                                  {r.bdo > 0 ? r.bdo.toLocaleString() : ""}
+                                </TableCell>
+                                <TableCell align="right">
+                                  {r.total > 0 ? r.total.toLocaleString() : ""}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                          <TableFooter>
+                            <TableRow sx={{ fontWeight: "bold" }}>
+                              <TableCell sx={{ fontWeight: "bold" }}>
+                                Totals
+                              </TableCell>
+                              <TableCell
+                                align="right"
+                                sx={{ fontWeight: "bold" }}
+                              >
+                                {sumCash.toLocaleString()}
+                              </TableCell>
+                              <TableCell
+                                align="right"
+                                sx={{ fontWeight: "bold" }}
+                              >
+                                {sumGCash.toLocaleString()}
+                              </TableCell>
+                              <TableCell
+                                align="right"
+                                sx={{ fontWeight: "bold" }}
+                              >
+                                {sumBPI.toLocaleString()}
+                              </TableCell>
+                              <TableCell
+                                align="right"
+                                sx={{ fontWeight: "bold" }}
+                              >
+                                {sumBDO.toLocaleString()}
+                              </TableCell>
+                              <TableCell
+                                align="right"
+                                sx={{ fontWeight: "bold" }}
+                              >
+                                {grandTotal.toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          </TableFooter>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
+                  );
+                })}
+              </Box>
+            </>
           )}
-
-          {/* Line Items */}
-          <Box mt={3}>
-            <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2 }}>
-              Line Items
-            </Typography>
-            {viewInvoice?.lineItems && viewInvoice.lineItems.length > 0 ? (
-              <TableContainer component={Paper}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: "bold" }}>Item Type</TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>Description</TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>Qty</TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>Unit Price</TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>Subtotal</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {viewInvoice.lineItems.map((li, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{li.ItemType || "—"}</TableCell>
-                        <TableCell>{li.Description || "—"}</TableCell>
-                        <TableCell>{li.Quantity || "—"}</TableCell>
-                        <TableCell>
-                          {li.UnitPrice ? `₱${li.UnitPrice}` : "—"}
-                        </TableCell>
-                        <TableCell>
-                          {li.Subtotal ? `₱${li.Subtotal}` : "—"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            ) : (
-              <Typography>No line items found.</Typography>
-            )}
-          </Box>
-        </DialogContent>
-      </Dialog>
-
-      {/* DELETE Confirmation Dialog */}
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={handleCloseDeleteDialog}
-        fullWidth
-        maxWidth="xs"
-        sx={{ "& .MuiDialog-paper": { borderRadius: 3 } }}
-      >
-        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, fontWeight: "bold" }}>
-          <DeleteForeverIcon color="error" />
-          Confirm Deletion
-        </DialogTitle>
-        <DialogContent dividers>
-          <Typography>{getDeleteMessage()}</Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDeleteDialog} sx={{ color: "gray" }}>
-            Cancel
-          </Button>
-          <Button variant="contained" color="error" onClick={handleConfirmDelete}>
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-
-
-              {/* Petty Cash Dialog */}
+        </Paper>
+    
+        {/* ---------- ALL DIALOGS BELOW (kept at bottom for clarity) ---------- */}
+        {/* ADD Payment Dialog */}
+        <Dialog open={isAddPaymentOpen} onClose={closePaymentDialog}>
+          <DialogTitle>
+            {paymentMode === "member" && "Add Member Payment"}
+            {paymentMode === "walkIn" && "Add Walk-In Payment"}
+            {paymentMode === "booking" && "Add Booking Payment"}
+            {paymentMode === "session" && "Add Session Payment"}
+          </DialogTitle>
+          <DialogContent dividers>
+            {/* ... same form fields as before ... */}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closePaymentDialog}>Cancel</Button>
+            <Button variant="contained" onClick={handleAddPaymentSubmit}>
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+    
+        {/* PARTIAL Payment Dialog */}
+        <Dialog
+          open={partialDialogOpen}
+          onClose={closePartialDialog}
+          fullWidth
+          maxWidth="lg"
+        >
+          <DialogTitle>
+            {/* ... partial payment dialog title ... */}
+          </DialogTitle>
+          <DialogContent dividers>
+            {/* ... partial payment form ... */}
+          </DialogContent>
+        </Dialog>
+    
+        {/* EDIT Payment Dialog */}
+        <Dialog
+          open={isEditPaymentOpen}
+          onClose={() => setEditPaymentOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>
+            {/* ... edit payment title ... */}
+          </DialogTitle>
+          <DialogContent dividers>
+            {/* ... edit payment fields ... */}
+          </DialogContent>
+          <DialogActions>
+            <Button variant="contained" onClick={handleEditPaymentSubmit}>
+              Save Changes
+            </Button>
+          </DialogActions>
+        </Dialog>
+    
+        {/* VIEW Payment Dialog */}
+        <Dialog
+          open={isViewPaymentOpen}
+          onClose={() => setViewPaymentOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>
+            {/* ... view payment details ... */}
+          </DialogTitle>
+          <DialogContent dividers>
+            {/* ... read-only fields ... */}
+          </DialogContent>
+        </Dialog>
+    
+        {/* ADD Invoice Dialog */}
+        <Dialog open={isAddInvoiceOpen} onClose={() => setAddInvoiceOpen(false)} fullWidth maxWidth="md">
+          <DialogTitle>
+            {/* ... Add Invoice Title ... */}
+          </DialogTitle>
+          <DialogContent dividers>
+            {/* ... new invoice form ... */}
+          </DialogContent>
+        </Dialog>
+    
+        {/* CONFIRMATION DIALOG */}
+        <Dialog
+          open={openConfirmation}
+          onClose={() => setOpenConfirmation(false)}
+          PaperProps={{ sx: { borderRadius: 3, minWidth: 350 } }}
+        >
+          <DialogTitle sx={{ textAlign: "center", p: 3 }}>
+            {/* ... confirmation title ... */}
+          </DialogTitle>
+          <DialogContent dividers sx={{ textAlign: "center", py: 2 }}>
+            {/* ... confirmation message ... */}
+          </DialogContent>
+          <DialogActions sx={{ justifyContent: "center", gap: 2, py: 2 }}>
+            {/* ... confirmation actions ... */}
+          </DialogActions>
+        </Dialog>
+    
+        {/* EDIT Invoice Dialog */}
+        <Dialog
+          open={isEditInvoiceOpen}
+          onClose={() => setEditInvoiceOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>
+            {/* ... edit invoice title ... */}
+          </DialogTitle>
+          <DialogContent dividers>
+            {/* ... edit invoice fields ... */}
+          </DialogContent>
+          <DialogActions>
+            <Button variant="contained" onClick={handleEditInvoiceSubmit}>
+              Save Changes
+            </Button>
+          </DialogActions>
+        </Dialog>
+    
+        {/* VIEW Invoice Dialog */}
+        <Dialog
+          open={isViewInvoiceOpen}
+          onClose={() => setViewInvoiceOpen(false)}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>
+            {/* ... view invoice title ... */}
+          </DialogTitle>
+          <DialogContent dividers>
+            {/* ... read-only invoice fields ... */}
+          </DialogContent>
+        </Dialog>
+    
+        {/* DELETE Confirmation Dialog */}
+        <Dialog
+          open={deleteDialogOpen}
+          onClose={handleCloseDeleteDialog}
+          fullWidth
+          maxWidth="xs"
+        >
+          <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <DeleteForeverIcon color="error" />
+            Confirm Deletion
+          </DialogTitle>
+          <DialogContent dividers>
+            <Typography>{getDeleteMessage()}</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDeleteDialog} sx={{ color: "gray" }}>
+              Cancel
+            </Button>
+            <Button variant="contained" color="error" onClick={handleConfirmDelete}>
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
+    
+        {/* Petty Cash Dialog */}
         <Dialog
           open={pettyDialogOpen}
           onClose={() => setPettyDialogOpen(false)}
@@ -2656,7 +1867,7 @@ export default function PaymentsAndInvoices() {
                 <Typography variant="body1" sx={{ mb: 2 }}>
                   Date: <strong>{selectedFlowRow.date}</strong>
                 </Typography>
-
+    
                 <TextField
                   label="Today's Petty Cash"
                   name="pettyCash"
@@ -2668,7 +1879,7 @@ export default function PaymentsAndInvoices() {
                   }
                   sx={{ mb: 2 }}
                 />
-
+    
                 <TextField
                   label="Petty Cash Tomorrow"
                   name="pettyTomorrow"
@@ -2676,7 +1887,10 @@ export default function PaymentsAndInvoices() {
                   fullWidth
                   value={pettyForm.pettyTomorrow}
                   onChange={(e) =>
-                    setPettyForm((prev) => ({ ...prev, pettyTomorrow: e.target.value }))
+                    setPettyForm((prev) => ({
+                      ...prev,
+                      pettyTomorrow: e.target.value,
+                    }))
                   }
                 />
               </>
@@ -2689,7 +1903,7 @@ export default function PaymentsAndInvoices() {
             </Button>
           </DialogActions>
         </Dialog>
-
-    </Box>
-  );
+      </Box>
+    );
+    
 }

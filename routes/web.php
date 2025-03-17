@@ -492,11 +492,9 @@ use App\Http\Controllers\StaffController;
 // Everything under /staff
 Route::prefix('staff')->group(function () {
 
-    Route::get('staff/authuser', [StaffController::class, 'getAuthUser'])
-    ->middleware('multiGuard:owner,admin,staff'); // if you want to protect the route
-
     // 1) The routes for staff that owners, admins, and staff can all access:
     Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        Route::get('/authuser', [StaffController::class, 'getAuthUser']);
         // Staff main CRUD
         Route::get('/', [StaffController::class, 'indexStaffJson'])->name('staff.index');
         Route::post('/', [StaffController::class, 'storeStaff'])->name('staff.store');

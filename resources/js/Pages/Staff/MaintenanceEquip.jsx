@@ -21,8 +21,8 @@ import {
   Snackbar,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-// Replace react-beautiful-dnd with @hello-pangea/dnd to avoid the defaultProps warning.
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -35,9 +35,8 @@ import CloseIcon from "@mui/icons-material/Close";
 import SaveIcon from "@mui/icons-material/Save";
 import SyncAltIcon from "@mui/icons-material/SyncAlt";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
-import { grey } from "@mui/material/colors";
 
-// Global reorder function (for reordering an array)
+// Reorder helper
 const reorder = (list, startIndex, endIndex) => {
   const result = Array.from(list);
   const [removed] = result.splice(startIndex, 1);
@@ -45,7 +44,7 @@ const reorder = (list, startIndex, endIndex) => {
   return result;
 };
 
-// Colors for droppable columns (light mode)
+// Colors for droppable columns
 const droppableBackground = {
   availableList: "#c8e6c9",
   maintenanceList: "#fff9c4",
@@ -73,12 +72,14 @@ export default function MaintenanceEquip() {
       .catch((err) => console.error("Error fetching branches:", err));
   }, []);
 
-  // 3) Equipment
+  // 3) Equipment (Raw) + FilteredEquipment
   const csrfToken = document
     .querySelector('meta[name="csrf-token"]')
     ?.getAttribute("content");
 
   const [equipment, setEquipment] = useState([]);
+  const [filteredEquipment, setFilteredEquipment] = useState([]); // <--- new
+
   const getEquipment = () => {
     fetch("/operations/equipment", {
       method: "GET",
@@ -106,21 +107,26 @@ export default function MaintenanceEquip() {
       .then((data) => setLogs(data.logs || []))
       .catch((err) => console.error("Error fetching maintenance logs:", err));
   };
-
   useEffect(() => {
     getLogs();
   }, []);
 
   // 5) Branch Filter
   const [selectedBranch, setSelectedBranch] = useState("All");
-  const filteredEquipment =
-    selectedBranch === "All"
-      ? equipment
-      : equipment.filter(
-          (eq) => String(eq.BranchID) === String(selectedBranch)
-        );
 
-  // Split equipment into status columns
+  // (A) UseEffect to filter equipment each time `equipment` or `selectedBranch` changes
+  useEffect(() => {
+    if (selectedBranch === "All") {
+      setFilteredEquipment(equipment);
+    } else {
+      const filtered = equipment.filter(
+        (eq) => String(eq.BranchID) === String(selectedBranch)
+      );
+      setFilteredEquipment(filtered);
+    }
+  }, [equipment, selectedBranch]);
+
+  // (B) Then define your status-based splits from `filteredEquipment`
   const availableEquip = filteredEquipment.filter(
     (eq) => eq.Status === "Available"
   );
@@ -266,6 +272,7 @@ export default function MaintenanceEquip() {
   };
 
   const applyReorderToEquipment = (newArr, status) => {
+    // others = the items that don't belong to this status
     const others = equipment.filter((eq) => eq.Status !== status);
     const final = [
       ...others,
@@ -382,6 +389,7 @@ export default function MaintenanceEquip() {
         }
       })
       .then(() => {
+        // local UI update
         setEquipment((prev) =>
           prev.map((item) =>
             item.EquipmentID === EquipmentID
@@ -501,7 +509,7 @@ export default function MaintenanceEquip() {
 
   const truncatedLogs = logs.slice(0, 15);
 
-  // 12) Styles and Render Functions
+  // 12) Styles and Render
   const getListStyle = (droppableId, isDraggingOver, theme) => ({
     background: isDraggingOver
       ? theme.palette.action.hover
@@ -790,21 +798,14 @@ export default function MaintenanceEquip() {
           sx={{
             p: 1.5,
             mb: 2,
-            backgroundColor:
-              theme.palette.mode === "dark" ? "#424242" : "#424242",
+            backgroundColor: "#424242",
             color: "#fff",
             textAlign: "center",
             borderRadius: 2,
           }}
           elevation={3}
         >
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
             <AccessTimeIcon sx={{ mr: 1 }} />
             <Typography variant="h6" sx={{ fontWeight: "bold", mb: 0 }}>
               {clockString}
@@ -834,7 +835,7 @@ export default function MaintenanceEquip() {
           }}
           elevation={4}
         >
-          {truncatedLogs.length === 0 ? (
+          {logs.length === 0 ? (
             <Typography
               variant="body2"
               color={theme.palette.mode === "dark" ? "#ccc" : "text.secondary"}
@@ -842,7 +843,7 @@ export default function MaintenanceEquip() {
               No recent logs...
             </Typography>
           ) : (
-            truncatedLogs.map((log, idx) => (
+            logs.slice(0, 15).map((log, idx) => (
               <Paper
                 key={String(log.MaintenanceID)}
                 variant="outlined"
@@ -881,9 +882,7 @@ export default function MaintenanceEquip() {
                       sx={{
                         ml: 1,
                         color:
-                          theme.palette.mode === "dark"
-                            ? "#aaa"
-                            : "grey.600",
+                          theme.palette.mode === "dark" ? "#aaa" : "grey.600",
                       }}
                     >
                       <EditIcon fontSize="small" />
@@ -909,9 +908,10 @@ export default function MaintenanceEquip() {
                   variant="body2"
                   sx={{
                     fontSize: "0.8rem",
-                    color: theme.palette.mode === "dark"
-                      ? "#ddd"
-                      : "text.secondary",
+                    color:
+                      theme.palette.mode === "dark"
+                        ? "#ddd"
+                        : "text.secondary",
                   }}
                 >
                   <strong>Equipment #{log.EquipmentID}</strong> | Date:{" "}
@@ -921,9 +921,10 @@ export default function MaintenanceEquip() {
                   variant="body2"
                   sx={{
                     fontSize: "0.8rem",
-                    color: theme.palette.mode === "dark"
-                      ? "#ddd"
-                      : "text.secondary",
+                    color:
+                      theme.palette.mode === "dark"
+                        ? "#ddd"
+                        : "text.secondary",
                   }}
                 >
                   Issue: {log.IssueDescription || "N/A"}
@@ -934,9 +935,10 @@ export default function MaintenanceEquip() {
                   variant="body2"
                   sx={{
                     fontSize: "0.8rem",
-                    color: theme.palette.mode === "dark"
-                      ? "#bbb"
-                      : "text.secondary",
+                    color:
+                      theme.palette.mode === "dark"
+                        ? "#bbb"
+                        : "text.secondary",
                   }}
                 >
                   Notes: {log.Notes || ""}
@@ -1033,7 +1035,11 @@ export default function MaintenanceEquip() {
             variant="contained"
             color="primary"
             onClick={handleAddEquipSubmit}
-            disabled={!newEquipData.Name?.trim() || !newEquipData.SerialNumber?.trim() || !newEquipData.BranchID}
+            disabled={
+              !newEquipData.Name?.trim() ||
+              !newEquipData.SerialNumber?.trim() ||
+              !newEquipData.BranchID
+            }
             sx={{
               textTransform: "none",
               fontWeight: "bold",
@@ -1045,7 +1051,6 @@ export default function MaintenanceEquip() {
             <SaveIcon sx={{ mr: 1 }} /> Save Equipment
           </Button>
         </DialogActions>
-
       </Dialog>
 
       {/* STATUS TRANSITION DIALOG */}
@@ -1090,10 +1095,14 @@ export default function MaintenanceEquip() {
 
         <DialogContent dividers sx={{ p: 4 }}>
           <Typography variant="body1" gutterBottom sx={{ fontWeight: "bold" }}>
-            Equipment ID: <span style={{ fontWeight: "normal" }}>{modalData.EquipmentID || "—"}</span>
+            Equipment ID:{" "}
+            <span style={{ fontWeight: "normal" }}>
+              {modalData.EquipmentID || "—"}
+            </span>
           </Typography>
           <Typography variant="body1" gutterBottom>
-            Changing from <strong>{modalData.oldStatus || "—"}</strong> to <strong>{modalData.newStatus || "—"}</strong>.
+            Changing from <strong>{modalData.oldStatus || "—"}</strong> to{" "}
+            <strong>{modalData.newStatus || "—"}</strong>.
           </Typography>
 
           <TextField
@@ -1145,10 +1154,21 @@ export default function MaintenanceEquip() {
       </Dialog>
 
       {/* Dialog: Edit Log Entry */}
-      <Dialog open={editLogIndex !== null} onClose={handleCancelLogEdit} fullWidth maxWidth="sm">
+      <Dialog
+        open={editLogIndex !== null}
+        onClose={handleCancelLogEdit}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>Edit Maintenance Log</DialogTitle>
         <DialogContent dividers>
-          <TextField fullWidth multiline rows={3} value={editLogText} onChange={(e) => setEditLogText(e.target.value)} />
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            value={editLogText}
+            onChange={(e) => setEditLogText(e.target.value)}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCancelLogEdit}>Cancel</Button>
@@ -1178,11 +1198,15 @@ export default function MaintenanceEquip() {
         </DialogTitle>
         <DialogContent dividers>
           <Typography>
-            Are you sure you want to delete this record? This action cannot be undone.
+            Are you sure you want to delete this record? This action cannot be
+            undone.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: "gray" }}>
+          <Button
+            onClick={() => setDeleteDialogOpen(false)}
+            sx={{ color: "gray" }}
+          >
             Cancel
           </Button>
           <Button variant="contained" color="error" onClick={confirmDelete}>

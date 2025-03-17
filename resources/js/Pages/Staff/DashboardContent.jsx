@@ -111,19 +111,42 @@ export default function StaffDashboard() {
 
   // Derived states for metrics
   const todayString = dayjs().format('YYYY-MM-DD');  
+// Filter walk-ins by branch AND by today's date
   const walkInsTodayCount = walkIns.filter((w) => {
-    return new Date(w.VisitDate).toISOString().split("T")[0] === todayString;
-  }).length;
+    // First ensure the walk-in is for the same branch as the logged-in staff
+    if (String(w.BranchID) !== String(staffBranch)) {
+      return false;
+    }
 
-  const today = new Date();
-  const next7 = new Date();
-  next7.setDate(today.getDate() + 7);
-  const upcomingExpirations = members.filter((member) => {
-    if (!member?.MembershipEndDate) return false;
-    const endDate = new Date(member.MembershipEndDate);
-    return endDate > today && endDate <= next7;
-  });
-  const expiringSoonCount = upcomingExpirations.length;
+  // Then check if VisitDate is "today"
+  // w.VisitDate might be "2025-03-17 03:41:00", so we parse with dayjs,
+  // and compare the YYYY-MM-DD portion.
+  const walkInDateStr = dayjs(w.VisitDate).format('YYYY-MM-DD');
+  return walkInDateStr === todayString;
+}).length;
+
+// 1) Create "today" and "next7" boundaries as before
+const today = new Date();
+const next7 = new Date();
+next7.setDate(today.getDate() + 7);
+
+// 2) Filter members so that:
+//   (a) member.StartedBranchID matches staffBranch
+//   (b) member.MembershipEndDate is within next 7 days
+const upcomingExpirations = members.filter((member) => {
+  // Must match the logged-in staff's branch
+  if (String(member.StartedBranchID) !== String(staffBranch)) {
+    return false;
+  }
+
+  // Must have an end date, and it must be between now and `next7`
+  if (!member?.MembershipEndDate) return false;
+  const endDate = new Date(member.MembershipEndDate);
+  return endDate > today && endDate <= next7;
+});
+
+const expiringSoonCount = upcomingExpirations.length;
+
 
   // Tabs: 0 => Visits, 1 => Walk-Ins, 2 => Expiring Soon
   const [activeTab, setActiveTab] = useState(0);
@@ -342,28 +365,39 @@ export default function StaffDashboard() {
     }
   };
 
-  // Clock In/Out for staff on the kiosk
   const handleScheduleClock = async (staffRow) => {
-    const dateStr = new Date().toISOString().split("T")[0];
-    const stSchedule = schedule.find(
-      (sch) => sch.StaffID === staffRow.StaffID && sch.ShiftDate === dateStr
-    );
+    // Instead of raw new Date().toISOString(), do:
+    const todayStr = dayjs().format('YYYY-MM-DD');
+  
+    // Compare the schedule date to dayjs's formatted date:
+    const stSchedule = schedule.find((sch) => {
+      // If sch.ShiftDate is "2025-03-17T00:00:00.000Z" or "2025-03-17",
+      // format it to "YYYY-MM-DD" and compare:
+      const scheduleDate = dayjs(sch.ShiftDate).format('YYYY-MM-DD');
+      return (
+        sch.StaffID === staffRow.StaffID &&
+        scheduleDate === todayStr
+      );
+    });
+  
+    // Now stSchedule will actually be found if today’s schedule is present
     if (!stSchedule) {
       showSuccessMessage(`No schedule for ${staffRow.FullName} today.`);
       return;
     }
-
+  
+    // The rest of your clock logic remains the same
     const att = attendance.find(
-      (a) => a.StaffID === staffRow.StaffID && a.Date === dateStr
+      (a) => a.StaffID === staffRow.StaffID && a.Date === todayStr
     );
     const timeStr = new Date().toLocaleTimeString("it-IT").slice(0, 5);
-
+  
     let clockData = {
       StaffID: staffRow.StaffID,
       BranchID: staffBranch,
-      Date: dateStr,
+      Date: todayStr,
     };
-
+  
     if (!att || !att.TimeIn) {
       clockData.TimeIn = timeStr;
       clockData.TimeOut = null;
@@ -374,7 +408,7 @@ export default function StaffDashboard() {
       showSuccessMessage(`${staffRow.FullName} has already completed attendance.`);
       return;
     }
-
+  
     try {
       const response = await axios.post(
         "/staff/attendance/clock-in-out",

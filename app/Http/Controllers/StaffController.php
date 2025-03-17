@@ -62,21 +62,22 @@ class StaffController extends Controller
     public function getAuthUser(Request $request) 
     {
         $staff = Auth::user();
-        
+    
+        // Return 401 if not authenticated
         if (!$staff) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
-        
-        // Eager-load the branches relationship so the accessor can work
+    
+        // Now safe to call load()
         $staff->load('branches');
     
         return response()->json([
             'StaffID'         => $staff->StaffID,
             'FullName'        => $staff->FullName,
             'DefaultBranchID' => $staff->default_branch_id,
-            // ... other fields as needed ...
         ]);
     }
+    
     
     
     /**
