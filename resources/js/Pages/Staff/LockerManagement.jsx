@@ -56,7 +56,7 @@ const statusGradients = {
 const LockerCard = styled(Paper)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
   position: "relative",
-  overflow: "hidden",
+  overflow: "auto",
   background: theme.palette.mode === "dark" ? "#424242" : "#e0e0e0",
   border:
     theme.palette.mode === "dark" ? "2px solid #666" : "2px solid #bbb",
@@ -424,41 +424,7 @@ export default function LockerManagement() {
   return (
     <ThemeProvider theme={theme}>
       <Box sx={{ p: 4 }}>
-        {/* Toggle Light/Dark */}
-        <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
-          <Button
-            variant="outlined"
-            onClick={() => setMode(mode === "light" ? "dark" : "light")}
-            startIcon={mode === "light" ? <Brightness4Icon /> : <Brightness7Icon />}
-          >
-            {mode === "light" ? "Dark Mode" : "Light Mode"}
-          </Button>
-        </Box>
-
-        {/* Clock */}
-        <Paper
-          sx={{
-            p: 2,
-            mb: 3,
-            backgroundColor: "#424242",
-            color: "#fff",
-            textAlign: "center",
-            borderRadius: 2,
-          }}
-          elevation={4}
-        >
-          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-            <ClockIcon sx={{ verticalAlign: "middle", mr: 1 }} />
-            {clockString}
-          </Typography>
-        </Paper>
-
-        <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
-          Locker Management
-        </Typography>
-        <Divider sx={{ mb: 2 }} />
-
-        {/* Header */}
+      {/* Header */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
           <Button
             variant="contained"
@@ -492,74 +458,75 @@ export default function LockerManagement() {
         </FormControl>
 
         {/* Locker Grid */}
-        <Box sx={{ overflowY: "auto", mb: 3, maxHeight: "80vh" }}>
+        <Box sx={{ overflowX: "auto", overflowY: "auto", mb: 3, maxHeight: "80vh" }}>
           <Box sx={{ display: "flex", flexDirection: "column" }}>
             {chunkedLockers.map((rowLockers, rowIndex) => (
               <Box key={rowIndex} sx={{ display: "flex", gap: 2, mb: 2 }}>
                 {rowLockers.map((locker) => (
                   <Box key={locker.LockerID} sx={{ flex: "0 0 auto" }}>
-                    <LockerCard
-                      sx={{ width: 200, height: 250 }}
-                      onClick={() => {
-                        if (locker.Status === "Available") {
-                          openBorrowForm(locker);
-                        } else if (locker.Status === "Occupied") {
-                          const usageId = locker.occupant?.UsageID || "";
-                          const occupantName = locker.occupant?.FullName || "";
-                          openReturnForm(usageId, occupantName);
-                        }
+                  <LockerCard
+                    sx={{
+                      width: { xs: 90, sm: 100, md: 110 },
+                      height: { xs: 130, sm: 150, md: 160 },
+                    }}
+                    onClick={() => {
+                      if (locker.Status === "Available") {
+                        openBorrowForm(locker);
+                      } else if (locker.Status === "Occupied") {
+                        const usageId = locker.occupant?.UsageID || "";
+                        const occupantName = locker.occupant?.FullName || "";
+                        openReturnForm(usageId, occupantName);
+                      }
+                    }}
+                  >
+                    <StatusBadge status={locker.Status}>{locker.Status}</StatusBadge>
+                    {/* Delete Button */}
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(locker.LockerID);
+                      }}
+                      sx={{
+                        position: "absolute",
+                        top: theme.spacing(1),
+                        right: theme.spacing(1),
+                        color: theme.palette.mode === "dark" ? "#fff" : "#000",
                       }}
                     >
-                      <StatusBadge status={locker.Status}>{locker.Status}</StatusBadge>
-
-                      {/* Delete Button */}
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteClick(locker.LockerID);
-                        }}
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                    {/* Locker Number and Details */}
+                    <Box
+                      sx={{
+                        height: "100%",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "center",
+                        alignItems: "center",
+                      }}
+                    >
+                      <Typography
+                        variant="h4"
                         sx={{
-                          position: "absolute",
-                          top: theme.spacing(1),
-                          right: theme.spacing(1),
-                          color: theme.palette.mode === "dark" ? "#fff" : "#000",
+                          fontWeight: "bold",
+                          color: theme.palette.mode === "dark" ? "#fff" : "#333",
+                          textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
+                          letterSpacing: "2px",
                         }}
                       >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-
-                      {/* Locker Number */}
-                      <Box
-                        sx={{
-                          height: "100%",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "center",
-                          alignItems: "center",
-                        }}
-                      >
-                        <Typography
-                          variant="h4"
-                          sx={{
-                            fontWeight: "bold",
-                            color: theme.palette.mode === "dark" ? "#fff" : "#333",
-                            textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
-                            letterSpacing: "2px",
-                          }}
-                        >
-                          {locker.LockerNumber}
+                        {locker.LockerNumber}
+                      </Typography>
+                      {locker.Status === "Occupied" && locker.occupant && (
+                        <Typography variant="subtitle2" sx={{ mt: 1 }}>
+                          {locker.occupant.FullName}
                         </Typography>
-                        {locker.Status === "Occupied" && locker.occupant && (
-                          <Typography variant="subtitle2" sx={{ mt: 1 }}>
-                            {locker.occupant.FullName}
-                          </Typography>
-                        )}
-                        <Typography variant="caption" sx={{ mt: 1 }}>
-                          Branch: {locker.BranchID}
-                        </Typography>
-                      </Box>
-                    </LockerCard>
+                      )}
+                      <Typography variant="caption" sx={{ mt: 1 }}>
+                        Branch: {locker.BranchID}
+                      </Typography>
+                    </Box>
+                  </LockerCard>
                   </Box>
                 ))}
               </Box>

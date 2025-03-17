@@ -38,7 +38,6 @@ const NAVIGATION = [
   { segment: 'membership-management', title: 'Membership Management', icon: <PeopleIcon /> },
   { segment: 'bookingsessions', title: 'Bookings & Sessions', icon: <EventNoteIcon /> },
   { segment: 'payments', title: 'Sales Reports', icon: <PaymentsIcon /> },
-  { segment: 'lockermanagement', title: 'Locker Management', icon: <LockIcon /> },
   { segment: 'maintequip', title: 'Maintenance & Equipment', icon: <BuildIcon /> },
   { segment: 'notifications', title: 'Notifications', icon: <NotificationsIcon /> },
   { segment: 'editaccount', title: 'Edit Account', icon: <ManageAccountsIcon /> },

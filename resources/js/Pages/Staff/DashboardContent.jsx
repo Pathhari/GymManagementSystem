@@ -55,9 +55,11 @@ import CreditCardIcon from "@mui/icons-material/CreditCard";
 import BadgeIcon from "@mui/icons-material/Badge";
 import EventIcon from "@mui/icons-material/Event";
 import NotesIcon from "@mui/icons-material/Notes";
+import LockIcon from "@mui/icons-material/Lock";
 import { AccessTime, AlarmOn, AlarmOff, Schedule as ScheduleIcon } from "@mui/icons-material";
 import axios from "axios";
 import dayjs from "dayjs";
+import LockerManagement from "./LockerManagement";
 
 export default function StaffDashboard() {
   const theme = useTheme();
@@ -94,6 +96,8 @@ export default function StaffDashboard() {
 
   const [checkInsToday, setCheckInsToday] = useState(0);
   const [lockersInUse, setLockersInUse] = useState(0);
+  const [newSignUpsTodayCount, setNewSignUpsTodayCount] = useState(0);
+  const [renewalsTodayCount, setRenewalsTodayCount] = useState(0);
 
   const [walkIns, setWalkIns] = useState([]);
   const [members, setMembers] = useState([]);
@@ -199,10 +203,9 @@ const expiringSoonCount = upcomingExpirations.length;
     fetchStaffData(); // sets staffId and staffBranch if found
   }, []);
 
-  // Once staffBranch is known, fetch attendance, visits, schedules, etc.
   useEffect(() => {
     if (!staffBranch) return; // skip if branch is null/undefined
-
+  
     const fetchAllDashboardData = async () => {
       setLoading(true);
       setError(null);
@@ -211,17 +214,17 @@ const expiringSoonCount = upcomingExpirations.length;
         const metricsRes = await axios.get("/staff/metrics");
         setCheckInsToday(metricsRes.data.checkInsToday || 0);
         setLockersInUse(metricsRes.data.lockersInUse || 0);
-
+  
         // 2) Visits (branch-based)
         const visitsRes = await axios.get("/operations/visits", {
           params: { branchID: staffBranch },
         });
         setVisits(visitsRes.data.visits || []);
-
+  
         // 3) Walk-Ins
         const walkInsRes = await axios.get("/operations/walk-ins");
         setWalkIns(walkInsRes.data || []);
-
+  
         // 4) Attendance (branch-based)
         const attendRes = await axios.get("/staff/attendance", {
           params: { branchID: staffBranch },
@@ -230,7 +233,7 @@ const expiringSoonCount = upcomingExpirations.length;
           ? attendRes.data
           : attendRes.data.attendance || [];
         setAttendance(fetchedAttendance);
-
+  
         // 5) Determine clock state for the logged-in staff
         const todayDate = new Date().toISOString().split("T")[0];
         const todaysAttendance = fetchedAttendance.filter(
@@ -240,18 +243,51 @@ const expiringSoonCount = upcomingExpirations.length;
           (rec) => rec.TimeIn && !rec.TimeOut
         );
         setIsClockedIn(!!clockedInRecord);
-
+  
         // 6) Schedules
         const scheduleRes = await axios.get("/staff/schedules");
         setSchedule(scheduleRes.data || []);
-
+  
         // 7) Staff list (for staff kiosk clock in/out)
         const staffRes = await axios.get("/staff");
         setStaffList(staffRes.data || []);
-
+  
         // 8) Members
         const membersRes = await axios.get("/membership/members");
         setMembers(membersRes.data.members || []);
+  
+        // 9) Payments: Fetch payments and calculate new sign-ups & renewals for today,
+        //     filtered by the logged in staff's branch.
+        const paymentsRes = await axios.get("/payments");
+        const allPayments = paymentsRes.data || [];
+  
+        // Filter new sign-ups for today (PaymentFor includes "New Membership")
+        const newSignUps = allPayments.filter((p) => {
+          const paymentFor = Array.isArray(p.PaymentFor)
+            ? p.PaymentFor
+            : [p.PaymentFor];
+          const paymentDate = dayjs(p.PaymentDate).format("YYYY-MM-DD");
+          return (
+            String(p.BranchID) === String(staffBranch) &&
+            paymentFor.includes("New Membership") &&
+            paymentDate === todayDate
+          );
+        });
+        setNewSignUpsTodayCount(newSignUps.length);
+  
+        // Filter renewals for today (PaymentFor includes "Membership Renewal")
+        const renewals = allPayments.filter((p) => {
+          const paymentFor = Array.isArray(p.PaymentFor)
+            ? p.PaymentFor
+            : [p.PaymentFor];
+          const paymentDate = dayjs(p.PaymentDate).format("YYYY-MM-DD");
+          return (
+            String(p.BranchID) === String(staffBranch) &&
+            paymentFor.includes("Membership Renewal") &&
+            paymentDate === todayDate
+          );
+        });
+        setRenewalsTodayCount(renewals.length);
       } catch (err) {
         console.error("Error loading data:", err);
         setError("Failed to load staff dashboard data.");
@@ -259,9 +295,11 @@ const expiringSoonCount = upcomingExpirations.length;
         setLoading(false);
       }
     };
-
+  
     fetchAllDashboardData();
   }, [staffBranch, staffId]);
+  
+  
 
   // ------------- API Calls (Step 1) -------------
   // Fetch logged-in staff info (Phase 1)
@@ -894,15 +932,13 @@ const expiringSoonCount = upcomingExpirations.length;
                 sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}
               >
                 <BadgeIcon sx={{ fontSize: 40, mb: 1 }} />
-                <Typography variant="subtitle2">Lockers In Use</Typography>
-                <Typography variant="h4" sx={{ fontWeight: "bold" }}>
-                  {lockersInUse}
-                </Typography>
+                <Typography variant="subtitle2">New Sign-Ups Today</Typography>
+                <Typography variant="h4" sx={{ fontWeight: "bold" }}>{newSignUpsTodayCount}</Typography>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} md={3}>
-            <Card
+          <Card
               onClick={() => setActiveTab(2)}
               sx={{
                 p: 2,
@@ -911,21 +947,14 @@ const expiringSoonCount = upcomingExpirations.length;
                 boxShadow: activeTab === 2 ? 6 : 2,
                 transition: "box-shadow 0.3s",
                 "&:hover": { boxShadow: 6 },
-                backgroundColor:
-                  theme.palette.mode === "dark"
-                    ? theme.palette.warning.dark
-                    : theme.palette.warning.light,
+                backgroundColor: theme.palette.mode === "dark" ? theme.palette.warning.dark : theme.palette.warning.light,
                 color: theme.palette.warning.contrastText,
               }}
             >
-              <CardContent
-                sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}
-              >
+              <CardContent sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <WarningAmberIcon sx={{ fontSize: 40, mb: 1 }} />
-                <Typography variant="subtitle2">Expiring Soon</Typography>
-                <Typography variant="h4" sx={{ fontWeight: "bold" }}>
-                  {expiringSoonCount}
-                </Typography>
+                <Typography variant="subtitle2">Renewals Today</Typography>
+                <Typography variant="h4" sx={{ fontWeight: "bold" }}>{renewalsTodayCount}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -1376,9 +1405,10 @@ const expiringSoonCount = upcomingExpirations.length;
                 <Tab icon={<GroupIcon />} label="Visits" />
                 <Tab icon={<DirectionsWalkIcon />} label="Walk-Ins" />
                 <Tab icon={<WarningAmberIcon />} label="Expiring Soon" />
-              </Tabs>
+                <Tab icon={<LockIcon />} label="Locker Management" />              
+                </Tabs>
             </Box>
-            <Box sx={{ flex: 1, p: 2, overflow: "hidden" }}>
+            <Box sx={{ flex: 1, p: 2, overflow: "auto" }}>
               {activeTab === 0 && (
                 <Paper sx={{ height: 600 }}>
                   <DataGrid
@@ -1448,6 +1478,11 @@ const expiringSoonCount = upcomingExpirations.length;
                       },
                     }}
                   />
+                </Paper>
+              )}
+                {activeTab === 3 && (
+                <Paper sx={{ height: "80vh", p: 2 }}>
+                  <LockerManagement />
                 </Paper>
               )}
             </Box>
