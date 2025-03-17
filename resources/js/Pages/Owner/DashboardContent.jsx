@@ -115,6 +115,12 @@ export default function OwnerDashboard(onClose) {
   const [snackMessage, setSnackMessage] = useState('');
   const [showPettyToday, setShowPettyToday] = useState(true);
   const [showPettyTomorrow, setShowPettyTomorrow] = useState(true);
+  const [activeTab, setActiveTab] = useState(0);
+
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+  };
+
   const showSuccessMessage = (message) => {
     setSnackMessage(message);
     setSnackOpen(true);
@@ -253,7 +259,6 @@ export default function OwnerDashboard(onClose) {
 
   // Tabs
   const [selectedTab, setSelectedTab] = useState(0);
-  const [activeTab, setActiveTab] = useState(0);
 
   // Loading / Error
   const [loading, setLoading] = useState(true);
@@ -763,7 +768,7 @@ export default function OwnerDashboard(onClose) {
     ];
   
     const expenseRows = filteredExpenses.map((exp) => ({
-      // Use the DB’s ExpenseID as the unique key in DataGrid
+      // Use the DB's ExpenseID as the unique key in DataGrid
       id: exp.ExpenseID,
       ExpenseID: exp.ExpenseID, // store it explicitly if you like
       ExpenseDate: exp.ExpenseDate || '',
@@ -1030,13 +1035,13 @@ export default function OwnerDashboard(onClose) {
       const pettyCash      = parseFloat(flow.PettyCash || 0);
       const pettyTomorrow  = parseFloat(flow.PettyCashTomorrow || 0);
 
-      // 4. “Cash + Petty” column (optional)
+      // 4. "Cash + Petty" column (optional)
       const cashPlusPetty  = flowCash + pettyCash;
 
       // 5. Total Gross = (Cash + Petty) + (GCash + BPI + BDO)
       const totalGross = cashPlusPetty + flowGCash + flowBPI + flowBDO;
 
-      // 6. If your business logic subtracts “tomorrow’s petty” from net:
+      // 6. If your business logic subtracts "tomorrow's petty" from net:
       const TotalGrossMinusPetty    = totalGross - pettyTomorrow;
       const TotalGrossMinusExpenses = totalGross - totalExpenses;
       const takeHome                = totalGross - pettyTomorrow - totalExpenses;
