@@ -48,6 +48,7 @@ import GroupsIcon from "@mui/icons-material/Groups";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import HistoryIcon from "@mui/icons-material/History";
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import DirectionsWalkIcon from "@mui/icons-material/DirectionsWalk";
 import WarningIcon from "@mui/icons-material/Warning";
 import BadgeIcon from "@mui/icons-material/Badge";
@@ -66,6 +67,8 @@ import SaveIcon from '@mui/icons-material/Save';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import DescriptionIcon from '@mui/icons-material/Description';
 import ListAltIcon from '@mui/icons-material/ListAlt';
+import { format } from "date-fns"; // or however you usually format dates
+
 
 import { CSVLink } from "react-csv";
 import jsPDF from "jspdf";
@@ -102,10 +105,12 @@ export default function MembershipManagement() {
   const [memberStatuses, setMemberStatuses] = useState([]);
   const [branches, setBranches] = useState({});
 
+
   // Searching / filtering
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState(0);
   const [branchFilter, setBranchFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
 
   // Sub‐tab for memberships
   const [membershipSubTab, setMembershipSubTab] = useState(0);
@@ -171,10 +176,12 @@ export default function MembershipManagement() {
 
   const [newRenewal, setNewRenewal] = useState({
     MemberID: "",
+    RenewalStartDate: "", // <--- new
     NewEndDate: "",
     RenewalAmount: 0,
     PaymentFor: '["Membership Renewal"]',
   });
+    
   const [renewalPayments, setRenewalPayments] = useState([
     { PaymentMethod: "", PaymentAmount: "" },
   ]);
@@ -218,6 +225,11 @@ export default function MembershipManagement() {
   const [selectedMonthlyClient, setSelectedMonthlyClient] = useState(null);
   const [isViewMonthlyClientOpen, setViewMonthlyClientOpen] = useState(false);
   const [isEditMonthlyClientOpen, setEditMonthlyClientOpen] = useState(false);
+    // For Member Visit Logs
+  const [memberVisitLogs, setMemberVisitLogs] = useState([]);
+
+  // For Monthly Client Attendance
+  const [monthlyClientAttendances, setMonthlyClientAttendances] = useState([]);
 
   // ─────────────────────────────────────────────────────────
   // Lifecycle: Fetch data on mount
@@ -280,6 +292,28 @@ export default function MembershipManagement() {
 
     return () => clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    const fetchDataForTab = async () => {
+      try {
+        if (activeTab === 5) {
+          // Fetch member visit logs from the correct endpoint.
+          const res = await axios.get("/operations/visits");
+          // Assuming the response is in the format: { member_visits: [ ... ] }
+          setMemberVisitLogs(res.data.visits || []);
+        } else if (activeTab === 6) {
+          const res = await axios.get("/monthly-clients/attendances-all");
+          setMonthlyClientAttendances(res.data.attendances || []);
+        }
+      } catch (error) {
+        console.error("Error fetching tab data:", error);
+      }
+    };
+  
+    fetchDataForTab();
+  }, [activeTab]);
+  
+  
 
   // ─────────────────────────────────────────────────────────
   // Snack helper
@@ -740,34 +774,68 @@ export default function MembershipManagement() {
     setAddRenewalOpen(true);
   }
 
-  // Auto-calc renewal amount whenever newRenewal.NewEndDate or .MemberID changes
-  useEffect(() => {
-    const member = getMemberByID(newRenewal.MemberID);
-    if (!member) return;
-    if (!newRenewal.NewEndDate) return;
+// (1) useEffect to auto-calculate NewEndDate from RenewalStartDate + months (or similar)
+useEffect(() => {
+  // If you're capturing the duration in newRenewal.monthsToRenew
+  if (!newRenewal.RenewalStartDate || !newRenewal.monthsToRenew) return;
 
-    const dtChosen = new Date(newRenewal.NewEndDate);
-    if (isNaN(dtChosen.getTime())) return;
+  const start = new Date(newRenewal.RenewalStartDate);
+  const months = parseInt(newRenewal.monthsToRenew, 10);
+  if (isNaN(start.getTime()) || isNaN(months)) return;
 
-    const dtStart = getRenewalStartDate(member);
-    const diffMonths = monthsBetweenDates(dtStart, dtChosen);
-    const monthlyPrice = getPlanPriceForMember(member);
-    const total = diffMonths * monthlyPrice;
+  // Compute end = start + X months
+  const newEnd = new Date(start.getTime());
+  newEnd.setMonth(newEnd.getMonth() + months);
 
-    setNewRenewal((prev) => ({
-      ...prev,
-      RenewalAmount: total,
-    }));
-  }, [newRenewal.MemberID, newRenewal.NewEndDate]);
+  // Set new end date in state (yyyy-mm-dd format)
+  setNewRenewal((prev) => ({
+    ...prev,
+    NewEndDate: newEnd.toISOString().split("T")[0],
+  }));
+}, [newRenewal.RenewalStartDate, newRenewal.monthsToRenew]);
 
-  const validateRenewal = () => {
+// (2) Your existing useEffect to auto-calc renewal amount if NewEndDate changes
+useEffect(() => {
+  const member = getMemberByID(newRenewal.MemberID);
+  if (!member) return;
+  if (!newRenewal.NewEndDate) return;
+
+  const dtChosen = new Date(newRenewal.NewEndDate);
+  if (isNaN(dtChosen.getTime())) return;
+
+  // This might be the old membership end date or some logic
+  const dtStart = getRenewalStartDate(member);
+
+  const diffMonths = monthsBetweenDates(dtStart, dtChosen);
+  const monthlyPrice = getPlanPriceForMember(member);
+  const total = diffMonths * monthlyPrice;
+
+  setNewRenewal((prev) => ({
+    ...prev,
+    RenewalAmount: total,
+  }));
+}, [newRenewal.MemberID, newRenewal.NewEndDate]);
+
+
+  function validateRenewal() {
     let errors = {};
+    
+    // Check RenewalStartDate
+    if (!newRenewal.RenewalStartDate) {
+      errors.RenewalStartDate = "Please select the renewal start date.";
+    }
+  
+    // Check NewEndDate
     if (!newRenewal.NewEndDate) {
       errors.NewEndDate = "Please select the new membership end date.";
     }
+    
+    // Check RenewalAmount
     if (!newRenewal.RenewalAmount || Number(newRenewal.RenewalAmount) <= 0) {
       errors.RenewalAmount = "Please enter a valid renewal amount.";
     }
+  
+    // Then your existing payments logic...
     if (!renewalPayments.length) {
       errors.Payments = "At least one payment row is required.";
     } else {
@@ -787,8 +855,10 @@ export default function MembershipManagement() {
     if (totalPaid < newRenewal.RenewalAmount) {
       errors.totalPaid = "The sum of payments is less than the renewal amount.";
     }
+  
     return errors;
-  };
+  }
+  
 
   async function handleAddRenewal() {
     const errors = validateRenewal();
@@ -799,6 +869,7 @@ export default function MembershipManagement() {
     try {
       const body = {
         MemberID: newRenewal.MemberID,
+        RenewalStartDate: newRenewal.RenewalStartDate,        
         NewEndDate: newRenewal.NewEndDate,
         RenewalAmount: Number(newRenewal.RenewalAmount),
         PaymentFor: newRenewal.PaymentFor,
@@ -995,6 +1066,14 @@ export default function MembershipManagement() {
     return endDate > today && endDate <= next7;
   }).length;
 
+  const formatTime = (timeString) => {
+    if (!timeString) return "—";
+    let [hours, minutes] = timeString.split(":").map(Number);
+    const period = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12 || 12;
+    return `${hours}:${minutes.toString().padStart(2, "0")} ${period}`;
+  };
+
   // ─────────────────────────────────────────────────────────
   // DataGrid Columns
   // ─────────────────────────────────────────────────────────
@@ -1130,18 +1209,6 @@ export default function MembershipManagement() {
   ];
   const walkInColumns = [
     {
-      field: "WalkInID",
-      headerName: "Walk-In ID",
-      width: 100,
-      renderCell: (params) => params.value ?? "—",
-    },
-    {
-      field: "FullName",
-      headerName: "Full Name",
-      width: 160,
-      renderCell: (params) => params.value ?? "—",
-    },
-    {
       field: "VisitDate",
       headerName: "Visit Date",
       width: 300,
@@ -1149,9 +1216,9 @@ export default function MembershipManagement() {
         params.value ? formatDateTime(params.value) : "—",
     },
     {
-      field: "PaymentID",
-      headerName: "Payment ID",
-      width: 110,
+      field: "FullName",
+      headerName: "Full Name",
+      width: 160,
       renderCell: (params) => params.value ?? "—",
     },
     {
@@ -1447,6 +1514,67 @@ export default function MembershipManagement() {
     },
   ];
 
+  const memberVisitLogColumns = [
+    { field: "VisitID", headerName: "Visit ID", width: 120 },
+    { field: "FullName", headerName: "Member Name", flex: 1 },
+    {
+      field: "VisitDate",
+      headerName: "Date",
+      width: 180,
+      renderCell: (params) => (params.value ? formatDate(params.value) : "—"),
+    },
+    {
+      field: "VisitTime",
+      headerName: "Time",
+      width: 180,
+      renderCell: (params) => (params.value ? formatTime(params.value) : "—"),
+    },
+    { field: "CheckInMethod", headerName: "Check-in Method", width: 180 },
+    { field: "BranchName", headerName: "Branch", width: 150 },
+    { field: "Remarks", headerName: "Remarks", width: 250 },
+  ];
+  
+ 
+  const monthlyAttendanceColumns = [
+    {
+      field: "MonthlyClientAttendanceID",
+      headerName: "ID",
+      width: 100,
+    },
+    {
+      field: "monthlyClientName",
+      headerName: "Monthly Client",
+      width: 200,
+      renderCell: (params) => {
+        // If row or row.monthly_client is undefined, fallback to "N/A"
+        return params.row?.monthly_client?.FullName || "N/A";
+      },
+    },
+    {
+      field: "VisitDate",
+      headerName: "Date",
+      width: 150,
+      renderCell: (params) => {
+        // params.row.VisitDateTime has "2025-03-16 06:57:54"
+        const val = params.row.VisitDateTime;
+        if (!val) return "—";
+        // For example, split by space:
+        const [rawDate] = val.split(" "); 
+        // "2025-03-16"
+        return formatDate(rawDate); // your existing formatDate utility
+      },
+    },
+    
+    {
+      field: "Notes",
+      headerName: "Notes",
+      width: 250,
+      renderCell: (params) => params.value || "—",
+    },
+  ];
+  
+  
+
   // ─────────────────────────────────────────────────────────
   // getFilteredData (for the DataGrid below)
   // ─────────────────────────────────────────────────────────
@@ -1508,19 +1636,23 @@ export default function MembershipManagement() {
 
     if (activeTab === 1) {
       // Walk-Ins
-      return walkInRecords.filter((item) =>
-        Object.values(item).some((val) =>
-          String(val).toLowerCase().includes(searchTerm)
-        )
-      );
+      let data = walkInRecords.slice();
+      data = applyBranchAndSearch(data);
+      return data;
     }
     if (activeTab === 2) {
       // Renewals
-      return renewalRecords.filter((item) =>
-        Object.values(item).some((val) =>
-          String(val).toLowerCase().includes(searchTerm)
-        )
-      );
+      let data = renewalRecords.map((r) => {
+        // find membership
+        const m = membershipRecords.find((mem) => mem.MemberID === r.MemberID);
+        return {
+          ...r,
+          // So applyBranchAndSearch sees a branch ID:
+          StartedBranchID: m?.StartedBranchID
+        };
+      });
+      data = applyBranchAndSearch(data);
+      return data;
     }
     if (activeTab === 3) {
       // Freezes
@@ -1562,9 +1694,11 @@ export default function MembershipManagement() {
     if (activeTab === 2) return row.RenewalID;
     if (activeTab === 3) return row.FreezeID;
     if (activeTab === 4) return row.MonthlyClientID;
+    if (activeTab === 5) return row.VisitID; // Updated: use VisitID instead of MemberVisitID
+    if (activeTab === 6) return row.MonthlyClientAttendanceID;
     return row.LogID;
   };
-
+  
   // ─────────────────────────────────────────────────────────
   // Export logic
   // ─────────────────────────────────────────────────────────
@@ -1887,7 +2021,51 @@ export default function MembershipManagement() {
         break;
     }
   };
-  
+  // Within your component:
+  const memberObject = membershipRecords.find((m) => m.MemberID === newRenewal.MemberID);
+
+  const currentEndDateRaw = memberObject?.MembershipEndDate || "";
+  // For display in an MUI TextField, you can convert it to "YYYY-MM-DD" 
+  // or a readable format:
+  const currentEndDateDisplay = currentEndDateRaw
+    ? format(new Date(currentEndDateRaw), "yyyy-MM-dd")
+    : "No End Date Set";
+
+    const getColumnsForTab = () => {
+      switch (activeTab) {
+        case 5: // Member Visit Logs
+          return memberVisitLogColumns;
+        case 6: // Monthly Client Attendance
+          return monthlyAttendanceColumns;
+        default:
+          return columns; // existing columns
+      }
+    };
+    
+    const getRowsForTab = () => {
+      if (activeTab === 5) { // Member Visit Logs
+        let data = memberVisitLogs.slice();
+        if (branchFilter !== "all") {
+          data = data.filter(item => String(item.BranchID) === branchFilter);
+        }
+        // Optionally, also apply the search filter
+        return data.filter(item =>
+          Object.values(item).some(val => String(val).toLowerCase().includes(searchTerm))
+        );
+      } else if (activeTab === 6) { // Monthly Client Attendance
+        let data = monthlyClientAttendances.slice();
+        if (branchFilter !== "all") {
+          data = data.filter(item => String(item.BranchID) === branchFilter);
+        }
+        return data.filter(item =>
+          Object.values(item).some(val => String(val).toLowerCase().includes(searchTerm))
+        );
+      } else {
+        return rows; // your existing filtered data for other tabs
+      }
+    };
+    
+
   return (
     <Box sx={{ p: 4 }}>
       {/* Key Metrics Section */}
@@ -2002,6 +2180,8 @@ export default function MembershipManagement() {
           <Tab icon={<AutorenewIcon />} label="Renewals" />
           <Tab icon={<AcUnitIcon />} label="Freezes" />
           <Tab icon={<GroupsIcon />} label="Monthly Clients" />
+          <Tab icon={<HistoryIcon />} label="Member Visit Logs" />  {/* NEW */}
+          <Tab icon={<AssignmentTurnedInIcon />} label="Monthly Client Attendance" /> {/* NEW */}
         </Tabs>
       </Box>
 
@@ -2138,9 +2318,9 @@ export default function MembershipManagement() {
           </Grid>
         </Box>
         <Box style={{ height: 510, width: "100%", mt: 2 }}>
-          <DataGrid
-            rows={rows}
-            columns={columns}
+        <DataGrid
+            rows={getRowsForTab()}
+            columns={getColumnsForTab()}
             getRowId={getRowId}
             pageSize={5}
             rowsPerPageOptions={[5, 10]}
@@ -3307,386 +3487,386 @@ export default function MembershipManagement() {
         </DialogContent>
       </Dialog>
 
-{/* EDIT Membership */}
-<Dialog
-  open={isEditMembershipOpen}
-  onClose={() => setEditMembershipOpen(false)}
-  fullWidth
-  maxWidth="xl"
-  sx={{
-    "& .MuiDialog-paper": {
-      borderRadius: 3,
-      boxShadow: 6,
-      p: 3,
-    },
-  }}
->
-  <Box display="flex" justifyContent="space-between" alignItems="center">
-    <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-      <PersonIcon sx={{ fontSize: 32, color: "primary.main" }} />
-      <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-        Edit Membership
-      </Typography>
-    </Box>
-    <IconButton
-      onClick={() => setEditMembershipOpen(false)}
-      sx={{ "&:hover": { color: theme.palette.error.main } }}
+    {/* EDIT Membership */}
+    <Dialog
+      open={isEditMembershipOpen}
+      onClose={() => setEditMembershipOpen(false)}
+      fullWidth
+      maxWidth="xl"
+      sx={{
+        "& .MuiDialog-paper": {
+          borderRadius: 3,
+          boxShadow: 6,
+          p: 3,
+        },
+      }}
     >
-      <CloseIcon />
-    </IconButton>
-  </Box>
-  <DialogContent dividers sx={{ p: 4 }}>
-    {selectedMembership && (
-      <Box>
-        <Grid container spacing={4}>
-          <Grid
-            item
-            xs={12}
-            sm={3}
-            display="flex"
-            flexDirection="column"
-            alignItems="center"
-            gap={2}
-          >
-            {/* Photo Preview */}
-            <Box
-              sx={{
-                width: 250,
-                height: 250,
-                borderRadius: 2,
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                bgcolor: "#f9f9f9",
-                border: "1px solid #ddd",
-                boxShadow: 1,
-              }}
-            >
-              {capturedImage ? (
-                <Box
-                  component="img"
-                  src={capturedImage}
-                  alt="Captured"
-                  sx={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    borderRadius: 2,
-                  }}
-                />
-              ) : selectedMembership.PhotoPath ? (
-                <Box
-                  component="img"
-                  src={`/storage/${selectedMembership.PhotoPath}`}
-                  alt="Member"
-                  sx={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    borderRadius: 2,
-                  }}
-                />
-              ) : (
-                <Typography
-                  variant="body1"
-                  sx={{ color: "gray", textAlign: "center" }}
-                >
-                  No photo available.
-                </Typography>
-              )}
-            </Box>
-
-            {/* Upload & Recapture Buttons */}
-            <Box display="flex" gap={1}>
-              {/* Upload Button */}
-              <Button variant="outlined" component="label" startIcon={<FileUploadIcon />}>
-                Upload Photo
-                <input type="file" hidden accept="image/*" onChange={handlePhotoUpload} />
-              </Button>
-
-              {/* Recapture Button */}
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<PhotoCameraIcon />}
-                onClick={() => setOpenWebcam(true)}
+      <Box display="flex" justifyContent="space-between" alignItems="center">
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <PersonIcon sx={{ fontSize: 32, color: "primary.main" }} />
+          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+            Edit Membership
+          </Typography>
+        </Box>
+        <IconButton
+          onClick={() => setEditMembershipOpen(false)}
+          sx={{ "&:hover": { color: theme.palette.error.main } }}
+        >
+          <CloseIcon />
+        </IconButton>
+      </Box>
+      <DialogContent dividers sx={{ p: 4 }}>
+        {selectedMembership && (
+          <Box>
+            <Grid container spacing={4}>
+              <Grid
+                item
+                xs={12}
+                sm={3}
+                display="flex"
+                flexDirection="column"
+                alignItems="center"
+                gap={2}
               >
-                Recapture
-              </Button>
-            </Box>
-          </Grid>
-
-          {/* Webcam Dialog */}
-          <Dialog open={openWebcam} onClose={handleCloseWebcam} maxWidth="sm" fullWidth>
-            <DialogTitle sx={{ textAlign: "center" }}>Capture Profile Picture</DialogTitle>
-            <DialogContent
-              dividers
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Webcam
-                audio={false}
-                height={240}
-                ref={webcamRef}
-                screenshotFormat="image/jpeg"
-                width={320}
-                videoConstraints={{ width: 320, height: 240, facingMode: "user" }}
-              />
-            </DialogContent>
-            <DialogActions sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
-              <IconButton onClick={handleCloseWebcam} sx={{ color: "#FF0000" }}>
-                <CloseIcon fontSize="large" />
-              </IconButton>
-              <IconButton onClick={captureImage} color="primary">
-                <CameraAltIcon fontSize="large" />
-              </IconButton>
-            </DialogActions>
-          </Dialog>
-
-          <Grid item xs={12} sm={9}>
-            <Grid container spacing={3}>
-              <Grid item xs={12} sm={4}>
-                <Typography
-                  variant="h5"
+                {/* Photo Preview */}
+                <Box
                   sx={{
-                    fontWeight: "bold",
-                    mb: 2,
+                    width: 250,
+                    height: 250,
+                    borderRadius: 2,
                     display: "flex",
+                    justifyContent: "center",
                     alignItems: "center",
-                    gap: 1,
+                    bgcolor: "#f9f9f9",
+                    border: "1px solid #ddd",
+                    boxShadow: 1,
                   }}
                 >
-                  <PeopleIcon color="white" />
-                  Personal Information
-                </Typography>
-                <TextField
-                  fullWidth
-                  label="Full Name"
-                  variant="filled"
-                  value={selectedMembership.FullName || ""}
-                  onChange={(e) =>
-                    setSelectedMembership((prev) => ({
-                      ...prev,
-                      FullName: e.target.value,
-                    }))
-                  }
-                  sx={{ mb: 2 }}
-                />
-                <TextField
-                  fullWidth
-                  label="Email"
-                  variant="filled"
-                  value={selectedMembership.Email || ""}
-                  onChange={(e) =>
-                    setSelectedMembership((prev) => ({
-                      ...prev,
-                      Email: e.target.value,
-                    }))
-                  }
-                  sx={{ mb: 2 }}
-                />
-                <TextField
-                  fullWidth
-                  label="Phone"
-                  variant="filled"
-                  value={selectedMembership.Phone || ""}
-                  onChange={(e) =>
-                    setSelectedMembership((prev) => ({
-                      ...prev,
-                      Phone: e.target.value,
-                    }))
-                  }
-                  sx={{ mb: 2 }}
-                />
+                  {capturedImage ? (
+                    <Box
+                      component="img"
+                      src={capturedImage}
+                      alt="Captured"
+                      sx={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        borderRadius: 2,
+                      }}
+                    />
+                  ) : selectedMembership.PhotoPath ? (
+                    <Box
+                      component="img"
+                      src={`/storage/${selectedMembership.PhotoPath}`}
+                      alt="Member"
+                      sx={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        borderRadius: 2,
+                      }}
+                    />
+                  ) : (
+                    <Typography
+                      variant="body1"
+                      sx={{ color: "gray", textAlign: "center" }}
+                    >
+                      No photo available.
+                    </Typography>
+                  )}
+                </Box>
+
+                {/* Upload & Recapture Buttons */}
+                <Box display="flex" gap={1}>
+                  {/* Upload Button */}
+                  <Button variant="outlined" component="label" startIcon={<FileUploadIcon />}>
+                    Upload Photo
+                    <input type="file" hidden accept="image/*" onChange={handlePhotoUpload} />
+                  </Button>
+
+                  {/* Recapture Button */}
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<PhotoCameraIcon />}
+                    onClick={() => setOpenWebcam(true)}
+                  >
+                    Recapture
+                  </Button>
+                </Box>
               </Grid>
-              <Grid item xs={12} sm={8}>
-                <Typography
-                  variant="h5"
+
+              {/* Webcam Dialog */}
+              <Dialog open={openWebcam} onClose={handleCloseWebcam} maxWidth="sm" fullWidth>
+                <DialogTitle sx={{ textAlign: "center" }}>Capture Profile Picture</DialogTitle>
+                <DialogContent
+                  dividers
                   sx={{
-                    fontWeight: "bold",
-                    mb: 2,
                     display: "flex",
+                    flexDirection: "column",
                     alignItems: "center",
-                    gap: 1,
+                    justifyContent: "center",
                   }}
                 >
-                  <AutorenewIcon color="white" />
-                  Membership Info
-                </Typography>
-                <Grid container spacing={2}>
+                  <Webcam
+                    audio={false}
+                    height={240}
+                    ref={webcamRef}
+                    screenshotFormat="image/jpeg"
+                    width={320}
+                    videoConstraints={{ width: 320, height: 240, facingMode: "user" }}
+                  />
+                </DialogContent>
+                <DialogActions sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
+                  <IconButton onClick={handleCloseWebcam} sx={{ color: "#FF0000" }}>
+                    <CloseIcon fontSize="large" />
+                  </IconButton>
+                  <IconButton onClick={captureImage} color="primary">
+                    <CameraAltIcon fontSize="large" />
+                  </IconButton>
+                </DialogActions>
+              </Dialog>
+
+              <Grid item xs={12} sm={9}>
+                <Grid container spacing={3}>
                   <Grid item xs={12} sm={4}>
-                    <FormControl variant="filled" fullWidth>
-                      <InputLabel>Plan</InputLabel>
-                      <Select
-                        value={selectedMembership.PlanID || ""}
-                        onChange={(e) =>
-                          setSelectedMembership((prev) => ({
-                            ...prev,
-                            PlanID: e.target.value,
-                          }))
-                        }
-                      >
-                        {plans.map((plan) => (
-                          <MenuItem key={plan.PlanID} value={plan.PlanID}>
-                            {plan.PlanName}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <FormControl variant="filled" fullWidth>
-                      <InputLabel>Membership Status</InputLabel>
-                      <Select
-                        value={selectedMembership.MemberStatusID || ""}
-                        onChange={(e) =>
-                          setSelectedMembership((prev) => ({
-                            ...prev,
-                            MemberStatusID: e.target.value,
-                          }))
-                        }
-                      >
-                        {memberStatuses.map((status) => (
-                          <MenuItem key={status.MemberStatusID} value={status.MemberStatusID}>
-                            {status.StatusName}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <TextField
-                      label="Start Date"
-                      variant="filled"
-                      type="date"
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      value={selectedMembership.MembershipStartDate || ""}
-                      onChange={(e) =>
-                        setSelectedMembership((prev) => ({
-                          ...prev,
-                          MembershipStartDate: e.target.value,
-                        }))
-                      }
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <TextField
-                      label="End Date"
-                      variant="filled"
-                      type="date"
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      value={selectedMembership.MembershipEndDate || ""}
-                      onChange={(e) =>
-                        setSelectedMembership((prev) => ({
-                          ...prev,
-                          MembershipEndDate: e.target.value,
-                        }))
-                      }
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <TextField
-                      label="Free Sessions"
-                      variant="filled"
-                      type="number"
-                      fullWidth
-                      value={selectedMembership.FreeSessions || 0}
-                      onChange={(e) =>
-                        setSelectedMembership((prev) => ({
-                          ...prev,
-                          FreeSessions: e.target.value,
-                        }))
-                      }
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <TextField
-                      label="Card Number"
-                      variant="filled"
-                      fullWidth
-                      value={selectedMembership.MembershipCardNumber || ""}
-                      onChange={(e) =>
-                        setSelectedMembership((prev) => ({
-                          ...prev,
-                          MembershipCardNumber: e.target.value,
-                        }))
-                      }
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <FormControl variant="filled" fullWidth>
-                      <InputLabel>Card Issued?</InputLabel>
-                      <Select
-                        value={selectedMembership.MembershipCardIssued ? "Yes" : "No"}
-                        onChange={(e) =>
-                          setSelectedMembership((prev) => ({
-                            ...prev,
-                            MembershipCardIssued: e.target.value === "Yes",
-                          }))
-                        }
-                      >
-                        <MenuItem value="No">No</MenuItem>
-                        <MenuItem value="Yes">Yes</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    {/* Empty grid for spacing */}
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    {/* Empty grid for spacing */}
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Typography variant="h6" sx={{ fontWeight: "bold", mt: 2, mb: 1 }}>
-                      Notes
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: "bold",
+                        mb: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                      }}
+                    >
+                      <PeopleIcon color="white" />
+                      Personal Information
                     </Typography>
                     <TextField
-                      label="Notes"
-                      variant="filled"
                       fullWidth
-                      multiline
-                      rows={3}
-                      value={selectedMembership.Notes || ""}
+                      label="Full Name"
+                      variant="filled"
+                      value={selectedMembership.FullName || ""}
                       onChange={(e) =>
                         setSelectedMembership((prev) => ({
                           ...prev,
-                          Notes: e.target.value,
+                          FullName: e.target.value,
                         }))
                       }
+                      sx={{ mb: 2 }}
                     />
+                    <TextField
+                      fullWidth
+                      label="Email"
+                      variant="filled"
+                      value={selectedMembership.Email || ""}
+                      onChange={(e) =>
+                        setSelectedMembership((prev) => ({
+                          ...prev,
+                          Email: e.target.value,
+                        }))
+                      }
+                      sx={{ mb: 2 }}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Phone"
+                      variant="filled"
+                      value={selectedMembership.Phone || ""}
+                      onChange={(e) =>
+                        setSelectedMembership((prev) => ({
+                          ...prev,
+                          Phone: e.target.value,
+                        }))
+                      }
+                      sx={{ mb: 2 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={8}>
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: "bold",
+                        mb: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                      }}
+                    >
+                      <AutorenewIcon color="white" />
+                      Membership Info
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={4}>
+                        <FormControl variant="filled" fullWidth>
+                          <InputLabel>Plan</InputLabel>
+                          <Select
+                            value={selectedMembership.PlanID || ""}
+                            onChange={(e) =>
+                              setSelectedMembership((prev) => ({
+                                ...prev,
+                                PlanID: e.target.value,
+                              }))
+                            }
+                          >
+                            {plans.map((plan) => (
+                              <MenuItem key={plan.PlanID} value={plan.PlanID}>
+                                {plan.PlanName}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <FormControl variant="filled" fullWidth>
+                          <InputLabel>Membership Status</InputLabel>
+                          <Select
+                            value={selectedMembership.MemberStatusID || ""}
+                            onChange={(e) =>
+                              setSelectedMembership((prev) => ({
+                                ...prev,
+                                MemberStatusID: e.target.value,
+                              }))
+                            }
+                          >
+                            {memberStatuses.map((status) => (
+                              <MenuItem key={status.MemberStatusID} value={status.MemberStatusID}>
+                                {status.StatusName}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <TextField
+                          label="Start Date"
+                          variant="filled"
+                          type="date"
+                          fullWidth
+                          InputLabelProps={{ shrink: true }}
+                          value={selectedMembership.MembershipStartDate || ""}
+                          onChange={(e) =>
+                            setSelectedMembership((prev) => ({
+                              ...prev,
+                              MembershipStartDate: e.target.value,
+                            }))
+                          }
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <TextField
+                          label="End Date"
+                          variant="filled"
+                          type="date"
+                          fullWidth
+                          InputLabelProps={{ shrink: true }}
+                          value={selectedMembership.MembershipEndDate || ""}
+                          onChange={(e) =>
+                            setSelectedMembership((prev) => ({
+                              ...prev,
+                              MembershipEndDate: e.target.value,
+                            }))
+                          }
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <TextField
+                          label="Free Sessions"
+                          variant="filled"
+                          type="number"
+                          fullWidth
+                          value={selectedMembership.FreeSessions || 0}
+                          onChange={(e) =>
+                            setSelectedMembership((prev) => ({
+                              ...prev,
+                              FreeSessions: e.target.value,
+                            }))
+                          }
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <TextField
+                          label="Card Number"
+                          variant="filled"
+                          fullWidth
+                          value={selectedMembership.MembershipCardNumber || ""}
+                          onChange={(e) =>
+                            setSelectedMembership((prev) => ({
+                              ...prev,
+                              MembershipCardNumber: e.target.value,
+                            }))
+                          }
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <FormControl variant="filled" fullWidth>
+                          <InputLabel>Card Issued?</InputLabel>
+                          <Select
+                            value={selectedMembership.MembershipCardIssued ? "Yes" : "No"}
+                            onChange={(e) =>
+                              setSelectedMembership((prev) => ({
+                                ...prev,
+                                MembershipCardIssued: e.target.value === "Yes",
+                              }))
+                            }
+                          >
+                            <MenuItem value="No">No</MenuItem>
+                            <MenuItem value="Yes">Yes</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        {/* Empty grid for spacing */}
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        {/* Empty grid for spacing */}
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Typography variant="h6" sx={{ fontWeight: "bold", mt: 2, mb: 1 }}>
+                          Notes
+                        </Typography>
+                        <TextField
+                          label="Notes"
+                          variant="filled"
+                          fullWidth
+                          multiline
+                          rows={3}
+                          value={selectedMembership.Notes || ""}
+                          onChange={(e) =>
+                            setSelectedMembership((prev) => ({
+                              ...prev,
+                              Notes: e.target.value,
+                            }))
+                          }
+                        />
+                      </Grid>
+                    </Grid>
                   </Grid>
                 </Grid>
               </Grid>
             </Grid>
-          </Grid>
-        </Grid>
-      </Box>
-    )}
-  </DialogContent>
-  <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
-    <Button
-      variant="contained"
-      onClick={handleEditMembershipSubmit}
-      sx={{
-        px: 4,
-        py: 1,
-        fontSize: "1rem",
-        fontWeight: "bold",
-        borderRadius: 2,
-        textTransform: "none",
-      }}
-      startIcon={<SaveIcon />}
-    >
-      Save Changes
-    </Button>
-  </DialogActions>
-</Dialog>
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ justifyContent: "flex-end", gap: 2, py: 2, px: 3 }}>
+        <Button
+          variant="contained"
+          onClick={handleEditMembershipSubmit}
+          sx={{
+            px: 4,
+            py: 1,
+            fontSize: "1rem",
+            fontWeight: "bold",
+            borderRadius: 2,
+            textTransform: "none",
+          }}
+          startIcon={<SaveIcon />}
+        >
+          Save Changes
+        </Button>
+      </DialogActions>
+    </Dialog>
 
 
       {/* CREATE Freeze */}
@@ -4158,22 +4338,22 @@ export default function MembershipManagement() {
           </DialogContent>
         </Dialog>
 
-
-        <Dialog
-      open={isAddRenewalOpen}
-      onClose={() => setAddRenewalOpen(false)}
-      fullWidth
-      maxWidth="sm"
-      sx={{
-        "& .MuiDialog-paper": {
-          borderRadius: 3,
-          boxShadow: 6,
-          p: 3,
-          overflow: "hidden",
-          backgroundColor: theme.palette.background.paper,
-        },
-      }}
-    >
+     {/* ADD Renewal */}
+     <Dialog
+          open={isAddRenewalOpen}
+          onClose={() => setAddRenewalOpen(false)}
+          fullWidth
+          maxWidth="sm"
+          sx={{
+            "& .MuiDialog-paper": {
+              borderRadius: 3,
+              boxShadow: 6,
+              p: 3,
+              overflow: "hidden",
+              backgroundColor: theme.palette.background.paper,
+            },
+          }}
+        >
       <DialogTitle sx={{ p: 2 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Box display="flex" alignItems="center" gap={1}>
@@ -4218,9 +4398,27 @@ export default function MembershipManagement() {
           }}
         />
 
-        {/* (B) New Membership End Date */}
+        {/* RENEWAL START DATE */}
         <TextField
-          label="New Membership End Date"
+          label="Membership Start Date"
+          name="RenewalStartDate"
+          type="date"
+          fullWidth
+          margin="normal"
+          variant="outlined"
+          value={newRenewal.RenewalStartDate} // This is a new state property
+          onChange={(e) =>
+            setNewRenewal((prev) => ({ ...prev, RenewalStartDate: e.target.value }))
+          }
+          InputLabelProps={{ shrink: true }}
+          error={!!validationErrors.RenewalStartDate}
+          helperText={validationErrors.RenewalStartDate}
+        />
+
+
+        {/* (C) NEW MEMBERSHIP END DATE */}
+        <TextField
+          label="Membership End Date"
           name="NewEndDate"
           type="date"
           fullWidth

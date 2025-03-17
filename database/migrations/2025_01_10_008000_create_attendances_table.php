@@ -20,13 +20,15 @@ return new class extends Migration
             $table->time('TimeOut')->nullable();
             $table->decimal('HoursWorked', 5, 2)->default(0);
             $table->decimal('OvertimeHours', 5, 2)->default(0);
+            $table->decimal('NightDiffHours', 5, 2)->default(0);
+            $table->integer('LateMinutes')->default(0);
         
             $table->timestamps();
         
             $table->foreign('StaffID')->references('StaffID')->on('staff')->onDelete('cascade');
             $table->foreign('PayrollID')->references('PayrollID')->on('payrolls')->onDelete('set null');
         });
-            }
+    }
 
     /**
      * Reverse the migrations.

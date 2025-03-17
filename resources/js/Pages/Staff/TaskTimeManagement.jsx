@@ -7,53 +7,69 @@ import {
   Divider,
   Avatar,
   Chip,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Pagination,
+  CircularProgress,
+  TextField,
+  InputAdornment,
+  Snackbar,
 } from "@mui/material";
 import {
   DragDropContext,
   Droppable,
-  Draggable
+  Draggable,
 } from "react-beautiful-dnd";
 import {
-  AccessTime,
-  AlarmOn,
-  AlarmOff,
-  Schedule as ScheduleIcon,
   Pending as PendingIcon,
   WorkOutline as WorkOutlineIcon,
   Done as DoneIcon,
+  Delete as DeleteIcon,
 } from "@mui/icons-material";
+import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
+import { AccessTime, AlarmOn, AlarmOff, Schedule as ScheduleIcon } from "@mui/icons-material";
 
-/** Reorders array items after drag-and-drop */
-function reorder(list, startIndex, endIndex) {
-  const result = Array.from(list);
-  const [removed] = result.splice(startIndex, 1);
-  result.splice(endIndex, 0, removed);
-  return result;
-}
-
-/** Background colors for columns */
-const statusColors = {
-  Pending: "#ffd8b2",
-  InProgress: "#d0d0ff",
-  Completed: "#c8e6c9",
+// Helpers to format dates and times
+const formatDate = (dateString) => {
+  if (!dateString) return "—";
+  return new Date(dateString).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 };
 
-/** Style for each draggable item */
+const formatTime = (timeString) => {
+  if (!timeString) return "—";
+  let [hours, minutes] = timeString.split(":").map(Number);
+  const period = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12;
+  return `${hours}:${minutes.toString().padStart(2, "0")} ${period}`;
+};
+
+// Updated card style for drag-and-drop items
 function getItemStyle(isDragging, draggableStyle) {
   return {
     userSelect: "none",
-    padding: 16,
-    margin: "0 0 8px 0",
+    padding: 24,
+    margin: "0 0 12px 0",
     background: isDragging ? "#9c27b0" : "#fff",
     color: isDragging ? "#fff" : "#000",
-    borderRadius: 4,
-    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+    borderRadius: 6,
+    boxShadow: "0 2px 4px rgba(0,0,0,0.15)",
     ...draggableStyle,
   };
 }
 
-/** Style for each droppable column */
 function getListStyle(droppableId, isDraggingOver) {
+  const statusColors = {
+    Pending: "#ffd8b2",
+    InProgress: "#d0d0ff",
+    Completed: "#c8e6c9",
+  };
   return {
     background: isDraggingOver ? "#f0f0f0" : statusColors[droppableId] || "#f5f5f5",
     padding: 8,
@@ -63,103 +79,272 @@ function getListStyle(droppableId, isDraggingOver) {
   };
 }
 
-export default function TaskTimeManagement() {
-  const [staffId, setStaffId] = useState(null);
-  const [tasks, setTasks] = useState([]);
+function reorder(list, startIndex, endIndex) {
+  const result = Array.from(list);
+  const [removed] = result.splice(startIndex, 1);
+  result.splice(endIndex, 0, removed);
+  return result;
+}
+
+export default function TaskTimeManagement({ isStaff = true }) {
+  // Task Management state
+  const [pendingTasks, setPendingTasks] = useState([]);
+  const [inProgressTasks, setInProgressTasks] = useState([]);
+  const [completedTasks, setCompletedTasks] = useState([]);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState(null);
+  const [pendingPage, setPendingPage] = useState(1);
+  const [inProgressPage, setInProgressPage] = useState(1);
+  const [completedPage, setCompletedPage] = useState(1);
+  const tasksPerPage = 5;
+
+  // Attendance and Schedule state
   const [attendance, setAttendance] = useState([]);
   const [schedule, setSchedule] = useState([]);
-  const [isClockedIn, setIsClockedIn] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [logs, setLogs] = useState([]);
+  const [isClockedIn, setIsClockedIn] = useState(false);
+  const [staffId, setStaffId] = useState(null);
+  const [staffBranch, setStaffBranch] = useState(null);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
 
-  // Function to add log entries
-  const addLog = (message) => {
-    setLogs((prev) => [{ time: new Date(), message }, ...prev]);
+  // Snackbar state
+  const [snackOpen, setSnackOpen] = useState(false);
+  const [snackMessage, setSnackMessage] = useState("");
+  const showSuccessMessage = (msg) => {
+    setSnackMessage(msg);
+    setSnackOpen(true);
   };
 
-  // 1) Load initial data
+  // Fetch tasks data
   useEffect(() => {
-    fetch("/staff/dashboard-info")
-      .then(res => res.json())
-      .then(data => {
-        if (data.staffId) setStaffId(data.staffId);
-        if (data.tasks) {
-          const normalized = data.tasks.map(item => ({
+    fetch("/staff/tasks") // Fetch tasks directly from a new endpoint
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          const normalized = data.map((item) => ({
             ...item,
-            status: item.Status,            // <-- copy over Status to status
+            status: item.Status,
             description: item.TaskDescription,
           }));
-          setTasks(normalized);
+          setPendingTasks(normalized.filter((task) => task.status === "Pending"));
+          setInProgressTasks(normalized.filter((task) => task.status === "InProgress"));
+          setCompletedTasks(normalized.filter((task) => task.status === "Completed"));
         }
-        if (data.attendance) setAttendance(data.attendance);
-        if (data.schedule) setSchedule(data.schedule);
       })
-      .catch(err => console.error("Failed to load dashboard info:", err));
+      .catch((err) => console.error("Failed to load tasks:", err));
   }, []);
-
-  // Update currentTime every second
+  
+  // Fetch attendance, schedule and staff info
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    const fetchAttendanceAndSchedule = async () => {
+      setLoadingAttendance(true);
+      try {
+        // Fetch attendance records
+        const attendRes = await fetch("/staff/attendance");
+        const attendData = await attendRes.json();
+        const fetchedAttendance = Array.isArray(attendData)
+          ? attendData
+          : attendData.attendance || [];
+        setAttendance(fetchedAttendance);
+
+        // Determine if staff is clocked in for today
+        const todayDate = new Date().toISOString().split("T")[0];
+        const todaysRecords = fetchedAttendance.filter((rec) => rec.Date === todayDate);
+        const clockedInRecord = todaysRecords.find((rec) => rec.TimeIn && !rec.TimeOut);
+        setIsClockedIn(!!clockedInRecord);
+
+        // Fetch work schedule
+        const scheduleRes = await fetch("/staff/schedules");
+        const scheduleData = await scheduleRes.json();
+        setSchedule(scheduleData || []);
+
+        // Fetch staff info if not already set
+        if (!staffId) {
+          const staffRes = await fetch("/staff/get-logged-in-staff");
+          const staffData = await staffRes.json();
+          if (staffData && staffData.StaffID) {
+            setStaffId(staffData.StaffID);
+            setStaffBranch(staffData.BranchID);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching attendance/schedule:", error);
+      } finally {
+        setLoadingAttendance(false);
+      }
+    };
+
+    fetchAttendanceAndSchedule();
+  }, [staffId]);
+
+  // Update current time every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Separate tasks by status
-  const pendingTasks = tasks.filter((t) => t.status === "Pending");
-  const inProgressTasks = tasks.filter((t) => t.status === "InProgress");
-  const completedTasks = tasks.filter((t) => t.status === "Completed");
+  // Refresh clock state (used after clock in/out)
+  const refreshClockState = async () => {
+    try {
+      const attendRes = await fetch("/staff/attendance");
+      const attendData = await attendRes.json();
+      const fetchedAttendance = Array.isArray(attendData)
+        ? attendData
+        : attendData.attendance || [];
+      const todayDate = new Date().toISOString().split("T")[0];
+      const clockedInRecord = fetchedAttendance.find(
+        (rec) => rec.Date === todayDate && rec.TimeIn && !rec.TimeOut
+      );
+      const newState = !!clockedInRecord;
+      setIsClockedIn(newState);
+      return newState;
+    } catch (error) {
+      console.error("Error refreshing clock state:", error);
+      return false;
+    }
+  };
 
-  // Drag & Drop
+  // Handle Clock In/Out button click
+  const handleClockInOut = async () => {
+    let currentStaffId = staffId;
+    if (!currentStaffId) {
+      try {
+        const staffRes = await fetch("/staff/get-logged-in-staff");
+        const staffData = await staffRes.json();
+        if (staffData && staffData.StaffID) {
+          currentStaffId = staffData.StaffID;
+          setStaffId(currentStaffId);
+          setStaffBranch(staffData.BranchID);
+        } else {
+          console.warn("No staffId available after refetch.");
+          return;
+        }
+      } catch (err) {
+        console.error("Error refetching staff info:", err);
+        return;
+      }
+    }
+    const dateStr = new Date().toISOString().split("T")[0];
+    const timeStr = currentTime.toLocaleTimeString("it-IT").slice(0, 5);
+    const clockData = {
+      StaffID: currentStaffId,
+      BranchID: staffBranch,
+      Date: dateStr,
+      // If not clocked in, set TimeIn; if already clocked in, set TimeOut.
+      TimeIn: isClockedIn ? null : timeStr,
+      TimeOut: isClockedIn ? timeStr : null,
+    };
+    try {
+      await fetch("/staff/attendance/clock-in-out", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(clockData),
+      });
+      // Short delay before refreshing state
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const newClockState = await refreshClockState();
+      showSuccessMessage(
+        newClockState ? "Clocked in successfully." : "Clocked out successfully."
+      );
+    } catch (err) {
+      console.error("Failed to record attendance:", err);
+    }
+  };
+
+  // Drag & Drop handlers for tasks
+  const columns = {
+    Pending: { tasks: pendingTasks, setTasks: setPendingTasks, page: pendingPage },
+    InProgress: { tasks: inProgressTasks, setTasks: setInProgressTasks, page: inProgressPage },
+    Completed: { tasks: completedTasks, setTasks: setCompletedTasks, page: completedPage },
+  };
+
   const onDragEnd = async (result) => {
     const { source, destination } = result;
     if (!destination) return;
+    const sourceCol = source.droppableId;
+    const destCol = destination.droppableId;
+    const sourceOffset = (columns[sourceCol].page - 1) * tasksPerPage;
+    const destOffset = (columns[destCol].page - 1) * tasksPerPage;
+    const sourceIndex = sourceOffset + source.index;
+    const destIndex = destOffset + destination.index;
 
-    // reorder array in memory
-    const updatedTasks = reorder(tasks, source.index, destination.index);
-    // find the movedTask
-    const movedTask = updatedTasks[destination.index];
-    // update local status
-    const previousStatus = movedTask.status;
-    movedTask.status = destination.droppableId;
-    setTasks(updatedTasks);
-
-    // Log the task move
-    addLog(`Task "${movedTask.description || "Untitled Task"}" moved from ${previousStatus} to ${destination.droppableId} at ${new Date().toLocaleTimeString()}`);
-
-    // Optionally persist changes:
-    if (movedTask.TaskID) {
-      try {
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
-        // We'll do a PUT to /staff/tasks/:id, sending the updated status
-        await fetch(`/staff/tasks/${movedTask.TaskID}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            "X-CSRF-TOKEN": csrfToken,
-          },
-          body: JSON.stringify({ Status: movedTask.status }),
-        });
-      } catch (err) {
-        console.error("Failed to update task status:", err);
+    if (sourceCol === destCol) {
+      const newColumnTasks = reorder(
+        columns[sourceCol].tasks,
+        sourceIndex,
+        destIndex
+      );
+      columns[sourceCol].setTasks(newColumnTasks);
+      const movedTask = newColumnTasks[destIndex];
+      movedTask.status = destCol;
+      if (movedTask.TaskID) {
+        try {
+          const csrfToken =
+            document.querySelector('meta[name="csrf-token"]')?.content || "";
+          await fetch(`/staff/tasks/${movedTask.TaskID}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRF-TOKEN": csrfToken,
+            },
+            body: JSON.stringify({ Status: movedTask.status }),
+          });
+        } catch (err) {
+          console.error("Failed to update task status:", err);
+        }
+      }
+    } else {
+      const sourceTasks = Array.from(columns[sourceCol].tasks);
+      const destTasks = Array.from(columns[destCol].tasks);
+      const [movedTask] = sourceTasks.splice(sourceIndex, 1);
+      movedTask.status = destCol;
+      destTasks.splice(destIndex, 0, movedTask);
+      columns[sourceCol].setTasks(sourceTasks);
+      columns[destCol].setTasks(destTasks);
+      if (movedTask.TaskID) {
+        try {
+          const csrfToken =
+            document.querySelector('meta[name="csrf-token"]')?.content || "";
+          await fetch(`/staff/tasks/${movedTask.TaskID}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRF-TOKEN": csrfToken,
+            },
+            body: JSON.stringify({ Status: movedTask.status }),
+          });
+        } catch (err) {
+          console.error("Failed to update task status:", err);
+        }
       }
     }
   };
 
-  // Clock In/Out handler
-  const handleClockInOut = () => {
-    const action = isClockedIn ? "Clock Out" : "Clock In";
-    setIsClockedIn(!isClockedIn);
-    addLog(`${action} at ${new Date().toLocaleTimeString()}`);
-    // Optionally, send a request to persist clock in/out info
+  // Delete confirmation dialog handlers for tasks
+  const handleOpenDeleteDialog = (task) => {
+    setTaskToDelete(task);
+    setOpenDialog(true);
   };
 
-  // Status chips
-  const statusChips = {
-    Pending: <Chip label="Pending" color="warning" size="small" />,
-    InProgress: <Chip label="In Progress" color="info" size="small" />,
-    Completed: <Chip label="Completed" color="success" size="small" />,
+  const handleCloseDeleteDialog = () => {
+    setOpenDialog(false);
+    setTaskToDelete(null);
   };
 
-  // Renders each task item
+  const confirmDeleteTask = () => {
+    if (!taskToDelete) return;
+    setCompletedTasks((prevTasks) =>
+      prevTasks.filter(
+        (task) =>
+          (task.TaskID || task.id) !== (taskToDelete.TaskID || taskToDelete.id)
+      )
+    );
+    handleCloseDeleteDialog();
+  };
+
+  // Render a single task item
   const renderTaskItem = (task, idx) => {
     const taskId = task.TaskID || task.id || `temp-${idx}`;
     return (
@@ -171,11 +356,30 @@ export default function TaskTimeManagement() {
             {...provided.dragHandleProps}
             style={getItemStyle(snapshot.isDragging, provided.draggableProps.style)}
           >
-            <Box display="flex" justifyContent="space-between">
+            <Box display="flex" justifyContent="space-between" alignItems="center">
               <Typography variant="subtitle2">
                 {task.description || "Untitled Task"}
               </Typography>
-              {statusChips[task.status]}
+              <Box display="flex" alignItems="center">
+                {task.status === "Pending" && (
+                  <Chip label="Pending" color="warning" size="small" />
+                )}
+                {task.status === "InProgress" && (
+                  <Chip label="In Progress" color="info" size="small" />
+                )}
+                {task.status === "Completed" && (
+                  <Chip label="Completed" color="success" size="small" />
+                )}
+                {task.status === "Completed" && isStaff && (
+                  <IconButton
+                    size="small"
+                    onClick={() => handleOpenDeleteDialog(task)}
+                    sx={{ ml: 1 }}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                )}
+              </Box>
             </Box>
             <Box mt={1} display="flex" justifyContent="space-between">
               {task.TaskDate ? (
@@ -188,9 +392,7 @@ export default function TaskTimeManagement() {
                 </Typography>
               )}
               <Avatar sx={{ width: 24, height: 24 }}>
-                {task.staff
-                  ? (task.staff.FullName || "?").charAt(0)
-                  : "?"}
+                {task.staff ? (task.staff.FullName || "?").charAt(0) : "?"}
               </Avatar>
             </Box>
           </Paper>
@@ -199,25 +401,32 @@ export default function TaskTimeManagement() {
     );
   };
 
-  // Setup columns and logs UI
+  // Compute paginated tasks for each column
+  const paginatedPendingTasks = pendingTasks.slice(
+    (pendingPage - 1) * tasksPerPage,
+    pendingPage * tasksPerPage
+  );
+  const paginatedInProgressTasks = inProgressTasks.slice(
+    (inProgressPage - 1) * tasksPerPage,
+    inProgressPage * tasksPerPage
+  );
+  const paginatedCompletedTasks = completedTasks.slice(
+    (completedPage - 1) * tasksPerPage,
+    completedPage * tasksPerPage
+  );
+
   return (
     <Box sx={{ p: 4 }}>
-      {/* Header: Task Management & Real-Time Clock */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4">
-          Task Management
-        </Typography>
-      
-      </Box>
-      
-      <Divider sx={{ mb: 3 }} />
-
-      <Box display="flex" gap={3}>
-        {/* Task Columns */}
-        <Box sx={{ flex: 2 }}>
+      <Box sx={{ display: "flex", gap: 3 }}>
+        {/* Left Column: Task Management */}
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="h4" mb={2}>
+            Task Management
+          </Typography>
+          <Divider sx={{ mb: 2 }} />
           <DragDropContext onDragEnd={onDragEnd}>
             <Box display="flex" gap={3}>
-              {/* PENDING COLUMN */}
+              {/* Pending Column */}
               <Droppable droppableId="Pending">
                 {(provided, snapshot) => (
                   <Paper
@@ -228,13 +437,23 @@ export default function TaskTimeManagement() {
                     <Typography variant="h6" p={2}>
                       <PendingIcon /> Pending ({pendingTasks.length})
                     </Typography>
-                    {pendingTasks.map(renderTaskItem)}
+                    {paginatedPendingTasks.map((task, idx) =>
+                      renderTaskItem(task, idx)
+                    )}
                     {provided.placeholder}
+                    <Box display="flex" justifyContent="center" mt={1}>
+                      <Pagination
+                        count={Math.ceil(pendingTasks.length / tasksPerPage)}
+                        page={pendingPage}
+                        onChange={(e, value) => setPendingPage(value)}
+                        size="small"
+                      />
+                    </Box>
                   </Paper>
                 )}
               </Droppable>
 
-              {/* IN-PROGRESS COLUMN */}
+              {/* In Progress Column */}
               <Droppable droppableId="InProgress">
                 {(provided, snapshot) => (
                   <Paper
@@ -245,13 +464,23 @@ export default function TaskTimeManagement() {
                     <Typography variant="h6" p={2}>
                       <WorkOutlineIcon /> In Progress ({inProgressTasks.length})
                     </Typography>
-                    {inProgressTasks.map(renderTaskItem)}
+                    {paginatedInProgressTasks.map((task, idx) =>
+                      renderTaskItem(task, idx)
+                    )}
                     {provided.placeholder}
+                    <Box display="flex" justifyContent="center" mt={1}>
+                      <Pagination
+                        count={Math.ceil(inProgressTasks.length / tasksPerPage)}
+                        page={inProgressPage}
+                        onChange={(e, value) => setInProgressPage(value)}
+                        size="small"
+                      />
+                    </Box>
                   </Paper>
                 )}
               </Droppable>
 
-              {/* COMPLETED COLUMN */}
+              {/* Completed Column */}
               <Droppable droppableId="Completed">
                 {(provided, snapshot) => (
                   <Paper
@@ -262,35 +491,60 @@ export default function TaskTimeManagement() {
                     <Typography variant="h6" p={2}>
                       <DoneIcon /> Completed ({completedTasks.length})
                     </Typography>
-                    {completedTasks.map(renderTaskItem)}
+                    {paginatedCompletedTasks.map((task, idx) =>
+                      renderTaskItem(task, idx)
+                    )}
                     {provided.placeholder}
+                    <Box display="flex" justifyContent="center" mt={1}>
+                      <Pagination
+                        count={Math.ceil(completedTasks.length / tasksPerPage)}
+                        page={completedPage}
+                        onChange={(e, value) => setCompletedPage(value)}
+                        size="small"
+                      />
+                    </Box>
                   </Paper>
                 )}
               </Droppable>
             </Box>
           </DragDropContext>
         </Box>
-
-        {/* Activity Logs */}
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="h5" mb={2}>
-            Activity Logs
-          </Typography>
-          <Paper sx={{ maxHeight: 400, overflow: "auto", p: 2 }}>
-            {logs.length > 0 ? (
-              logs.map((log, idx) => (
-                <Typography key={idx} variant="caption" display="block" gutterBottom>
-                  [{new Date(log.time).toLocaleTimeString()}] {log.message}
-                </Typography>
-              ))
-            ) : (
-              <Typography variant="caption" color="textSecondary">
-                No logs yet.
-              </Typography>
-            )}
-          </Paper>
-        </Box>
+    
       </Box>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={openDialog} onClose={handleCloseDeleteDialog} fullWidth maxWidth="xs">
+        <DialogTitle
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            fontWeight: "bold",
+          }}
+        >
+          <DeleteForeverIcon color="error" />
+          Delete Task
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography>
+            Are you sure you want to delete this task? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={confirmDeleteTask}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackOpen}
+        autoHideDuration={3000}
+        onClose={() => setSnackOpen(false)}
+        message={snackMessage}
+      />
     </Box>
   );
 }

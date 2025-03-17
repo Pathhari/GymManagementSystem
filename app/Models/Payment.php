@@ -3,6 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Models\Activity as SpatieActivity;
 
 class Payment extends Model
 {
@@ -13,6 +16,7 @@ class Payment extends Model
         'BranchID',
         'MemberID',
         'WalkInName',
+        'PayerName',
         'BookingRef',
         'SessionRef',
         'MonthlyClientID',
@@ -22,6 +26,7 @@ class Payment extends Model
         'PaymentDate',
         'Status',
         'FailureReason',
+        'Note',  // <-- New field added here
     ];
 
     protected $casts = [
@@ -51,4 +56,19 @@ class Payment extends Model
         return $this->belongsTo(MonthlyClient::class, 'MonthlyClientID');
     }
 
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('payment')
+            ->setDescriptionForEvent(fn ($eventName) => "Payment {$eventName}")
+            ->logFillable()
+            ->logOnlyDirty();
+    }
+
+    public function tapActivity(SpatieActivity $activity, string $eventName)    
+    {
+        // direct column
+        $branchId = $this->BranchID;
+        $activity->properties = $activity->properties->put('branch_id', $branchId);
+    }
 }

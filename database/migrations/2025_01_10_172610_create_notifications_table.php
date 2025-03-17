@@ -15,16 +15,17 @@ return new class extends Migration
             $table->id('NotificationID');
             $table->unsignedBigInteger('MemberID')->nullable();
             $table->string('EventTrigger')->nullable();      // e.g., "Membership Renewal"
+            $table->string('Subject')->nullable();             // New column for subject
+            $table->string('Sender')->nullable();              // New column for sender
             $table->text('Message')->nullable();
             $table->string('NotificationMethod')->nullable(); // "Email", "SMS"
             $table->dateTime('SentDate')->nullable();
-            $table->string('Status')->default('Pending');    // "Sent", "Pending", "Failed"
+            $table->string('Status')->default('Pending');       // "Sent", "Pending", "Failed"
         
             $table->timestamps();
         
             $table->foreign('MemberID')->references('MemberID')->on('members')->onDelete('set null');
         });
-        
     }
 
     /**

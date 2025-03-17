@@ -9,14 +9,15 @@ class CreateMonthlyClientsTable extends Migration
     public function up()
     {
         Schema::create('monthly_clients', function (Blueprint $table) {
-            $table->bigIncrements('MonthlyClientID');
-            $table->unsignedBigInteger('BranchID')->nullable(); 
-            $table->string('FullName');
+            $table->engine = 'InnoDB';
+            $table->increments('MonthlyClientID');
+            $table->unsignedInteger('BranchID')->nullable();
+            $table->string('FullName', 255);
             $table->string('Email')->unique();
-            $table->string('Phone')->nullable();
-            $table->date('StartDate')->nullable(); // The start of their monthly subscription
-            $table->date('EndDate')->nullable();   // The end of their monthly subscription
-            $table->boolean('IsActive')->default(true); 
+            $table->string('Phone', 50)->nullable();
+            $table->date('StartDate')->nullable();
+            $table->date('EndDate')->nullable();
+            $table->boolean('IsActive')->default(true);
             $table->timestamps();
         });
     }

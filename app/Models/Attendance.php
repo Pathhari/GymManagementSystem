@@ -16,6 +16,8 @@ class Attendance extends Model
         'TimeOut',
         'HoursWorked',
         'OvertimeHours',
+        'NightDiffHours',  // new
+        'LateMinutes',     // new
     ];
 
     public function staff()

@@ -12,14 +12,16 @@ class Notification extends Model
     protected $fillable = [
         'MemberID',
         'EventTrigger',
+        'Subject',
+        'Sender',
         'Message',
         'NotificationMethod',
         'SentDate',
         'Status',
     ];
 
-    public $timestamps = false; // if you're not using created_at/updated_at
-
+    public $timestamps = true; // Using created_at and updated_at
+     
     public function member()
     {
         return $this->belongsTo(Member::class, 'MemberID', 'MemberID');

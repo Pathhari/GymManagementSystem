@@ -267,17 +267,31 @@ export default function LockerManagement() {
     }
   }, [memberSearch, searchBranchID]);
 
+  useEffect(() => {
+    if (borrowOpen && searchBranchID) {
+      axios.get(`/membership/members?branchId=${searchBranchID}`)
+        .then((res) => {
+          // if res.data is { members: [...] }
+          setMemberOptions(res.data.members || []);  
+        })
+        .catch((err) => console.error("Error fetching members for branch:", err));
+    }
+  }, [borrowOpen, searchBranchID]);
+  
+
+
   const openBorrowForm = (lockerItem) => {
     setBorrowData({
       LockerID: lockerItem.LockerID,
       MemberID: "",
       Notes: "",
     });
-    setMemberSearch("");
-    setMemberOptions([]);
+    setMemberSearch("");       // Clear any previous search text
+    setMemberOptions([]);      // Clear member list (will be refetched)
     setSearchBranchID(lockerItem.BranchID || null);
-    setBorrowOpen(true);
+    setBorrowOpen(true);       // This triggers the preload useEffect above
   };
+
 
   const handleBorrowChange = (e) => {
     setBorrowData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -655,9 +669,7 @@ export default function LockerManagement() {
             <Autocomplete
               options={memberOptions}
               getOptionLabel={(option) => option.FullName}
-              onInputChange={(event, newInputValue) =>
-                setMemberSearch(newInputValue)
-              }
+              onInputChange={(event, newInputValue) => setMemberSearch(newInputValue)}
               onChange={(event, newValue) => {
                 setBorrowData((prev) => ({
                   ...prev,
@@ -665,9 +677,15 @@ export default function LockerManagement() {
                 }));
               }}
               renderInput={(params) => (
-                <TextField {...params} label="Search Member" margin="normal" fullWidth />
+                <TextField
+                  {...params}
+                  label="Search Member"
+                  margin="normal"
+                  fullWidth
+                />
               )}
             />
+
 
             <TextField
               label="Notes"

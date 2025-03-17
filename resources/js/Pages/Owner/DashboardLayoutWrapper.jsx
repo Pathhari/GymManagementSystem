@@ -42,16 +42,16 @@ import EditAccount from './EditAccount';
 // Navigation items
 const NAVIGATION = [
   { segment: 'dashboard', title: 'Dashboard', icon: <DashboardIcon /> },
+  { segment: 'notifications', title: 'Notifications', icon: <NotificationsIcon /> },
   { segment: 'membership-management', title: 'Membership Management', icon: <PeopleIcon /> },
   { segment: 'staff-management', title: 'Staff Management', icon: <Diversity3Icon /> },
-  { segment: 'branch-management', title: 'Branch Management', icon: <ApartmentIcon /> },
   { segment: 'payments', title: 'Payments & Invoices', icon: <PaymentsIcon /> },
   { segment: 'bookingsessions', title: 'Bookings & Sessions', icon: <EventNoteIcon /> },
   { segment: 'lockermanagement', title: 'Locker Management', icon: <LockIcon /> },
   { segment: 'maintequip', title: 'Maintenance & Equipment', icon: <BuildIcon /> },
-  { segment: 'system-logs', title: 'System Logs', icon: <HistoryIcon /> },
+  { segment: 'branch-management', title: 'Branch Management', icon: <ApartmentIcon /> },
   { segment: 'reports', title: 'Reports & Analytics', icon: <BarChartIcon /> },
-  { segment: 'notifications', title: 'Notifications', icon: <NotificationsIcon /> },
+  { segment: 'system-logs', title: 'System Logs', icon: <HistoryIcon /> },
   { segment: 'editaccount', title: 'Edit Account', icon: <ManageAccountsIcon /> },
 ];
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo} from "react";
 import axios from "axios";
 import {
   Box,
@@ -35,6 +35,10 @@ import {
   Autocomplete,
   MenuItem as MuiMenuItem,
   Snackbar,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  FormLabel,
   Alert
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
@@ -46,6 +50,7 @@ import GroupIcon from "@mui/icons-material/Group";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import BusinessIcon from "@mui/icons-material/Business";
 import HourglassBottomIcon from "@mui/icons-material/HourglassBottom";
+import EmailIcon from '@mui/icons-material/Email';
 import EventIcon from "@mui/icons-material/Event";
 import CategoryIcon from "@mui/icons-material/Category";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
@@ -139,33 +144,54 @@ function formatTime(timeString) {
 }
 
 function createCalendarEvents(bookings, sessions, sessionBookings) {
-  const bookingEvents = bookings.map((b) => ({
-    id: `booking-${b.BookingID}`,
-    date: b.BookingDate,
-    title: `Booking: ${b.MemberName} (${formatTime(b.BookingTime)})`,
-    type: "booking",
-  }));
+  // Build a quick lookup (SessionID -> sessionObj).
+  const sessionMap = {};
+  sessions.forEach((s) => {
+    sessionMap[s.SessionID] = s;
+  });
 
-// Build a lookup object from sessions keyed by SessionID
-const sessionMap = sessions.reduce((acc, session) => {
-  acc[session.SessionID] = session;
-  return acc;
-}, {});
+  // 1) Convert facility bookings to events
+  const bookingEvents = bookings.map((b) => {
+    const displayName = b.MemberName || b.GuestName || 'Unknown';
+    return {
+      id: `booking-${b.BookingID}`,
+      date: b.BookingDate,
+      title: `Booking: ${displayName} (${formatTime(b.BookingTime)})`,
+      type: "booking",
+    };
+  });
 
-// Map session bookings and include the session's StartTime and EndTime
-const sessionBookingEvents = sessionBookings.map((sb) => {
-  const session = sessionMap[sb.SessionID];
-  const timeFrame = session
-    ? ` (${dayjs(session.StartTime).format("h:mm A")} - ${dayjs(session.EndTime).format("h:mm A")})`
-    : "";
-  return {
-    id: `sb-${sb.SessionBookingID}`,
-    date: sb.BookingDate,
-    title: `${sb.SessionName}${timeFrame}: (Member: ${sb.MemberName})`,
-    type: "sessionBooking",
-  };
-});
+  // 2) Convert session bookings to events
+  const sessionBookingEvents = sessionBookings.map((sb) => {
+    // find the session this booking is for
+    const sessionObj = sessionMap[sb.SessionID];
 
+    // fallback if not found
+    if (!sessionObj) {
+      return {
+        id: `sb-${sb.SessionBookingID}`,
+        date: sb.BookingDate,
+        title: `Session Booking (Missing Session Data) - (Member: ${sb.MemberName})`,
+        type: "sessionBooking",
+      };
+    }
+
+    // we have the session; let's build a nice label
+    const timeFrame = sessionObj.StartTime && sessionObj.EndTime
+      ? `(${dayjs(sessionObj.StartTime).format("h:mm A")} - ${dayjs(sessionObj.EndTime).format("h:mm A")})`
+      : "";
+    const coachName = sessionObj.CoachName || "Unassigned";
+    const sessionName = sessionObj.SessionName || "Unknown Session";
+
+    return {
+      id: `sb-${sb.SessionBookingID}`,
+      date: sb.BookingDate,
+      title: `Session: ${sessionName} w/ Coach: ${coachName} → Booked by ${sb.MemberName} ${timeFrame}`,
+      type: "sessionBooking",
+    };
+  });
+
+  // 3) Return everything
   return [...bookingEvents, ...sessionBookingEvents];
 }
 
@@ -173,7 +199,6 @@ export default function BookingsSessions() {
   const theme = useTheme();
   const isSmall = useMediaQuery(theme.breakpoints.down("md"));
 
-  // Core state
   const [bookings, setBookings] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [sessionBookings, setSessionBookings] = useState([]);
@@ -182,17 +207,44 @@ export default function BookingsSessions() {
   const [coaches, setCoaches] = useState([]);
   const [members, setMembers] = useState([]);
   const [facilities, setFacilities] = useState([]);
+
+  // We’ll keep "all" as the initial value, then override it once we fetch the staff data.
+  const [branchFilter, setBranchFilter] = useState("all");
+  
+  // Example: You can track loading if needed
+  const [loading, setLoading] = useState(true);
+
+  // For the sake of example, you have branches hardcoded:
   const [branches] = useState([
     { value: "1", label: "Contnental Branch 1" },
     { value: "2", label: "Contnental Branch 2" },
   ]);
 
-  // Filters
-  const [branchFilter, setBranchFilter] = useState("all");
+  // (1) Fetch the staff’s default branch from /staff/authuser
+  //     and override branchFilter if we succeed.
+  useEffect(() => {
+    axios
+      .get("/staff/authuser")
+      .then((res) => {
+        const staffData = res.data;
+        if (staffData.DefaultBranchID) {
+          setBranchFilter(String(staffData.DefaultBranchID));
+        }
+      })
+      .catch((err) => {
+        console.error("Error fetching default branch:", err);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Then your existing fetchAllData call (which does not conflict with setting branchFilter)
+  useEffect(() => {
+    fetchAllData();
+  }, []);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState(0);
 
-  // Export anchor
   const [exportAnchor, setExportAnchor] = useState(null);
   const openExport = Boolean(exportAnchor);
 
@@ -224,10 +276,20 @@ export default function BookingsSessions() {
   const [sessionBookingMemberID, setSessionBookingMemberID] = useState("");
   const [sessionBookingDate, setSessionBookingDate] = useState("");
   const [sessionBookingStatus, setSessionBookingStatus] = useState("Confirmed");
-  const [sessionBookingPaymentMethod, setSessionBookingPaymentMethod] =
-    useState("Cash");
-  const [sessionBookingPaymentAmount, setSessionBookingPaymentAmount] =
-    useState("");
+  const [sessionBookingPaymentMethod, setSessionBookingPaymentMethod] = useState("Cash");
+  const [sessionBookingPaymentAmount, setSessionBookingPaymentAmount] = useState("");
+
+  // Timeslot generation
+  const [isGenerateModalOpen, setGenerateModalOpen] = useState(false);
+  const [generateForm, setGenerateForm] = useState({
+    coachId: "",
+    startDate: "",
+    endDate: "",
+    branchId: "",
+    location: "",
+    sessionType: "Regular",
+    fee: 0,
+  });
 
   // Coach dialogs
   const [isAddCoachOpen, setAddCoachOpen] = useState(false);
@@ -238,11 +300,15 @@ export default function BookingsSessions() {
     FullName: "",
     Specialty: "",
     ContactInfo: "",
+    // Email is also used in the form below
   });
 
   // New booking
   const [newBooking, setNewBooking] = useState({
+    bookingType: "member", // "member" or "guest"
     MemberID: "",
+    GuestName: "",
+    GuestEmail: "",
     FacilityID: "",
     BookingDate: "",
     BookingTime: "",
@@ -251,8 +317,7 @@ export default function BookingsSessions() {
     PaymentMethod: "Cash",
     PaymentAmount: "",
   });
-
-  const [selectedBranchForBooking, setSelectedBranchForBooking] = useState(""); // CHANGED
+  const [selectedBranchForBooking, setSelectedBranchForBooking] = useState(""); // ?
 
   // New session
   const [newSession, setNewSession] = useState({
@@ -267,21 +332,31 @@ export default function BookingsSessions() {
     Fee: "",
   });
 
-  // Status & Payment constants
   const STATUS_OPTIONS = ["Confirmed", "Pending", "Cancelled", "Completed"];
   const PAYMENT_METHODS = ["Cash", "GCash", "BPI", "BDO"];
 
-  // Real-time validation
+  // Form validations
   const isValidBooking = () => {
-    return (
-      newBooking.BookingDate.trim() !== "" &&
-      newBooking.BookingTime.trim() !== "" &&
-      newBooking.Duration.toString().trim() !== "" &&
-      newBooking.PaymentAmount.toString().trim() !== "" &&
-      Number(newBooking.PaymentAmount) > 0 &&
-      newBooking.MemberID &&
-      newBooking.FacilityID
-    );
+    if (newBooking.bookingType === "member") {
+      return (
+        newBooking.MemberID &&
+        newBooking.FacilityID &&
+        newBooking.BookingDate.trim() !== "" &&
+        newBooking.BookingTime.trim() !== "" &&
+        newBooking.PaymentAmount.toString().trim() !== "" &&
+        Number(newBooking.PaymentAmount) > 0
+      );
+    } else {
+      return (
+        newBooking.GuestName.trim() !== "" &&
+        newBooking.GuestEmail.trim() !== "" &&
+        newBooking.FacilityID &&
+        newBooking.BookingDate.trim() !== "" &&
+        newBooking.BookingTime.trim() !== "" &&
+        newBooking.PaymentAmount.toString().trim() !== "" &&
+        Number(newBooking.PaymentAmount) > 0
+      );
+    }
   };
   const [isSubmitEnabledBooking, setIsSubmitEnabledBooking] = useState(false);
   useEffect(() => {
@@ -326,8 +401,46 @@ export default function BookingsSessions() {
     setSnackSeverity(severity);
     setSnackOpen(true);
   };
+  
+  useEffect(() => {
+    // 'getBranchLabel' is your helper that converts branchFilter to "Contnental Branch 1", etc.
+    const selectedBranchLabel = getBranchLabel(branchFilter);
+  
+    // 1) Filter bookings
+    //   (Here, we assume each booking has a .Branch that’s a human-readable string like "Contnental Branch 1".)
+    const filteredBookings = bookings.filter(b => {
+      if (branchFilter === "all") return true;
+      return b.Branch === selectedBranchLabel; 
+    });
+  
+    // 2) Filter sessions
+    const filteredSessions = sessions.filter(s => {
+      if (branchFilter === "all") return true;
+      return s.Branch === selectedBranchLabel;
+    });
+  
+    // 3) Filter sessionBookings
+    //    (sessionBookings might not directly contain .Branch,
+    //     so we find the corresponding session to check its branch.)
+    const filteredSessionBookings = sessionBookings.filter(sb => {
+      const sessionObj = sessions.find(s => s.SessionID === sb.SessionID);
+      if (!sessionObj) return false; // or true/false depending on your logic
+      if (branchFilter === "all") return true;
+      return sessionObj.Branch === selectedBranchLabel;
+    });
+  
+    // 4) Now build the calendar events from these filtered arrays
+    const mergedEvents = createCalendarEvents(
+      filteredBookings,
+      filteredSessions,
+      filteredSessionBookings
+    );
+  
+    // 5) Update state
+    setCalendarEvents(mergedEvents);
+  
+  }, [branchFilter, bookings, sessions, sessionBookings]);
 
-  // Fetch data
   async function fetchAllData() {
     try {
       // 1) Bookings
@@ -356,7 +469,7 @@ export default function BookingsSessions() {
       const loadedFacilities = facRes.data.facilities || [];
 
       // 6) Coaches
-      const coachesRes = await axios.get("/coaches");
+      const coachesRes = await axios.get("/coaches?with=availabilities");
       const loadedCoaches = coachesRes.data.coaches || [];
 
       // Set them
@@ -367,22 +480,11 @@ export default function BookingsSessions() {
       setFacilities(loadedFacilities);
       setCoaches(loadedCoaches);
 
-      // Build calendar events
-      const mergedEvents = createCalendarEvents(
-        loadedBookings,
-        loadedSessions,
-        loadedSessionBookings
-      );
-      setCalendarEvents(mergedEvents);
     } catch (err) {
       console.error("Failed to load data:", err);
       showSnack("Failed to load data. Check console.", "error");
     }
   }
-  
-  useEffect(() => {
-    fetchAllData();  // call the function
-  }, []); 
 
   // Format helpers
   const formatDate = (dateString) => {
@@ -395,42 +497,65 @@ export default function BookingsSessions() {
     return parsed.isValid() ? parsed.format("MMM D, YYYY h:mm A") : "Invalid DateTime";
   };
 
+  function getBranchLabel(value) {
+    if (value === "all") return null;
+    const found = branches.find((b) => b.value === value);
+    return found ? found.label : null;
+  }
+
   // ---------- FILTERS ----------
-  const filteredBookings = bookings.filter((b) => {
-    const branchMatches =
-      branchFilter === "all" || Number(b.BranchID) === Number(branchFilter);
-    const searchMatches = Object.values(b).some((val) =>
-      String(val).toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    return branchMatches && searchMatches;
-  });
+  const filteredBookings = useMemo(() => {
+    const lowerSearch = searchTerm.toLowerCase();
+    const selectedBranchLabel = getBranchLabel(branchFilter);
 
-  const filteredSessions = sessions.filter((s) => {
-    // We assume the backend includes "BranchID" (number) *and* "Branch" (string).
-    const branchMatches =
-      branchFilter === "all" || Number(s.BranchID) === Number(branchFilter);
-    const searchMatches = Object.values(s).some((val) =>
-      String(val).toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    return branchMatches && searchMatches;
-  });
+    return bookings.filter((b) => {
+      const branchMatches =
+        branchFilter === "all" || b.Branch === selectedBranchLabel;
+      const textFields = [b.MemberName, b.FacilityName, b.Status].join(" ");
+      const searchMatches = textFields.toLowerCase().includes(lowerSearch);
 
+      return branchMatches && searchMatches;
+    });
+  }, [bookings, branchFilter, searchTerm]);
+
+  const filteredSessions = useMemo(() => {
+    const lowerSearch = searchTerm.toLowerCase();
+    const selectedBranchLabel = getBranchLabel(branchFilter);
+
+    return sessions.filter((s) => {
+      const branchMatches =
+        branchFilter === "all" || s.Branch === selectedBranchLabel;
+      const textFields = [s.SessionName, s.CoachName, s.Location, s.Status].join(" ");
+      const searchMatches = textFields.toLowerCase().includes(lowerSearch);
+
+      return branchMatches && searchMatches;
+    });
+  }, [sessions, branchFilter, searchTerm]);
+
+  const filteredCoaches = useMemo(() => {
+    const lowerSearch = searchTerm.toLowerCase();
+    // Possibly no branch logic for coaches in your data:
+    return coaches.filter((c) => {
+      const textFields = [
+        c.FullName || "",
+        c.Specialty || "",
+        c.ContactInfo || "",
+      ].join(" ");
+      return textFields.toLowerCase().includes(lowerSearch);
+    });
+  }, [coaches, searchTerm]);
 
   // ---------- CALENDAR EVENTS ----------
   const bigCalendarEvents = calendarEvents.map((event) => {
     if (event.start && event.end) {
-      // session event with start/end
       return { ...event, start: new Date(event.start), end: new Date(event.end) };
     } else if (event.date) {
-      // booking or sessionBooking with date only
       const d = new Date(event.date);
       return { ...event, start: d, end: d, allDay: true };
     }
     return event;
   });
 
-
-  // Calendar
   const handleDateClick = (info) => {
     const clickedDate = new Date(info.dateStr);
     if (clickedDate < new Date()) return;
@@ -445,7 +570,6 @@ export default function BookingsSessions() {
     );
   };
   const handleSaveCalendarEvent = (title, desc, start, end) => {
-    // example only
     const newEv = {
       id: Date.now().toString(),
       date: selectedDate?.toISOString().split("T")[0] || "2025-01-01",
@@ -481,7 +605,37 @@ export default function BookingsSessions() {
       setViewBookingModal(true);
     }
   }
+  async function handleCreateBooking() {
+    try {
+      const payload = {
+        FacilityID: newBooking.FacilityID,
+        BookingDate: newBooking.BookingDate,
+        BookingTime: newBooking.BookingTime,
+        Duration: newBooking.Duration || 1,
+        Status: newBooking.Status || "Confirmed",
+        PaymentMethod: newBooking.PaymentMethod || "Cash",
+        Amount: Number(newBooking.PaymentAmount) || 0,
+      };
 
+      if (newBooking.bookingType === "member") {
+        payload.MemberID = newBooking.MemberID || null;
+        payload.GuestName = null;
+        payload.GuestEmail = null;
+      } else {
+        payload.MemberID = null;
+        payload.GuestName = newBooking.GuestName;
+        payload.GuestEmail = newBooking.GuestEmail;
+      }
+
+      await axios.post("/booking", payload);
+      setAddBookingOpen(false);
+      fetchAllData();
+      showSnack("Booking created successfully!", "success");
+    } catch (err) {
+      console.error("Failed to create booking:", err);
+      showSnack("Error creating booking. Check console.", "error");
+    }
+  }
   async function handleDeleteBooking(bookingId) {
     try {
       await axios.delete(`/booking/${bookingId}`);
@@ -493,54 +647,49 @@ export default function BookingsSessions() {
       showSnack("Error deleting booking. Check console.", "error");
     }
   }
-
   function handleEditBooking(bookingId) {
     const found = bookings.find((b) => b.BookingID === bookingId);
-    if (found) {
-      setSelectedBooking(found);
-      setEditBookingModal(true);
-    }
+    if (!found) return;
+    const isMember = !!found.MemberID;
+    setSelectedBooking({
+      ...found,
+      bookingType: isMember ? "member" : "guest",
+      GuestName: isMember ? "" : found.GuestName || "",
+      GuestEmail: isMember ? "" : found.GuestEmail || "",
+      PaymentMethod: found.PaymentMethod || "Cash",
+      PaymentAmount: found.PaymentAmount || "",
+    });
+    setEditBookingModal(true);
   }
-
-  async function handleCreateBooking() {
-    try {
-      await axios.post("/booking", {
-        MemberID: newBooking.MemberID,
-        FacilityID: newBooking.FacilityID,
-        BookingDate: newBooking.BookingDate,
-        BookingTime: newBooking.BookingTime,
-        Duration: newBooking.Duration || 1,
-        Status: newBooking.Status || "Confirmed",
-        PaymentMethod: newBooking.PaymentMethod || "Cash",
-        Amount: Number(newBooking.PaymentAmount) || 0,
-      });
-      setAddBookingOpen(false);
-      fetchAllData();
-      showSnack("Booking created successfully!", "success");
-    } catch (err) {
-      console.error("Failed to create booking:", err);
-      showSnack("Error creating booking. Check console for details.", "error");
-    }
-  }
-
   async function handleUpdateBooking() {
     if (!selectedBooking) return;
+    const payload = {
+      FacilityID: selectedBooking.FacilityID,
+      BookingDate: selectedBooking.BookingDate,
+      BookingTime: selectedBooking.BookingTime,
+      Duration: selectedBooking.Duration,
+      Status: selectedBooking.Status,
+      PaymentMethod: selectedBooking.PaymentMethod,
+      Amount: Number(selectedBooking.PaymentAmount) || 0,
+    };
+    if (selectedBooking.bookingType === "member") {
+      payload.MemberID = selectedBooking.MemberID;
+      payload.GuestName = null;
+      payload.GuestEmail = null;
+    } else {
+      payload.MemberID = null;
+      payload.GuestName = selectedBooking.GuestName;
+      payload.GuestEmail = selectedBooking.GuestEmail;
+    }
+
     try {
-      await axios.put(`/booking/${selectedBooking.BookingID}`, {
-        MemberID: selectedBooking.MemberID,
-        FacilityID: selectedBooking.FacilityID,
-        BookingDate: selectedBooking.BookingDate,
-        BookingTime: selectedBooking.BookingTime,
-        Duration: selectedBooking.Duration,
-        PaymentID: selectedBooking.PaymentID || null,
-        Status: selectedBooking.Status,
-      });
+      await axios.put(`/booking/${selectedBooking.BookingID}`, payload);
       setEditBookingModal(false);
       fetchAllData();
       showSnack("Booking updated!", "success");
     } catch (err) {
       console.error("Failed to update booking:", err);
-      showSnack("Error updating booking. Check console for details.", "error");
+      showSnack("Error updating booking.", "error");
     }
   }
 
@@ -552,11 +701,9 @@ export default function BookingsSessions() {
       setViewSessionModal(true);
     }
   }
-
   function handleEditSession(sessionId) {
     const found = sessions.find((s) => s.SessionID === sessionId);
     if (found) {
-      // Convert times for the DesktopDateTimePicker
       setSelectedSession({
         ...found,
         StartTime: dayjs(found.StartTime).format("YYYY-MM-DD HH:mm:ss"),
@@ -565,34 +712,23 @@ export default function BookingsSessions() {
       setEditSessionModal(true);
     }
   }
-
   async function handleCreateSession() {
-    // Get the selected coach for this session
     const coach = coaches.find((c) => c.CoachID === newSession.CoachID);
     if (!coach) {
       showSnack("Please select a valid coach.", "error");
       return;
     }
-    
     const sessionStart = dayjs(newSession.StartTime);
     const sessionEnd = dayjs(newSession.EndTime);
-  
-    // Check if the session fits within one of the coach’s availability slots
     const validSlot = coach.availabilities?.some((slot) => {
       const slotStart = dayjs(slot.Start);
       const slotEnd = dayjs(slot.End);
-    
-      // This means "sessionStart >= slotStart and sessionEnd <= slotEnd" 
-      // by flipping the logic:
       return !sessionStart.isBefore(slotStart) && !sessionEnd.isAfter(slotEnd);
     });
-    
     if (!validSlot) {
       showSnack("Session time is outside the coach's availability window!", "error");
       return;
     }
-    
-    // If validation passes, proceed with creating the session
     try {
       await axios.post("/booking/sessions", {
         BranchID: newSession.BranchID,
@@ -613,39 +749,31 @@ export default function BookingsSessions() {
       showSnack("Error creating session. Check console for details.", "error");
     }
   }
-
   async function handleUpdateSession() {
     if (!selectedSession) return;
-  
-    // Retrieve the coach for the selected session
     const coach = coaches.find((c) => c.CoachID === selectedSession.CoachID);
     if (!coach) {
       showSnack("Please select a valid coach.", "error");
       return;
     }
-  
     const sessionStart = dayjs(selectedSession.StartTime);
     const sessionEnd = dayjs(selectedSession.EndTime);
-  
-    // Validate that the session falls within one of the coach's availability slots
     const validSlot = coach.availabilities?.some((slot) => {
       const slotStart = dayjs(slot.Start);
       const slotEnd = dayjs(slot.End);
       return sessionStart.isSameOrAfter(slotStart) && sessionEnd.isSameOrBefore(slotEnd);
     });
-  
     if (!validSlot) {
       showSnack("Session time is outside the coach's availability window!", "error");
       return;
     }
-  
     try {
       await axios.put(`/booking/sessions/${selectedSession.SessionID}`, {
         SessionName: selectedSession.SessionName,
         BranchID: selectedSession.BranchID,
         SessionType: selectedSession.SessionType,
         CoachID: selectedSession.CoachID,
-        StartTime: selectedSession.StartTime, // "YYYY-MM-DD HH:mm:ss"
+        StartTime: selectedSession.StartTime,
         EndTime: selectedSession.EndTime,
         Capacity: selectedSession.Capacity,
         Location: selectedSession.Location,
@@ -657,10 +785,10 @@ export default function BookingsSessions() {
       showSnack("Session updated!", "success");
     } catch (err) {
       console.error("Failed to update session:", err);
-      showSnack("Error updating session. Check console for details.", "error");
+      showSnack("Error updating session. Check console.", "error");
     }
   }
-  
+
   // ---------- BOOK SESSION ----------
   function handleOpenBookSession(sessionId) {
     const found = sessions.find((s) => s.SessionID === sessionId);
@@ -678,7 +806,6 @@ export default function BookingsSessions() {
       setBookSessionOpen(true);
     }
   }
-
   async function handleBookSessionConfirm() {
     if (!sessionToBook) return;
     try {
@@ -690,11 +817,51 @@ export default function BookingsSessions() {
         PaymentMethod: sessionBookingPaymentMethod,
         Amount: Number(sessionBookingPaymentAmount) || 0,
       });
+
+      // Step 2: Notify the coach
+      if (sessionToBook.CoachID) {
+        const foundCoach = coaches.find((c) => c.CoachID === sessionToBook.CoachID);
+        if (foundCoach && foundCoach.ContactInfo && foundCoach.Email?.includes("@")) {
+          const foundMember = members.find((m) => m.MemberID === Number(sessionBookingMemberID));
+          const memberName = foundMember ? foundMember.FullName : "Unknown Member";
+
+          await axios.post("/notifications/notify-coach-booking-mailjet", {
+            coach_id: foundCoach.CoachID,
+            coach_name: foundCoach.FullName,
+            coach_email: foundCoach.Email,
+            member_name: memberName,
+            session_name: sessionToBook.SessionName,
+            start_time: sessionToBook.StartTime,
+            end_time: sessionToBook.EndTime,
+          });
+        }
+      }
+      // Step 2b: Notify the member
+      const foundMemberForNotification = members.find(
+        (m) => m.MemberID === Number(sessionBookingMemberID)
+      );
+      if (
+        foundMemberForNotification &&
+        foundMemberForNotification.Email &&
+        foundMemberForNotification.Email.includes("@")
+      ) {
+        await axios.post("/notifications/notify-member-booking-mailjet", {
+          member_id: foundMemberForNotification.MemberID,
+          member_name: foundMemberForNotification.FullName,
+          member_email: foundMemberForNotification.Email,
+          coach_name:
+            coaches.find((c) => c.CoachID === sessionToBook.CoachID)?.FullName || "",
+          session_name: sessionToBook.SessionName,
+          start_time: dayjs(sessionToBook.StartTime).format("YYYY-MM-DD HH:mm:ss"),
+          end_time: dayjs(sessionToBook.EndTime).format("YYYY-MM-DD HH:mm:ss"),
+        });
+      }
+
       setBookSessionOpen(false);
       fetchAllData();
-      showSnack("Session booked successfully!", "success");
+      showSnack("Session booked successfully, coach notified by Mailjet!", "success");
     } catch (err) {
-      console.error("Failed to book session:", err);
+      console.error("Failed to book session or notify coach:", err);
       if (err.response && err.response.status === 422) {
         showSnack(err.response.data.message || "Capacity reached!", "warning");
       } else {
@@ -703,7 +870,7 @@ export default function BookingsSessions() {
     }
   }
 
-  // Coaches
+  // ---------- COACHES ----------
   const handleViewCoach = (coachId) => {
     const found = coaches.find((c) => c.CoachID === coachId);
     if (found) {
@@ -734,6 +901,7 @@ export default function BookingsSessions() {
         FullName: newCoach.FullName,
         Specialty: newCoach.Specialty,
         ContactInfo: newCoach.ContactInfo,
+        Email: newCoach.Email,
       });
       setAddCoachOpen(false);
       fetchAllData();
@@ -750,6 +918,7 @@ export default function BookingsSessions() {
         FullName: selectedCoach.FullName,
         Specialty: selectedCoach.Specialty,
         ContactInfo: selectedCoach.ContactInfo,
+        Email: newCoach.Email,
       });
       setEditCoachModal(false);
       fetchAllData();
@@ -839,9 +1008,7 @@ export default function BookingsSessions() {
             <Button
               variant="contained"
               color="error"
-              onClick={() =>
-                handleOpenDeleteDialog("booking", params.row.BookingID)
-              }
+              onClick={() => handleOpenDeleteDialog("booking", params.row.BookingID)}
             >
               <DeleteIcon fontSize="small" />
             </Button>
@@ -907,9 +1074,7 @@ export default function BookingsSessions() {
             <Button
               variant="contained"
               color="error"
-              onClick={() =>
-                handleOpenDeleteDialog("session", params.row.SessionID)
-              }
+              onClick={() => handleOpenDeleteDialog("session", params.row.SessionID)}
             >
               <DeleteIcon fontSize="small" />
             </Button>
@@ -919,21 +1084,15 @@ export default function BookingsSessions() {
     },
   ];
 
-  function formatCoachAvailability(dateString) {
-    if (!dateString) return "—";
-    const parsed = dayjs(dateString);
-    return parsed.isValid() ? parsed.format("MMM D, YYYY h:mm A") : "Invalid";
-  }
-
   const coachesColumns = [
     { field: "CoachID", headerName: "ID", width: 80 },
     { field: "FullName", headerName: "Name", width: 150 },
-    { field: "Specialty", headerName: "Specialty", width: 130 }, 
+    { field: "Specialty", headerName: "Specialty", width: 130 },
     { field: "ContactInfo", headerName: "Contact Info", width: 150 },
     {
       field: "Actions",
       headerName: "Actions",
-      width: 300,
+      width: 410,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 1 }}>
@@ -973,24 +1132,31 @@ export default function BookingsSessions() {
               <DeleteIcon fontSize="small" />
             </Button>
           </Tooltip>
+          <Tooltip title="Generate Timeslots">
+            <Button
+              variant="contained"
+              color="info"
+              onClick={() => handleGenerateTimeslotsClick(params.row.CoachID)}
+            >
+              Timeslots
+            </Button>
+          </Tooltip>
         </Box>
       ),
     },
   ];
 
   const columns =
-  activeTab === 0
-    ? bookingColumns
-    : activeTab === 1
-    ? sessionColumns
-    : coachesColumns;
-
-  const rows =
     activeTab === 0
-      ? filteredBookings
+      ? bookingColumns
       : activeTab === 1
-      ? filteredSessions
-      : coaches;
+      ? sessionColumns
+      : coachesColumns;
+
+  let rows = [];
+  if (activeTab === 0) rows = filteredBookings;
+  else if (activeTab === 1) rows = filteredSessions;
+  else rows = filteredCoaches;
 
   const getRowId = (row) =>
     activeTab === 0 ? row.BookingID : activeTab === 1 ? row.SessionID : row.CoachID;
@@ -1030,16 +1196,7 @@ export default function BookingsSessions() {
     if (activeTab === 0) {
       title = "Facility Bookings Report";
       filename = "BookingsReport.pdf";
-      tableHeaders = [
-        "Booking ID",
-        "Branch",
-        "Member Name",
-        "Facility",
-        "Date",
-        "Time",
-        "Duration",
-        "Status",
-      ];
+      tableHeaders = ["Booking ID", "Branch", "Member Name", "Facility", "Date", "Time", "Duration", "Status"];
       tableBody = filteredBookings.map((b) => [
         b.BookingID || "N/A",
         b.Branch || "—",
@@ -1053,15 +1210,7 @@ export default function BookingsSessions() {
     } else if (activeTab === 1) {
       title = "Coach Sessions Report";
       filename = "SessionsReport.pdf";
-      tableHeaders = [
-        "Session ID",
-        "Branch",
-        "Session Name",
-        "Coach Name",
-        "Start",
-        "End",
-        "Capacity",
-      ];
+      tableHeaders = ["Session ID", "Branch", "Session Name", "Coach Name", "Start", "End", "Capacity"];
       tableBody = filteredSessions.map((s) => [
         s.SessionID || "N/A",
         s.Branch || "—",
@@ -1074,14 +1223,8 @@ export default function BookingsSessions() {
     } else {
       title = "Coaches Report";
       filename = "CoachesReport.pdf";
-      tableHeaders = [
-        "Coach ID",
-        "Full Name",
-        "Specialty",
-        "Availability",
-        "Contact Info",
-      ];
-      tableBody = coaches.map((c) => [
+      tableHeaders = ["Coach ID", "Full Name", "Specialty", "Availability", "Contact Info"];
+      tableBody = filteredCoaches.map((c) => [
         c.CoachID || "N/A",
         c.FullName || "—",
         c.Specialty || "—",
@@ -1110,9 +1253,12 @@ export default function BookingsSessions() {
     doc.setTextColor("#ffffff");
     doc.text(title, pageWidth / 2, 100, { align: "center" });
     doc.setFontSize(14);
-    doc.text("Generated on: " + new Date().toLocaleDateString(), pageWidth / 2, 130, {
-      align: "center",
-    });
+    doc.text(
+      "Generated on: " + new Date().toLocaleDateString(),
+      pageWidth / 2,
+      130,
+      { align: "center" }
+    );
 
     doc.autoTable({
       head: [tableHeaders],
@@ -1165,60 +1311,91 @@ export default function BookingsSessions() {
     borderRadius: 4,
   };
 
-  // ---------- COACH AVAILABILITIES (Optional) ----------
+  // ---------- COACH AVAILABILITIES ----------
   const [manageAvailOpen, setManageAvailOpen] = useState(false);
   const [coachToManage, setCoachToManage] = useState(null);
 
-  function openManageAvailability(coachId) {
-    const found = coaches.find((c) => c.CoachID === coachId);
-    if (found) {
-      setCoachToManage(found);
+  async function openManageAvailability(coachId) {
+    try {
+      const res = await axios.get(`/coaches/${coachId}?include=availabilities`);
+      setCoachToManage(res.data.coach);
       setManageAvailOpen(true);
+    } catch (err) {
+      console.error("Error fetching coach + availabilities", err);
+      alert("Failed to fetch coach. See console.");
     }
   }
   function closeManageAvailability() {
     setManageAvailOpen(false);
     setCoachToManage(null);
-    // optionally fetchAllData if changes
+    // optionally fetchAllData again if needed
   }
 
   const [coachAvailability, setCoachAvailability] = useState([]);
   const [selectedTimeslotId, setSelectedTimeslotId] = useState("");
 
-  // When user picks a coach in the Autocomplete
   function handleCoachChange(newValue) {
     setNewSession({
       ...newSession,
       CoachID: newValue?.CoachID ?? "",
     });
-    // Save the availability array so we can display it
     if (newValue?.availabilities) {
       setCoachAvailability(newValue.availabilities);
     } else {
       setCoachAvailability([]);
     }
-    // reset the timeslot selection
     setSelectedTimeslotId("");
   }
-
-  // When user picks a timeslot from the availability dropdown
   function handleTimeslotSelect(slotId) {
     setSelectedTimeslotId(slotId);
-    const slot = coachAvailability.find((slot) => slot.id === slotId);
+    const slot = coachAvailability.find((s) => s.id === slotId);
     if (!slot) return;
-    // set newSession StartTime/EndTime
     setNewSession({
       ...newSession,
       StartTime: dayjs(slot.Start).format("YYYY-MM-DD HH:mm:ss"),
       EndTime: dayjs(slot.End).format("YYYY-MM-DD HH:mm:ss"),
     });
   }
-
-  // A helper to format timeslot labels
   function timeslotLabel(slot) {
     const startFmt = dayjs(slot.Start).format("MMM D, h:mm A");
     const endFmt = dayjs(slot.End).format("MMM D, h:mm A");
     return `${startFmt} – ${endFmt}`;
+  }
+
+  function handleGenerateTimeslotsClick(coachId) {
+    setGenerateForm({
+      coachId: coachId,
+      startDate: dayjs().format("YYYY-MM-DD"),
+      endDate: dayjs().add(7, "day").format("YYYY-MM-DD"),
+      branchId: "",
+      location: "",
+      sessionType: "Regular",
+      fee: 0,
+    });
+    setGenerateModalOpen(true);
+  }
+  async function generateTimeslots() {
+    if (!generateForm.coachId) {
+      showSnack("No coach selected!", "error");
+      return;
+    }
+    try {
+      const payload = {
+        start_date: generateForm.startDate,
+        end_date: generateForm.endDate,
+        branch_id: generateForm.branchId,
+        location: generateForm.location,
+        session_type: generateForm.sessionType,
+        fee: Number(generateForm.fee),
+      };
+      await axios.post(`/coaches/${generateForm.coachId}/generate-timeslots`, payload);
+      showSnack("Timeslots generated successfully!", "success");
+      setGenerateModalOpen(false);
+      fetchAllData();
+    } catch (err) {
+      console.error("Error generating timeslots:", err);
+      showSnack("Failed to generate timeslots. Check console.", "error");
+    }
   }
 
   return (
@@ -1334,7 +1511,7 @@ export default function BookingsSessions() {
           >
             <Tab icon={<CalendarTodayIcon />} label="Facility Bookings" />
             <Tab icon={<FitnessCenterIcon />} label="Coach Sessions" />
-            <Tab icon={<PersonIcon />} label="Coaches" />
+            <Tab icon={<GroupsIcon />} label="Coaches" />
           </Tabs>
         </Box>
 
@@ -1468,252 +1645,359 @@ export default function BookingsSessions() {
           </Box>
         </Paper>
 
-                {/* MANAGE AVAILABILITY DIALOG */}
-                <ManageAvailabilityDialog
-                  open={manageAvailOpen}
-                  onClose={closeManageAvailability}
-                  coach={coachToManage}
-                  onSave={() => {
-                    // optional callback to refresh
-                    fetchAllData();
-                  }}
-                />
-        
-
-        {/* ADD BOOKING DIALOG */}
-        <Dialog
-          open={isAddBookingOpen}
-          onClose={() => setAddBookingOpen(false)}
-          fullWidth
-          maxWidth="lg"
-          sx={{
-            "& .MuiDialog-paper": {
-              borderRadius: 3,
-              boxShadow: 6,
-              p: 3,
-              overflow: "hidden",
-            },
+        {/* MANAGE AVAILABILITY DIALOG */}
+        <ManageAvailabilityDialog
+          open={manageAvailOpen}
+          onClose={closeManageAvailability}
+          coach={coachToManage}
+          onSave={() => {
+            // optional callback to refresh
+            fetchAllData();
           }}
-        >
-          <DialogTitle sx={{ p: 2 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                <CalendarTodayIcon sx={{ fontSize: 32, color: "primary.main" }} />
-                <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                  Add New Booking
-                </Typography>
-              </Box>
-              <IconButton onClick={() => setAddBookingOpen(false)} sx={{ "&:hover": { color: "error.main" } }}>
-                <CloseIcon />
-              </IconButton>
-            </Box>
-          </DialogTitle>
-          <DialogContent dividers sx={{ p: 3 }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth size="medium">
-                  <InputLabel>Branch</InputLabel>
-                  <Select
-                    name="Branch"
-                    value={selectedBranchForBooking}
-                    onChange={(e) => setSelectedBranchForBooking(e.target.value)}
-                    startAdornment={
-                      <InputAdornment position="start">
-                        <BusinessIcon />
-                      </InputAdornment>
-                    }
-                  >
-                    <MenuItem value="">-- Select Branch --</MenuItem>
-                    {branches.map((b) => (
-                      <MenuItem key={b.value} value={String(b.value)}>
-                        {b.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth size="medium">
-                  <InputLabel>Facility</InputLabel>
-                  <Select
-                    name="FacilityID"
-                    value={newBooking.FacilityID}
-                    onChange={(e) =>
-                      setNewBooking({ ...newBooking, FacilityID: e.target.value })
-                    }
-                    startAdornment={
-                      <InputAdornment position="start">
-                        <FitnessCenterIcon />
-                      </InputAdornment>
-                    }
-                  >
-                    {(selectedBranchForBooking
-                      ? facilities.filter(
-                          (f) => String(f.BranchID) === selectedBranchForBooking
-                        )
-                      : facilities
-                    ).map((f) => (
-                      <MenuItem key={f.FacilityID} value={f.FacilityID}>
-                        {f.FacilityName}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Autocomplete
-                  options={members}
-                  getOptionLabel={(option) => option.FullName || ""}
-                  value={
-                    members.find((m) => m.MemberID === newBooking.MemberID) ||
-                    null
-                  }
-                  onChange={(event, newValue) =>
-                    setNewBooking({
-                      ...newBooking,
-                      MemberID: newValue ? newValue.MemberID : "",
-                    })
-                  }
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Member"
-                      required
-                      InputProps={{
-                        ...params.InputProps,
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <PersonIcon />
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Booking Date"
-                  type="date"
-                  fullWidth
-                  required
-                  value={newBooking.BookingDate || ""}
-                  onChange={(e) =>
-                    setNewBooking({ ...newBooking, BookingDate: e.target.value })
-                  }
-                  InputLabelProps={{ shrink: true }}
-                  inputProps={{ min: dayjs().format("YYYY-MM-DD") }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <EventIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Booking Time"
-                  type="time"
-                  fullWidth
-                  required
-                  value={newBooking.BookingTime || ""}
-                  onChange={(e) =>
-                    setNewBooking({ ...newBooking, BookingTime: e.target.value })
-                  }
-                  InputLabelProps={{ shrink: true }}
-                  inputProps={{
-                    min:
-                      newBooking.BookingDate === dayjs().format("YYYY-MM-DD")
-                        ? dayjs().format("HH:mm")
-                        : undefined,
-                  }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <AccessTimeIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Duration (hrs)"
-                  type="number"
-                  fullWidth
-                  required
-                  value={newBooking.Duration || ""}
-                  onChange={(e) =>
-                    setNewBooking({ ...newBooking, Duration: e.target.value })
-                  }
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <HourglassBottomIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Status"
-                  fullWidth
-                  required
-                  value={newBooking.Status || ""}
-                  onChange={(e) =>
-                    setNewBooking({ ...newBooking, Status: e.target.value })
-                  }
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <InfoIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Payment Amount"
-                  type="number"
-                  fullWidth
-                  required
-                  value={newBooking.PaymentAmount || ""}
-                  onChange={(e) =>
-                    setNewBooking({
-                      ...newBooking,
-                      PaymentAmount: e.target.value,
-                    })
-                  }
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Typography variant="body1">₱</Typography>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-            </Grid>
-          </DialogContent>
-          <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={() => {
-                setDialogType("booking");
-                setOpenConfirmation(true);
+        />
+
+          {/* ADD BOOKING DIALOG */}
+<Dialog
+  open={isAddBookingOpen}
+  onClose={() => setAddBookingOpen(false)}
+  fullWidth
+  maxWidth="lg"
+  sx={{
+    "& .MuiDialog-paper": {
+      borderRadius: 3,
+      boxShadow: 6,
+      p: 3,
+      overflow: "hidden",
+    },
+  }}
+>
+  <DialogTitle sx={{ p: 2 }}>
+    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <CalendarTodayIcon sx={{ fontSize: 32, color: "primary.main" }} />
+        <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+          Add New Booking
+        </Typography>
+      </Box>
+      <IconButton onClick={() => setAddBookingOpen(false)} sx={{ "&:hover": { color: "error.main" } }}>
+        <CloseIcon />
+      </IconButton>
+    </Box>
+  </DialogTitle>
+
+  <DialogContent dividers sx={{ p: 3 }}>
+    <Grid container spacing={2}>
+      {/* 1) "Booking For" Radio Group: "Member" vs. "Guest" */}
+      <Grid item xs={12}>
+        <FormControl component="fieldset">
+          <FormLabel component="legend">Booking For</FormLabel>
+          <RadioGroup
+            row
+            value={newBooking.bookingType}
+            onChange={(e) =>
+              setNewBooking((prev) => ({
+                ...prev,
+                bookingType: e.target.value,
+                // Reset certain fields if the user switches mid-way
+                MemberID: e.target.value === "member" ? "" : null,
+                GuestName: e.target.value === "guest" ? "" : "",
+                GuestEmail: e.target.value === "guest" ? "" : "",
+              }))
+            }
+          >
+            <FormControlLabel
+              value="member"
+              control={<Radio />}
+              label="Existing Member"
+            />
+            <FormControlLabel
+              value="guest"
+              control={<Radio />}
+              label="Guest"
+            />
+          </RadioGroup>
+        </FormControl>
+      </Grid>
+
+      {/* 2) Conditionally show Member Autocomplete OR Guest fields */}
+      {newBooking.bookingType === "member" ? (
+        <Grid item xs={12} sm={6}>
+          <Autocomplete
+            options={members}
+            getOptionLabel={(option) => option.FullName || ""}
+            value={
+              members.find((m) => m.MemberID === newBooking.MemberID) || null
+            }
+            onChange={(event, newValue) =>
+              setNewBooking((prev) => ({
+                ...prev,
+                MemberID: newValue ? newValue.MemberID : "",
+              }))
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Member"
+                required
+                InputProps={{
+                  ...params.InputProps,
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PersonIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            )}
+          />
+        </Grid>
+      ) : (
+        <>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="Guest Name"
+              fullWidth
+              required
+              value={newBooking.GuestName}
+              onChange={(e) =>
+                setNewBooking({ ...newBooking, GuestName: e.target.value })
+              }
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <PersonIcon />
+                  </InputAdornment>
+                ),
               }}
-              sx={{ textTransform: "none" }}
-              disabled={!isSubmitEnabledBooking}
-            >
-              <SaveIcon sx={{ mr: 1 }} /> Save Booking
-            </Button>
-          </DialogActions>
-        </Dialog>
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              label="Guest Email"
+              type="email"
+              fullWidth
+              required
+              value={newBooking.GuestEmail}
+              onChange={(e) =>
+                setNewBooking({ ...newBooking, GuestEmail: e.target.value })
+              }
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <EmailIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Grid>
+        </>
+      )}
+
+      {/* 3) Branch */}
+      <Grid item xs={12} sm={6}>
+        <FormControl fullWidth size="medium">
+          <InputLabel>Branch</InputLabel>
+          <Select
+            name="BranchID"
+            value={newBooking.BranchID}
+            onChange={(e) => setNewBooking({ ...newBooking, BranchID: e.target.value })}
+            startAdornment={
+              <InputAdornment position="start">
+                <BusinessIcon />
+              </InputAdornment>
+            }
+          >
+            <MenuItem value="">-- Select Branch --</MenuItem>
+            {branches.map((b) => (
+              <MenuItem key={b.value} value={String(b.value)}>
+                {b.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Grid>
+
+      {/* 4) Facility */}
+      <Grid item xs={12} sm={6}>
+        <FormControl fullWidth size="medium">
+          <InputLabel>Facility</InputLabel>
+          <Select
+            name="FacilityID"
+            value={newBooking.FacilityID}
+            onChange={(e) =>
+              setNewBooking({ ...newBooking, FacilityID: e.target.value })
+            }
+            startAdornment={
+              <InputAdornment position="start">
+                <FitnessCenterIcon />
+              </InputAdornment>
+            }
+          >
+            <MenuItem value="">-- Select Facility --</MenuItem>
+            {(newBooking.BranchID
+              ? facilities.filter(
+                  (f) => String(f.BranchID) === newBooking.BranchID
+                )
+              : facilities
+            ).map((f) => (
+              <MenuItem key={f.FacilityID} value={f.FacilityID}>
+                {f.FacilityName}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Grid>
+
+      {/* 5) Booking Date */}
+      <Grid item xs={12} sm={6}>
+        <TextField
+          label="Booking Date"
+          type="date"
+          fullWidth
+          required
+          value={newBooking.BookingDate || ""}
+          onChange={(e) =>
+            setNewBooking({ ...newBooking, BookingDate: e.target.value })
+          }
+          InputLabelProps={{ shrink: true }}
+          // If you're using dayjs, you can do: min: dayjs().format("YYYY-MM-DD")
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <EventIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Grid>
+
+      {/* 6) Booking Time */}
+      <Grid item xs={12} sm={6}>
+        <TextField
+          label="Booking Time"
+          type="time"
+          fullWidth
+          required
+          value={newBooking.BookingTime || ""}
+          onChange={(e) =>
+            setNewBooking({ ...newBooking, BookingTime: e.target.value })
+          }
+          InputLabelProps={{ shrink: true }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <AccessTimeIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Grid>
+
+      {/* 7) Duration */}
+      <Grid item xs={12} sm={6}>
+        <TextField
+          label="Duration (hrs)"
+          type="number"
+          fullWidth
+          required
+          value={newBooking.Duration || ""}
+          onChange={(e) =>
+            setNewBooking({ ...newBooking, Duration: e.target.value })
+          }
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <HourglassBottomIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Grid>
+
+      {/* 8) Status */}
+      <Grid item xs={12} sm={6}>
+        <TextField
+          label="Status"
+          fullWidth
+          required
+          value={newBooking.Status || ""}
+          onChange={(e) =>
+            setNewBooking({ ...newBooking, Status: e.target.value })
+          }
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <InfoIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Grid>
+
+      {/* 9) Payment Method */}
+      <Grid item xs={12} sm={6}>
+        <FormControl fullWidth>
+          <InputLabel>Payment Method</InputLabel>
+          <Select
+            label="Payment Method"
+            value={newBooking.PaymentMethod || "Cash"}
+            onChange={(e) =>
+              setNewBooking({ ...newBooking, PaymentMethod: e.target.value })
+            }
+            startAdornment={
+              <InputAdornment position="start">
+                <PaymentIcon />
+              </InputAdornment>
+            }
+          >
+            <MenuItem value="Cash">Cash</MenuItem>
+            <MenuItem value="GCash">GCash</MenuItem>
+            <MenuItem value="BPI">BPI</MenuItem>
+            <MenuItem value="BDO">BDO</MenuItem>
+          </Select>
+        </FormControl>
+      </Grid>
+
+      {/* 10) Payment Amount */}
+      <Grid item xs={12} sm={6}>
+        <TextField
+          label="Payment Amount"
+          type="number"
+          fullWidth
+          required
+          value={newBooking.PaymentAmount || ""}
+          onChange={(e) =>
+            setNewBooking({ ...newBooking, PaymentAmount: e.target.value })
+          }
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Typography variant="body1">₱</Typography>
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Grid>
+    </Grid>
+  </DialogContent>
+
+  <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
+    <Button
+      variant="contained"
+      color="primary"
+      onClick={() => {
+        setDialogType("booking");
+        setOpenConfirmation(true);
+      }}
+      sx={{ textTransform: "none" }}
+      disabled={!isSubmitEnabledBooking}
+    >
+      <SaveIcon sx={{ mr: 1 }} /> Save Booking
+    </Button>
+  </DialogActions>
+</Dialog>
+
+
               
         {/* ADD SESSION DIALOG */}
         <Dialog
@@ -2006,34 +2290,16 @@ export default function BookingsSessions() {
           onClose={() => setViewBookingModal(false)}
           fullWidth
           maxWidth="sm"
-          sx={{
-            "& .MuiDialog-paper": {
-              borderRadius: 3,
-              boxShadow: 6,
-              p: 3,
-              overflow: "hidden",
-            },
-          }}
         >
-          <DialogTitle sx={{ p: 2 }}>
-            <Box
-              sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-            >
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                <EventIcon sx={{ fontSize: 32, color: "primary.main" }} />
-                <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                  Booking Details
-                </Typography>
-              </Box>
-              <IconButton
-                onClick={() => setViewBookingModal(false)}
-                sx={{ "&:hover": { color: theme.palette.error.main } }}
-              >
+          <DialogTitle>
+            <Box display="flex" alignItems="center" justifyContent="space-between">
+              <Typography variant="h6">Booking Details</Typography>
+              <IconButton onClick={() => setViewBookingModal(false)}>
                 <CloseIcon />
               </IconButton>
             </Box>
           </DialogTitle>
-          <DialogContent dividers sx={{ p: 4 }}>
+          <DialogContent dividers>
             {selectedBooking && (
               <Grid container spacing={2}>
                 <Grid item xs={6}>
@@ -2043,7 +2309,6 @@ export default function BookingsSessions() {
                     variant="filled"
                     InputProps={{ readOnly: true }}
                     value={selectedBooking.BookingID || "—"}
-                    sx={{ mb: 2 }}
                   />
                 </Grid>
                 <Grid item xs={6}>
@@ -2053,27 +2318,42 @@ export default function BookingsSessions() {
                     variant="filled"
                     InputProps={{ readOnly: true }}
                     value={selectedBooking.Branch || "—"}
-                    sx={{ mb: 2 }}
                   />
                 </Grid>
-                <Grid item xs={6}>
+
+                {/* WHO BOOKED? If MemberID is present, show MemberName; otherwise Guest */}
+                <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="Member Name"
+                    label="Booked By"
                     variant="filled"
                     InputProps={{ readOnly: true }}
-                    value={selectedBooking.MemberName || "—"}
-                    sx={{ mb: 2 }}
+                    value={
+                      selectedBooking.MemberID
+                        ? selectedBooking.MemberName
+                        : selectedBooking.GuestName
+                    }
                   />
                 </Grid>
-                <Grid item xs={6}>
+                {!selectedBooking.MemberID && (
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Guest Email"
+                      variant="filled"
+                      InputProps={{ readOnly: true }}
+                      value={selectedBooking.GuestEmail || "—"}
+                    />
+                  </Grid>
+                )}
+
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
-                    label="Facility Name"
+                    label="Facility"
                     variant="filled"
                     InputProps={{ readOnly: true }}
                     value={selectedBooking.FacilityName || "—"}
-                    sx={{ mb: 2 }}
                   />
                 </Grid>
                 <Grid item xs={6}>
@@ -2082,8 +2362,7 @@ export default function BookingsSessions() {
                     label="Date"
                     variant="filled"
                     InputProps={{ readOnly: true }}
-                    value={formatDate(selectedBooking.BookingDate || "—")}
-                    sx={{ mb: 2 }}
+                    value={selectedBooking.BookingDate || "—"}
                   />
                 </Grid>
                 <Grid item xs={6}>
@@ -2092,18 +2371,16 @@ export default function BookingsSessions() {
                     label="Time"
                     variant="filled"
                     InputProps={{ readOnly: true }}
-                    value={formatTime(selectedBooking.BookingTime || "—")}
-                    sx={{ mb: 2 }}
+                    value={selectedBooking.BookingTime || "—"}
                   />
                 </Grid>
                 <Grid item xs={6}>
                   <TextField
                     fullWidth
-                    label="Duration"
+                    label="Duration (hrs)"
                     variant="filled"
                     InputProps={{ readOnly: true }}
                     value={selectedBooking.Duration || "—"}
-                    sx={{ mb: 2 }}
                   />
                 </Grid>
                 <Grid item xs={6}>
@@ -2113,48 +2390,67 @@ export default function BookingsSessions() {
                     variant="filled"
                     InputProps={{ readOnly: true }}
                     value={selectedBooking.Status || "—"}
-                    sx={{ mb: 2 }}
                   />
                 </Grid>
+
+                {/* Payment info, if you store it */}
               </Grid>
             )}
           </DialogContent>
         </Dialog>
 
         {/* EDIT BOOKING DIALOG */}
-        <Dialog
-          open={editBookingModal}
-          onClose={() => setEditBookingModal(false)}
-          fullWidth
-          maxWidth="sm"
-          sx={{
-            "& .MuiDialog-paper": {
-              borderRadius: 3,
-              boxShadow: 6,
-              p: 3,
-              overflow: "hidden",
-            },
-          }}
-        >
-          <DialogTitle sx={{ p: 2 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                <EventIcon sx={{ fontSize: 32, color: "primary.main" }} />
-                <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                  Edit Booking
-                </Typography>
-              </Box>
-              <IconButton
-                onClick={() => setEditBookingModal(false)}
-                sx={{ "&:hover": { color: theme.palette.error.main } }}
-              >
-                <CloseIcon />
-              </IconButton>
-            </Box>
-          </DialogTitle>
-          <DialogContent dividers sx={{ p: 4 }}>
-            {selectedBooking && (
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <Dialog
+        open={editBookingModal}
+        onClose={() => setEditBookingModal(false)}
+        fullWidth
+        maxWidth="sm"
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: 3,
+            boxShadow: 6,
+            p: 3,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle>
+          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+            <Typography variant="h6">Edit Booking</Typography>
+            <IconButton onClick={() => setEditBookingModal(false)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {selectedBooking && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {/* MEMBER vs. GUEST */}
+              <FormControl component="fieldset">
+                <FormLabel>Booking For</FormLabel>
+                <RadioGroup
+                  row
+                  value={selectedBooking.bookingType || "member"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedBooking((prev) => ({
+                      ...prev,
+                      bookingType: val,
+                      // If switching to "member", blank out guest fields
+                      // If switching to "guest", blank out member fields
+                      MemberID:   val === "member" ? "" : null,
+                      GuestName:  val === "guest"  ? "" : "",
+                      GuestEmail: val === "guest"  ? "" : "",
+                    }));
+                  }}
+                >
+                  <FormControlLabel value="member" control={<Radio />} label="Member" />
+                  <FormControlLabel value="guest"  control={<Radio />} label="Guest"  />
+                </RadioGroup>
+              </FormControl>
+
+              {/* If bookingType=member, show Autocomplete; else show Guest fields */}
+              {selectedBooking.bookingType === "member" ? (
                 <Autocomplete
                   options={members}
                   getOptionLabel={(option) => option.FullName || ""}
@@ -2162,91 +2458,142 @@ export default function BookingsSessions() {
                     members.find((m) => m.MemberID === selectedBooking.MemberID) || null
                   }
                   onChange={(e, val) => {
-                    if (val) {
-                      setSelectedBooking((prev) => ({
-                        ...prev,
-                        MemberID: val.MemberID,
-                        MemberName: val.FullName,
-                      }));
-                    }
+                    setSelectedBooking((prev) => ({
+                      ...prev,
+                      MemberID: val ? val.MemberID : "",
+                    }));
                   }}
                   renderInput={(params) => (
                     <TextField {...params} label="Member" size="small" fullWidth />
                   )}
                 />
-                <TextField
-                  label="Facility Name"
-                  size="small"
-                  fullWidth
-                  value={selectedBooking.FacilityName || ""}
+              ) : (
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Guest Name"
+                      size="small"
+                      fullWidth
+                      value={selectedBooking.GuestName || ""}
+                      onChange={(e) =>
+                        setSelectedBooking((prev) => ({ ...prev, GuestName: e.target.value }))
+                      }
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Guest Email"
+                      type="email"
+                      size="small"
+                      fullWidth
+                      value={selectedBooking.GuestEmail || ""}
+                      onChange={(e) =>
+                        setSelectedBooking((prev) => ({ ...prev, GuestEmail: e.target.value }))
+                      }
+                    />
+                  </Grid>
+                </Grid>
+              )}
+
+              {/* Facility ID */}
+              <TextField
+                label="Facility ID"
+                size="small"
+                fullWidth
+                value={selectedBooking.FacilityID || ""}
+                onChange={(e) =>
+                  setSelectedBooking((prev) => ({ ...prev, FacilityID: e.target.value }))
+                }
+              />
+
+              {/* Booking Date */}
+              <TextField
+                label="Booking Date"
+                type="date"
+                size="small"
+                fullWidth
+                value={selectedBooking.BookingDate || ""}
+                onChange={(e) =>
+                  setSelectedBooking((prev) => ({ ...prev, BookingDate: e.target.value }))
+                }
+              />
+
+              {/* Booking Time */}
+              <TextField
+                label="Booking Time"
+                type="time"
+                size="small"
+                fullWidth
+                value={selectedBooking.BookingTime || ""}
+                onChange={(e) =>
+                  setSelectedBooking((prev) => ({ ...prev, BookingTime: e.target.value }))
+                }
+              />
+
+              {/* Duration */}
+              <TextField
+                label="Duration (hrs)"
+                type="number"
+                size="small"
+                fullWidth
+                value={selectedBooking.Duration || ""}
+                onChange={(e) =>
+                  setSelectedBooking((prev) => ({ ...prev, Duration: e.target.value }))
+                }
+              />
+
+              {/* Payment Method */}
+              <FormControl size="small">
+                <InputLabel>Payment Method</InputLabel>
+                <Select
+                  value={selectedBooking.PaymentMethod || "Cash"}
                   onChange={(e) =>
-                    setSelectedBooking({ ...selectedBooking, FacilityName: e.target.value })
+                    setSelectedBooking((prev) => ({ ...prev, PaymentMethod: e.target.value }))
                   }
-                />
-                <DesktopDateTimePicker
-                  label="Booking Date & Time"
-                  value={
-                    selectedBooking.BookingDate && selectedBooking.BookingTime
-                      ? dayjs(`${selectedBooking.BookingDate} ${selectedBooking.BookingTime}`)
-                      : null
-                  }
-                  onChange={(newVal) => {
-                    if (newVal && newVal.isValid()) {
-                      const formatted = newVal.format("YYYY-MM-DD HH:mm:ss");
-                      const [date, time] = formatted.split(" ");
-                      setSelectedBooking({
-                        ...selectedBooking,
-                        BookingDate: date,
-                        BookingTime: time,
-                      });
-                    }
-                  }}
-                  format="YYYY-MM-DD HH:mm"
-                  slotProps={{
-                    textField: (params) => (
-                      <TextField {...params} size="small" fullWidth />
-                    ),
-                  }}
-                />
-                <TextField
-                  label="Duration"
-                  size="small"
-                  fullWidth
-                  value={selectedBooking.Duration || ""}
+                >
+                  <MenuItem value="Cash">Cash</MenuItem>
+                  <MenuItem value="GCash">GCash</MenuItem>
+                  <MenuItem value="BPI">BPI</MenuItem>
+                  <MenuItem value="BDO">BDO</MenuItem>
+                </Select>
+              </FormControl>
+
+              {/* Payment Amount */}
+              <TextField
+                label="Payment Amount"
+                type="number"
+                size="small"
+                value={selectedBooking.PaymentAmount || ""}
+                onChange={(e) =>
+                  setSelectedBooking((prev) => ({ ...prev, PaymentAmount: e.target.value }))
+                }
+              />
+
+              {/* Status */}
+              <FormControl size="small" fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  label="Status"
+                  value={selectedBooking.Status || "Confirmed"}
                   onChange={(e) =>
-                    setSelectedBooking({ ...selectedBooking, Duration: e.target.value })
+                    setSelectedBooking((prev) => ({ ...prev, Status: e.target.value }))
                   }
-                />
-                <FormControl fullWidth size="small">
-                  <InputLabel>Status</InputLabel>
-                  <Select
-                    label="Status"
-                    value={selectedBooking.Status || ""}
-                    onChange={(e) =>
-                      setSelectedBooking((prev) => ({ ...prev, Status: e.target.value }))
-                    }
-                  >
-                    {STATUS_OPTIONS.map((opt) => (
-                      <MenuItem key={opt} value={opt}>
-                        {opt}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Box>
-            )}
-          </DialogContent>
-          <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleUpdateBooking}
-              sx={{ textTransform: "none" }}
-            >
-              <SaveIcon sx={{ mr: 1 }} /> Save Changes
-            </Button>
-          </DialogActions>
-        </Dialog>
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditBookingModal(false)}>Cancel</Button>
+          <Button variant="contained" color="primary" onClick={handleUpdateBooking}>
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
 
         {/* EDIT SESSION DIALOG */}
         <Dialog
@@ -2865,13 +3212,18 @@ export default function BookingsSessions() {
                   Add New Coach
                 </Typography>
               </Box>
-              <IconButton onClick={() => setAddCoachOpen(false)} sx={{ "&:hover": { color: "error.main" } }}>
+              <IconButton 
+                onClick={() => setAddCoachOpen(false)}
+                sx={{ "&:hover": { color: "error.main" } }}
+              >
                 <CloseIcon />
               </IconButton>
             </Box>
           </DialogTitle>
+
           <DialogContent dividers sx={{ p: 3 }}>
             <Grid container spacing={2}>
+              {/* Full Name */}
               <Grid item xs={12}>
                 <TextField
                   label="Full Name"
@@ -2888,6 +3240,8 @@ export default function BookingsSessions() {
                   }}
                 />
               </Grid>
+
+              {/* Specialty */}
               <Grid item xs={12}>
                 <TextField
                   label="Specialty"
@@ -2904,9 +3258,30 @@ export default function BookingsSessions() {
                   }}
                 />
               </Grid>
+
+              {/* Email */}
               <Grid item xs={12}>
                 <TextField
-                  label="Contact Info"
+                  label="Email Address"
+                  type="email"
+                  fullWidth
+                  required
+                  value={newCoach.Email || ""}
+                  onChange={(e) => setNewCoach({ ...newCoach, Email: e.target.value })}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <EmailIcon />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+
+              {/* Contact Info (Phone) */}
+              <Grid item xs={12}>
+                <TextField
+                  label="Contact Info (Phone)"
                   fullWidth
                   required
                   value={newCoach.ContactInfo}
@@ -2922,6 +3297,7 @@ export default function BookingsSessions() {
               </Grid>
             </Grid>
           </DialogContent>
+
           <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
             <Button
               variant="contained"
@@ -2969,6 +3345,7 @@ export default function BookingsSessions() {
               </IconButton>
             </Box>
           </DialogTitle>
+
           <DialogContent dividers sx={{ p: 4 }}>
             {selectedCoach && (
               <Grid container spacing={2}>
@@ -2982,6 +3359,7 @@ export default function BookingsSessions() {
                     sx={{ mb: 2 }}
                   />
                 </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -2992,6 +3370,7 @@ export default function BookingsSessions() {
                     sx={{ mb: 2 }}
                   />
                 </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -3002,16 +3381,18 @@ export default function BookingsSessions() {
                     sx={{ mb: 2 }}
                   />
                 </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="Availability"
+                    label="Email Address"
                     variant="filled"
                     InputProps={{ readOnly: true }}
-                    value={selectedCoach.Availability || "—"}
+                    value={selectedCoach.Email || "—"}
                     sx={{ mb: 2 }}
                   />
                 </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -3058,6 +3439,7 @@ export default function BookingsSessions() {
               </IconButton>
             </Box>
           </DialogTitle>
+
           <DialogContent dividers sx={{ p: 4 }}>
             {selectedCoach && (
               <Grid container spacing={2}>
@@ -3072,6 +3454,7 @@ export default function BookingsSessions() {
                     }
                   />
                 </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -3083,10 +3466,24 @@ export default function BookingsSessions() {
                     }
                   />
                 </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="Contact Info"
+                    label="Email Address"
+                    type="email"
+                    size="small"
+                    value={selectedCoach.Email || ""}
+                    onChange={(e) =>
+                      setSelectedCoach({ ...selectedCoach, Email: e.target.value })
+                    }
+                  />
+                </Grid>
+
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Contact Info (Phone)"
                     size="small"
                     value={selectedCoach.ContactInfo || ""}
                     onChange={(e) =>
@@ -3097,6 +3494,7 @@ export default function BookingsSessions() {
               </Grid>
             )}
           </DialogContent>
+
           <DialogActions sx={{ justifyContent: "flex-end", py: 2 }}>
             <Button
               variant="contained"
@@ -3235,6 +3633,108 @@ export default function BookingsSessions() {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* Generate Timeslots Dialog */}
+          <Dialog
+            open={isGenerateModalOpen}
+            onClose={() => setGenerateModalOpen(false)}
+            fullWidth
+            maxWidth="sm"
+          >
+            <DialogTitle>
+              Generate Timeslots for Coach
+            </DialogTitle>
+            <DialogContent dividers>
+              <Typography variant="body2" gutterBottom>
+                Select date range, branch, location, etc., and we'll auto-create 1-hour
+                sessions for each available slot within that range.
+              </Typography>
+              <Grid container spacing={2} sx={{ mt: 1 }}>
+                <Grid item xs={6}>
+                  <TextField
+                    label="Start Date"
+                    type="date"
+                    fullWidth
+                    value={generateForm.startDate}
+                    onChange={(e) =>
+                      setGenerateForm({ ...generateForm, startDate: e.target.value })
+                    }
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    label="End Date"
+                    type="date"
+                    fullWidth
+                    value={generateForm.endDate}
+                    onChange={(e) =>
+                      setGenerateForm({ ...generateForm, endDate: e.target.value })
+                    }
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Branch</InputLabel>
+                    <Select
+                      label="Branch"
+                      value={generateForm.branchId}
+                      onChange={(e) =>
+                        setGenerateForm({ ...generateForm, branchId: e.target.value })
+                      }
+                    >
+                      <MenuItem value="">-- Select Branch --</MenuItem>
+                      {branches.map((b) => (
+                        <MenuItem key={b.value} value={b.value}>
+                          {b.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12}>
+                  <TextField
+                    label="Location (Optional)"
+                    fullWidth
+                    value={generateForm.location}
+                    onChange={(e) =>
+                      setGenerateForm({ ...generateForm, location: e.target.value })
+                    }
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    label="Session Type"
+                    fullWidth
+                    value={generateForm.sessionType}
+                    onChange={(e) =>
+                      setGenerateForm({ ...generateForm, sessionType: e.target.value })
+                    }
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    label="Fee"
+                    type="number"
+                    fullWidth
+                    value={generateForm.fee}
+                    onChange={(e) =>
+                      setGenerateForm({ ...generateForm, fee: e.target.value })
+                    }
+                  />
+                </Grid>
+              </Grid>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setGenerateModalOpen(false)}>Cancel</Button>
+              <Button variant="contained" onClick={generateTimeslots}>
+                Generate
+              </Button>
+            </DialogActions>
+          </Dialog>
 
         {/* SNACKBAR MESSAGES */}
         <Snackbar

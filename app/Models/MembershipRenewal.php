@@ -8,14 +8,17 @@ class MembershipRenewal extends Model
 {
     protected $table = 'membership_renewals';
     protected $primaryKey = 'RenewalID';
-    public $timestamps = false; // If no created_at/updated_at columns
+    public $timestamps = false; // or true, if you actually have created_at/updated_at
 
     protected $fillable = [
         'MemberID',
         'PlanID',
         'RenewalAmount',
-        'RenewalDate', // Must match the DB column name
+        'RenewalDate',
+        'RenewalStartDate',
+        'BranchID',               // <--- Add this line
     ];
+
     // Relationship: belongs to a member
     public function member()
     {
@@ -26,5 +29,11 @@ class MembershipRenewal extends Model
     public function plan()
     {
         return $this->belongsTo(MembershipPlan::class, 'PlanID', 'PlanID');
+    }
+
+    // Relationship: belongs to a branch (optional if you need it)
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');
     }
 }

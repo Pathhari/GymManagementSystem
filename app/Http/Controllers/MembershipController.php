@@ -30,38 +30,33 @@ class MembershipController extends Controller
      */
     public function apiIndex()
     {
-        $staff = auth('staff')->user();
-
-        if ($staff) {
-            $branchIDs = $staff->branches->pluck('BranchID');
-
-            // Filter members by those branches
-            $members = Member::whereIn('StartedBranchID', $branchIDs)
-                ->orderBy('MemberID','desc')
-                ->get();
-
-            // Similarly for Freezes, Renewals, Walk-Ins, etc.
-            $freezes = MembershipFreeze::whereHas('member', function ($q) use ($branchIDs) {
-                $q->whereIn('StartedBranchID', $branchIDs);
-            })->orderBy('FreezeID','desc')->get();
-
-            $renewals = MembershipRenewal::whereIn('MemberID', function ($sub) use ($branchIDs) {
-                $sub->select('MemberID')
-                    ->from('members')
-                    ->whereIn('StartedBranchID', $branchIDs);
-            })->orderBy('RenewalID','desc')->get();
-
-            $walkIns = WalkIn::whereIn('BranchID', $branchIDs)
-                ->orderBy('WalkInID','desc')
-                ->get();
-        } else {
-            // Admin or Owner => see all
-            $members  = Member::orderBy('MemberID','desc')->get();
-            $freezes  = MembershipFreeze::orderBy('FreezeID','desc')->get();
-            $renewals = MembershipRenewal::orderBy('RenewalID','desc')->get();
-            $walkIns  = WalkIn::orderBy('WalkInID','desc')->get();
-        }
-
+        // List all relationships you want to eager-load
+        $relations = [
+            'startedBranch',
+            'plan',
+            'renewals',
+            'freezes',
+            'changeLogs',
+            'payments',
+            'bookings',
+            'notifications',
+            'lockerUsages',
+            'sessionBookings',
+            'sessionAttendances',
+            'sessionWaitlists',
+            'visits',
+            'status',
+        ];
+    
+        // Regardless of the logged-in user, fetch all members along with the defined relationships
+        $members  = Member::with($relations)
+                    ->orderBy('MemberID', 'desc')
+                    ->get();
+    
+        $freezes  = MembershipFreeze::orderBy('FreezeID', 'desc')->get();
+        $renewals = MembershipRenewal::orderBy('RenewalID', 'desc')->get();
+        $walkIns  = WalkIn::orderBy('WalkInID', 'desc')->get();
+    
         return response()->json([
             'members'  => $members,
             'walkIns'  => $walkIns,
@@ -69,6 +64,7 @@ class MembershipController extends Controller
             'freezes'  => $freezes,
         ]);
     }
+    
 
     /**
      * Simple search by name (GET /membership/search-members?q=)
@@ -111,6 +107,7 @@ class MembershipController extends Controller
              'Biometrics'           => 'nullable|string',
              'FreeSessions'         => 'nullable|integer',
              'Notes'                => 'nullable|string',
+             
              'PhotoFile'            => 'nullable|image|mimes:jpg,png,jpeg,gif|max:2048',
      
              // Payment & multi-month
@@ -120,14 +117,9 @@ class MembershipController extends Controller
              'MonthsToPayUpfront'           => 'nullable|integer|min:1', // e.g. 3 or 6
          ]);
      
-         // If staff => override BranchID
-         $staff = auth('staff')->user();
-         if ($staff) {
-             $data['StartedBranchID'] = $staff->BranchID;
-         } else {
-             $data['StartedBranchID'] = $data['BranchID'] ?? null;
-         }
-     
+            $data['StartedBranchID'] = $data['BranchID'] ?? null;
+        
+         
          // Handle photo upload
          if ($request->hasFile('PhotoFile')) {
              $filename = 'member_' . time() . '.' . $request->file('PhotoFile')->extension();
@@ -308,15 +300,14 @@ class MembershipController extends Controller
      */
     public function apiUpdateMember(Request $request, $id)
     {
-        \Log::info('Message here');
         $member = Member::findOrFail($id);
-
-        // Staff => block updating cross‐branch
+    
+        // For staff, ensure the member belongs to one of their branches.
         $staff = auth('staff')->user();
-        if ($staff && $member->StartedBranchID != $staff->BranchID) {
+        if ($staff && !$staff->branches->pluck('BranchID')->contains($member->StartedBranchID)) {
             abort(403, 'Cannot update member from another branch.');
         }
-
+    
         $data = $request->validate([
             'BranchID'             => 'nullable|exists:branches,BranchID',
             'FullName'             => 'nullable|string|max:255',
@@ -335,24 +326,29 @@ class MembershipController extends Controller
             'PaymentMethod'        => 'nullable|string|max:50',
             'PaymentAmount'        => 'nullable|numeric|min:0',
         ]);
-
-        // If staff => must remain same branch
-        if ($staff && isset($data['BranchID']) && $data['BranchID'] != $member->StartedBranchID) {
-            abort(403, 'Staff cannot assign a different branch.');
+    
+        // For staff, do not allow changing to a branch not already assigned.
+        if ($staff) {
+            if (isset($data['BranchID']) && !$staff->branches->pluck('BranchID')->contains($data['BranchID'])) {
+                abort(403, 'Staff cannot assign a different branch.');
+            }
+            // Ensure we keep the original branch.
+            $data['StartedBranchID'] = $member->StartedBranchID;
         } else {
             $data['StartedBranchID'] = $data['BranchID'] ?? $member->StartedBranchID;
         }
-
-        // Handle photo upload if provided
+    
+        // Handle photo upload if provided.
         if ($request->hasFile('PhotoFile')) {
             $filename = 'member_' . time() . '.' . $request->file('PhotoFile')->extension();
             $photoPath = $request->file('PhotoFile')->storeAs('member_photos', $filename, 'public');
             $data['PhotoPath'] = $photoPath;
         }
-
+    
         $member->update($data);
         return response()->json($member, 200);
     }
+    
 
     /**
      * Delete a member (DELETE /membership/members/{id}).
@@ -497,105 +493,131 @@ class MembershipController extends Controller
 
     public function storeRenewal(Request $request)
     {
+        $staff = auth('staff')->user();
+    
+        // 1) Validate incoming data
         $data = $request->validate([
             'MemberID'           => 'required|exists:members,MemberID',
-            'NewEndDate'         => 'required|date|after_or_equal:today', 
+            'RenewalStartDate'   => 'required|date|after_or_equal:today',
+            'NewEndDate'         => 'required|date|after_or_equal:RenewalStartDate',
             'RenewalAmount'      => 'required|numeric|min:0',
             'Payments'           => 'array',
             'Payments.*.PaymentMethod' => 'string|max:50',
             'Payments.*.PaymentAmount' => 'numeric|min:0',
             'PaymentFor'         => 'nullable|string',
+    
+            // NEW FIELD: which branch is performing the renewal
+            'RenewalBranchID'    => 'nullable|exists:branches,BranchID',
         ]);
-
-        // 1) Fetch the member
+    
+        // 2) Fetch the member
         $member = Member::findOrFail($data['MemberID']);
     
-        // 2) Update membership end date to the user-chosen date
+        // 3) Decide which branch to use for the invoice/payment
+        //    - If the request included 'RenewalBranchID', we use that
+        //    - Otherwise, you could use staff->branches->first() if staff has only one branch
+        //    - Fallback: use the original $member->StartedBranchID if none provided
+        $branchForRenewal = $request->input('RenewalBranchID') ?? $member->StartedBranchID;
+        if (!empty($data['RenewalBranchID'])) {
+            // If staff must only use a branch they belong to, check that here:
+            if ($staff && !$staff->branches->pluck('BranchID')->contains($data['RenewalBranchID'])) {
+                abort(403, 'Staff cannot assign a branch they do not belong to.');
+            }
+            $branchForRenewal = $data['RenewalBranchID'];
+        } elseif ($staff && $staff->branches->count() === 1) {
+            $branchForRenewal = $staff->branches->first()->BranchID;
+        }
+    
+        // 4) Update membership end date with the user-chosen new end date
         $member->MembershipEndDate = $data['NewEndDate'];
-        $member->MemberStatusID    = 1; // e.g. "Active"
         $member->save();
     
-        // 3) Create a renewal record
-        //    (Note that we do not need PlanID if we’re just keeping the existing plan)
+        // 5) Create a renewal record (still referencing the old plan, if any)
         $renewal = MembershipRenewal::create([
-            'MemberID'      => $member->MemberID,
-            'PlanID'        => $member->PlanID,      // keep the same plan, if needed
-            'RenewalAmount' => $data['RenewalAmount'],
-            'RenewalDate'   => now(),
+            'MemberID'         => $member->MemberID,
+            'PlanID'           => $member->PlanID,      // keep existing plan
+            'RenewalAmount'    => $data['RenewalAmount'],
+            'RenewalDate'      => now(),                // date of this renewal action
+            'RenewalStartDate' => $data['RenewalStartDate'],
+            'BranchID'         => $branchForRenewal, // new column
         ]);
     
-        // 4) Optionally create an invoice + line item
+        // 6) Create an invoice in the *renewal* branch, not the original StartedBranchID
         $invoice = Invoice::create([
-            'BranchID'     => $member->StartedBranchID,
+            'BranchID'     => $branchForRenewal,
             'MemberID'     => $member->MemberID,
             'InvoiceDate'  => now(),
             'DueDate'      => now(),
             'InvoiceTotal' => $data['RenewalAmount'],
         ]);
     
+        // 7) Attach a line item
         InvoiceLineItem::create([
             'InvoiceID'   => $invoice->InvoiceID,
             'ItemType'    => 'Renewal',
-            'ItemID'      => $member->PlanID, // or null, if no plan
+            'ItemID'      => $member->PlanID,  // or null
             'Description' => 'Manual Renewal',
             'Quantity'    => 1,
             'UnitPrice'   => $data['RenewalAmount'],
             'Subtotal'    => $data['RenewalAmount'],
         ]);
     
-// 5) Payment logic using the 'Payments' array
-$paymentsData = $data['Payments'] ?? [];
-$payment = null;  // optional if you want to store the last Payment created
-
-if (!empty($paymentsData)) {
-    $allocatedSoFar = 0;
-
-    foreach ($paymentsData as $payItem) {
-        if (empty($payItem['PaymentMethod']) || empty($payItem['PaymentAmount'])) {
-            // skip or handle the error
-            continue;
-        }
-
-        // Create the Payment
-        $paymentFor = !empty($data['PaymentFor'])
-            ? json_decode($data['PaymentFor'], true)
-            : ["Manual Membership Renewal"];
-
-        $payment = Payment::create([
-            'MemberID'      => $member->MemberID,
-            'BranchID'      => $member->StartedBranchID,
-            'PaymentMethod' => $payItem['PaymentMethod'],
-            'Amount'        => $payItem['PaymentAmount'],
-            'PaymentDate'   => now(),
-            'PaymentFor'    => $paymentFor,
-            'Status'        => 'Completed',
-        ]);
-
-        // Allocate to invoice
-        PaymentInvoice::create([
-            'PaymentID'       => $payment->PaymentID,
-            'InvoiceID'       => $invoice->InvoiceID,
-            'AmountAllocated' => $payItem['PaymentAmount'],
-        ]);
-
-        $allocatedSoFar += $payItem['PaymentAmount'];
-    }
-
-    // Mark invoice PaymentStatus
-    if ($allocatedSoFar >= $data['RenewalAmount']) {
-        $invoice->update(['PaymentStatus' => 'Paid']);
-    } elseif ($allocatedSoFar > 0) {
-        $invoice->update(['PaymentStatus' => 'Partially Paid']);
-    } else {
-        $invoice->update(['PaymentStatus' => 'Unpaid']);
-    }
-
-} else {
-    // No payments => invoice is Unpaid
-    $invoice->update(['PaymentStatus' => 'Unpaid']);
-}
+        // 8) Payment logic
+        $paymentsData   = $data['Payments'] ?? [];
+        $allocatedSoFar = 0;
+        $payment        = null;
     
-        // 6) Return data
+        foreach ($paymentsData as $payItem) {
+            if (empty($payItem['PaymentMethod']) || empty($payItem['PaymentAmount'])) {
+                continue;
+            }
+    
+            $paymentFor = !empty($data['PaymentFor'])
+                ? json_decode($data['PaymentFor'], true)
+                : ["Membership Renewal"];
+    
+            // Create a Payment in the *renewal* branch
+            $payment = Payment::create([
+                'MemberID'      => $member->MemberID,
+                'BranchID'      => $branchForRenewal,
+                'PaymentMethod' => $payItem['PaymentMethod'],
+                'Amount'        => $payItem['PaymentAmount'],
+                'PaymentDate'   => now(),
+                'PaymentFor'    => $paymentFor,
+                'Status'        => 'Completed',
+            ]);
+    
+            // Link payment to invoice
+            PaymentInvoice::create([
+                'PaymentID'       => $payment->PaymentID,
+                'InvoiceID'       => $invoice->InvoiceID,
+                'AmountAllocated' => $payItem['PaymentAmount'],
+            ]);
+    
+            $allocatedSoFar += $payItem['PaymentAmount'];
+        }
+    
+        // 9) Update invoice payment status
+        if ($allocatedSoFar >= $data['RenewalAmount']) {
+            $invoice->update(['PaymentStatus' => 'Paid']);
+        } elseif ($allocatedSoFar > 0) {
+            $invoice->update(['PaymentStatus' => 'Partially Paid']);
+        } else {
+            $invoice->update(['PaymentStatus' => 'Unpaid']);
+        }
+    
+        // 10) Decide if the member can become Active
+        $monthsPaidSoFar = $this->calculateMonthsPaidSoFar($member);
+    
+        if ($monthsPaidSoFar >= 3 && $invoice->PaymentStatus === 'Paid') {
+            $member->MemberStatusID = 1; // 1 = ACTIVE
+        } else {
+            // For example, 6 = "NEW MEMBER" or you can keep the existing
+            $member->MemberStatusID = 6;
+        }
+        $member->save();
+    
+        // 11) Return JSON
         return response()->json([
             'renewal' => $renewal,
             'invoice' => $invoice,
@@ -605,22 +627,52 @@ if (!empty($paymentsData)) {
     }
     
     
-public function destroyRenewal($id)
-{
-    $renewal = MembershipRenewal::findOrFail($id);
-    $renewal->delete();
-    return response()->json(['message' => 'Renewal deleted'], 200);
-}
+        public function updateRenewal(Request $request, $id)
+    {
+        $data = $request->validate([
+            'RenewalStartDate' => 'required|date|after_or_equal:today',
+            'NewEndDate'       => 'required|date|after_or_equal:RenewalStartDate',
+            'RenewalAmount'    => 'required|numeric|min:0',
+        ]);
+
+        // Fetch the renewal record
+        $renewal = MembershipRenewal::findOrFail($id);
+        $member  = $renewal->member;
+
+        // Update renewal row
+        $renewal->RenewalStartDate = $data['RenewalStartDate'];
+        $renewal->RenewalAmount    = $data['RenewalAmount'];
+        // If you want to update RenewalDate to "now" each edit, do so:
+        $renewal->RenewalDate      = now();
+        $renewal->save();
+
+        // Update the member's MembershipEndDate as well
+        $member->MembershipEndDate = $data['NewEndDate'];
+        $member->save();
+
+        // If you have any business logic to recalc months, do it here...
+        // e.g. $monthsPaidSoFar = $this->calculateMonthsPaidSoFar($member);
+
+        return response()->json([
+            'renewal' => $renewal,
+            'member'  => $member,
+        ], 200);
+    }
+     
+    public function destroyRenewal($id)
+    {
+        $renewal = MembershipRenewal::findOrFail($id);
+        $renewal->delete();
+        return response()->json(['message' => 'Renewal deleted'], 200);
+    }
 
 /* ------------------------------------------------------------------
  * 4) MEMBERSHIP FREEZE
  * ------------------------------------------------------------------ */
-
- public function storeFreeze(Request $request)
+public function storeFreeze(Request $request)
 {
     $staff = auth('staff')->user();
 
-    // Validate the request
     $data = $request->validate([
         'MemberID'        => 'required|exists:members,MemberID',
         'FreezeStartDate' => 'required|date',
@@ -628,34 +680,24 @@ public function destroyRenewal($id)
         'Reason'          => 'nullable|string|max:255',
     ]);
 
-    // Fetch the member and check branch access
     $member = Member::findOrFail($data['MemberID']);
-    if ($staff && $member->StartedBranchID != $staff->BranchID) {
-        abort(403, 'Not your branch.');
-    }
 
-    // Add StartedBranchID to the data so it can be mass assigned
+    // Attach the member's branch to the freeze record.
     $data['StartedBranchID'] = $member->StartedBranchID;
 
-    // 1) Create the freeze record with the new field
     $freeze = MembershipFreeze::create($data);
 
-    // 2) Update the member’s status => set to "Frozen" (assuming '2' = Frozen)
+    // Update the member’s status to Frozen (assuming 2 = Frozen).
     $member->MemberStatusID = 2;
     $member->save();
 
-    // 3) Extend the MembershipEndDate by the freeze duration
-    //    3a) If FreezeEndDate is null, treat it as the same as FreezeStartDate
+    // Extend the MembershipEndDate by the freeze duration.
     $freezeStart = Carbon::parse($data['FreezeStartDate']);
     $freezeEnd   = $data['FreezeEndDate'] ? Carbon::parse($data['FreezeEndDate']) : $freezeStart;
+    $freezeDays  = $freezeStart->diffInDays($freezeEnd) + 1;
 
-    //    3b) Calculate the total freeze days (+1 so e.g. Jan 20 - Jan 20 is 1 day)
-    $freezeDays = $freezeStart->diffInDays($freezeEnd) + 1;
-
-    //    3c) Only extend if MembershipEndDate is set
     if ($member->MembershipEndDate) {
         $currentEnd = Carbon::parse($member->MembershipEndDate);
-        // 3d) Add the freeze days to extend the membership end date
         $newEnd = $currentEnd->addDays($freezeDays);
         $member->MembershipEndDate = $newEnd->format('Y-m-d');
         $member->save();
@@ -670,25 +712,25 @@ public function updateFreeze(Request $request, $id)
     $staff = auth('staff')->user();
     $freeze = MembershipFreeze::findOrFail($id);
 
-    // Ensure the freeze's member belongs to the staff's branch
+    // Ensure the freeze's member belongs to one of the staff's branches.
     $member = $freeze->member;
-    if ($staff && $member->StartedBranchID != $staff->BranchID) {
+    if ($staff && !$staff->branches->pluck('BranchID')->contains($member->StartedBranchID)) {
         abort(403, 'Not your branch.');
     }
 
-    // Validate fields that can be updated
     $data = $request->validate([
         'FreezeStartDate' => 'required|date',
         'FreezeEndDate'   => 'nullable|date|after_or_equal:FreezeStartDate',
         'Reason'          => 'nullable|string|max:255',
     ]);
 
-    // Maintain the original StartedBranchID
+    // Keep the original branch.
     $data['StartedBranchID'] = $freeze->StartedBranchID;
 
     $freeze->update($data);
     return response()->json($freeze, 200);
 }
+
 
 // 3) DELETE a freeze record and revert membership changes
 public function destroyFreeze($id)
@@ -696,20 +738,22 @@ public function destroyFreeze($id)
     $freeze = MembershipFreeze::findOrFail($id);
     $member = Member::findOrFail($freeze->MemberID);
 
-    // Staff branch check
+    // Get the authenticated staff user.
     $staff = auth('staff')->user();
-    if ($staff && $member->StartedBranchID != $staff->BranchID) {
+
+    // Use the staff's associated branch IDs for verification.
+    if ($staff && !$staff->branches->pluck('BranchID')->contains($member->StartedBranchID)) {
         abort(403, 'Cannot remove freeze from another branch.');
     }
 
-    // 1) Calculate freeze duration
+    // 1) Calculate freeze duration.
     $freezeStart = Carbon::parse($freeze->FreezeStartDate);
     $freezeEnd   = $freeze->FreezeEndDate ? Carbon::parse($freeze->FreezeEndDate) : $freezeStart;
     $totalFreezeDays = $freezeStart->diffInDays($freezeEnd) + 1;
 
     $today = Carbon::today();
 
-    // Determine unused freeze days
+    // Determine unused freeze days.
     if ($today <= $freezeStart) {
         $leftoverDays = $totalFreezeDays;
     } elseif ($today >= $freezeEnd) {
@@ -718,7 +762,7 @@ public function destroyFreeze($id)
         $leftoverDays = $today->diffInDays($freezeEnd) + 1;
     }
 
-    // 2) Subtract only the unused freeze days from the membership's end date
+    // 2) Subtract only the unused freeze days from the membership's end date.
     if (!empty($member->MembershipEndDate) && $leftoverDays > 0) {
         $currentEnd = Carbon::parse($member->MembershipEndDate);
         $newEnd = $currentEnd->subDays($leftoverDays);
@@ -726,11 +770,11 @@ public function destroyFreeze($id)
         $member->save();
     }
 
-    // 3) Revert member status to Active (assuming '1' = Active)
+    // 3) Revert member status to Active (assuming '1' = Active).
     $member->MemberStatusID = 1;
     $member->save();
 
-    // 4) Delete the freeze record
+    // 4) Delete the freeze record.
     $freeze->delete();
 
     return response()->json([
@@ -768,6 +812,32 @@ public function getLatestCardNumber()
 
     return response()->json(['latestCardNumber' => $latestCardNumber]);
 }
+
+
+    /**
+     * Calculate how many whole months the member has paid for so far
+     * by comparing MembershipStartDate and MembershipEndDate.
+     */
+    private function calculateMonthsPaidSoFar(Member $member)
+    {
+        // If start/end dates are missing, return 0
+        if (empty($member->MembershipStartDate) || empty($member->MembershipEndDate)) {
+            return 0;
+        }
+
+        $start = \Carbon\Carbon::parse($member->MembershipStartDate);
+        $end   = \Carbon\Carbon::parse($member->MembershipEndDate);
+
+        // Use diffInMonths for whole months difference
+        // e.g. if start=Mar 5, end=Jun 4 => 2 months
+        //      if start=Mar 5, end=Jun 5 => 3 months
+        // If you want partial months to count, you can use floatDiffInMonths()
+        // and do floor/ceil. For example:
+        //   $months = floor($start->floatDiffInMonths($end));
+        $months = $start->diffInMonths($end);
+
+        return $months;
+    }
 
 
 }

@@ -25,7 +25,15 @@ import {
   Divider,
   Snackbar,
   InputAdornment,
+  List,
+  ListItem,
+  ListItemText,
+  FormControlLabel,
+  Switch,
+  Avatar,
+  Chip
 } from "@mui/material";
+import Alert from "@mui/material/Alert";
 import { useTheme } from "@mui/material/styles";
 import Autocomplete from "@mui/material/Autocomplete";
 import { DataGrid } from "@mui/x-data-grid";
@@ -36,29 +44,26 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import GroupIcon from "@mui/icons-material/Group";
 import DirectionsWalkIcon from "@mui/icons-material/DirectionsWalk";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
-import PersonIcon from '@mui/icons-material/Person';
-import CloseIcon from '@mui/icons-material/Close';
-import AutorenewIcon from '@mui/icons-material/Autorenew';
-import GroupsIcon from '@mui/icons-material/Groups';
-import WarningIcon from '@mui/icons-material/Warning';
-import EventAvailableIcon from '@mui/icons-material/EventAvailable';
-import HistoryIcon from '@mui/icons-material/History';
-import CreditCardIcon from '@mui/icons-material/CreditCard';
-import BadgeIcon from '@mui/icons-material/Badge';
-import EventIcon from '@mui/icons-material/Event';
-import NotesIcon from '@mui/icons-material/Notes';
-
-import {
-  AccessTime,
-  AlarmOn,
-  AlarmOff,
-  Schedule as ScheduleIcon
-} from "@mui/icons-material";
+import PersonIcon from "@mui/icons-material/Person";
+import CloseIcon from "@mui/icons-material/Close";
+import AutorenewIcon from "@mui/icons-material/Autorenew";
+import GroupsIcon from "@mui/icons-material/Groups";
+import WarningIcon from "@mui/icons-material/Warning";
+import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import HistoryIcon from "@mui/icons-material/History";
+import CreditCardIcon from "@mui/icons-material/CreditCard";
+import BadgeIcon from "@mui/icons-material/Badge";
+import EventIcon from "@mui/icons-material/Event";
+import NotesIcon from "@mui/icons-material/Notes";
+import LockIcon from "@mui/icons-material/Lock";
+import { AccessTime, AlarmOn, AlarmOff, Schedule as ScheduleIcon } from "@mui/icons-material";
 import axios from "axios";
+import dayjs from "dayjs";
+import LockerManagement from "./LockerManagement";
 
 export default function StaffDashboard() {
   const theme = useTheme();
-
+  const [snackSeverity, setSnackSeverity] = useState("success");
   // Snackbar state
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackMessage, setSnackMessage] = useState("");
@@ -67,6 +72,7 @@ export default function StaffDashboard() {
     setSnackOpen(true);
   };
 
+  // Formatting helpers
   const formatDate = (dateString) => {
     if (!dateString) return "—";
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -78,81 +84,111 @@ export default function StaffDashboard() {
 
   const formatTime = (timeString) => {
     if (!timeString) return "—";
-    let [hours, minutes, seconds] = timeString.split(":").map(Number);
+    let [hours, minutes] = timeString.split(":").map(Number);
     const period = hours >= 12 ? "PM" : "AM";
-    hours = hours % 12 || 12; // Convert 0 to 12 for 12AM
+    hours = hours % 12 || 12;
     return `${hours}:${minutes.toString().padStart(2, "0")} ${period}`;
   };
 
-  // Dashboard metrics and table states
+  // Dashboard state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
   const [checkInsToday, setCheckInsToday] = useState(0);
   const [lockersInUse, setLockersInUse] = useState(0);
+  const [newSignUpsTodayCount, setNewSignUpsTodayCount] = useState(0);
+  const [renewalsTodayCount, setRenewalsTodayCount] = useState(0);
 
-  // For walk-ins metrics
   const [walkIns, setWalkIns] = useState([]);
-  const walkInsTodayCount = walkIns.filter(
-    (w) => w.VisitDate === new Date().toISOString().split("T")[0]
-  ).length;
-
-  // Compute expiring soon from member data (within next 7 days)
   const [members, setMembers] = useState([]);
-  const today = new Date();
-  const next7 = new Date();
-  next7.setDate(today.getDate() + 7);
-  const upcomingExpirations = members.filter((member) => {
-    if (!member?.MembershipEndDate) return false;
-    const endDate = new Date(member.MembershipEndDate);
-    return endDate > today && endDate <= next7;
-  });
-  const expiringSoonCount = upcomingExpirations.length;
+  const [monthlyClients, setMonthlyClients] = useState([]);
+  const [visits, setVisits] = useState([]);
+  const [attendance, setAttendance] = useState([]);
+  const [schedule, setSchedule] = useState([]);
+
+  const [staffId, setStaffId] = useState(null);
+  const [staffBranch, setStaffBranch] = useState(null);
+  const [staffList, setStaffList] = useState([]);
+
+  // Instead of localStorage, we use a state bool for the logged‑in staff's clock status
+  const [isClockedIn, setIsClockedIn] = useState(false);
+
+  // Derived states for metrics
+  const todayString = dayjs().format('YYYY-MM-DD');  
+// Filter walk-ins by branch AND by today's date
+  const walkInsTodayCount = walkIns.filter((w) => {
+    // First ensure the walk-in is for the same branch as the logged-in staff
+    if (String(w.BranchID) !== String(staffBranch)) {
+      return false;
+    }
+
+  // Then check if VisitDate is "today"
+  // w.VisitDate might be "2025-03-17 03:41:00", so we parse with dayjs,
+  // and compare the YYYY-MM-DD portion.
+  const walkInDateStr = dayjs(w.VisitDate).format('YYYY-MM-DD');
+  return walkInDateStr === todayString;
+}).length;
+
+// 1) Create "today" and "next7" boundaries as before
+const today = new Date();
+const next7 = new Date();
+next7.setDate(today.getDate() + 7);
+
+// 2) Filter members so that:
+//   (a) member.StartedBranchID matches staffBranch
+//   (b) member.MembershipEndDate is within next 7 days
+const upcomingExpirations = members.filter((member) => {
+  // Must match the logged-in staff's branch
+  if (String(member.StartedBranchID) !== String(staffBranch)) {
+    return false;
+  }
+
+  // Must have an end date, and it must be between now and `next7`
+  if (!member?.MembershipEndDate) return false;
+  const endDate = new Date(member.MembershipEndDate);
+  return endDate > today && endDate <= next7;
+});
+
+const expiringSoonCount = upcomingExpirations.length;
+
 
   // Tabs: 0 => Visits, 1 => Walk-Ins, 2 => Expiring Soon
   const [activeTab, setActiveTab] = useState(0);
 
-  // Check-In – using Autocomplete for member search
-  const [checkInMethod, setCheckInMethod] = useState("card");
+  // The user can toggle: "Member" or "Monthly Client"
+  const [checkInType, setCheckInType] = useState("member");
   const [selectedMember, setSelectedMember] = useState(null);
+  const [selectedClient, setSelectedClient] = useState(null);
+
+  const [isClientDetailsOpen, setClientDetailsOpen] = useState(false);
+  
+  // Dialog states
+  const [checkInMethod, setCheckInMethod] = useState("card");
   const [isCamOpen, setCamOpen] = useState(false);
   const [isBiometricOpen, setBiometricOpen] = useState(false);
+  const [isDetailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [pendingCheckInMethod, setPendingCheckInMethod] = useState("card");
 
-  // Visits states
-  const [visits, setVisits] = useState([]);
+  // Visits
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [isViewVisitOpen, setViewVisitOpen] = useState(false);
   const [isEditVisitOpen, setEditVisitOpen] = useState(false);
 
-  // Walk-Ins states
+  // Walk-Ins
   const [selectedWalkIn, setSelectedWalkIn] = useState(null);
   const [isViewWalkInOpen, setViewWalkInOpen] = useState(false);
   const [isEditWalkInOpen, setEditWalkInOpen] = useState(false);
-
-  // Add Walk-In states
   const [isAddWalkInOpen, setAddWalkInOpen] = useState(false);
   const [newWalkIn, setNewWalkIn] = useState({
     FullName: "",
     VisitDate: "",
     Notes: "",
     PaymentMethod: "",
-    PaymentAmount: ""
+    PaymentAmount: "",
   });
 
-  // Clock In/Out states
-  const [staffId, setStaffId] = useState(null);
-  const [attendance, setAttendance] = useState([]);
-  const [schedule, setSchedule] = useState([]);
-  const [isClockedIn, setIsClockedIn] = useState(false);
+  // Current time (for display in the UI)
   const [currentTime, setCurrentTime] = useState(new Date());
-
-  // ------------------------------------------------------------------
-  // HOOKS: Load dashboard data, staff info, and members on mount
-  // ------------------------------------------------------------------
-  useEffect(() => {
-    loadDashboardData();
-    fetchStaffData();
-    fetchMembers();
-  }, []);
 
   // Update current time every second
   useEffect(() => {
@@ -162,115 +198,333 @@ export default function StaffDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // Persist clock state via localStorage
+  // -- PHASE 1: ON MOUNT => fetch staff data so we know staffBranch
   useEffect(() => {
-    const storedClockState = localStorage.getItem("isClockedIn");
-    if (storedClockState === "true") {
-      setIsClockedIn(true);
-    }
+    fetchStaffData(); // sets staffId and staffBranch if found
   }, []);
+
   useEffect(() => {
-    localStorage.setItem("isClockedIn", isClockedIn ? "true" : "false");
-  }, [isClockedIn]);
+    if (!staffBranch) return; // skip if branch is null/undefined
+  
+    const fetchAllDashboardData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // 1) Metrics
+        const metricsRes = await axios.get("/staff/metrics");
+        setCheckInsToday(metricsRes.data.checkInsToday || 0);
+        setLockersInUse(metricsRes.data.lockersInUse || 0);
+  
+        // 2) Visits (branch-based)
+        const visitsRes = await axios.get("/operations/visits", {
+          params: { branchID: staffBranch },
+        });
+        setVisits(visitsRes.data.visits || []);
+  
+        // 3) Walk-Ins
+        const walkInsRes = await axios.get("/operations/walk-ins");
+        setWalkIns(walkInsRes.data || []);
+  
+        // 4) Attendance (branch-based)
+        const attendRes = await axios.get("/staff/attendance", {
+          params: { branchID: staffBranch },
+        });
+        const fetchedAttendance = Array.isArray(attendRes.data)
+          ? attendRes.data
+          : attendRes.data.attendance || [];
+        setAttendance(fetchedAttendance);
+  
+        // 5) Determine clock state for the logged-in staff
+        const todayDate = new Date().toISOString().split("T")[0];
+        const todaysAttendance = fetchedAttendance.filter(
+          (rec) => rec.Date === todayDate && rec.StaffID === staffId
+        );
+        const clockedInRecord = todaysAttendance.find(
+          (rec) => rec.TimeIn && !rec.TimeOut
+        );
+        setIsClockedIn(!!clockedInRecord);
+  
+        // 6) Schedules
+        const scheduleRes = await axios.get("/staff/schedules");
+        setSchedule(scheduleRes.data || []);
+  
+        // 7) Staff list (for staff kiosk clock in/out)
+        const staffRes = await axios.get("/staff");
+        setStaffList(staffRes.data || []);
+  
+        // 8) Members
+        const membersRes = await axios.get("/membership/members");
+        setMembers(membersRes.data.members || []);
+  
+        // 9) Payments: Fetch payments and calculate new sign-ups & renewals for today,
+        //     filtered by the logged in staff's branch.
+        const paymentsRes = await axios.get("/payments");
+        const allPayments = paymentsRes.data || [];
+  
+        // Filter new sign-ups for today (PaymentFor includes "New Membership")
+        const newSignUps = allPayments.filter((p) => {
+          const paymentFor = Array.isArray(p.PaymentFor)
+            ? p.PaymentFor
+            : [p.PaymentFor];
+          const paymentDate = dayjs(p.PaymentDate).format("YYYY-MM-DD");
+          return (
+            String(p.BranchID) === String(staffBranch) &&
+            paymentFor.includes("New Membership") &&
+            paymentDate === todayDate
+          );
+        });
+        setNewSignUpsTodayCount(newSignUps.length);
+  
+        // Filter renewals for today (PaymentFor includes "Membership Renewal")
+        const renewals = allPayments.filter((p) => {
+          const paymentFor = Array.isArray(p.PaymentFor)
+            ? p.PaymentFor
+            : [p.PaymentFor];
+          const paymentDate = dayjs(p.PaymentDate).format("YYYY-MM-DD");
+          return (
+            String(p.BranchID) === String(staffBranch) &&
+            paymentFor.includes("Membership Renewal") &&
+            paymentDate === todayDate
+          );
+        });
+        setRenewalsTodayCount(renewals.length);
+      } catch (err) {
+        console.error("Error loading data:", err);
+        setError("Failed to load staff dashboard data.");
+      } finally {
+        setLoading(false);
+      }
+    };
+  
+    fetchAllDashboardData();
+  }, [staffBranch, staffId]);
+  
+  
 
-  // ------------------------------------------------------------------
-  // API Calls
-  // ------------------------------------------------------------------
-  const loadDashboardData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Metrics
-      const metricsRes = await axios.get("/staff/metrics");
-      setCheckInsToday(metricsRes.data.checkInsToday || 0);
-      setLockersInUse(metricsRes.data.lockersInUse || 0);
-      // 2) Visits
-      const visitsRes = await axios.get("/operations/visits");
-      setVisits(visitsRes.data.visits || []);
-      // 3) Walk-ins
-      const walkInsRes = await axios.get("/operations/walk-ins");
-      setWalkIns(walkInsRes.data || []);
-    } catch (err) {
-      console.error("Error loading data:", err);
-      setError("Failed to load staff dashboard data.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // ------------- API Calls (Step 1) -------------
+  // Fetch logged-in staff info (Phase 1)
   const fetchStaffData = async () => {
     try {
-      const res = await axios.get("/staff/dashboard-info");
+      const res = await axios.get("/staff/get-logged-in-staff");
       const data = res.data;
-      if (data.staffId) setStaffId(data.staffId);
-      if (data.attendance) setAttendance(data.attendance);
-      if (data.schedule) setSchedule(data.schedule);
+      if (data && data.StaffID) {
+        setStaffId(data.StaffID);
+        setStaffBranch(data.BranchID);
+      }
     } catch (err) {
-      console.error("Failed to load staff dashboard info:", err);
+      console.error("Failed to load staff info:", err);
+      setError("Could not load staff info.");
     }
   };
 
-  // Fetch members for check-in and expiring soon logic
-  const fetchMembers = async () => {
-    try {
-      const res = await axios.get("/membership/members");
+  // On mount, load additional data
+  useEffect(() => {
+    axios.get("/membership/members").then((res) => {
       setMembers(res.data.members || []);
-    } catch (err) {
-      console.error("Failed to fetch members:", err);
-    }
-  };
-
-  // ------------------------------------------------------------------
-  // Tabs change handler for the table area
-  // ------------------------------------------------------------------
+    });
+    axios.get("/monthly-clients").then((res) => {
+      setMonthlyClients(res.data || []);
+    });
+  }, []);
+  
+  // ------------- CRUD / clock-in / check-in etc. -------------
   const handleTabChange = (e, val) => {
     setActiveTab(val);
   };
 
-  // ------------------------------------------------------------------
-  // Check-In Function using selected member from Autocomplete
-  // ------------------------------------------------------------------
-  const handleCheckIn = async () => {
-    if (!selectedMember) {
-      alert("Please select a member.");
-      return;
-    }
-    try {
-      await axios.post("/operations/visits", {
-        MemberID: selectedMember.MemberID,
-        CheckInMethod: checkInMethod
-      });
-      showSuccessMessage(`Member ${selectedMember.FullName} checked in successfully!`);
-      setSelectedMember(null);
-      loadDashboardData(); // Refresh metrics & visits
-    } catch (err) {
-      console.error("Check-in error:", err);
-      if (err.response && err.response.status === 409) {
-        alert("Member is already checked in for today.");
-      } else {
-        alert("Failed to check in. See console for details.");
+  const handleCheckInMethodChange = (e) => {
+    setCheckInMethod(e.target.value);
+  };
+
+  // Toggle between normal members vs monthly clients
+  const handleToggleCheckInType = (evt) => {
+    setCheckInType(evt.target.checked ? "monthlyClient" : "member");
+    setSelectedMember(null);
+    setSelectedClient(null);
+  };
+
+  // Show details for whichever type is selected
+  const handleShowDetails = () => {
+    if (checkInType === "member") {
+      if (!selectedMember) {
+        alert("Please select a member first.");
+        return;
+      }
+    } else {
+      if (!selectedClient) {
+        alert("Please select a monthly client first.");
+        return;
       }
     }
+    setClientDetailsOpen(true);
   };
 
-  // ------------------------------------------------------------------
-  // Camera & Biometric Dialogs
-  // ------------------------------------------------------------------
-  const handleOpenCam = () => setCamOpen(true);
-  const handleCloseCam = () => setCamOpen(false);
-  const handleSimulateCardScan = () => {
-    setCamOpen(false);
+  // Confirm check in (calls different endpoints)
+  const handleConfirmCheckIn = async () => {
+    try {
+      if (checkInType === "member") {
+        if (!selectedMember) return;
+        // Normal member check-in
+        await axios.post("/operations/visits", {
+          MemberID: selectedMember.MemberID,
+          BranchID: staffBranch,
+        });
+        const visitsRes = await axios.get("/operations/visits", {
+          params: { branchID: staffBranch },
+        });
+        setVisits(visitsRes.data.visits || []);
+        showSuccessMessage(`Checked in Member: ${selectedMember.FullName}`);
+        setSelectedMember(null);
+      } else {
+        if (!selectedClient) return;
+        // Monthly client check-in
+        await axios.post(
+          `/monthly-clients/${selectedClient.MonthlyClientID}/attendances`,
+          {
+            VisitDateTime: new Date().toISOString(),
+            Notes: "Checked in by staff",
+          }
+        );
+        showSuccessMessage(`Checked in Monthly Client: ${selectedClient.FullName}`);
+        setSelectedClient(null);
+      }
+    } catch (err) {
+      console.error("Check in error:", err);
+      setSnackSeverity("error");
+      if (err.response && err.response.data && err.response.data.message) {
+        setSnackMessage(err.response.data.message);
+        setSnackOpen(true);
+      } else {
+        setSnackMessage("Check in failed. See console for details.");
+        setSnackOpen(true);
+      }
+    } finally {
+      setClientDetailsOpen(false);
+    }
   };
 
-  const handleOpenBiometric = () => setBiometricOpen(true);
-  const handleCloseBiometric = () => setBiometricOpen(false);
-  const handleSimulateFingerprint = () => {
-    setBiometricOpen(false);
+  const handleScheduleClock = async (staffRow) => {
+    // Instead of raw new Date().toISOString(), do:
+    const todayStr = dayjs().format('YYYY-MM-DD');
+  
+    // Compare the schedule date to dayjs's formatted date:
+    const stSchedule = schedule.find((sch) => {
+      // If sch.ShiftDate is "2025-03-17T00:00:00.000Z" or "2025-03-17",
+      // format it to "YYYY-MM-DD" and compare:
+      const scheduleDate = dayjs(sch.ShiftDate).format('YYYY-MM-DD');
+      return (
+        sch.StaffID === staffRow.StaffID &&
+        scheduleDate === todayStr
+      );
+    });
+  
+    // Now stSchedule will actually be found if today’s schedule is present
+    if (!stSchedule) {
+      showSuccessMessage(`No schedule for ${staffRow.FullName} today.`);
+      return;
+    }
+  
+    // The rest of your clock logic remains the same
+    const att = attendance.find(
+      (a) => a.StaffID === staffRow.StaffID && a.Date === todayStr
+    );
+    const timeStr = new Date().toLocaleTimeString("it-IT").slice(0, 5);
+  
+    let clockData = {
+      StaffID: staffRow.StaffID,
+      BranchID: staffBranch,
+      Date: todayStr,
+    };
+  
+    if (!att || !att.TimeIn) {
+      clockData.TimeIn = timeStr;
+      clockData.TimeOut = null;
+    } else if (!att.TimeOut) {
+      clockData.TimeIn = null;
+      clockData.TimeOut = timeStr;
+    } else {
+      showSuccessMessage(`${staffRow.FullName} has already completed attendance.`);
+      return;
+    }
+  
+    try {
+      const response = await axios.post(
+        "/staff/attendance/clock-in-out",
+        clockData
+      );
+      const updatedRec = response.data.attendance;
+      if (!updatedRec) {
+        showSuccessMessage("Attendance updated but no record returned.");
+        return;
+      }
+      setAttendance((prev) => {
+        const others = prev.filter(
+          (a) => !(a.StaffID === updatedRec.StaffID && a.Date === updatedRec.Date)
+        );
+        return [...others, updatedRec];
+      });
+      showSuccessMessage(
+        updatedRec.TimeOut
+          ? `${staffRow.FullName} clocked out at ${updatedRec.TimeOut}`
+          : `${staffRow.FullName} clocked in at ${updatedRec.TimeIn}`
+      );
+    } catch (err) {
+      console.error("Failed to clock in/out", err);
+      showSuccessMessage("Error updating attendance. Check console for details.");
+    }
   };
 
-  // ------------------------------------------------------------------
-  // Visits CRUD
-  // ------------------------------------------------------------------
+  // Clock In/Out for logged-in staff
+  const refreshClockState = async () => {
+    try {
+      const attendRes = await axios.get("/staff/attendance", {
+        params: { branchID: staffBranch },
+      });
+      const fetchedAttendance = Array.isArray(attendRes.data)
+        ? attendRes.data
+        : attendRes.data.attendance || [];
+      setAttendance(fetchedAttendance);
+      const todayDate = new Date().toISOString().split("T")[0];
+      const clockedInRecord = fetchedAttendance.find(
+        (rec) => rec.Date === todayDate && rec.StaffID === staffId && rec.TimeIn && !rec.TimeOut
+      );
+      const newState = !!clockedInRecord;
+      setIsClockedIn(newState);
+      return newState;
+    } catch (error) {
+      console.error("Error refreshing clock state:", error);
+      return false;
+    }
+  };
+
+  const handleClockInOut = async () => {
+    if (!staffId) {
+      console.warn("No staffId available, cannot clock in/out.");
+      return;
+    }
+    const dateStr = new Date().toISOString().split("T")[0];
+    const timeStr = currentTime.toLocaleTimeString("it-IT").slice(0, 5);
+    const clockData = {
+      StaffID: staffId,
+      BranchID: staffBranch,
+      Date: dateStr,
+      TimeIn: isClockedIn ? null : timeStr,
+      TimeOut: isClockedIn ? timeStr : null,
+    };
+    try {
+      await axios.post("/staff/attendance/clock-in-out", clockData);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const newClockState = await refreshClockState();
+      showSuccessMessage(
+        newClockState ? "Clocked in successfully." : "Clocked out successfully."
+      );
+    } catch (err) {
+      console.error("Failed to record attendance:", err);
+      showSuccessMessage("Error clocking in/out. See console for details.");
+    }
+  };
+
+  // ---------- VISITS & WALK-INS CRUD -------------
   const handleViewVisit = (visit) => {
     setSelectedVisit(visit);
     setViewVisitOpen(true);
@@ -287,29 +541,33 @@ export default function StaffDashboard() {
         VisitDate: selectedVisit.VisitDate,
         VisitTime: selectedVisit.VisitTime,
         CheckInMethod: selectedVisit.CheckInMethod,
-        Remarks: selectedVisit.Remarks
+        Remarks: selectedVisit.Remarks,
       });
       setEditVisitOpen(false);
-      loadDashboardData();
+      const visitsRes = await axios.get("/operations/visits", {
+        params: { branchID: staffBranch },
+      });
+      setVisits(visitsRes.data.visits || []);
       showSuccessMessage("Visit updated successfully.");
     } catch (err) {
       console.error("Failed to update visit:", err);
+      alert("Error updating visit. Check console.");
     }
   };
   const handleDeleteVisit = async (visitID) => {
     if (!window.confirm("Delete this visit record?")) return;
     try {
       await axios.delete(`/operations/visits/${visitID}`);
-      loadDashboardData();
+      const visitsRes = await axios.get("/operations/visits", {
+        params: { branchID: staffBranch },
+      });
+      setVisits(visitsRes.data.visits || []);
       showSuccessMessage("Visit deleted!");
     } catch (err) {
       console.error("Failed to delete visit:", err);
     }
   };
 
-  // ------------------------------------------------------------------
-  // Walk-Ins CRUD
-  // ------------------------------------------------------------------
   const handleViewWalkIn = (wk) => {
     setSelectedWalkIn(wk);
     setViewWalkInOpen(true);
@@ -327,26 +585,28 @@ export default function StaffDashboard() {
         PaymentID: selectedWalkIn.PaymentID || null,
         PaymentMethod: selectedWalkIn.PaymentMethod || "",
         AmountPaid: selectedWalkIn.AmountPaid || 0,
-        Notes: selectedWalkIn.Notes || ""
+        Notes: selectedWalkIn.Notes || "",
       });
       setEditWalkInOpen(false);
-      loadDashboardData();
+      const walkInsRes = await axios.get("/operations/walk-ins");
+      setWalkIns(walkInsRes.data || []);
       showSuccessMessage("Walk-In updated!");
     } catch (err) {
       console.error("Failed to update walk-in:", err);
+      alert("Error updating walk-in. Check console.");
     }
   };
   const handleDeleteWalkIn = async (walkInID) => {
     if (!window.confirm("Delete this walk-in record?")) return;
     try {
       await axios.delete(`/operations/walk-ins/${walkInID}`);
-      loadDashboardData();
+      const walkInsRes = await axios.get("/operations/walk-ins");
+      setWalkIns(walkInsRes.data || []);
       showSuccessMessage("Walk-In deleted.");
     } catch (err) {
       console.error("Failed to delete walk-in:", err);
     }
   };
-
   const handleAddWalkInChange = (e) => {
     setNewWalkIn((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
@@ -357,7 +617,7 @@ export default function StaffDashboard() {
         VisitDate: newWalkIn.VisitDate,
         Notes: newWalkIn.Notes || null,
         PaymentMethod: newWalkIn.PaymentMethod || null,
-        PaymentAmount: newWalkIn.PaymentAmount || 0
+        PaymentAmount: newWalkIn.PaymentAmount || 0,
       });
       showSuccessMessage("Walk-In created successfully.");
       setNewWalkIn({
@@ -365,55 +625,23 @@ export default function StaffDashboard() {
         VisitDate: "",
         Notes: "",
         PaymentMethod: "",
-        PaymentAmount: ""
+        PaymentAmount: "",
       });
       setAddWalkInOpen(false);
-      loadDashboardData();
+      const walkInsRes = await axios.get("/operations/walk-ins");
+      setWalkIns(walkInsRes.data || []);
     } catch (err) {
       console.error("Failed to create walk-in:", err);
       alert("Create error. Check console for details.");
     }
   };
 
-  // ------------------------------------------------------------------
-  // Clock In/Out Logic
-  // ------------------------------------------------------------------
-  const handleClockInOut = async () => {
-    if (!staffId) {
-      console.warn("No staffId available.");
-      return;
-    }
-    const dateStr = new Date().toISOString().split("T")[0];
-    const timeStr = currentTime.toLocaleTimeString("it-IT").slice(0, 5);
-    const clockData = {
-      StaffID: staffId,
-      Date: dateStr,
-      TimeIn: isClockedIn ? null : timeStr,
-      TimeOut: isClockedIn ? timeStr : null,
-    };
-    try {
-      await axios.post("/staff/attendance/clock-in-out", clockData);
-      const attendRes = await axios.get("/staff/attendance");
-      setAttendance(
-        Array.isArray(attendRes.data)
-          ? attendRes.data
-          : attendRes.data.attendance || []
-      );
-      setIsClockedIn(!isClockedIn);
-      showSuccessMessage(isClockedIn ? "Clocked out successfully." : "Clocked in successfully.");
-    } catch (err) {
-      console.error("Failed to record attendance:", err);
-    }
-  };
-
-  // ------------------------------------------------------------------
-  // TABLE COLUMNS (with updated action button colors)
-  // ------------------------------------------------------------------
+  // ---------- TABLE COLUMNS ----------
   const actionButtonStyles = {
     minWidth: "40px",
     padding: "6px",
     transition: "transform 0.2s",
-    "&:hover": { transform: "scale(1.05)" }
+    "&:hover": { transform: "scale(1.05)" },
   };
 
   const visitColumns = [
@@ -424,11 +652,21 @@ export default function StaffDashboard() {
       renderCell: (params) => {
         const member = members.find((m) => m.MemberID === params.value);
         return member ? member.FullName : params.value;
-      }
+      },
     },
     { field: "VisitID", headerName: "ID", width: 80 },
-    { field: "VisitDate", headerName: "Date", width: 180, renderCell: (params) => params.value ? formatDate(params.value) : "—" },
-    { field: "VisitTime", headerName: "Time", width: 180, renderCell: (params) => params.value ? formatTime(params.value) : "—" },
+    {
+      field: "VisitDate",
+      headerName: "Date",
+      width: 180,
+      renderCell: (params) => (params.value ? formatDate(params.value) : "—"),
+    },
+    {
+      field: "VisitTime",
+      headerName: "Time",
+      width: 180,
+      renderCell: (params) => (params.value ? formatTime(params.value) : "—"),
+    },
     { field: "CheckInMethod", headerName: "Method", width: 100 },
     {
       field: "Actions",
@@ -446,7 +684,7 @@ export default function StaffDashboard() {
                 sx={{
                   ...actionButtonStyles,
                   backgroundColor: "#4caf50",
-                  "&:hover": { backgroundColor: "#43a047" }
+                  "&:hover": { backgroundColor: "#43a047" },
                 }}
               >
                 <VisibilityIcon fontSize="small" />
@@ -460,7 +698,7 @@ export default function StaffDashboard() {
                 sx={{
                   ...actionButtonStyles,
                   backgroundColor: "#2196f3",
-                  "&:hover": { backgroundColor: "#1976d2" }
+                  "&:hover": { backgroundColor: "#1976d2" },
                 }}
               >
                 <EditIcon fontSize="small" />
@@ -474,7 +712,7 @@ export default function StaffDashboard() {
                 sx={{
                   ...actionButtonStyles,
                   backgroundColor: "#f44336",
-                  "&:hover": { backgroundColor: "#d32f2f" }
+                  "&:hover": { backgroundColor: "#d32f2f" },
                 }}
               >
                 <DeleteIcon fontSize="small" />
@@ -482,14 +720,19 @@ export default function StaffDashboard() {
             </Tooltip>
           </Box>
         );
-      }
-    }
+      },
+    },
   ];
 
   const walkInColumns = [
     { field: "WalkInID", headerName: "ID", width: 80 },
     { field: "FullName", headerName: "Name", width: 130 },
-    { field: "VisitDate", headerName: "Date", width: 100 },
+    {
+      field: "VisitDate",
+      headerName: "Date",
+      width: 150,
+      renderCell: (params) => (params.value ? formatDate(params.value) : "—"),
+    },
     { field: "Notes", headerName: "Notes", width: 150 },
     {
       field: "Actions",
@@ -507,7 +750,7 @@ export default function StaffDashboard() {
                 sx={{
                   ...actionButtonStyles,
                   backgroundColor: "#4caf50",
-                  "&:hover": { backgroundColor: "#43a047" }
+                  "&:hover": { backgroundColor: "#43a047" },
                 }}
               >
                 <VisibilityIcon fontSize="small" />
@@ -521,7 +764,7 @@ export default function StaffDashboard() {
                 sx={{
                   ...actionButtonStyles,
                   backgroundColor: "#2196f3",
-                  "&:hover": { backgroundColor: "#1976d2" }
+                  "&:hover": { backgroundColor: "#1976d2" },
                 }}
               >
                 <EditIcon fontSize="small" />
@@ -535,7 +778,7 @@ export default function StaffDashboard() {
                 sx={{
                   ...actionButtonStyles,
                   backgroundColor: "#f44336",
-                  "&:hover": { backgroundColor: "#d32f2f" }
+                  "&:hover": { backgroundColor: "#d32f2f" },
                 }}
               >
                 <DeleteIcon fontSize="small" />
@@ -543,8 +786,8 @@ export default function StaffDashboard() {
             </Tooltip>
           </Box>
         );
-      }
-    }
+      },
+    },
   ];
 
   const expiringColumns = [
@@ -554,9 +797,8 @@ export default function StaffDashboard() {
       field: "MembershipEndDate",
       headerName: "Expires On",
       width: 150,
-      renderCell: (params) =>
-        params.value ? new Date(params.value).toLocaleDateString() : "—"
-    }
+      renderCell: (params) => (params.value ? formatDate(params.value) : "—"),
+    },
   ];
 
   if (loading) {
@@ -574,6 +816,13 @@ export default function StaffDashboard() {
     );
   }
 
+  // Filter staff list for kiosk clock in: only staff in the same branch, exclude self
+  const staffInMyBranch = staffList.filter(
+    (st) =>
+      st.StaffID !== staffId &&
+      st.branches?.some((b) => String(b.BranchID) === String(staffBranch))
+  );
+
   return (
     <Box sx={{ minHeight: "100vh", p: 2 }}>
       <Grid container spacing={2}>
@@ -588,7 +837,7 @@ export default function StaffDashboard() {
               mb: 2,
               display: "flex",
               alignItems: "center",
-              boxShadow: 3
+              boxShadow: 3,
             }}
           >
             <IconButton sx={{ color: "#fff", mr: 1 }}>
@@ -617,11 +866,16 @@ export default function StaffDashboard() {
                 boxShadow: activeTab === 0 ? 6 : 2,
                 transition: "box-shadow 0.3s",
                 "&:hover": { boxShadow: 6 },
-                backgroundColor: theme.palette.mode === "dark" ? theme.palette.info.dark : theme.palette.info.light,
-                color: theme.palette.info.contrastText
+                backgroundColor:
+                  theme.palette.mode === "dark"
+                    ? theme.palette.info.dark
+                    : theme.palette.info.light,
+                color: theme.palette.info.contrastText,
               }}
             >
-              <CardContent sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <CardContent
+                sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}
+              >
                 <GroupIcon sx={{ fontSize: 40, mb: 1 }} />
                 <Typography variant="subtitle2">Check-ins Today</Typography>
                 <Typography variant="h4" sx={{ fontWeight: "bold" }}>
@@ -640,11 +894,16 @@ export default function StaffDashboard() {
                 boxShadow: activeTab === 1 ? 6 : 2,
                 transition: "box-shadow 0.3s",
                 "&:hover": { boxShadow: 6 },
-                backgroundColor: theme.palette.mode === "dark" ? theme.palette.success.dark : theme.palette.success.light,
-                color: theme.palette.success.contrastText
+                backgroundColor:
+                  theme.palette.mode === "dark"
+                    ? theme.palette.success.dark
+                    : theme.palette.success.light,
+                color: theme.palette.success.contrastText,
               }}
             >
-              <CardContent sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <CardContent
+                sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}
+              >
                 <DirectionsWalkIcon sx={{ fontSize: 40, mb: 1 }} />
                 <Typography variant="subtitle2">Walk-ins Today</Typography>
                 <Typography variant="h4" sx={{ fontWeight: "bold" }}>
@@ -662,21 +921,24 @@ export default function StaffDashboard() {
                 boxShadow: 2,
                 transition: "box-shadow 0.3s",
                 "&:hover": { boxShadow: 6 },
-                backgroundColor: theme.palette.mode === "dark" ? theme.palette.secondary.dark : theme.palette.secondary.light,
-                color: theme.palette.secondary.contrastText
+                backgroundColor:
+                  theme.palette.mode === "dark"
+                    ? theme.palette.secondary.dark
+                    : theme.palette.secondary.light,
+                color: theme.palette.secondary.contrastText,
               }}
             >
-              <CardContent sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <CardContent
+                sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}
+              >
                 <BadgeIcon sx={{ fontSize: 40, mb: 1 }} />
-                <Typography variant="subtitle2">Lockers In Use</Typography>
-                <Typography variant="h4" sx={{ fontWeight: "bold" }}>
-                  {lockersInUse}
-                </Typography>
+                <Typography variant="subtitle2">New Sign-Ups Today</Typography>
+                <Typography variant="h4" sx={{ fontWeight: "bold" }}>{newSignUpsTodayCount}</Typography>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} md={3}>
-            <Card
+          <Card
               onClick={() => setActiveTab(2)}
               sx={{
                 p: 2,
@@ -686,157 +948,467 @@ export default function StaffDashboard() {
                 transition: "box-shadow 0.3s",
                 "&:hover": { boxShadow: 6 },
                 backgroundColor: theme.palette.mode === "dark" ? theme.palette.warning.dark : theme.palette.warning.light,
-                color: theme.palette.warning.contrastText
+                color: theme.palette.warning.contrastText,
               }}
             >
               <CardContent sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <WarningAmberIcon sx={{ fontSize: 40, mb: 1 }} />
-                <Typography variant="subtitle2">Expiring Soon</Typography>
-                <Typography variant="h4" sx={{ fontWeight: "bold" }}>
-                  {expiringSoonCount}
-                </Typography>
+                <Typography variant="subtitle2">Renewals Today</Typography>
+                <Typography variant="h4" sx={{ fontWeight: "bold" }}>{renewalsTodayCount}</Typography>
               </CardContent>
             </Card>
           </Grid>
         </Grid>
 
-        {/* Original Left Column: Check-In & Clock In/Out */}
+        {/* LEFT COLUMN: Check-In Member & Staff Schedule & Clock In/Out */}
         <Grid item xs={12} md={4}>
+          {/* ===================== CHECK IN CARD ===================== */}
           <Card sx={{ mb: 2, borderRadius: 2, boxShadow: 2 }}>
-            <CardHeader title="Check In Member" />
+            <CardHeader title="Check In" />
             <CardContent>
-              <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                <InputLabel>Check-in Method</InputLabel>
-                <Select
-                  label="Check-in Method"
-                  value={checkInMethod}
-                  onChange={(e) => setCheckInMethod(e.target.value)}
-                >
-                  <MenuItem value="manual">Manual</MenuItem>
-                  <MenuItem value="card">Membership Card</MenuItem>
-                  <MenuItem value="biometric">Biometric</MenuItem>
-                </Select>
-              </FormControl>
-              <Autocomplete
-                options={members}
-                getOptionLabel={(option) =>
-                  `${option.MemberID} - ${option.FullName}`
+              {/* Switch: Member vs Monthly Client */}
+              <FormControlLabel
+                label="Monthly Client?"
+                control={
+                  <Switch
+                    checked={checkInType === "monthlyClient"}
+                    onChange={handleToggleCheckInType}
+                    color="primary"
+                  />
                 }
-                value={selectedMember}
-                onChange={(event, newValue) => setSelectedMember(newValue)}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="Select Member"
-                    variant="outlined"
-                    size="small"
+                sx={{ mb: 2 }}
+              />
+              {checkInType === "member" ? (
+                <>
+                  <Autocomplete
+                    options={members}
+                    getOptionLabel={(option) =>
+                      `${option.MemberID} - ${option.FullName}`
+                    }
+                    value={selectedMember}
+                    onChange={(_, newVal) => setSelectedMember(newVal)}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Select Member"
+                        variant="outlined"
+                        size="small"
+                      />
+                    )}
                     sx={{ mb: 2 }}
                   />
-                )}
-              />
-              <Button variant="contained" onClick={handleCheckIn} fullWidth>
-                Check In
+                </>
+              ) : (
+                <>
+                  <Autocomplete
+                    options={monthlyClients}
+                    getOptionLabel={(option) =>
+                      `${option.MonthlyClientID} - ${option.FullName}`
+                    }
+                    value={selectedClient}
+                    onChange={(_, newVal) => setSelectedClient(newVal)}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Select Monthly Client"
+                        variant="outlined"
+                        size="small"
+                      />
+                    )}
+                    sx={{ mb: 2 }}
+                  />
+                </>
+              )}
+              <Button
+                variant="contained"
+                onClick={handleShowDetails}
+                fullWidth
+                disabled={
+                  (checkInType === "member" && !selectedMember) ||
+                  (checkInType === "monthlyClient" && !selectedClient)
+                }
+              >
+                Show Details / Verify
               </Button>
             </CardContent>
           </Card>
 
+          {/* ===================== DIALOG FOR DETAILS ===================== */}
+          <Dialog
+            open={isClientDetailsOpen}
+            onClose={() => setClientDetailsOpen(false)}
+            maxWidth="md"
+            fullWidth
+            sx={{ "& .MuiDialog-paper": { borderRadius: 2, boxShadow: 3 } }}
+          >
+            <DialogTitle sx={{ pb: 0 }}>
+              <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+                  {checkInType === "member" ? "Member Details" : "Monthly Client Details"}
+                </Typography>
+                <IconButton
+                  onClick={() => setClientDetailsOpen(false)}
+                  sx={{ "&:hover": { color: theme.palette.error.main } }}
+                >
+                  <CloseIcon />
+                </IconButton>
+              </Box>
+            </DialogTitle>
+            <DialogContent dividers sx={{ pt: 1 }}>
+              {checkInType === "member" && selectedMember && (
+                <Box>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 2,
+                      p: 2,
+                      borderRadius: 2,
+                      border: "1px solid",
+                      borderColor: theme.palette.divider,
+                      mb: 2,
+                      backgroundColor:
+                        theme.palette.mode === "dark" ? "#1e1e1e" : "#fafafa",
+                    }}
+                  >
+                    {selectedMember.PhotoPath ? (
+                      <Avatar
+                        src={`/storage/${selectedMember.PhotoPath}`}
+                        alt={selectedMember.FullName}
+                        sx={{ width: 80, height: 80, fontSize: "1.5rem" }}
+                      />
+                    ) : (
+                      <Avatar sx={{ width: 80, height: 80, fontSize: "1.5rem" }}>
+                        {selectedMember.FullName?.[0] || "?"}
+                      </Avatar>
+                    )}
+                    <Box>
+                      <Typography variant="h6" sx={{ fontWeight: "bold", mb: 0.3 }}>
+                        {selectedMember.FullName}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {selectedMember.Email || "No Email"}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {selectedMember.Phone || "No Phone"}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Divider sx={{ mb: 2 }} />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                    Membership Info
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        Plan:
+                      </Typography>
+                      <Box mt={0.3}>
+                        {selectedMember.plan ? (
+                          <Chip
+                            label={selectedMember.plan.PlanName}
+                            color="primary"
+                            variant="outlined"
+                            size="small"
+                          />
+                        ) : (
+                          <Chip label="No Plan" variant="outlined" size="small" />
+                        )}
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        Status:
+                      </Typography>
+                      <Box mt={0.3}>
+                        {selectedMember.status ? (
+                          <Chip
+                            label={selectedMember.status.StatusName}
+                            color="success"
+                            variant="outlined"
+                            size="small"
+                          />
+                        ) : (
+                          <Chip label="N/A" variant="outlined" size="small" />
+                        )}
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        Start Date:
+                      </Typography>
+                      <Typography variant="body2">
+                        {selectedMember.MembershipStartDate
+                          ? formatDate(selectedMember.MembershipStartDate)
+                          : "N/A"}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        End Date:
+                      </Typography>
+                      <Typography variant="body2">
+                        {selectedMember.MembershipEndDate
+                          ? formatDate(selectedMember.MembershipEndDate)
+                          : "N/A"}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                  <Divider sx={{ mt: 3, mb: 2 }} />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                    Check-In Method
+                  </Typography>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Method</InputLabel>
+                    <Select
+                      label="Method"
+                      value={checkInMethod}
+                      onChange={(e) => setCheckInMethod(e.target.value)}
+                    >
+                      <MenuItem value="manual">Manual</MenuItem>
+                      <MenuItem value="card">Membership Card</MenuItem>
+                      <MenuItem value="biometric">Biometric</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+              )}
+              {checkInType === "monthlyClient" && selectedClient && (
+                <Box>
+                  <Box
+                    sx={{
+                      p: 2,
+                      borderRadius: 2,
+                      border: "1px solid",
+                      borderColor: theme.palette.divider,
+                      mb: 2,
+                      backgroundColor:
+                        theme.palette.mode === "dark" ? "#1e1e1e" : "#fafafa",
+                    }}
+                  >
+                    <Typography variant="h6" sx={{ fontWeight: "bold", mb: 0.5 }}>
+                      {selectedClient.FullName}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {selectedClient.Email || "No Email"}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {selectedClient.Phone || "No Phone"}
+                    </Typography>
+                  </Box>
+                  <Divider sx={{ mb: 2 }} />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                    Monthly Client Info
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        Start Date:
+                      </Typography>
+                      <Typography variant="body2">
+                        {selectedClient.StartDate
+                          ? formatDate(selectedClient.StartDate)
+                          : "N/A"}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        End Date:
+                      </Typography>
+                      <Typography variant="body2">
+                        {selectedClient.EndDate
+                          ? formatDate(selectedClient.EndDate)
+                          : "N/A"}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        Active?
+                      </Typography>
+                      <Box mt={0.3}>
+                        {selectedClient.IsActive ? (
+                          <Chip label="Yes" color="success" variant="outlined" size="small" />
+                        ) : (
+                          <Chip label="No" color="error" variant="outlined" size="small" />
+                        )}
+                      </Box>
+                    </Grid>
+                  </Grid>
+                  <Divider sx={{ mt: 3, mb: 2 }} />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                    Check-In Method
+                  </Typography>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Method</InputLabel>
+                    <Select
+                      label="Method"
+                      value={checkInMethod}
+                      onChange={(e) => setCheckInMethod(e.target.value)}
+                    >
+                      <MenuItem value="manual">Manual</MenuItem>
+                      <MenuItem value="card">Membership Card</MenuItem>
+                      <MenuItem value="biometric">Biometric</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions sx={{ py: 2, px: 3 }}>
+              <Button onClick={() => setClientDetailsOpen(false)}>Cancel</Button>
+              <Button variant="contained" onClick={handleConfirmCheckIn}>
+                Confirm Check In
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Staff Schedule & Clock In/Out Card */}
           <Card
             sx={{
               mb: 2,
-              borderRadius: 2,
-              boxShadow: 2,
-              display: "flex",
-              flexDirection: "column"
+              borderRadius: 4,
+              boxShadow: 4,
+              p: 3,
+              backgroundColor: "background.paper",
             }}
           >
-            <CardHeader title="Clock In / Clock Out" />
-            <CardContent sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
-              <Box sx={{ textAlign: "center", mb: 2 }}>
-                <Typography variant="h5" gutterBottom>
-                  <AccessTime /> {currentTime.toLocaleTimeString()}
-                </Typography>
-                <Button
-                  variant="contained"
-                  onClick={handleClockInOut}
-                  fullWidth
-                  sx={{ mt: 2 }}
-                  style={{
-                    backgroundColor: isClockedIn ? "#f44336" : "#4caf50",
-                    color: "#fff"
+            <CardHeader
+              title="Staff Schedule & Clock In/Out"
+              sx={{
+                textAlign: "center",
+                fontWeight: "bold",
+                color: "primary.dark",
+              }}
+            />
+            <CardContent>
+              <Box
+                sx={{
+                  textAlign: "center",
+                  mb: 2,
+                  p: 2,
+                  borderRadius: 2,
+                  backgroundColor: "rgba(0, 0, 0, 0.05)",
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: "text.secondary",
+                    fontWeight: 500,
                   }}
                 >
-                  {isClockedIn ? (
-                    <>
-                      <AlarmOff /> Clock Out
-                    </>
-                  ) : (
-                    <>
-                      <AlarmOn /> Clock In
-                    </>
-                  )}
-                </Button>
+                  {dayjs(currentTime).format("dddd, MMMM D, YYYY")}
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontWeight: "bold",
+                    color: "#fffff",
+                    letterSpacing: 1,
+                    mt: 1,
+                  }}
+                >
+                  {currentTime.toLocaleTimeString()}
+                </Typography>
               </Box>
-
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" gutterBottom>
-                <ScheduleIcon /> Work Schedule
-              </Typography>
-              {schedule.length === 0 ? (
-                <Typography variant="body2" color="textSecondary">
-                  No schedules found.
-                </Typography>
+              {staffInMyBranch.length === 0 ? (
+                <Typography align="center">No staff found in your branch.</Typography>
               ) : (
-                schedule.map((shift, idx) => (
-                  <Paper key={idx} sx={{ p: 2, mb: 1 }}>
-                    <Typography>
-                      {shift.ShiftDate
-                        ? new Date(shift.ShiftDate).toLocaleDateString()
-                        : "Unknown Date"}
-                    </Typography>
-                    <Typography color="textSecondary">
-                      {shift.ShiftStart || "??:??"} - {shift.ShiftEnd || "??:??"}
-                    </Typography>
-                  </Paper>
-                ))
+                <List>
+                  {staffInMyBranch.map((st) => {
+                    const stSchedule = schedule.find(
+                      (sch) => sch.StaffID === st.StaffID && sch.ShiftDate === todayString
+                    );
+                    const att = attendance.find(
+                      (a) => a.StaffID === st.StaffID && a.Date === todayString
+                    );
+                    const clockedIn = att && att.TimeIn && !att.TimeOut;
+                    const clockedOut = att && att.TimeIn && att.TimeOut;
+                    const disabled = !stSchedule;
+                    let btnLabel = "Clock In";
+                    let btnColor = "success";
+                    if (clockedIn) {
+                      btnLabel = "Clock Out";
+                      btnColor = "error";
+                    } else if (clockedOut) {
+                      btnLabel = "Completed";
+                      btnColor = "info";
+                    } else if (!stSchedule) {
+                      btnLabel = "No Schedule";
+                      btnColor = "inherit";
+                    }
+                    return (
+                      <ListItem key={st.StaffID} divider sx={{ py: 1.5 }}>
+                        <ListItemText
+                          primary={st.FullName}
+                          secondary={
+                            stSchedule ? (
+                              <>
+                                <Typography variant="body2">
+                                  Shift: {stSchedule.ShiftStart} - {stSchedule.ShiftEnd}
+                                </Typography>
+                                {att ? (
+                                  att.TimeIn && !att.TimeOut ? (
+                                    <Typography variant="body2" color="success.main">
+                                      Clocked In at {att.TimeIn}
+                                    </Typography>
+                                  ) : att.TimeIn && att.TimeOut ? (
+                                    <Typography variant="body2" color="text.secondary">
+                                      In: {att.TimeIn}, Out: {att.TimeOut}
+                                    </Typography>
+                                  ) : (
+                                    <Typography variant="body2" color="warning.main">
+                                      Scheduled, not clocked in yet.
+                                    </Typography>
+                                  )
+                                ) : (
+                                  <Typography variant="body2" color="warning.main">
+                                    Scheduled, but no attendance record yet.
+                                  </Typography>
+                                )}
+                              </>
+                            ) : (
+                              "No schedule for today."
+                            )
+                          }
+                          sx={{ "& .MuiTypography-root": { fontSize: "0.9rem" } }}
+                        />
+                        <Button
+                          variant="contained"
+                          color={btnColor}
+                          onClick={() => handleScheduleClock(st)}
+                          disabled={disabled || clockedOut}
+                          sx={{ minWidth: 120, fontSize: "0.8rem", fontWeight: "bold" }}
+                        >
+                          {btnLabel}
+                        </Button>
+                      </ListItem>
+                    );
+                  })}
+                </List>
               )}
-
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" gutterBottom>
-                Attendance History
-              </Typography>
-              {attendance.length === 0 ? (
-                <Typography variant="body2" color="textSecondary">
-                  No attendance records found.
-                </Typography>
-              ) : (
-                attendance.map((entry, idx) => (
-                  <Box key={idx} display="flex" justifyContent="space-between" p={1}>
-                    <Typography>
-                      {formatDate(entry.Date)}
-                    </Typography>
-                    <Typography color="textSecondary">
-                      {formatTime(entry.TimeIn)}
-                      {entry.TimeOut ? ` - ${formatTime(entry.TimeOut)}` : ""}
-                    </Typography>
-                  </Box>
-                ))
-              )}
-
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Original Right Column: Table with Tabs */}
+        {/* RIGHT COLUMN: Tabbed Data (Visits, Walk-ins, Expiring Soon) */}
         <Grid item xs={12} md={8}>
-          <Card sx={{ borderRadius: 2, boxShadow: 2, display: "flex", flexDirection: "column", height: "100%" }}>
+          <Card
+            sx={{
+              borderRadius: 2,
+              boxShadow: 2,
+              display: "flex",
+              flexDirection: "column",
+              height: "100%",
+            }}
+          >
             <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
               <Tabs value={activeTab} onChange={handleTabChange} variant="fullWidth">
                 <Tab icon={<GroupIcon />} label="Visits" />
                 <Tab icon={<DirectionsWalkIcon />} label="Walk-Ins" />
                 <Tab icon={<WarningAmberIcon />} label="Expiring Soon" />
-              </Tabs>
+                <Tab icon={<LockIcon />} label="Locker Management" />              
+                </Tabs>
             </Box>
-            <Box sx={{ flex: 1, p: 2, overflow: "hidden" }}>
+            <Box sx={{ flex: 1, p: 2, overflow: "auto" }}>
               {activeTab === 0 && (
                 <Paper sx={{ height: 600 }}>
                   <DataGrid
@@ -850,22 +1422,17 @@ export default function StaffDashboard() {
                       "& .MuiDataGrid-columnHeaders": {
                         backgroundColor: "#f5f5f5",
                         fontWeight: "bold",
-                        fontSize: "1rem"
+                        fontSize: "1rem",
                       },
                       "& .MuiDataGrid-cell": {
-                        borderBottom: "1px solid #e0e0e0"
-                      }
+                        borderBottom: "1px solid #e0e0e0",
+                      },
                     }}
                   />
                 </Paper>
               )}
               {activeTab === 1 && (
                 <Box sx={{ height: 600, display: "flex", flexDirection: "column" }}>
-                  <Box sx={{ textAlign: "right", mb: 1 }}>
-                    <Button variant="contained" onClick={() => setAddWalkInOpen(true)}>
-                      Add Walk-In
-                    </Button>
-                  </Box>
                   <Paper sx={{ height: 600 }}>
                     <DataGrid
                       rows={walkIns}
@@ -878,11 +1445,11 @@ export default function StaffDashboard() {
                         "& .MuiDataGrid-columnHeaders": {
                           backgroundColor: "#f5f5f5",
                           fontWeight: "bold",
-                          fontSize: "1rem"
+                          fontSize: "1rem",
                         },
                         "& .MuiDataGrid-cell": {
-                          borderBottom: "1px solid #e0e0e0"
-                        }
+                          borderBottom: "1px solid #e0e0e0",
+                        },
                       }}
                     />
                   </Paper>
@@ -904,13 +1471,18 @@ export default function StaffDashboard() {
                       "& .MuiDataGrid-columnHeaders": {
                         backgroundColor: "#f5f5f5",
                         fontWeight: "bold",
-                        fontSize: "1rem"
+                        fontSize: "1rem",
                       },
                       "& .MuiDataGrid-cell": {
-                        borderBottom: "1px solid #e0e0e0"
-                      }
+                        borderBottom: "1px solid #e0e0e0",
+                      },
                     }}
                   />
+                </Paper>
+              )}
+                {activeTab === 3 && (
+                <Paper sx={{ height: "80vh", p: 2 }}>
+                  <LockerManagement />
                 </Paper>
               )}
             </Box>
@@ -918,8 +1490,8 @@ export default function StaffDashboard() {
         </Grid>
       </Grid>
 
-      {/* Dialogs */}
-      <Dialog open={isCamOpen} onClose={handleCloseCam} fullWidth maxWidth="sm">
+      {/* Dialogs for Camera, Biometric, Visits, Walk-ins, etc. */}
+      <Dialog open={isCamOpen} onClose={() => setCamOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Card Scanning via Webcam</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2">
@@ -927,28 +1499,29 @@ export default function StaffDashboard() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseCam}>Cancel</Button>
-          <Button variant="contained" onClick={handleSimulateCardScan}>
+          <Button onClick={() => setCamOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => setCamOpen(false)}>
             Simulate Card Scan
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={isBiometricOpen} onClose={handleCloseBiometric} fullWidth maxWidth="xs">
+      <Dialog open={isBiometricOpen} onClose={() => setBiometricOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>Fingerprint Scan</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2">
-            Placeholder for biometric scanning. In production, you'd integrate hardware or a library.
+            Placeholder for biometric scanning. In production, integrate actual hardware.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseBiometric}>Cancel</Button>
-          <Button variant="contained" onClick={handleSimulateFingerprint}>
+          <Button onClick={() => setBiometricOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => setBiometricOpen(false)}>
             Simulate Fingerprint
           </Button>
         </DialogActions>
       </Dialog>
 
+      {/* View Visit Dialog */}
       <Dialog
         open={isViewVisitOpen}
         onClose={() => setViewVisitOpen(false)}
@@ -978,12 +1551,9 @@ export default function StaffDashboard() {
         <DialogContent dividers sx={{ p: 3 }}>
           {selectedVisit &&
             (() => {
-              const member = members.find(
-                (m) => m.MemberID === selectedVisit.MemberID
-              );
+              const mem = members.find((m) => m.MemberID === selectedVisit.MemberID);
               return (
                 <Box>
-                  {/* Member Basic Info */}
                   <Box display="flex" alignItems="center" gap={2} mb={2}>
                     <Box
                       sx={{
@@ -995,25 +1565,17 @@ export default function StaffDashboard() {
                         border: "1px solid #ddd",
                       }}
                     >
-                      {member && member.PhotoPath ? (
+                      {mem && mem.PhotoPath ? (
                         <Box
                           component="img"
-                          src={`/storage/${member.PhotoPath}`}
+                          src={`/storage/${mem.PhotoPath}`}
                           alt="Member"
-                          sx={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                          }}
+                          sx={{ width: "100%", height: "100%", objectFit: "cover" }}
                         />
                       ) : (
                         <Typography
                           variant="caption"
-                          sx={{
-                            color: "gray",
-                            textAlign: "center",
-                            lineHeight: "100px",
-                          }}
+                          sx={{ color: "gray", textAlign: "center", lineHeight: "100px" }}
                         >
                           No photo
                         </Typography>
@@ -1021,21 +1583,20 @@ export default function StaffDashboard() {
                     </Box>
                     <Box>
                       <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                        {member ? member.FullName : "—"}
+                        {mem ? mem.FullName : "—"}
                       </Typography>
                       <Typography variant="subtitle1" sx={{ fontSize: "1.1rem" }}>
-                        {member ? member.Email : "—"}
+                        {mem ? mem.Email : "—"}
                       </Typography>
                       <Typography variant="subtitle1" sx={{ fontSize: "1.1rem" }}>
-                        {member ? member.Phone : "—"}
+                        {mem ? mem.Phone : "—"}
                       </Typography>
                     </Box>
                   </Box>
                   <Divider sx={{ my: 1 }} />
-                  {/* Membership Information */}
                   <Box mb={1}>
                     <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1 }}>
-                      Membership Information
+                      Membership Info
                     </Typography>
                     <Box display="flex" flexWrap="wrap" gap={1}>
                       <TextField
@@ -1050,7 +1611,7 @@ export default function StaffDashboard() {
                             </InputAdornment>
                           ),
                         }}
-                        value={member && member.PlanName ? member.PlanName : "Unknown"}
+                        value={mem?.plan ? mem.plan.PlanName : "N/A"}
                       />
                       <TextField
                         variant="filled"
@@ -1064,51 +1625,28 @@ export default function StaffDashboard() {
                             </InputAdornment>
                           ),
                         }}
-                        value={member && member.Status ? member.Status : "Unknown"}
+                        value={mem?.status ? mem.status.StatusName : "N/A"}
                       />
                       <TextField
                         variant="filled"
                         size="small"
                         label="Start Date"
-                        InputProps={{
-                          readOnly: true,
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <EventAvailableIcon fontSize="small" />
-                            </InputAdornment>
-                          ),
-                        }}
-                        value={
-                          member && member.MembershipStartDate
-                            ? formatDate(member.MembershipStartDate)
-                            : "—"
-                        }
+                        InputProps={{ readOnly: true }}
+                        value={mem?.MembershipStartDate ? formatDate(mem.MembershipStartDate) : "—"}
                       />
                       <TextField
                         variant="filled"
                         size="small"
                         label="End Date"
-                        InputProps={{
-                          readOnly: true,
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <HistoryIcon fontSize="small" />
-                            </InputAdornment>
-                          ),
-                        }}
-                        value={
-                          member && member.MembershipEndDate
-                            ? formatDate(member.MembershipEndDate)
-                            : "—"
-                        }
+                        InputProps={{ readOnly: true }}
+                        value={mem?.MembershipEndDate ? formatDate(mem.MembershipEndDate) : "—"}
                       />
                     </Box>
                   </Box>
                   <Divider sx={{ my: 1 }} />
-                  {/* Visit Information */}
                   <Box mb={1}>
                     <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1 }}>
-                      Visit Information
+                      Visit Info
                     </Typography>
                     <Box display="flex" flexWrap="wrap" gap={1}>
                       <TextField
@@ -1116,22 +1654,14 @@ export default function StaffDashboard() {
                         size="small"
                         label="Visit Date"
                         InputProps={{ readOnly: true }}
-                        value={
-                          selectedVisit.VisitDate
-                            ? formatDate(selectedVisit.VisitDate)
-                            : "—"
-                        }
+                        value={selectedVisit.VisitDate ? formatDate(selectedVisit.VisitDate) : "—"}
                       />
                       <TextField
                         variant="filled"
                         size="small"
                         label="Visit Time"
                         InputProps={{ readOnly: true }}
-                        value={
-                          selectedVisit.VisitTime
-                            ? formatTime(selectedVisit.VisitTime)
-                            : "—"
-                        }
+                        value={selectedVisit.VisitTime ? formatTime(selectedVisit.VisitTime) : "—"}
                       />
                       <TextField
                         variant="filled"
@@ -1140,32 +1670,7 @@ export default function StaffDashboard() {
                         InputProps={{ readOnly: true }}
                         value={selectedVisit.CheckInMethod || "—"}
                       />
-                      <TextField
-                        variant="filled"
-                        size="small"
-                        label="Visit ID"
-                        InputProps={{ readOnly: true }}
-                        value={selectedVisit.VisitID || "—"}
-                      />
                     </Box>
-                  </Box>
-                  <Divider sx={{ my: 1 }} />
-                  {/* Notes */}
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1 }}>
-                      Notes
-                    </Typography>
-                    <TextField
-                      variant="filled"
-                      fullWidth
-                      multiline
-                      rows={2}
-                      size="small"
-                      InputProps={{ readOnly: true }}
-                      value={
-                        member && member.Notes ? member.Notes : "No notes available."
-                      }
-                    />
                   </Box>
                 </Box>
               );
@@ -1173,6 +1678,7 @@ export default function StaffDashboard() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Visit Dialog */}
       <Dialog open={isEditVisitOpen} onClose={() => setEditVisitOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Edit Visit</DialogTitle>
         <DialogContent dividers>
@@ -1226,6 +1732,7 @@ export default function StaffDashboard() {
         </DialogActions>
       </Dialog>
 
+      {/* View Walk-In Dialog */}
       <Dialog open={isViewWalkInOpen} onClose={() => setViewWalkInOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Walk-In Details</DialogTitle>
         <DialogContent dividers>
@@ -1259,6 +1766,7 @@ export default function StaffDashboard() {
         </DialogActions>
       </Dialog>
 
+      {/* Edit Walk-In Dialog */}
       <Dialog open={isEditWalkInOpen} onClose={() => setEditWalkInOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Edit Walk-In</DialogTitle>
         <DialogContent dividers>
@@ -1315,6 +1823,7 @@ export default function StaffDashboard() {
         </DialogActions>
       </Dialog>
 
+      {/* Add Walk-In Dialog */}
       <Dialog open={isAddWalkInOpen} onClose={() => setAddWalkInOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Add New Walk-In</DialogTitle>
         <DialogContent dividers>
@@ -1372,12 +1881,22 @@ export default function StaffDashboard() {
         </DialogActions>
       </Dialog>
 
+      {/* Snackbar */}
       <Snackbar
-        open={snackOpen}
-        autoHideDuration={3000}
-        onClose={() => setSnackOpen(false)}
-        message={snackMessage}
-      />
+  open={snackOpen}
+  autoHideDuration={3000}
+  onClose={() => setSnackOpen(false)}
+  anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+>
+  <Alert 
+    onClose={() => setSnackOpen(false)} 
+    severity={snackSeverity} 
+    sx={{ width: "100%" }}
+  >
+    {snackMessage}
+  </Alert>
+</Snackbar>
+
     </Box>
   );
 }

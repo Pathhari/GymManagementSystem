@@ -11,6 +11,7 @@ class LockerUsage extends Model
     protected $fillable = [
         'LockerID',
         'MemberID',
+        'WalkInName',        // ← ADD THIS
         'KeyBorrowed',
         'BorrowDate',
         'ReturnDate',

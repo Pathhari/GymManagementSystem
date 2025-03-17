@@ -543,40 +543,6 @@ export default function SystemLogs() {
 
   return (
     <Box sx={{ p: 4 }}>
-      {/* ---------- Date/Branch Filters ---------- */}
-      <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap", gap: 2, alignItems: "center" }}>
-    
-        <TextField
-          type="date"
-          size="small"
-          label="From"
-          InputLabelProps={{ shrink: true }}
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-        />
-        <TextField
-          type="date"
-          size="small"
-          label="To"
-          InputLabelProps={{ shrink: true }}
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-        />
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Branch</InputLabel>
-          <Select value={selectedBranch} label="Branch" onChange={(e) => setSelectedBranch(e.target.value)}>
-            {branchOptions.map((b) => (
-              <MenuItem key={b} value={b}>
-                {b}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <Button variant="contained" onClick={applyFilters}>
-          Filter
-        </Button>
-      </Box>
-
       {/* ---------- Overview Cards ---------- */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>

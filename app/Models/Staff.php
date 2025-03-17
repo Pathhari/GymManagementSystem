@@ -6,6 +6,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;  // <— instead of Mode
 use Illuminate\Notifications\Notifiable;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Models\Activity as SpatieActivity;
 
 class Staff extends Authenticatable
 {
@@ -35,10 +36,27 @@ class Staff extends Authenticatable
     {
         return LogOptions::defaults()
             ->useLogName('staff')
-            ->setDescriptionForEvent(fn (string $eventName) => "Staff {$eventName}")
+            ->setDescriptionForEvent(fn ($eventName) => "Staff {$eventName}")
             ->logFillable()
             ->logOnlyDirty();
     }
+
+    /**
+     * If staff belongs to multiple branches via pivot, 
+     * pick one or store an array. Example: store the first pivot's ID.
+     */
+    public function tapActivity(SpatieActivity $activity, string $eventName)    
+    {
+        $branchId = null;
+        if ($this->relationLoaded('branches') && $this->branches->count() > 0) {
+            $branchId = $this->branches->first()->BranchID;
+        }
+        // otherwise, if staff has a single 'BranchID' column, do:
+        // $branchId = $this->BranchID;
+
+        $activity->properties = $activity->properties->put('branch_id', $branchId);
+    }
+
     /**
      * The attributes that should be hidden for arrays.
      */
@@ -99,4 +117,32 @@ class Staff extends Authenticatable
     {
         return $this->hasMany(MaintenanceLog::class, 'MaintainedBy', 'StaffID');
     }
+
+    public function getHourlyRateAttribute() {
+        return $this->DailyRate ? $this->DailyRate / 8 : 0;
+    }
+    public function getOvertimeRateAttribute() {
+        return $this->HourlyRate * 1.25;
+    }
+
+    public function getDefaultBranchIdAttribute()
+{
+    // Make sure the 'branches' relationship is loaded:
+    // (You can do $this->load('branches') in the controller or method.)
+    if ($this->branches->isEmpty()) {
+        return null;
+    }
+
+    // 1) If you just want the FIRST branch in the pivot:
+    //    (This only makes sense if staff truly belongs to a single or 
+    //     “primary” branch and the pivot is basically 1 record.)
+    return $this->branches->first()->BranchID;
+
+    // 2) If you want to pick the pivot row where e.g. 'IsDefault' = 1:
+    //    return $this->branches->where('pivot.IsDefault', 1)
+    //                          ->first()
+    //                          ->BranchID ?? null;
+}
+
+    
 }

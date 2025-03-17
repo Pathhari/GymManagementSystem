@@ -18,6 +18,11 @@ class MemberVisit extends Model
         'Remarks',
     ];
     
+    protected $casts = [
+        'BranchID' => 'integer',
+        'MemberID' => 'integer',
+    ];
+
     // Relationship: This visit record belongs to one branch
     public function branch()
     {

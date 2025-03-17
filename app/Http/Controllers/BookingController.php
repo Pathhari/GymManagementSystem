@@ -28,40 +28,45 @@ class BookingController extends Controller
     {
         $staff = auth('staff')->user();
         $query = Booking::with(['member', 'facility.branch']);
-
+    
         if ($staff) {
             $branchIDs = $staff->branches->pluck('BranchID')->toArray();
-            $query->whereHas('facility', function($q) use ($branchIDs) {
+            $query->whereHas('facility', function ($q) use ($branchIDs) {
                 $q->whereIn('BranchID', $branchIDs);
             });
         }
-
+    
         if ($request->filled('branch')) {
             $branchName = $request->get('branch');
-            $query->whereHas('facility.branch', function($q) use ($branchName) {
+            $query->whereHas('facility.branch', function ($q) use ($branchName) {
                 $q->where('BranchName', $branchName);
             });
         }
-
+    
         $bookings = $query->orderBy('BookingDate', 'desc')->get();
-
-        $data = $bookings->map(function($b) {
+    
+        $data = $bookings->map(function ($b) {
             return [
                 'BookingID'    => $b->BookingID,
-                'MemberName'   => optional($b->member)->FullName ?? '',
+                'BranchID'     => optional(optional($b->facility)->branch)->BranchID ?? null,
+                'Branch'       => optional(optional($b->facility)->branch)->BranchName ?? '',
+                // Prefer MemberName; if empty, use GuestName (if available)
+                'MemberName'   => optional($b->member)->FullName ?: $b->GuestName,
+                // Optionally, also return guest details separately:
+                'GuestName'    => $b->GuestName ?? '',
+                'GuestEmail'   => $b->GuestEmail ?? '',
                 'FacilityID'   => optional($b->facility)->FacilityID ?? null,
-                'FacilityName' => optional($b->facility)->FacilityName ?? '', 
+                'FacilityName' => optional($b->facility)->FacilityName ?? '',
                 'BookingDate'  => $b->BookingDate,
                 'BookingTime'  => $b->BookingTime,
                 'Duration'     => $b->Duration,
                 'Status'       => $b->Status ?? '',
-                'Branch'       => optional(optional($b->facility)->branch)->BranchName ?? '',
-                'BranchID'     => optional(optional($b->facility)->branch)->BranchID ?? null,
             ];
         });
-
+    
         return response()->json(['bookings' => $data]);
     }
+    
 
     /**
      * Store a new Booking (Facility + Payment).
@@ -71,7 +76,9 @@ class BookingController extends Controller
         $staff = auth('staff')->user();
 
         $data = $request->validate([
-            'MemberID'      => 'required|exists:members,MemberID',
+            'MemberID'      => 'nullable|exists:members,MemberID',
+            'GuestName'     => 'nullable|string|max:255',
+            'GuestEmail'    => 'nullable|email|max:255',
             'FacilityID'    => 'required|exists:facilities,FacilityID',
             'BookingDate'   => 'required|date',
             'BookingTime'   => 'required|string|max:20',
@@ -99,24 +106,28 @@ class BookingController extends Controller
             // 1) Create Payment
             $payment = \App\Models\Payment::create([
                 'BranchID'      => $facility->BranchID,
-                'MemberID'      => $data['MemberID'],
+                'MemberID'      => $data['MemberID'], // will be null for guest bookings
+                'PayerName'     => $data['MemberID'] ? optional($b->member)->FullName : $data['GuestName'],
                 'PaymentMethod' => $data['PaymentMethod'],
                 'Amount'        => $data['Amount'],
                 'PaymentDate'   => now(),
                 'Status'        => 'Paid',
-                'PaymentFor'    => ['Booking'], 
+                'PaymentFor'    => ['Facility Booking'], 
             ]);
 
             // 2) Create Booking referencing Payment
             $booking = Booking::create([
-                'MemberID'   => $data['MemberID'],
-                'FacilityID' => $data['FacilityID'],
-                'PaymentID'  => $payment->PaymentID,
-                'BookingDate'=> $data['BookingDate'],
-                'BookingTime'=> $data['BookingTime'],
-                'Duration'   => $data['Duration'] ?? 1,
-                'Status'     => $data['Status']   ?? 'Confirmed',
+                'MemberID'    => $data['MemberID'],
+                'FacilityID'  => $data['FacilityID'],
+                'PaymentID'   => $payment->PaymentID,
+                'BookingDate' => $data['BookingDate'],
+                'BookingTime' => $data['BookingTime'],
+                'Duration'    => $data['Duration'] ?? 1,
+                'Status'      => $data['Status']   ?? 'Confirmed',
+                'GuestName'   => $data['GuestName'] ?? null,
+                'GuestEmail'  => $data['GuestEmail'] ?? null,
             ]);
+            
 
             return response()->json([
                 'message' => 'Booking & Payment created successfully.',
@@ -125,6 +136,62 @@ class BookingController extends Controller
             ], 201);
         });
     }
+
+    public function updateBooking(Request $request, $id)
+{
+    // 1) Validate input
+    $data = $request->validate([
+        'MemberID'   => 'nullable|exists:members,MemberID',
+        'GuestName'  => 'nullable|string|max:255',
+        'GuestEmail' => 'nullable|email|max:255',
+        'FacilityID' => 'required|exists:facilities,FacilityID',
+        'BookingDate'=> 'required|date',
+        'BookingTime'=> 'required',
+        'Duration'   => 'nullable|integer|min:1',
+        'Status'     => 'nullable|string|max:50',
+        'PaymentMethod' => 'nullable|string|max:50',
+        'Amount'     => 'nullable|numeric|min:0',
+    ]);
+
+    // 2) Find the booking
+    $booking = Booking::findOrFail($id);
+
+    // 3) If it’s a member booking
+    if (!empty($data['MemberID'])) {
+        $booking->MemberID   = $data['MemberID'];
+        $booking->GuestName  = null;
+        $booking->GuestEmail = null;
+    } else {
+        // If it’s a guest booking (no MemberID)
+        $booking->MemberID   = null;
+        $booking->GuestName  = $data['GuestName']  ?? null;
+        $booking->GuestEmail = $data['GuestEmail'] ?? null;
+    }
+
+    // 4) Update the rest
+    $booking->FacilityID  = $data['FacilityID'];
+    $booking->BookingDate = $data['BookingDate'];
+    $booking->BookingTime = $data['BookingTime'];
+    $booking->Duration    = $data['Duration'] ?? 1;
+    $booking->Status      = $data['Status']   ?? 'Confirmed';
+
+    // Payment method & amount if you store them in the booking itself or in related table
+    // (If you have a separate Payment model, adapt accordingly.)
+    if (isset($data['PaymentMethod'])) {
+        $booking->PaymentMethod = $data['PaymentMethod'];
+    }
+    if (isset($data['Amount'])) {
+        $booking->Amount = $data['Amount'];
+    }
+
+    // 5) Save
+    $booking->save();
+
+    return response()->json([
+        'message' => 'Booking updated successfully.',
+        'booking' => $booking,
+    ]);
+}
 
     /* --------------------------------------------------------------
      *  Coaches & Facilities Index
@@ -191,12 +258,13 @@ class BookingController extends Controller
                 'Branch'       => optional($s->branch)->BranchName ?? '',
                 'SessionName'  => $s->SessionName,
                 'SessionType'  => $s->SessionType ?? '',
+                'CoachID'      => $s->CoachID, // Add this line
                 'CoachName'    => optional($s->coach)->FullName ?? '',
                 'StartTime'    => $s->StartTime ?? '',
                 'EndTime'      => $s->EndTime ?? '',
                 'Capacity'     => $s->Capacity,
                 'Location'     => $s->Location ?? '',
-                'Fee'          => $s->Fee ? number_format($s->Fee, 2) : '0.00', // Format fee as decimal
+                'Fee'          => $s->Fee ? number_format($s->Fee, 2) : '0.00',
                 'Participants' => $s->Participants ?? 0,
                 'Status'       => $s->Status ?? '',
             ];

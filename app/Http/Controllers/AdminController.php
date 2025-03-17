@@ -34,9 +34,23 @@ class AdminController extends Controller
             unset($data['password']);
         }
 
-        // Create the admin record in `admins` table
+     // Create the admin record
         $admin = Admin::create($data);
+
+        // Check if a BranchID was provided and attach it
+        if ($request->filled('BranchID')) {
+            $admin->branches()->attach($request->BranchID);
+        }
 
         return response()->json($admin, 201);
     }
+
+        public function myBranches()
+        {
+            $admin = auth('admin')->user();
+            $branches = $admin->branches; // or ->branches()->get();
+
+            return response()->json(['branches' => $branches]);
+        }
+
 }

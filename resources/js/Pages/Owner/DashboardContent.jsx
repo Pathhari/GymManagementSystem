@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo} from 'react';
 import axios from 'axios';
 import {
   Box,
@@ -113,6 +113,8 @@ export default function OwnerDashboard(onClose) {
   // ----------------- SNACKBAR STATES & HELPER (for success messages) -----------------
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackMessage, setSnackMessage] = useState('');
+  const [showPettyToday, setShowPettyToday] = useState(true);
+  const [showPettyTomorrow, setShowPettyTomorrow] = useState(true);
   const showSuccessMessage = (message) => {
     setSnackMessage(message);
     setSnackOpen(true);
@@ -300,7 +302,13 @@ export default function OwnerDashboard(onClose) {
     DepositedAmount: '',
     PettyCash: '',
     Remarks: '',
+    PettyCashTomorrow: '',   // [PETTY CASH TOMORROW] <-- new
   });
+
+    // [NEW] Track whether we are editing or adding
+  const [isEditingFlow, setIsEditingFlow] = useState(false);
+  // [NEW] Store the ID of the flow we are editing (or null if creating)
+  const [editingFlowId, setEditingFlowId] = useState(null);
 
   // Generate Gym daily flow
   const [selectedBranchId, setSelectedBranchId] = useState('');
@@ -322,6 +330,42 @@ export default function OwnerDashboard(onClose) {
     StaffID: '',
     Notes: '',
   });
+  const [isEditingExpense, setIsEditingExpense] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState(null);
+
+  function openAddExpenseDialog() {
+    setExpenseForm({
+      BranchID: '',
+      ExpenseDate: '',
+      ExpenseCategory: '',
+      Amount: '',
+      PaymentMethod: '',
+      StaffID: '',
+      Notes: '',
+      BusinessType: '',
+    });
+    setIsEditingExpense(false);
+    setEditingExpenseId(null);
+    setExpenseFormOpen(true);
+  }
+
+  function openEditExpenseDialog(row) {
+    setIsEditingExpense(true);
+    setEditingExpenseId(row.ExpenseID);
+  
+    setExpenseForm({
+      BranchID: row.BranchID?.toString() || '',
+      ExpenseDate: row.ExpenseDate || '',
+      ExpenseCategory: row.ExpenseCategory || '',
+      Amount: String(row.Amount || ''),
+      PaymentMethod: row.PaymentMethod || '',
+      StaffID: row.StaffID || '',
+      Notes: row.Notes || '',
+      BusinessType: row.BusinessType || '',
+    });
+  
+    setExpenseFormOpen(true);
+  }
 
   // Consolidated
   const [consolidatedRows, setConsolidatedRows] = useState([]);
@@ -336,6 +380,7 @@ export default function OwnerDashboard(onClose) {
   // [NEW STUFF] Overview Filters
   const [overviewBranchFilter, setOverviewBranchFilter] = useState('all');
   const [overviewBizFilter, setOverviewBizFilter] = useState('all');
+  const [consolidatedBranchFilter, setConsolidatedBranchFilter] = useState('all');
 
   // Charts
   const [cashFlows, setCashFlows] = useState([]);
@@ -363,46 +408,67 @@ export default function OwnerDashboard(onClose) {
   const [selectedDailyFlow, setSelectedDailyFlow] = useState(null);
   const [dailyPettyForm, setDailyPettyForm] = useState({
     pettyCash: '',
+    pettyCashTomorrow: '',  
     remarks: ''
   });
+  // 1) A new piece of state for the sum of grandNet
+  const [sumGrandNet, setSumGrandNet] = useState(0);
+  const [sumGrandPetty, setSumGrandPetty] = useState(0);
+  const [sumGrandExpenses, setSumGrandExpenses] = useState(0);
+  
   const openDailyPettyDialog = (row) => {
     setSelectedDailyFlow(row);
     setDailyPettyForm({
       pettyCash: row.PettyCash ? String(row.PettyCash) : '',
+      pettyCashTomorrow: row.petty_cash_tomorrow ? String(row.petty_cash_tomorrow) : '',      
       remarks: ''
     });
     setDailyPettyOpen(true);
   };
+  
   const closeDailyPettyDialog = () => {
     setDailyPettyOpen(false);
     setSelectedDailyFlow(null);
   };
-  const handleDailyPettyChange = (e) => {
+
+  function handleDailyPettyChange(e) {
     const { name, value } = e.target;
     setDailyPettyForm((prev) => ({ ...prev, [name]: value }));
-  };
+  }
+  
   const handleSubmitDailyPetty = async () => {
     try {
       if (!selectedDailyFlow) return;
-      const pettyVal = parseFloat(dailyPettyForm.pettyCash) || 0;
-      await axios.post('/finance/cashflow', {
+  
+      const pettyVal = showPettyCash ? parseFloat(flow.PettyCashTomorrow || 0) : 0;      
+      const pettyTmrVal = parseFloat(dailyPettyForm.pettyCashTomorrow) || 0;
+  
+      await axios.put(`/finance/cashflow/${selectedDailyFlow.CashFlowID}`, {
         BranchID: selectedDailyFlow.BranchID,
         Date: selectedDailyFlow.Date,
         BusinessType: selectedDailyFlow.BusinessType,
+      
+        // Keep existing sales values from selectedDailyFlow:
+        CashSales: selectedDailyFlow.CashSales,
+        GCashSales: selectedDailyFlow.GCashSales,
+        BPISales: selectedDailyFlow.BPISales,
+        BDOSales: selectedDailyFlow.BDOSales,
+      
+        // Update the petty fields only:
         PettyCash: pettyVal,
-        Remarks: dailyPettyForm.remarks,
-        CashSales: 0,
-        GCashSales: 0,
-        BPISales: 0,
-        BDOSales: 0
+        PettyCashTomorrow: pettyTmrVal,
+        Remarks: dailyPettyForm.remarks
       });
+  
       showSuccessMessage('Petty Cash set for ' + selectedDailyFlow.BusinessType);
       setDailyPettyOpen(false);
       setSelectedDailyFlow(null);
+  
       // refresh flows
       const cfRes = await axios.get('/finance/cashflow');
       const flows = cfRes.data.flows || [];
       setAllFlows(flows);
+  
       // re-apply filter
       const newFiltered = applyDateFilter(flows, dateFrom, dateTo);
       setFilteredFlows(newFiltered);
@@ -411,6 +477,7 @@ export default function OwnerDashboard(onClose) {
       alert('Failed to set petty cash in daily flow');
     }
   };
+  
 
   // ============== Data loading & setup ==============
   useEffect(() => {
@@ -437,15 +504,32 @@ export default function OwnerDashboard(onClose) {
         setSystemLogs(logsRes.data.logs);
         // 4. recent transactions
         const paymentsRes = await axios.get('/payments');
-        const transactions = paymentsRes.data.map((p) => ({
-          id: p.PaymentID,
-          payer: p.member ? p.member.FullName : p.WalkInName || 'Walk-In',
-          amount: p.Amount,
-          method: p.PaymentMethod,
-          date: p.PaymentDate,
-          status: p.Status,
-        }));
+        const transactions = paymentsRes.data.map((p) => {
+          let payer = '';
+          if (p.monthly_client && p.monthly_client.FullName) {
+            payer = p.monthly_client.FullName;
+          } else if (p.member && p.member.FullName) {
+            payer = p.member.FullName;
+          } else if (p.PayerName) {
+            payer = p.PayerName;
+          } else if (p.WalkInName) {
+            payer = p.WalkInName;
+          } else {
+            payer = 'Walk-In';
+          }
+          
+          return {
+            id: p.PaymentID,
+            payer, // aggregated value
+            amount: p.Amount,
+            method: p.PaymentMethod,
+            date: p.PaymentDate,
+            status: p.Status,
+          };
+        });
+        
         setRecentTransactions(transactions);
+
         // 5. flows & expenses
         const [cashflowRes, expRes] = await Promise.all([axios.get('/finance/cashflow'), axios.get('/finance/expenses')]);
         const flows = cashflowRes.data.flows || [];
@@ -472,11 +556,14 @@ export default function OwnerDashboard(onClose) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Rebuild consolidated if filtered flows or expenses change
-  useEffect(() => {
-    buildConsolidatedRows(filteredFlows, filteredExpenses, paymentFilter);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredFlows, filteredExpenses, paymentFilter]);
+  // Rebuild consolidated if flows/expenses/paymentFilter change
+    useEffect(() => {
+      buildConsolidatedRows(filteredFlows, filteredExpenses);
+    }, [filteredFlows, filteredExpenses, showPettyCash, showExpenses, paymentFilter, bizFilter, consolidatedBranchFilter]);
+
+    const consolidatedColumns = useMemo(() => {
+      return getDynamicConsolidatedColumns();
+    }, [showPettyToday, showPettyTomorrow, showExpenses, bizFilter]);
 
   // Chart building
   const buildRevenueTrends = (flows) => {
@@ -650,41 +737,138 @@ export default function OwnerDashboard(onClose) {
         headerName: 'Notes',
         width: 160,
       },
+      {
+        field: 'actions',
+        headerName: 'Actions',
+        width: 180,
+        renderCell: (params) => {
+          const row = params.row;
+          return (
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button variant="outlined" size="small" onClick={() => openEditExpenseDialog(row)}>
+                Edit
+              </Button>
+              <Button
+                variant="contained"
+                color="error"
+                size="small"
+                onClick={() => handleDeleteExpense(row)}
+              >
+                Delete
+              </Button>
+            </Box>
+          );
+        },
+      },
     ];
   
-    const expenseRows = filteredExpenses.map((exp, i) => ({
-      id: exp.ExpenseID || `temp-${i}`,
+    const expenseRows = filteredExpenses.map((exp) => ({
+      // Use the DB’s ExpenseID as the unique key in DataGrid
+      id: exp.ExpenseID,
+      ExpenseID: exp.ExpenseID, // store it explicitly if you like
       ExpenseDate: exp.ExpenseDate || '',
       BranchID: exp.BranchID || '',
-      BusinessType: exp.BusinessType || '',   // <--- new
+      BusinessType: exp.BusinessType || '',
       ExpenseCategory: exp.ExpenseCategory || '',
       Amount: parseFloat(exp.Amount || 0),
       PaymentMethod: exp.PaymentMethod || '',
       StaffID: exp.StaffID || '',
       Notes: exp.Notes || '',
     }));
-  
+      
     const handleExpenseChange = (e) => {
       const { name, value } = e.target;
       setExpenseForm((prev) => ({ ...prev, [name]: value }));
     };
+
     const handleSubmitExpense = async () => {
       try {
-        await axios.post('/finance/expenses', { ...expenseForm });
-        showSuccessMessage('Expense created successfully!');
-        setExpenseFormOpen(false);
+        if (!isEditingExpense) {
+          // 1) CREATE
+          await axios.post('/finance/expenses', {
+            ...expenseForm,
+            Amount: parseFloat(expenseForm.Amount || 0),
+          });
+          showSuccessMessage('Expense created successfully!');
+        } else {
+          // 2) EDIT/UPDATE
+          const payload = {
+            ...expenseForm,
+            Amount: parseFloat(expenseForm.Amount || 0),
+          };
+          await axios.put(`/finance/expenses/${editingExpenseId}`, payload);
+          showSuccessMessage('Expense updated successfully!');
+        }
+
+        // Refresh from server
         const expRes = await axios.get('/finance/expenses');
         const allExp = expRes.data.expenses || [];
         setAllExpenses(allExp);
+
+        // Filter + rebuild chart
+        const newFiltered = applyDateFilter(allExp, dateFrom, dateTo);
+        setFilteredExpenses(newFiltered);
+        buildExpenseChart(allExp);
+
+        // Close form & reset
+        setExpenseFormOpen(false);
+        setIsEditingExpense(false);
+        setEditingExpenseId(null);
+      } catch (err) {
+        console.error(err);
+        alert(isEditingExpense ? 'Error updating expense.' : 'Error creating expense.');
+      }
+    };
+
+    async function handleDeleteExpense(row) {
+      const confirmed = window.confirm('Are you sure you want to delete this expense?');
+      if (!confirmed) return;
+    
+      try {
+        await axios.delete(`/finance/expenses/${row.ExpenseID}`);
+        showSuccessMessage('Expense deleted successfully!');
+    
+        // Refresh from server
+        const expRes = await axios.get('/finance/expenses');
+        const allExp = expRes.data.expenses || [];
+        setAllExpenses(allExp);
+    
+        // Filter + rebuild chart
         const newFiltered = applyDateFilter(allExp, dateFrom, dateTo);
         setFilteredExpenses(newFiltered);
         buildExpenseChart(allExp);
       } catch (err) {
         console.error(err);
-        alert('Error creating expense. Check console.');
+        alert('Error deleting expense. Check console.');
       }
-    };
-  
+    }
+    
+
+    async function handleDeleteFlow(row) {
+      const confirm = window.confirm('Are you sure you want to delete this entry?');
+      if (!confirm) return;
+    
+      try {
+        // row.CashFlowID (or row.id if you used that)
+        await axios.delete(`/finance/cashflow/${row.CashFlowID}`);
+        showSuccessMessage('Cash flow entry deleted!');
+    
+        // Re-fetch & refresh UI
+        const cfRes = await axios.get('/finance/cashflow');
+        const flows = cfRes.data.flows || [];
+        setAllFlows(flows);
+        const newFiltered = applyDateFilter(flows, dateFrom, dateTo);
+        setFilteredFlows(newFiltered);
+        buildRevenueTrends(newFiltered);
+        buildPaymentPie(newFiltered);
+        buildBusinessCharts(newFiltered);
+      } catch (err) {
+        console.error(err);
+        alert('Failed to delete the entry.');
+      }
+    }
+    
+    // Add PettyCashTomorrow so it displays in the DataGrid
     const flowColumns = [
       {
         field: 'Date',
@@ -709,6 +893,25 @@ export default function OwnerDashboard(onClose) {
         renderCell: (params) => formatCurrency(params.value),
       },
       {
+        field: 'PettyCash',
+        headerName: 'PC(Today)',
+        width: 100,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      {
+        field: 'CashPlusPetty',
+        headerName: 'Cash+PC Today',
+        width: 120,
+        // optional formatting
+        renderCell: (params) => `₱${params.value.toLocaleString()}`
+      },
+      {
+        field: 'PettyCashTomorrow',
+        headerName: 'PC(Tomorrow)',
+        width: 130,
+        renderCell: (params) => formatCurrency(params.value),
+      },
+      {
         field: 'GCashSales',
         headerName: 'GCash',
         width: 80,
@@ -726,9 +929,6 @@ export default function OwnerDashboard(onClose) {
         width: 80,
         renderCell: (params) => formatCurrency(params.value),
       },
-      ////////////////////////////////////////////////
-      // NEW COLUMNS the client specifically requested:
-      ////////////////////////////////////////////////
       {
         field: 'TotalGross',
         headerName: 'Total Gross',
@@ -736,14 +936,8 @@ export default function OwnerDashboard(onClose) {
         renderCell: (params) => formatCurrency(params.value),
       },
       {
-        field: 'PettyCash',
-        headerName: 'PettyCash',
-        width: 100,
-        renderCell: (params) => formatCurrency(params.value),
-      },
-      {
         field: 'TotalGrossMinusPetty',
-        headerName: 'Gross - Petty',
+        headerName: 'Gross - PC(Tomorrow)',
         width: 120,
         renderCell: (params) => formatCurrency(params.value),
       },
@@ -767,96 +961,119 @@ export default function OwnerDashboard(onClose) {
       {
         field: 'actions',
         headerName: 'Actions',
-        width: 120,
+        width: 250,
         renderCell: (params) => {
           const row = params.row;
           return (
-            <Button variant="contained" size="small" onClick={() => openDailyPettyDialog(row)}>
-              Add Petty
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="contained"
+                color="error"
+                size="small"
+                onClick={() => handleDeleteFlow(row)}
+              >
+                Delete
+              </Button>
+            </Box>
           );
         },
       },
     ];
-  // In place of your current flowRows definition:
-  const flowRows = filteredFlows.map((flow, i) => {
-    // All inflows
-    const flowCash  = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
-    const flowGCash = parseFloat(flow.GCashSales || 0) + parseFloat(flow.WalkInGCashSales || 0);
-    const flowBPI   = parseFloat(flow.BPISales || 0) + parseFloat(flow.WalkInBPISales || 0);
-    const flowBDO   = parseFloat(flow.BDOSales || 0) + parseFloat(flow.WalkInBDOSales || 0);
-  
-    // Find matching expenses on this date + branch + business
-    const dailyCashExpenses = allExpenses
-      .filter((exp) =>
-        exp.BranchID == flow.BranchID &&
-        exp.BusinessType === flow.BusinessType &&
-        (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
-        exp.PaymentMethod === 'Cash'
-      )
-      .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
-  
-    const dailyGCashExpenses = allExpenses
-      .filter((exp) =>
-        exp.BranchID == flow.BranchID &&
-        exp.BusinessType === flow.BusinessType &&
-        (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
-        exp.PaymentMethod === 'GCash'
-      )
-      .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
-  
-    const dailyBPIExpenses = allExpenses
-      .filter((exp) =>
-        exp.BranchID == flow.BranchID &&
-        exp.BusinessType === flow.BusinessType &&
-        (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
-        exp.PaymentMethod === 'BPI'
-      )
-      .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
-  
-    const dailyBDOExpenses = allExpenses
-      .filter((exp) =>
-        exp.BranchID == flow.BranchID &&
-        exp.BusinessType === flow.BusinessType &&
-        (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
-        exp.PaymentMethod === 'BDO'
-      )
-      .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
-  
-    // Sum of all expenses for the day, for this business
-    const totalExpenses = dailyCashExpenses + dailyGCashExpenses + dailyBPIExpenses + dailyBDOExpenses;
-    // Petty
-    const pettyCash = parseFloat(flow.PettyCash || 0);
-    // The "Total Gross" = sum of all Payment Methods
-    const totalGross = flowCash + flowGCash + flowBPI + flowBDO;
-    // Then the requested breakdown
-    const TotalGrossMinusPetty    = totalGross - pettyCash;
-    const TotalGrossMinusExpenses = totalGross - totalExpenses;
-    const takeHome = totalGross - pettyCash - totalExpenses;
-  
-    return {
-      id: i,
-      Date: flow.Date || '',
-      BranchID: flow.BranchID || '',
-      BusinessType: flow.BusinessType || '',
-      CashSales: flowCash,
-      GCashSales: flowGCash,
-      BPISales: flowBPI,
-      BDOSales: flowBDO,
-  
-      //////////////////////////////////////////////////
-      // The 4 new fields your client wants to see
-      //////////////////////////////////////////////////
-      TotalGross: totalGross,
-      TotalGrossMinusPetty,
-      TotalGrossMinusExpenses,
-      TakeHome: takeHome,
-  
-      // Keep the existing fields
-      PettyCash: pettyCash,
-      Remarks: flow.Remarks || '',
-    };
-  });
+
+    const flowRows = filteredFlows.map((flow) => {
+      // 1. Parse main payment values (pure sales only, ignoring petty)
+      const flowCash  = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
+      const flowGCash = parseFloat(flow.GCashSales || 0) + parseFloat(flow.WalkInGCashSales || 0);
+      const flowBPI   = parseFloat(flow.BPISales || 0)   + parseFloat(flow.WalkInBPISales || 0);
+      const flowBDO   = parseFloat(flow.BDOSales || 0)   + parseFloat(flow.WalkInBDOSales || 0);
+
+      // 2. Daily expenses for each payment method
+      const dailyCashExpenses = allExpenses
+        .filter((exp) =>
+          exp.BranchID == flow.BranchID &&
+          exp.BusinessType === flow.BusinessType &&
+          (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
+          exp.PaymentMethod === 'Cash'
+        )
+        .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
+
+      const dailyGCashExpenses = allExpenses
+        .filter((exp) =>
+          exp.BranchID == flow.BranchID &&
+          exp.BusinessType === flow.BusinessType &&
+          (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
+          exp.PaymentMethod === 'GCash'
+        )
+        .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
+
+      const dailyBPIExpenses = allExpenses
+        .filter((exp) =>
+          exp.BranchID == flow.BranchID &&
+          exp.BusinessType === flow.BusinessType &&
+          (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
+          exp.PaymentMethod === 'BPI'
+        )
+        .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
+
+      const dailyBDOExpenses = allExpenses
+        .filter((exp) =>
+          exp.BranchID == flow.BranchID &&
+          exp.BusinessType === flow.BusinessType &&
+          (exp.ExpenseDate || '').slice(0, 10) === (flow.Date || '').slice(0, 10) &&
+          exp.PaymentMethod === 'BDO'
+        )
+        .reduce((sum, e) => sum + parseFloat(e.Amount || 0), 0);
+
+      const totalExpenses = dailyCashExpenses + dailyGCashExpenses + dailyBPIExpenses + dailyBDOExpenses;
+
+      // 3. Petty cash values
+      const pettyCash      = parseFloat(flow.PettyCash || 0);
+      const pettyTomorrow  = parseFloat(flow.PettyCashTomorrow || 0);
+
+      // 4. “Cash + Petty” column (optional)
+      const cashPlusPetty  = flowCash + pettyCash;
+
+      // 5. Total Gross = (Cash + Petty) + (GCash + BPI + BDO)
+      const totalGross = cashPlusPetty + flowGCash + flowBPI + flowBDO;
+
+      // 6. If your business logic subtracts “tomorrow’s petty” from net:
+      const TotalGrossMinusPetty    = totalGross - pettyTomorrow;
+      const TotalGrossMinusExpenses = totalGross - totalExpenses;
+      const takeHome                = totalGross - pettyTomorrow - totalExpenses;
+
+      // 7. Return the row object for DataGrid
+      return {
+        id: flow.CashFlowID,
+        CashFlowID: flow.CashFlowID,
+        Date: flow.Date || '',
+        BranchID: flow.BranchID || '',
+        BusinessType: flow.BusinessType || '',
+
+        // Pure daily cash (no petty)
+        CashSales: flowCash,
+
+        // The new combined field (Cash + Petty)
+        CashPlusPetty: cashPlusPetty,
+
+        // Other payment methods
+        GCashSales: flowGCash,
+        BPISales: flowBPI,
+        BDOSales: flowBDO,
+
+        // Totals & net logic
+        TotalGross: totalGross,
+        TotalGrossMinusPetty,
+        TotalGrossMinusExpenses,
+        TakeHome: takeHome,
+
+        // Petty columns
+        PettyCash: pettyCash,
+        PettyCashTomorrow: pettyTomorrow,
+
+        Remarks: flow.Remarks || '',
+      };
+    });
+
   
   
     // ======================== Cash Flow CRUD ========================
@@ -877,40 +1094,110 @@ export default function OwnerDashboard(onClose) {
         PettyCash: '',
         Remarks: '',
       });
+        // Mark that we are NOT editing an existing record
+        setIsEditingFlow(false);
+        setEditingFlowId(null);
+        // Show dialog
       setCashFlowDialogOpen(true);
     };
+    
+    function openEditFlowDialog(row) {
+      setIsEditingFlow(true);
+      setEditingFlowId(row.CashFlowID); // or row.id if you used row.id = flow.CashFlowID
+    
+      // Pre-fill the dialog form with the existing row data
+      setCashFlowForm({
+        BranchID: row.BranchID?.toString() || '',
+        BusinessType: row.BusinessType || '',
+        Date: row.Date || '',
+        CashSales: row.CashSales?.toString() || '',
+        GCashSales: row.GCashSales?.toString() || '',
+        BPISales: row.BPISales?.toString() || '',
+        BDOSales: row.BDOSales?.toString() || '',
+        WalkInCashSales: '0',
+        WalkInGCashSales: '0',
+        WalkInBPISales: '0',
+        WalkInBDOSales: '0',
+        DepositedAmount: '0',
+        PettyCash: '0', // or row.PettyCash?.toString() if you want to allow editing petty
+        Remarks: row.Remarks || '',
+      });
+      // Now open the dialog
+      setCashFlowDialogOpen(true);
+    }
+    
     const handleCloseCashFlowDialog = () => setCashFlowDialogOpen(false);
+
     const handleCashFlowChange = (e) => {
       const { name, value } = e.target;
       setCashFlowForm((prev) => ({ ...prev, [name]: value }));
     };
-    const handleCashFlowSubmit = async () => {
-      try {
+
+  const handleCashFlowSubmit = async () => {
+    try {
+      if (!isEditingFlow) {
+        // ================ CREATE Logic ================
         const payload = {
           ...cashFlowForm,
-          WalkInCashSales: 0,
-          WalkInGCashSales: 0,
-          WalkInBPISales: 0,
-          WalkInBDOSales: 0,
-          DepositedAmount: 0,
-          PettyCash: 0,
+          CashSales:        Number(cashFlowForm.CashSales || 0),
+          GCashSales:       Number(cashFlowForm.GCashSales || 0),
+          BPISales:         Number(cashFlowForm.BPISales   || 0),
+          BDOSales:         Number(cashFlowForm.BDOSales   || 0),
+          WalkInCashSales:  Number(cashFlowForm.WalkInCashSales  || 0),
+          WalkInGCashSales: Number(cashFlowForm.WalkInGCashSales || 0),
+          WalkInBPISales:   Number(cashFlowForm.WalkInBPISales   || 0),
+          WalkInBDOSales:   Number(cashFlowForm.WalkInBDOSales   || 0),
+          DepositedAmount:  Number(cashFlowForm.DepositedAmount  || 0),
+          PettyCash:        Number(cashFlowForm.PettyCash        || 0),
+          PettyCashTomorrow: Number(cashFlowForm.PettyCashTomorrow || 0), // [PETTY CASH TOMORROW]
         };
         await axios.post('/finance/cashflow', payload);
         showSuccessMessage('Daily cash flow entry created successfully!');
-        const cfRes = await axios.get('/finance/cashflow');
-        const flows = cfRes.data.flows || [];
-        setAllFlows(flows);
-        const newFiltered = applyDateFilter(flows, dateFrom, dateTo);
-        setFilteredFlows(newFiltered);
-        buildRevenueTrends(newFiltered);
-        buildPaymentPie(newFiltered);
-        buildBusinessCharts(newFiltered);
-        setCashFlowDialogOpen(false);
-      } catch (err) {
-        console.error(err);
-        alert('Failed to create daily cash flow entry.');
+      } else {
+        // ================ UPDATE Logic ================
+        const payload = {
+          BranchID:        cashFlowForm.BranchID,
+          BusinessType:    cashFlowForm.BusinessType,
+          Date:            cashFlowForm.Date,
+          CashSales:       Number(cashFlowForm.CashSales || 0),
+          GCashSales:      Number(cashFlowForm.GCashSales || 0),
+          BPISales:        Number(cashFlowForm.BPISales   || 0),
+          BDOSales:        Number(cashFlowForm.BDOSales   || 0),
+          WalkInCashSales:  Number(cashFlowForm.WalkInCashSales   || 0), // or keep if you want to edit them
+          WalkInGCashSales: Number(cashFlowForm.WalkInGCashSales || 0),
+          WalkInBPISales:   Number(cashFlowForm.WalkInBPISales   || 0),
+          WalkInBDOSales:   Number(cashFlowForm.WalkInBDOSales   || 0),
+          DepositedAmount:  Number(cashFlowForm.DepositedAmount  || 0),
+          PettyCash:       Number(cashFlowForm.PettyCash        || 0),
+          PettyCashTomorrow: Number(cashFlowForm.PettyCashTomorrow || 0),
+          Remarks:         cashFlowForm.Remarks || '',
+        };
+        await axios.put(`/finance/cashflow/${editingFlowId}`, payload);
+        showSuccessMessage('Daily cash flow entry updated successfully!');
       }
-    };
+
+      // re-fetch & refresh
+      const cfRes = await axios.get('/finance/cashflow');
+      const flows = cfRes.data.flows || [];
+      setAllFlows(flows);
+      const newFiltered = applyDateFilter(flows, dateFrom, dateTo);
+      setFilteredFlows(newFiltered);
+      buildRevenueTrends(newFiltered);
+      buildPaymentPie(newFiltered);
+      buildBusinessCharts(newFiltered);
+
+      setCashFlowDialogOpen(false);
+      setIsEditingFlow(false);
+      setEditingFlowId(null);
+    } catch (err) {
+      console.error(err);
+      alert(isEditingFlow
+        ? 'Failed to update cash flow entry.'
+        : 'Failed to create daily cash flow entry.'
+      );
+    }
+  };
+    
     const handleGenerateCashFlow = async () => {
       try {
         const formatted = selectedDate.toISOString().substring(0, 10);
@@ -1008,155 +1295,163 @@ export default function OwnerDashboard(onClose) {
     setFilteredExpenses(newFiltered);
   };
 
-  useEffect(() => {
-    buildConsolidatedRows(filteredFlows, filteredExpenses);
-  }, [filteredFlows, filteredExpenses, showPettyCash, showExpenses, paymentFilter, bizFilter]);
-  
-  function buildConsolidatedRows(flows, expenses) {
-  
-    // "groupedByDay" maps each date to 4 businesses only: Gym, Cafe, Yogurt, Yogurt Cafe
-    const groupedByDay = {};
-  
-    flows.forEach((flow) => {
-      const dateKey = (flow.Date || '').slice(0, 10);
-  
-      // [CHANGED] We only store Gym/Cafe/Yogurt/Yogurt Cafe in the aggregator, no Overall
-      if (!groupedByDay[dateKey]) {
-        groupedByDay[dateKey] = {
-          Gym:          { gross: 0, petty: 0, expenses: 0 },
-          Cafe:         { gross: 0, petty: 0, expenses: 0 },
-          'Yogurt':     { gross: 0, petty: 0, expenses: 0 },
-          'Yogurt Cafe':{ gross: 0, petty: 0, expenses: 0 },
-        };
-      }
-  
-      // 1) Compute "gross"
-      let gross = 0;
-      if (paymentFilter === 'all') {
-        gross = parseFloat(flow.TotalSales || 0);
-      } else {
-        const csh = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
-        const gch = parseFloat(flow.GCashSales || 0) + parseFloat(flow.WalkInGCashSales || 0);
-        const bpi = parseFloat(flow.BPISales   || 0) + parseFloat(flow.WalkInBPISales   || 0);
-        const bdo = parseFloat(flow.BDOSales   || 0) + parseFloat(flow.WalkInBDOSales   || 0);
-  
-        if (paymentFilter === 'Cash')  gross = csh;
-        if (paymentFilter === 'GCash') gross = gch;
-        if (paymentFilter === 'BPI')   gross = bpi;
-        if (paymentFilter === 'BDO')   gross = bdo;
-      }
-  
-      // 2) Petty
-      const pettyVal = showPettyCash ? parseFloat(flow.PettyCash || 0) : 0;
-  
-      // 3) Put into aggregator only if business is Gym/Cafe/Yogurt/Yogurt Cafe
-      //    If flow.BusinessType is something else, skip or handle conditionally.
-      const biz = flow.BusinessType;
-      if (biz && groupedByDay[dateKey][biz]) {
-        groupedByDay[dateKey][biz].gross   += gross;
-        groupedByDay[dateKey][biz].petty   += pettyVal;
-        // We no longer track "deposited" since we removed Overall.
-      }
-    });
-  
-    // 4) Add expenses if showExpenses===true
-    if (showExpenses) {
-      expenses.forEach((exp) => {
-        const dateKey = (exp.ExpenseDate || '').slice(0, 10);
-        if (!groupedByDay[dateKey]) return;
-  
-        const biz = exp.BusinessType;  // 'Gym', 'Cafe', etc.
-        if (!biz || !groupedByDay[dateKey][biz]) return;
-  
-        if (paymentFilter !== 'all' && exp.PaymentMethod !== paymentFilter) {
-          return;
-        }
-        groupedByDay[dateKey][biz].expenses += parseFloat(exp.Amount || 0);
-      });
-    }
-  
-    // 5) Build final row objects
-    const resultRows = Object.keys(groupedByDay)
-      .sort((a, b) => new Date(a) - new Date(b))
-      .map((dt, idx) => {
-        // Finalize a single business’s net
-        function finalizeBiz(bizName) {
-          const rec = groupedByDay[dt][bizName];
-          const netVal = rec.gross - rec.petty - rec.expenses;
-          return {
-            gross: rec.gross,
-            petty: rec.petty,
-            expenses: rec.expenses,
-            net: netVal,
-          };
-        }
-  
-        // Get each business’s final
-        const gym    = finalizeBiz('Gym');
-        const cafe   = finalizeBiz('Cafe');
-        const yogurt = finalizeBiz('Yogurt');
-        const yCafe  = finalizeBiz('Yogurt Cafe');
-  
-        // Grand totals = sum across the 4 businesses
-        const grandGross    = gym.gross + cafe.gross + yogurt.gross + yCafe.gross;
-        const grandPetty    = gym.petty + cafe.petty + yogurt.petty + yCafe.petty;
-        const grandExpenses = gym.expenses + cafe.expenses + yogurt.expenses + yCafe.expenses;
-        const grandNet      = grandGross - grandPetty - grandExpenses;
-  
-        return {
-          id: idx,
-          Date: dt,
-  
-          // GYM columns
-          gymGross: gym.gross,
-          gymPetty: gym.petty,
-          gymExpenses: gym.expenses,
-          gymNet: gym.net,
-  
-          // Cafe
-          cafeGross: cafe.gross,
-          cafePetty: cafe.petty,
-          cafeExpenses: cafe.expenses,
-          cafeNet: cafe.net,
-  
-          // Yogurt
-          yogurtGross: yogurt.gross,
-          yogurtPetty: yogurt.petty,
-          yogurtExpenses: yogurt.expenses,
-          yogurtNet: yogurt.net,
-  
-          // Yogurt Cafe
-          yCafeGross: yCafe.gross,
-          yCafePetty: yCafe.petty,
-          yCafeExpenses: yCafe.expenses,
-          yCafeNet: yCafe.net,
-  
-          // Grand totals
-          grandGross,
-          grandPetty,
-          grandExpenses,
-          grandNet,
-        };
-      });
-  
-    // 6) If bizFilter != 'all', remove rows that have no data for that biz
-    let filteredRows = resultRows;
-    if (bizFilter !== 'all') {
-      let prefix = '';
-      if (bizFilter === 'Gym')         prefix = 'gym';
-      if (bizFilter === 'Cafe')        prefix = 'cafe';
-      if (bizFilter === 'Yogurt')      prefix = 'yogurt';
-      if (bizFilter === 'Yogurt Cafe') prefix = 'yCafe';
-  
-      filteredRows = resultRows.filter(r => {
-        const g = r[`${prefix}Gross`] || 0;
-        const n = r[`${prefix}Net`]   || 0;
-        return Math.abs(g) > 0.001 || Math.abs(n) > 0.001;
-      });
-    }
-  
-    setConsolidatedRows(filteredRows);
+function buildConsolidatedRows(flows, expenses) {
+
+// First, filter by branch if not 'all'
+  let relevantFlows = flows;
+  let relevantExpenses = expenses;
+  if (consolidatedBranchFilter !== 'all') {
+    relevantFlows = flows.filter((f) => String(f.BranchID) === String(consolidatedBranchFilter));
+    relevantExpenses = expenses.filter((e) => String(e.BranchID) === String(consolidatedBranchFilter));
   }
+
+  const groupedByDay = {};
+
+  relevantFlows.forEach((flow) => {
+    const dateKey = (flow.Date || '').slice(0, 10);
+
+    // Initialize the day if needed
+    if (!groupedByDay[dateKey]) {
+      groupedByDay[dateKey] = {
+        Gym:          { gross: 0, pettyToday: 0, pettyTomorrow: 0, expenses: 0 },
+        Cafe:         { gross: 0, pettyToday: 0, pettyTomorrow: 0, expenses: 0 },
+        Yogurt:       { gross: 0, pettyToday: 0, pettyTomorrow: 0, expenses: 0 },
+        'Yogurt Cafe':{ gross: 0, pettyToday: 0, pettyTomorrow: 0, expenses: 0 },
+      };
+    }
+
+    // 1) Compute "gross" based on paymentFilter
+    let gross = 0;
+    if (paymentFilter === 'all') {
+      gross = parseFloat(flow.TotalSales || 0);
+    } else {
+      const csh = parseFloat(flow.CashSales || 0) + parseFloat(flow.WalkInCashSales || 0);
+      const gch = parseFloat(flow.GCashSales || 0) + parseFloat(flow.WalkInGCashSales || 0);
+      const bpi = parseFloat(flow.BPISales || 0) + parseFloat(flow.WalkInBPISales || 0);
+      const bdo = parseFloat(flow.BDOSales || 0) + parseFloat(flow.WalkInBDOSales || 0);
+
+      if (paymentFilter === 'Cash')  gross = csh;
+      if (paymentFilter === 'GCash') gross = gch;
+      if (paymentFilter === 'BPI')   gross = bpi;
+      if (paymentFilter === 'BDO')   gross = bdo;
+    }
+
+    // 2) Petty values based on toggles
+    const pettyTodayVal = showPettyToday ? parseFloat(flow.PettyCash || 0) : 0;
+    const pettyTomorrowVal = showPettyTomorrow ? parseFloat(flow.PettyCashTomorrow || 0) : 0;
+
+    // 3) Add to aggregator only if BusinessType is one of our 4
+    const biz = flow.BusinessType;
+    if (biz && groupedByDay[dateKey][biz]) {
+      groupedByDay[dateKey][biz].gross += gross;
+      groupedByDay[dateKey][biz].pettyToday += pettyTodayVal;
+      groupedByDay[dateKey][biz].pettyTomorrow += pettyTomorrowVal;
+    }
+  });
+
+  // 4) Add expenses if showExpenses is true
+  if (showExpenses) {
+    relevantExpenses.forEach((exp) => {
+      const dateKey = (exp.ExpenseDate || '').slice(0, 10);
+      if (!groupedByDay[dateKey]) return;
+
+      const biz = exp.BusinessType; // 'Gym', 'Cafe', etc.
+      if (!biz || !groupedByDay[dateKey][biz]) return;
+
+      if (paymentFilter !== 'all' && exp.PaymentMethod !== paymentFilter) return;
+      groupedByDay[dateKey][biz].expenses += parseFloat(exp.Amount || 0);
+    });
+  }
+
+  // 5) Build final row objects
+  const resultRows = Object.keys(groupedByDay)
+    .sort((a, b) => new Date(a) - new Date(b))
+    .map((dt, idx) => {
+      // For each business, compute net as:
+      // net = gross + pettyToday - pettyTomorrow - expenses
+      function finalizeBiz(bizName) {
+        const rec = groupedByDay[dt][bizName];
+        const netVal = rec.gross + rec.pettyToday - rec.pettyTomorrow - rec.expenses;
+        return {
+          gross: rec.gross,
+          pettyToday: rec.pettyToday,
+          pettyTomorrow: rec.pettyTomorrow,
+          expenses: rec.expenses,
+          net: netVal,
+        };
+      }
+
+      const gym    = finalizeBiz('Gym');
+      const cafe   = finalizeBiz('Cafe');
+      const yogurt = finalizeBiz('Yogurt');
+      const yCafe  = finalizeBiz('Yogurt Cafe');
+
+      // Grand totals: Sum across all 4 businesses
+      const grandGross = gym.gross + cafe.gross + yogurt.gross + yCafe.gross;
+      const grandPettyToday = gym.pettyToday + cafe.pettyToday + yogurt.pettyToday + yCafe.pettyToday;
+      const grandPettyTomorrow = gym.pettyTomorrow + cafe.pettyTomorrow + yogurt.pettyTomorrow + yCafe.pettyTomorrow;
+      const grandExpenses = gym.expenses + cafe.expenses + yogurt.expenses + yCafe.expenses;
+      const grandNet = grandGross + grandPettyToday - grandPettyTomorrow - grandExpenses;
+
+      return {
+        id: idx,
+        Date: dt,
+
+        // Gym columns
+        gymGross: gym.gross,
+        gymPettyToday: gym.pettyToday,
+        gymPettyTomorrow: gym.pettyTomorrow,
+        gymExpenses: gym.expenses,
+        gymNet: gym.net,
+
+        // Cafe columns
+        cafeGross: cafe.gross,
+        cafePettyToday: cafe.pettyToday,
+        cafePettyTomorrow: cafe.pettyTomorrow,
+        cafeExpenses: cafe.expenses,
+        cafeNet: cafe.net,
+
+        // Yogurt columns
+        yogurtGross: yogurt.gross,
+        yogurtPettyToday: yogurt.pettyToday,
+        yogurtPettyTomorrow: yogurt.pettyTomorrow,
+        yogurtExpenses: yogurt.expenses,
+        yogurtNet: yogurt.net,
+
+        // Yogurt Cafe columns
+        yCafeGross: yCafe.gross,
+        yCafePettyToday: yCafe.pettyToday,
+        yCafePettyTomorrow: yCafe.pettyTomorrow,
+        yCafeExpenses: yCafe.expenses,
+        yCafeNet: yCafe.net,
+
+        // Grand totals
+        grandGross,
+        grandPettyToday,
+        grandPettyTomorrow,
+        grandExpenses,
+        grandNet,
+      };
+    });
+
+  // 6) Filter rows by bizFilter if needed
+  let filteredRows = resultRows;
+  if (bizFilter !== 'all') {
+    let prefix = '';
+    if (bizFilter === 'Gym') prefix = 'gym';
+    if (bizFilter === 'Cafe') prefix = 'cafe';
+    if (bizFilter === 'Yogurt') prefix = 'yogurt';
+    if (bizFilter === 'Yogurt Cafe') prefix = 'yCafe';
+
+    filteredRows = resultRows.filter((r) => {
+      const g = r[`${prefix}Gross`] || 0;
+      const n = r[`${prefix}Net`] || 0;
+      return Math.abs(g) > 0.001 || Math.abs(n) > 0.001;
+    });
+  }
+
+  setConsolidatedRows(filteredRows);
+}
   
   const buildNetProfitChart = (rows) => {
     // Suppose net = grandTakeHome (for demonstration)
@@ -1254,6 +1549,7 @@ export default function OwnerDashboard(onClose) {
     function maybeAddBizColumns(bizKey, labelPrefix) {
       if (bizFilter !== 'all' && bizFilter !== labelPrefix) return;
   
+      // Gross column
       columns.push({
         field: `${bizKey}Gross`,
         headerName: `${labelPrefix} Gross`,
@@ -1261,11 +1557,22 @@ export default function OwnerDashboard(onClose) {
         renderCell: (params) => formatCurrency(params.value),
       });
   
-      if (showPettyCash) {
+      // Petty Today column, using new toggle flag
+      if (showPettyToday) {
         columns.push({
-          field: `${bizKey}Petty`,
-          headerName: `${labelPrefix} Petty`,
-          width: 100,
+          field: `${bizKey}PettyToday`,
+          headerName: `${labelPrefix} Petty (Today)`,
+          width: 120,
+          renderCell: (params) => formatCurrency(params.value),
+        });
+      }
+  
+      // Petty Tomorrow column, using new toggle flag
+      if (showPettyTomorrow) {
+        columns.push({
+          field: `${bizKey}PettyTomorrow`,
+          headerName: `${labelPrefix} Petty (Tomorrow)`,
+          width: 140,
           renderCell: (params) => formatCurrency(params.value),
         });
       }
@@ -1279,7 +1586,7 @@ export default function OwnerDashboard(onClose) {
         });
       }
   
-      // Net always
+      // Net column always
       columns.push({
         field: `${bizKey}Net`,
         headerName: `${labelPrefix} Net`,
@@ -1294,9 +1601,7 @@ export default function OwnerDashboard(onClose) {
     maybeAddBizColumns('yogurt', 'Yogurt');
     maybeAddBizColumns('yCafe', 'Yogurt Cafe');
   
-    // [REMOVED] No "Overall" columns
-    // [REMOVED] No "Deposited" column
-    // Keep "Grand" columns if bizFilter==='all'
+    // Grand totals if bizFilter is 'all'
     if (bizFilter === 'all') {
       columns.push({
         field: 'grandGross',
@@ -1304,11 +1609,19 @@ export default function OwnerDashboard(onClose) {
         width: 120,
         renderCell: (params) => formatCurrency(params.value),
       });
-      if (showPettyCash) {
+      if (showPettyToday) {
         columns.push({
-          field: 'grandPetty',
-          headerName: 'Grand Petty',
-          width: 110,
+          field: 'grandPettyToday',
+          headerName: 'Grand Petty (Today)',
+          width: 140,
+          renderCell: (params) => formatCurrency(params.value),
+        });
+      }
+      if (showPettyTomorrow) {
+        columns.push({
+          field: 'grandPettyTomorrow',
+          headerName: 'Grand Petty (Tomorrow)',
+          width: 160,
           renderCell: (params) => formatCurrency(params.value),
         });
       }
@@ -1331,6 +1644,7 @@ export default function OwnerDashboard(onClose) {
     return [...baseDateCol, ...columns];
   }
   
+  
   function filterByDateRange(rows, dateFrom, dateTo) {
       if (!rows || rows.length === 0) return [];
       const from = dateFrom ? new Date(dateFrom) : null;
@@ -1344,8 +1658,7 @@ export default function OwnerDashboard(onClose) {
       });
     }
 
-  // 1) A new piece of state for the sum of grandNet
-  const [sumGrandNet, setSumGrandNet] = useState(0);
+
 
   // 2) A function to sum up displayedConsolidated.reduce((acc, r) => ...
   function handleSumGrandNet() {
@@ -1353,6 +1666,14 @@ export default function OwnerDashboard(onClose) {
     setSumGrandNet(sum);
   }
 
+  function handleSumGrandPettyExpenses() {
+    const pettyTotal = displayedConsolidated.reduce((acc, row) => acc + (row.grandPetty || 0), 0);
+    const expenseTotal = displayedConsolidated.reduce((acc, row) => acc + (row.grandExpenses || 0), 0);
+  
+    setSumGrandPetty(pettyTotal);
+    setSumGrandExpenses(expenseTotal);
+  }
+  
   // We'll create the displayed rows for netProfit chart & table
   const displayedConsolidated = filterByDateRange(consolidatedRows, dateFrom, dateTo);
   useEffect(() => {
@@ -1482,8 +1803,6 @@ useEffect(() => {
   staff
 ]);
 
-const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
-
   return (
     <Box sx={{ minHeight: '100vh', p: 2 }}>
       {/* Header */}
@@ -1503,7 +1822,7 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
         </IconButton>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
-            Owner Dashboard
+            Dashboard
           </Typography>
           <Typography variant="body2">Key performance overview and quick actions</Typography>
         </Box>
@@ -1618,7 +1937,7 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                     <Typography sx={{ fontSize: 30, color: 'white', mr: 1.5, fontWeight: 'bold' }}>₱</Typography>
                     <CardContent sx={{ p: 1 }}>
                       <Typography variant="body2" sx={{ color: 'white', mb: 0.5 }}>
-                        Payments Received
+                        Total Gross
                       </Typography>
                       <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
                         {formatCurrency(keyMetrics.totalRevenue)}
@@ -1640,7 +1959,7 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                     <AttachMoney sx={{ fontSize: 30, color: 'white', mr: 1.5 }} />
                     <CardContent sx={{ p: 1 }}>
                       <Typography variant="body2" sx={{ color: 'white', mb: 0.5 }}>
-                        Revenue Flow Count
+                        Total Cash Flows
                       </Typography>
                       <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
                         {keyMetrics.totalPaymentsCount ?? 0}
@@ -1806,26 +2125,25 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                   </Paper>
                 </Grid>
                 <Grid item xs={12} md={12}>
-                <Paper sx={{ p: 2, height: 280, boxShadow: 3, display: 'flex', flexDirection: 'column' }}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Yogurt Cafe
-                  </Typography>
-                  <Box sx={{ flexGrow: 1, height: '100%', minHeight: 0 }}>
-                    {yogurtCafeChartData ? (
-                      <Line
-                        data={yogurtCafeChartData}
-                        options={{
-                          responsive: true,
-                          maintainAspectRatio: false,
-                          plugins: { legend: { position: 'bottom' } },
-                        }}
-                      />
-                    ) : (
-                      <Typography>Loading Yogurt Cafe chart...</Typography>
-                    )}
-                  </Box>
-                </Paper>
-              </Grid>
+                  <Paper sx={{ p: 2, height: 280, boxShadow: 3, display: 'flex', flexDirection: 'column' }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Yogurt Cafe
+                    </Typography>
+                    <Box sx={{ flexGrow: 1, height: '100%', minHeight: 0 }}>
+                      {yogurtCafeChartData ? (
+                        <Line
+                          data={yogurtCafeChartData}
+                          options={{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                          }}
+                        />
+                      ) : (
+                        <Typography>Loading Yogurt Cafe chart...</Typography>
+                      )}
+                    </Box>
+                  </Paper>
+                </Grid>
 
 
                 <Grid item xs={12} md={12}>
@@ -1841,10 +2159,10 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                     }}
                   >
                     <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
-                      Recent Transactions (incl. Walk-Ins)
+                      Recent Gym Transactions
                     </Typography>
                     <Box sx={{ flexGrow: 1, width: '100%' }}>
-                      <DataGrid
+                    <DataGrid
                         rows={recentTransactions}
                         columns={[
                           {
@@ -1918,175 +2236,182 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
             </Box>
           )}
 
-          {/* =================== DAILY CASH FLOW TAB =================== */}
-          {activeTab === 1 && (
-            <Box sx={{ mt: 1 }}>
-              <Paper sx={{ p: 3, mb: 2, boxShadow: 3, borderRadius: 2 }}>
-                <Typography variant='h6' gutterBottom sx={{ mb: 3 }}>
-                  Filter Cash Flow & Expenses By Date
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <TextField
-                      label='From Date'
-                      type='date'
-                      fullWidth
-                      size='small'
-                      value={dateFrom}
-                      onChange={(e) => setDateFrom(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <TextField
-                      label='To Date'
-                      type='date'
-                      fullWidth
-                      size='small'
-                      value={dateTo}
-                      onChange={(e) => setDateTo(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Button variant='contained' onClick={handleFilterCashFlow}>
-                      Filter
-                    </Button>
-                    <Button variant='outlined' startIcon={<FileDownloadIcon />} onClick={(e) => setExportAnchorEl(e.currentTarget)}>
-                      Export
-                    </Button>
-                    <Menu
-                      anchorEl={exportAnchorEl}
-                      open={Boolean(exportAnchorEl)}
-                      onClose={() => setExportAnchorEl(null)}
-                      anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+            {/* =================== DAILY CASH FLOW TAB =================== */}
+            {activeTab === 1 && (
+              <Box sx={{ mt: 1 }}>
+                <Paper sx={{ p: 3, mb: 2, boxShadow: 3, borderRadius: 2 }}>
+                  <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
+                    Filter Cash Flow & Expenses By Date
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <TextField
+                        label="From Date"
+                        type="date"
+                        fullWidth
+                        size="small"
+                        value={dateFrom}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <TextField
+                        label="To Date"
+                        type="date"
+                        fullWidth
+                        size="small"
+                        value={dateTo}
+                        onChange={(e) => setDateTo(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Button variant="contained" onClick={handleFilterCashFlow}>
+                        Filter
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<FileDownloadIcon />}
+                        onClick={(e) => setExportAnchorEl(e.currentTarget)}
+                      >
+                        Export
+                      </Button>
+                      <Menu
+                        anchorEl={exportAnchorEl}
+                        open={Boolean(exportAnchorEl)}
+                        onClose={() => setExportAnchorEl(null)}
+                        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                      >
+                        <MenuItem>
+                          <CSVLink
+                            data={filteredFlows.map((f, i) => flowRows[i])}
+                            headers={flowColumns.map((col) => ({
+                              label: col.headerName,
+                              key: col.field,
+                            }))}
+                            filename="CashFlowData.csv"
+                            style={{ textDecoration: 'none', color: 'inherit' }}
+                          >
+                            Export CSV
+                          </CSVLink>
+                        </MenuItem>
+                        <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
+                      </Menu>
+                    </Grid>
+                    <Grid
+                      item
+                      xs={12}
+                      sm={6}
+                      md={3}
+                      sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}
                     >
-                      <MenuItem>
-                        <CSVLink
-                          data={filteredFlows.map((f, i) => flowRows[i])}
-                          headers={flowColumns.map((col) => ({
-                            label: col.headerName,
-                            key: col.field,
-                          }))}
-                          filename='CashFlowData.csv'
-                          style={{ textDecoration: 'none', color: 'inherit' }}
-                        >
-                          Export CSV
-                        </CSVLink>
-                      </MenuItem>
-                      <MenuItem onClick={handleExportPDF}>Export PDF</MenuItem>
-                    </Menu>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleOpenCashFlowDialog}
+                        startIcon={<AddIcon />}
+                      >
+                        Add Good One Cash Flow Entry
+                      </Button>
+                    </Grid>
                   </Grid>
-                  <Grid
-                    item
-                    xs={12}
-                    sm={6}
-                    md={3}
-                    sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}
+                </Paper>
+
+                <Paper sx={{ p: 3, boxShadow: 4, borderRadius: 2 }}>
+                  <Tabs
+                    value={selectedTab}
+                    onChange={(e, newValue) => setSelectedTab(newValue)}
+                    variant="fullWidth"
                   >
-                    <Button variant='contained' color='primary' onClick={handleOpenCashFlowDialog} startIcon={<AddIcon />}>
-                      Add Good One Cash Flow Entry
-                    </Button>
-                  </Grid>
-                </Grid>
-              </Paper>
+                    <Tab icon={<FitnessCenter />} iconPosition="start" label="Gym" />
+                    <Tab icon={<LocalCafe />} iconPosition="start" label="Café" />
+                    <Tab icon={<Icecream />} iconPosition="start" label="Yogurt" />
+                    <Tab icon={<LocalCafe />} iconPosition="start" label="Yogurt Cafe" />
+                  </Tabs>
 
-              <Paper
-                sx={{
-                  p: 3,
-                  boxShadow: 4,
-                  borderRadius: 2,
-                }}
-              >
-                <Tabs value={selectedTab} onChange={(e, newValue) => setSelectedTab(newValue)} variant='fullWidth'>
-                  <Tab icon={<FitnessCenter />} iconPosition='start' label='Gym Cash Flow' />
-                  <Tab icon={<LocalCafe />} iconPosition='start' label='Café Cash Flow' />
-                  <Tab icon={<Icecream />} iconPosition='start' label='Yogurt Cash Flow' />
-                  <Tab icon={<LocalCafe />} iconPosition='start' label='Yogurt Cafe Cash Flow' />
-                </Tabs>
-                {selectedTab === 0 && (
-                <>
-                  <Typography variant='h6' sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
-                    Gym Cash Flow
-                  </Typography>
-                  <Box sx={{ height: 400 }}>
-                    <DataGrid
-                      rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Gym')}
-                      columns={flowColumns} // Gym shows all columns
-                      pageSize={5}
-                      rowsPerPageOptions={[5, 10]}
-                      disableSelectionOnClick
-                      autoHeight
-                      density='compact'
-                      disableColumnMenu
-                    />
-                  </Box>
-                </>
-              )}
-
-              {selectedTab === 1 && (
-                <>
-                  <Typography variant='h6' sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
-                    Café Cash Flow
-                  </Typography>
-                  <Box sx={{ height: 400 }}>
-                    <DataGrid
-                      rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Cafe')}
-                      columns={nonWInFlowColumns} // removed W-In columns for Cafe
-                      pageSize={5}
-                      rowsPerPageOptions={[5, 10]}
-                      disableSelectionOnClick
-                      autoHeight
-                      density='compact'
-                      disableColumnMenu
-                    />
-                  </Box>
-                </>
-              )}
-
-              {selectedTab === 2 && (
-                <>
-                  <Typography variant='h6' sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
-                    Yogurt Cash Flow
-                  </Typography>
-                  <Box sx={{ height: 400 }}>
-                    <DataGrid
-                      rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Yogurt')}
-                      columns={nonWInFlowColumns} // removed W-In columns for Yogurt
-                      pageSize={5}
-                      rowsPerPageOptions={[5, 10]}
-                      disableSelectionOnClick
-                      autoHeight
-                      density='compact'
-                      disableColumnMenu
-                    />
-                  </Box>
-                </>
-              )}
-
-              {selectedTab === 3 && (
-                <>
-                  <Typography variant='h6' sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
-                    Yogurt Cafe Cash Flow
-                  </Typography>
-                  <Box sx={{ height: 400 }}>
-                    <DataGrid
-                      rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Yogurt Cafe')}
-                      columns={nonWInFlowColumns} // removed W-In columns for Yogurt Cafe
-                      pageSize={5}
-                      rowsPerPageOptions={[5, 10]}
-                      disableSelectionOnClick
-                      autoHeight
-                      density='compact'
-                      disableColumnMenu
-                    />
-                  </Box>
-                </>
-              )}
-
-              </Paper>
-            </Box>
-          )}
+                  {selectedTab === 0 && (
+                    <>
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
+                        Gym Cash Flow
+                      </Typography>
+                      <Box sx={{ height: 400 }}>
+                        <DataGrid
+                          rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Gym')}
+                          columns={flowColumns /* includes PettyCashTomorrow column now */}
+                          pageSize={5}
+                          rowsPerPageOptions={[5, 10]}
+                          disableSelectionOnClick
+                          autoHeight
+                          density="compact"
+                          disableColumnMenu
+                        />
+                      </Box>
+                    </>
+                  )}
+                  {selectedTab === 1 && (
+                    <>
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
+                        Café Cash Flow
+                      </Typography>
+                      <Box sx={{ height: 400 }}>
+                        <DataGrid
+                          rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Cafe')}
+                          columns={flowColumns}
+                          pageSize={5}
+                          rowsPerPageOptions={[5, 10]}
+                          disableSelectionOnClick
+                          autoHeight
+                          density="compact"
+                          disableColumnMenu
+                        />
+                      </Box>
+                    </>
+                  )}
+                  {selectedTab === 2 && (
+                    <>
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
+                        Yogurt Cash Flow
+                      </Typography>
+                      <Box sx={{ height: 400 }}>
+                        <DataGrid
+                          rows={filteredFlows.map((f, i) => flowRows[i]).filter((r) => r.BusinessType === 'Yogurt')}
+                          columns={flowColumns}
+                          pageSize={5}
+                          rowsPerPageOptions={[5, 10]}
+                          disableSelectionOnClick
+                          autoHeight
+                          density="compact"
+                          disableColumnMenu
+                        />
+                      </Box>
+                    </>
+                  )}
+                  {selectedTab === 3 && (
+                    <>
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', mt: 3, mb: 2 }}>
+                        Yogurt Cafe Cash Flow
+                      </Typography>
+                      <Box sx={{ height: 400 }}>
+                        <DataGrid
+                          rows={filteredFlows
+                            .map((f, i) => flowRows[i])
+                            .filter((r) => r.BusinessType === 'Yogurt Cafe')
+                          }
+                          columns={flowColumns}
+                          pageSize={5}
+                          rowsPerPageOptions={[5, 10]}
+                          disableSelectionOnClick
+                          autoHeight
+                          density="compact"
+                          disableColumnMenu
+                        />
+                      </Box>
+                    </>
+                  )}
+                </Paper>
+              </Box>
+            )}
 
           {/* =================== EXPENSES TAB =================== */}
           {activeTab === 2 && (
@@ -2185,6 +2510,24 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                   onChange={(e) => setDateTo(e.target.value)}
                   InputLabelProps={{ shrink: true }}
                 />
+               <FormControl size="small">
+                  <InputLabel>Branch</InputLabel>
+                  <Select
+                    label="Branch"
+                    value={consolidatedBranchFilter}
+                    onChange={(e) => setConsolidatedBranchFilter(e.target.value)}
+                    sx={{ width: 120 }}
+                  >
+                    <MenuItem value="all">All Branches</MenuItem>
+                    {branchOptions
+                      .filter((b) => b.value !== 'all')
+                      .map((b) => (
+                        <MenuItem key={b.value} value={b.value}>
+                          {b.label}
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
                 <FormControl size="small">
                   <InputLabel>Payment</InputLabel>
                   <Select
@@ -2218,14 +2561,23 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                 </FormControl>
 
                 <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={showPettyCash}
-                      onChange={(e) => setShowPettyCash(e.target.checked)}
-                    />
-                  }
-                  label="Include Petty"
-                />
+                    control={
+                      <Checkbox
+                        checked={showPettyToday}
+                        onChange={(e) => setShowPettyToday(e.target.checked)}
+                      />
+                    }
+                    label="Include Petty Today"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={showPettyTomorrow}
+                        onChange={(e) => setShowPettyTomorrow(e.target.checked)}
+                      />
+                    }
+                    label="Include Petty Tomorrow"
+                  />
                 <FormControlLabel
                   control={
                     <Checkbox
@@ -2253,37 +2605,27 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
                   />
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-              <Button variant="contained" onClick={handleSumGrandNet}>
-                Sum Grand Net
-              </Button>
+                <Button variant="contained" onClick={handleSumGrandNet}>
+                  Sum Grand Net
+                </Button>
 
-              {sumGrandNet !== 0 && (
-                <Typography variant="body1">
-                  Grand Net: <strong>{formatCurrency(sumGrandNet)}</strong>
-                </Typography>
-              )}
-            </Box>
-
-              </Paper>
-
-              <Paper sx={{ p: 2 }}>
-                <Typography variant="h6" sx={{ mb: 1 }}>
-                  Daily Net Profit Trend
-                </Typography>
-                <Box sx={{ height: 300 }}>
-                  {netProfitChart ? (
-                    <Line
-                      data={netProfitChart}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                      }}
-                    />
-                  ) : (
-                    <Typography>No chart data available</Typography>
+                {sumGrandNet !== 0 && (
+                  <Typography variant="body1">
+                    Grand Net: <strong>{formatCurrency(sumGrandNet)}</strong>
+                  </Typography>
+                )}
+               {/* [NEW] Button and display for Petty & Expenses */}
+                  <Button variant="contained" onClick={handleSumGrandPettyExpenses}>
+                    Sum Petty & Expenses
+                  </Button>
+                  {(sumGrandPetty !== 0 || sumGrandExpenses !== 0) && (
+                    <Typography variant="body1">
+                      Petty: <strong>{formatCurrency(sumGrandPetty)}</strong> | 
+                      Expenses: <strong>{formatCurrency(sumGrandExpenses)}</strong>
+                    </Typography>
                   )}
-                </Box>
-              </Paper>
+              </Box>
+            </Paper>
             </Box>
           )}
         </>
@@ -2858,38 +3200,102 @@ const [overviewTimeRange, setOverviewTimeRange] = useState('7d');
           </Grid>
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'flex-end', py: 2 }}>
-        <Button
-          variant='contained'
-          color='primary'
-          onClick={handleCashFlowSubmit}
-          // The disabled logic:
-          disabled={
-            !cashFlowForm.BranchID ||
-            !cashFlowForm.BusinessType ||
-            !cashFlowForm.Date ||
-            (
-              parseFloat(cashFlowForm.CashSales) <= 0 &&
-              parseFloat(cashFlowForm.GCashSales) <= 0 &&
-              parseFloat(cashFlowForm.BPISales) <= 0 &&
-              parseFloat(cashFlowForm.BDOSales) <= 0
-            )
-          }
-          sx={{ textTransform: 'none' }}
-        >
-          <SaveIcon sx={{ mr: 1 }} />
-          Submit Cash Flow
-        </Button>
-      </DialogActions>
-
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleCashFlowSubmit}
+            disabled={
+              !cashFlowForm.BranchID ||
+              !cashFlowForm.BusinessType ||
+              !cashFlowForm.Date ||
+              (
+                parseFloat(cashFlowForm.CashSales) <= 0 &&
+                parseFloat(cashFlowForm.GCashSales) <= 0 &&
+                parseFloat(cashFlowForm.BPISales) <= 0 &&
+                parseFloat(cashFlowForm.BDOSales) <= 0
+              )
+            }
+            sx={{ textTransform: 'none' }}
+          >
+            <SaveIcon sx={{ mr: 1 }} />
+            Submit Cash Flow
+          </Button>
+        </DialogActions>
       </Dialog>
 
-      {/* ----------------- SNACKBAR FOR SUCCESS MESSAGES ----------------- */}
-     <Snackbar
-                   open={snackOpen}
-                   autoHideDuration={3000}
-                   onClose={() => setSnackOpen(false)}
-                   message={snackMessage}
-                 />
+      {/* [ADDED] Daily Petty Dialog (for each flow row) */}
+      <Dialog
+        open={dailyPettyOpen}
+        onClose={closeDailyPettyDialog}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Set Petty Cash (Daily)</DialogTitle>
+        <DialogContent dividers>
+          {selectedDailyFlow && (
+            <>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                <strong>Date:</strong> {formatDate(selectedDailyFlow.Date)}
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                <strong>Business:</strong> {selectedDailyFlow.BusinessType}
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                <strong>Net Profit:</strong> ₱{Number(selectedDailyFlow.NetProfit || 0).toLocaleString()}
+              </Typography>
+            </>
+          )}
+
+          {/* Original Petty Cash field */}
+          <TextField
+            label="Petty Cash"
+            name="pettyCash"
+            type="number"
+            value={dailyPettyForm.pettyCash}
+            onChange={handleDailyPettyChange}
+            fullWidth
+            sx={{ mb: 2 }}
+          />
+
+          {/* NEW FIELD FOR PETTY CASH TOMORROW */}
+          <TextField
+            label="Petty for Tomorrow"
+            name="pettyCashTomorrow"
+            type="number"
+            value={dailyPettyForm.pettyCashTomorrow}
+            onChange={handleDailyPettyChange}
+            fullWidth
+            sx={{ mb: 2 }}
+          />
+
+          <TextField
+            label="Remarks"
+            name="remarks"
+            value={dailyPettyForm.remarks}
+            onChange={handleDailyPettyChange}
+            fullWidth
+            multiline
+            rows={2}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDailyPettyDialog} color="error" startIcon={<Cancel />}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleSubmitDailyPetty} startIcon={<Save />}>
+            Save Petty
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+
+      {/* SNACKBAR FOR SUCCESS MESSAGES */}
+      <Snackbar
+        open={snackOpen}
+        autoHideDuration={3000}
+        onClose={() => setSnackOpen(false)}
+        message={snackMessage}
+      />
     </Box>
   );
 }

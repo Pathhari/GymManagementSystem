@@ -17,6 +17,7 @@ return new class extends Migration
             $table->date('ShiftDate');
             $table->time('ShiftStart')->nullable();
             $table->time('ShiftEnd')->nullable();
+            $table->string('ShiftType', 20)->nullable();
             $table->string('RoleOverride')->nullable();
         
             $table->timestamps();

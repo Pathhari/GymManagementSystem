@@ -211,6 +211,9 @@ Route::prefix('payments')->group(function() {
     Route::put('{id}', [PaymentController::class, 'update'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.update');
+        
+    Route::patch('/{id}/note', [PaymentController::class, 'updateNote']);
+
     Route::delete('{id}', [PaymentController::class, 'destroy'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('payments.destroy');
@@ -308,6 +311,9 @@ Route::prefix('notifications')->group(function() {
     Route::post('send-staff', [NotificationController::class, 'sendStaffNotification'])
         ->middleware('multiGuard:owner,admin,staff')
         ->name('notifications.send.staff');
+    Route::get('staff', [NotificationController::class, 'getStaffNotifications'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('notifications.staff');
 
     // Templates
     Route::get('templates', [NotificationController::class, 'indexTemplates'])
@@ -331,6 +337,14 @@ Route::prefix('notifications')->group(function() {
         ->middleware('auth:owner') // or any guard you prefer
         ->name('notifications.sendExpiringReminder');
 
+    Route::post('/notifications/send-expiring-reminder-selected', [NotificationController::class, 'sendExpiringMembershipReminderForSelected'])
+        ->middleware('auth:owner,admin,staff')
+        ->name('notifications.sendExpiringReminderSelected');
+
+    Route::get('/notifications/mailjet-activity-logs', [NotificationController::class, 'getMailjetActivityLogs'])
+        ->middleware('multiGuard:owner,admin,staff')
+        ->name('notifications.mailjet.activityLogs');
+    
     Route::post('/notifications/send-mailjet-template', [NotificationController::class, 'sendMailjetTemplate'])
     ->middleware('auth:owner,admin,staff')
     ->name('notifications.sendMailjetTemplate');
@@ -338,8 +352,12 @@ Route::prefix('notifications')->group(function() {
     Route::post('/notifications/send-semaphore-sms', [NotificationController::class, 'sendSemaphoreSMS'])
     ->middleware('auth:owner,admin,staff');
 
-    
-        
+    Route::post('/notifications/notify-coach-booking-mailjet', [NotificationController::class, 'notifyCoachOfBookingMailjet'])
+    ->middleware('multiGuard:owner,admin,staff');
+
+    Route::post('/notifications/notify-member-booking-mailjet', [NotificationController::class, 'notifyMemberOfBookingMailjet'])
+    ->middleware('multiGuard:owner,admin,staff');
+
 /*
 |--------------------------------------------------------------------------
 | MembershipController
@@ -468,20 +486,18 @@ Route::prefix('booking')->group(function() {
         Route::post('/coaches/{coachId}/availabilities', [CoachController::class, 'storeAvailability']);
         Route::put('/coaches/{coachId}/availabilities/{availabilityId}', [CoachController::class, 'updateAvailability']);
         Route::delete('/coaches/{coachId}/availabilities/{availabilityId}', [CoachController::class, 'destroyAvailability']);
+        Route::post('/coaches/{coachId}/generate-timeslots', [CoachController::class, 'generateTimeslots']);
     });
     
 
-
-
 use App\Http\Controllers\StaffController;
-
-
 
 // Everything under /staff
 Route::prefix('staff')->group(function () {
 
     // 1) The routes for staff that owners, admins, and staff can all access:
     Route::middleware('multiGuard:owner,admin,staff')->group(function() {
+        Route::get('/authuser', [StaffController::class, 'getAuthUser']);
         // Staff main CRUD
         Route::get('/', [StaffController::class, 'indexStaffJson'])->name('staff.index');
         Route::post('/', [StaffController::class, 'storeStaff'])->name('staff.store');
@@ -512,11 +528,25 @@ Route::prefix('staff')->group(function () {
             Route::post('/', [StaffController::class, 'storeSchedule'])->name('staff.schedules.store');
             Route::put('/{id}', [StaffController::class, 'updateSchedule'])->name('staff.schedules.update');
             Route::delete('/{id}', [StaffController::class, 'destroySchedule'])->name('staff.schedules.destroy');
+            Route::get('/{id}/schedule-range', [StaffController::class, 'scheduleRange'])->name('staff.schedules.range');
+            Route::post('/bulk-store', [StaffController::class, 'bulkStoreSchedules'])->name('staff.schedules.bulkStore');
         });
 
         // Additional
         Route::get('performance', [StaffController::class, 'performance'])->name('staff.performance');
         Route::get('dashboard-info', [StaffController::class, 'staffDashboardInfo'])->name('staff.dashboard.info');
+        
+        //added looged-in-staff
+        Route::get('/get-logged-in-staff', [\App\Http\Controllers\StaffController::class, 'getLoggedInStaff'])
+        ->name('staff.getLoggedInStaff');
+
+        // Fetching Members Filtered by Staff’s Branch
+        Route::prefix('staff/membership')->middleware('multiGuard:owner,admin,staff')->group(function () {
+            Route::get('members', [MembershipController::class, 'apiIndex'])->name('staff.membership.apiIndex');
+            Route::get('plans', [MembershipController::class, 'indexPlans'])->name('staff.membership.plans');
+            Route::get('statuses', [MembershipController::class, 'indexMemberStatuses'])->name('staff.membership.statuses');
+        });
+        
     });
 
 
@@ -559,6 +589,9 @@ Route::prefix('staff')->group(function () {
 Route::middleware('auth:admin')->prefix('admin')->group(function () {
     Route::get('staff', [StaffController::class, 'indexStaffJson'])->name('admin.staff');
 });
+
+Route::post('/staff/schedules/bulk-store-custom', [StaffController::class, 'bulkStoreCustom'])
+    ->name('staff.schedules.bulkStoreCustom');
 
 /*
 
@@ -654,12 +687,15 @@ Route::prefix('finance')->group(function() {
         Route::get('financial-summary', [FinanceController::class, 'getFinancialSummary'])->name('finance.summary');
     });
 
-    Route::middleware('multiGuard:owner,admin')->group(function() {
+    Route::middleware('multiGuard:owner,admin,staff')->group(function() {
         Route::put('summary/{id}', [FinanceController::class, 'updateSummary'])->name('finance.summary.update');
         Route::delete('summary/{id}', [FinanceController::class, 'destroySummary'])->name('finance.summary.destroy');
 
         Route::get('cashflow/create', [FinanceController::class, 'createCashFlow'])->name('finance.cashflow.create');
         Route::post('cashflow', [FinanceController::class, 'storeCashFlow'])->name('finance.cashflow.store');
+        Route::put('cashflow/{id}', [FinanceController::class, 'updateCashFlow'])->name('finance.cashflow.update');
+        Route::delete('cashflow/{id}', [FinanceController::class, 'destroyCashFlow'])->name('finance.cashflow.destroy');
+
         Route::get('expenses/create', [FinanceController::class, 'createExpense'])->name('finance.expenses.create');
         Route::post('expenses', [FinanceController::class, 'storeExpense'])->name('finance.expenses.store');
         Route::get('expenses/{id}/edit', [FinanceController::class, 'editExpense'])->name('finance.expenses.edit');
@@ -759,11 +795,26 @@ use App\Http\Controllers\FacilityController;
     
     use App\Http\Controllers\MonthlyClientController;   
 
-     Route::prefix('monthly-clients')->group(function () {
-        Route::get('/',        [MonthlyClientController::class, 'index']);
-        Route::get('/{id}',    [MonthlyClientController::class, 'show']);
-        Route::post('/',       [MonthlyClientController::class, 'store']);
-        Route::put('/{id}',    [MonthlyClientController::class, 'update']);
+    Route::prefix('monthly-clients')->group(function () {
+        // Define the literal route first
+        Route::get('/attendances-all', [MonthlyClientController::class, 'indexAllAttendances']);
+    
+        // Then define the routes with the dynamic parameter
+        Route::get('/', [MonthlyClientController::class, 'index']);
+        Route::get('/{id}', [MonthlyClientController::class, 'show']);
+        Route::post('/', [MonthlyClientController::class, 'store']);
+        Route::put('/{id}', [MonthlyClientController::class, 'update']);
         Route::delete('/{id}', [MonthlyClientController::class, 'destroy']);
+        Route::get('/{id}/attendances', [MonthlyClientController::class, 'indexAttendances']);
+        Route::post('/{id}/attendances', [MonthlyClientController::class, 'storeAttendance']);
     });
+    
+    
+    // Separate route for staff to create monthly clients
+    Route::post('staff/monthly-clients', [MonthlyClientController::class, 'store']);
+    
+
+    use App\Http\Controllers\ReportsController;
+
+    Route::get('/reports', [ReportsController::class, 'index']);
     

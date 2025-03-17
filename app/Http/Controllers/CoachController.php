@@ -14,8 +14,9 @@ class CoachController extends Controller
      */
     public function index()
     {
-        // If you want to return their availability in the same response:
-        $coaches = Coach::with('availabilities')->orderBy('FullName')->get();
+        $coaches = Coach::select('CoachID', 'FullName', 'Specialty', 'ContactInfo', 'Email')
+        ->with('availabilities')
+        ->get();
         return response()->json(['coaches' => $coaches]);
     }
 
@@ -28,7 +29,7 @@ class CoachController extends Controller
             'FullName'     => 'required|string|max:255',
             'Specialty'    => 'nullable|string|max:255',
             'ContactInfo'  => 'nullable|string|max:255',
-            // We no longer store availability ranges here
+            'Email'       => 'nullable|email|max:255', 
         ]);
 
         $coach = Coach::create($data);
@@ -60,7 +61,7 @@ class CoachController extends Controller
             'FullName'     => 'required|string|max:255',
             'Specialty'    => 'nullable|string|max:255',
             'ContactInfo'  => 'nullable|string|max:255',
-            // No availability in main table
+            'Email'       => 'nullable|email|max:255', 
         ]);
 
         // Fix: Update the existing coach instead of creating a new one
@@ -153,4 +154,84 @@ class CoachController extends Controller
 
         return response()->json(['message' => 'Availability deleted successfully.']);
     }
+
+
+    public function generateTimeslots(Request $request, $coachId)
+{
+    $coach = Coach::with('availabilities')->findOrFail($coachId);
+
+    // You can validate optional filters like date range if you want:
+    $data = $request->validate([
+        'start_date' => 'required|date', // e.g. 2025-01-01
+        'end_date'   => 'required|date|after_or_equal:start_date', // e.g. 2025-01-31
+        'branch_id'  => 'required|exists:branches,BranchID',
+        // optional: 'location' => 'string',
+        // optional: 'session_type' => 'string',
+        // optional: 'fee' => 'numeric|min:0',
+    ]);
+
+    $startDate = \Carbon\Carbon::parse($data['start_date'])->startOfDay();
+    $endDate   = \Carbon\Carbon::parse($data['end_date'])->endOfDay();
+
+    // We'll store the newly created sessions in an array
+    $createdSessions = [];
+
+    // 1) Loop day by day, hour by hour, within the specified date range
+    $current = $startDate->copy();
+    while ($current->lt($endDate)) {
+
+        // For each hour, find all coach availability slots that cover that entire hour
+        foreach ($coach->availabilities as $slot) {
+            $slotStart = \Carbon\Carbon::parse($slot->Start);
+            $slotEnd   = \Carbon\Carbon::parse($slot->End);
+
+            // We'll define an "hour block" from $current to $current + 1 hour
+            $hourBlockStart = $current->copy();
+            $hourBlockEnd   = $current->copy()->addHour();
+
+            // Check if [hourBlockStart, hourBlockEnd] is fully within [slotStart, slotEnd]
+            // That means the coach is available for that hour
+            if ($hourBlockStart->greaterThanOrEqualTo($slotStart) &&
+                $hourBlockEnd->lessThanOrEqualTo($slotEnd)
+            ) {
+                // We have an hour block the coach is available!
+
+                // 2) Check if we already have an existing session for that exact hour
+                //    (avoid duplicates if you run this more than once)
+                $existing = \App\Models\CoachingSession::where('CoachID', $coachId)
+                    ->where('StartTime', $hourBlockStart->format('Y-m-d H:i:s'))
+                    ->where('EndTime', $hourBlockEnd->format('Y-m-d H:i:s'))
+                    ->first();
+
+                if (!$existing) {
+                    // 3) Create a new CoachingSession record for that 1-hour block
+                    $newSession = \App\Models\CoachingSession::create([
+                        'BranchID'    => $data['branch_id'],
+                        'SessionName' => '1-Hour Slot',
+                        'SessionType' => $request->get('session_type', 'Regular'), 
+                        'CoachID'     => $coachId,
+                        'StartTime'   => $hourBlockStart,
+                        'EndTime'     => $hourBlockEnd,
+                        'Capacity'    => 3,  // up to 3 members
+                        'Location'    => $request->get('location', null),
+                        'Fee'         => $request->get('fee', 0),
+                        'Participants'=> 0,
+                        'Status'      => 'Scheduled',
+                    ]);
+
+                    $createdSessions[] = $newSession;
+                }
+            }
+        }
+
+        // Move $current forward by 1 hour
+        $current->addHour();
+    }
+
+    return response()->json([
+        'message'           => 'Timeslots generated successfully.',
+        'created_sessions'  => $createdSessions,
+    ]);
+}
+
 }

@@ -24,15 +24,24 @@ class FinanceController extends Controller
     public function generateDailyCashFlow(Request $request)
     {
         $request->validate([
-            'date'      => 'required|date',
-            'branch_id' => 'required|exists:branches,BranchID',
+            'date'              => 'required|date',
+            'branch_id'         => 'required|exists:branches,BranchID',
+            'PettyCashTomorrow' => 'nullable|numeric|min:0'
         ]);
     
         $date     = $request->input('date');
         $branchId = $request->input('branch_id');
+        $inputPettyCashTomorrow = $request->input('petty_cash_tomorrow') ?? 0;
     
-        // Always set BusinessType = 'Gym' here, so PettyCash is 0
-        // (We do not carry petty cash in Gym record)
+        // Look up yesterday's cash flow for this branch and Gym business.
+        $yesterday = \Carbon\Carbon::parse($date)->subDay()->format('Y-m-d');
+        $yesterdayFlow = DailyCashFlow::where('BranchID', $branchId)
+                            ->whereDate('Date', $yesterday)
+                            ->where('BusinessType', 'Gym')
+                            ->first();
+        // If yesterday had a PettyCashTomorrow value, that becomes today's petty cash.
+        $pettyCashToday = $yesterdayFlow ? $yesterdayFlow->PettyCashTomorrow : 0;
+    
         $dailyFlow = DailyCashFlow::firstOrCreate(
             [
                 'Date'         => $date,
@@ -48,40 +57,45 @@ class FinanceController extends Controller
                 'WalkInGCashSales' => 0,
                 'WalkInBPISales'   => 0,
                 'WalkInBDOSales'   => 0,
-                'PettyCash'        => 0,   // Always 0 for Gym
+                // Set PettyCash from yesterday's PettyCashTomorrow
+                'PettyCash'        => $pettyCashToday,
                 'DepositedAmount'  => 0,
                 'TotalSales'       => 0,
+                'PettyCashTomorrow'=> 0,  // will be updated below
             ]
         );
     
-        // -- No leftover petty cash logic here since "Gym" does not hold PettyCash --
-    
         // Sum membership payments for this date/branch
         $payments = \App\Models\Payment::whereDate('PaymentDate', $date)
-            ->where('BranchID', $branchId)
-            ->get();
+                    ->where('BranchID', $branchId)
+                    ->get();
     
-        $sumCash  = $payments->where('PaymentMethod', 'Cash')->sum('Amount');
-        $sumGCash = $payments->where('PaymentMethod', 'GCash')->sum('Amount');
-        $sumBPI   = $payments->where('PaymentMethod', 'BPI')->sum('Amount');
-        $sumBDO   = $payments->where('PaymentMethod', 'BDO')->sum('Amount');
+        $sumCash  = $payments->whereIn('PaymentMethod', ['Cash', 'W-In Cash'])->sum('Amount');
+        $sumGCash = $payments->where('PaymentMethod', ['GCash', 'W-In GCash'])->sum('Amount');
+        $sumBPI   = $payments->where('PaymentMethod', ['BPI', 'W-In BPI'])->sum('Amount');
+        $sumBDO   = $payments->where('PaymentMethod', ['BDO', 'W-In BDO'])->sum('Amount');
     
         $dailyFlow->CashSales  = $sumCash;
         $dailyFlow->GCashSales = $sumGCash;
         $dailyFlow->BPISales   = $sumBPI;
         $dailyFlow->BDOSales   = $sumBDO;
     
-        // Recompute total
+        // Compute TotalSales:
+        // TotalSales = (sum of all payment amounts, including Walk-In variants) 
+        //             + (petty cash carried over from yesterday)
+        //             - (petty cash for tomorrow entered today)
         $dailyFlow->TotalSales =
-            ($dailyFlow->CashSales ?? 0) +
-            ($dailyFlow->GCashSales ?? 0) +
-            ($dailyFlow->BPISales ?? 0) +
-            ($dailyFlow->BDOSales ?? 0) +
-            ($dailyFlow->WalkInCashSales ?? 0) +
-            ($dailyFlow->WalkInGCashSales ?? 0) +
-            ($dailyFlow->WalkInBPISales ?? 0) +
-            ($dailyFlow->WalkInBDOSales ?? 0);
+        ($dailyFlow->CashSales ?? 0) +
+        ($dailyFlow->GCashSales ?? 0) +
+        ($dailyFlow->BPISales ?? 0) +
+        ($dailyFlow->BDOSales ?? 0) +
+        ($dailyFlow->WalkInCashSales ?? 0) +
+        ($dailyFlow->WalkInGCashSales ?? 0) +
+        ($dailyFlow->WalkInBPISales ?? 0) +
+        ($dailyFlow->WalkInBDOSales ?? 0);
     
+        // Update today's record with the new petty cash for tomorrow input.
+        $dailyFlow->PettyCashTomorrow = $inputPettyCashTomorrow;
         $dailyFlow->save();
     
         return response()->json([
@@ -91,8 +105,7 @@ class FinanceController extends Controller
         ], 200);
     }
     
-
-
+    
     public function storeCashFlow(Request $request)
     {
         $staff = auth('staff')->user();
@@ -103,21 +116,20 @@ class FinanceController extends Controller
             'BranchID'         => 'required|exists:branches,BranchID',
             'Date'             => 'required|date',
             'BusinessType'     => 'required|string|max:100',
-    
             'CashSales'        => 'nullable|numeric|min:0',
             'GCashSales'       => 'nullable|numeric|min:0',
             'BPISales'         => 'nullable|numeric|min:0',
             'BDOSales'         => 'nullable|numeric|min:0',
-    
             'WalkInCashSales'  => 'nullable|numeric|min:0',
             'WalkInGCashSales' => 'nullable|numeric|min:0',
             'WalkInBPISales'   => 'nullable|numeric|min:0',
             'WalkInBDOSales'   => 'nullable|numeric|min:0',
-    
             'PettyCash'        => 'nullable|numeric|min:0',
+            'PettyCashTomorrow'=> 'nullable|numeric|min:0',
             'DepositedAmount'  => 'nullable|numeric|min:0',
             'Remarks'          => 'nullable|string',
         ]);
+        
     
         // If you still want "Overall" to have null BranchID, handle it here:
         // (Remove if you are no longer using Overall lumpsum)
@@ -203,26 +215,70 @@ class FinanceController extends Controller
         ], 201);
     }
     
-
     public function indexCashFlow()
     {
         $staff = auth('staff')->user();
         $admin = auth('admin')->user();
         $owner = auth('owner')->user();
-
+    
         if ($staff) {
             $staffBranchIDs = $staff->branches->pluck('BranchID')->toArray();
-            $flows = DailyCashFlow::select('CashFlowID', 'Date', 'BusinessType', 'TotalSales', 'Remarks')
-                ->whereIn('BranchID', $staffBranchIDs)
+    
+            // 1) Remove the ->select(...) so staff sees *all columns*
+            $flows = DailyCashFlow::whereIn('BranchID', $staffBranchIDs)
                 ->orderBy('Date', 'desc')
                 ->get();
+    
         } elseif ($admin || $owner) {
+            // 2) Same here — just get everything
             $flows = DailyCashFlow::orderBy('Date', 'desc')->get();
         } else {
             $flows = collect([]);
         }
-
+    
         return response()->json(['flows' => $flows]);
+    }
+    
+    public function updateCashFlow(Request $request, $id)
+    {
+        $data = $request->validate([
+            'BranchID'         => 'required|exists:branches,BranchID',
+            'Date'             => 'required|date',
+            'BusinessType'     => 'required|string|max:100',
+            'CashSales'        => 'nullable|numeric|min:0',
+            'GCashSales'       => 'nullable|numeric|min:0',
+            'BPISales'         => 'nullable|numeric|min:0',
+            'BDOSales'         => 'nullable|numeric|min:0',
+            'WalkInCashSales'  => 'nullable|numeric|min:0',
+            'WalkInGCashSales' => 'nullable|numeric|min:0',
+            'WalkInBPISales'   => 'nullable|numeric|min:0',
+            'WalkInBDOSales'   => 'nullable|numeric|min:0',
+            'PettyCash'        => 'nullable|numeric|min:0',
+            'PettyCashTomorrow'=> 'nullable|numeric|min:0',
+            'DepositedAmount'  => 'nullable|numeric|min:0',
+            'Remarks'          => 'nullable|string',
+        ]);
+        
+
+        $cashflow = DailyCashFlow::findOrFail($id);
+        $cashflow->update($data);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cash flow updated successfully.',
+            'data'    => $cashflow,
+        ], 200);
+    }
+
+    public function destroyCashFlow($id)
+    {
+        $cashflow = DailyCashFlow::findOrFail($id);
+        $cashflow->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cash flow deleted successfully.',
+        ], 200);
     }
 
     /* ------------------------------------------------------------------

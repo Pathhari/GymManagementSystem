@@ -358,7 +358,7 @@ export default function EditProfile() {
           Create a new user with the appropriate role and branch.
         </Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenAddStaff}>
-          Create Staff
+          Create Staff Branch Account
         </Button>
       </Paper>
 
@@ -384,7 +384,7 @@ export default function EditProfile() {
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <PersonAddIcon sx={{ fontSize: 32, color: "primary.main" }} />
               <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                Create {staffData.Role}
+                Create {staffData.Role} Branch Account
               </Typography>
             </Box>
             <IconButton
@@ -571,77 +571,6 @@ export default function EditProfile() {
                   )}
                 </FormControl>
               </Grid>
-            )}
-
-            {/* Additional fields for Staff only */}
-            {staffData.Role === "Staff" && (
-              <>
-                <Grid item xs={12}>
-                  <TextField
-                    label="Date Hired"
-                    type="date"
-                    fullWidth
-                    value={staffData.DateHired}
-                    onChange={(e) => handleStaffDataChange("DateHired", e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <DateRangeIcon />
-                        </InputAdornment>
-                      )
-                    }}
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <Grid container spacing={2}>
-                    <Grid item xs={4}>
-                      <TextField
-                        label="Daily Rate"
-                        type="number"
-                        fullWidth
-                        value={staffData.DailyRate}
-                        onChange={(e) => handleStaffDataChange("DailyRate", e.target.value)}
-                        InputProps={{
-                          startAdornment: <InputAdornment position="start">₱</InputAdornment>
-                        }}
-                      />
-                    </Grid>
-                    <Grid item xs={4}>
-                      <TextField
-                        label="Hourly Rate"
-                        type="number"
-                        fullWidth
-                        value={staffData.HourlyRate}
-                        onChange={(e) => handleStaffDataChange("HourlyRate", e.target.value)}
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <AccessTimeIcon />
-                            </InputAdornment>
-                          )
-                        }}
-                      />
-                    </Grid>
-                    <Grid item xs={4}>
-                      <TextField
-                        label="Overtime Rate"
-                        type="number"
-                        fullWidth
-                        value={staffData.OvertimeRate}
-                        onChange={(e) => handleStaffDataChange("OvertimeRate", e.target.value)}
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <TimelapseIcon />
-                            </InputAdornment>
-                          )
-                        }}
-                      />
-                    </Grid>
-                  </Grid>
-                </Grid>
-              </>
             )}
 
             {/* Additional Notes */}

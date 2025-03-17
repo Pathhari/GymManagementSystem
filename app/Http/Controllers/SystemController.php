@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\SystemLog;
 use Spatie\Activitylog\Models\Activity;
 
 class SystemController extends Controller
@@ -13,33 +12,50 @@ class SystemController extends Controller
      */
     public function indexLogs(Request $request)
     {
-        $query = Activity::orderBy('created_at','desc');
-    
+        $query = Activity::orderBy('created_at', 'desc');
+
+        // Optional: Filter by log_name
         if ($request->filled('log_name')) {
             $query->where('log_name', $request->log_name);
         }
-        // If you want to filter by date or user:
+
+        // Optional: Filter by exact date (yyyy-mm-dd)
         if ($request->filled('date')) {
             $query->whereDate('created_at', $request->date);
         }
-    
+
+        // **New**: Filter by branch if provided and not "All Branches"
+        // (assuming you store branch_id in properties->branch_id)
+        if ($request->filled('branch') && $request->branch !== 'All Branches') {
+            $branchVal = $request->branch;
+            // if your DB is MySQL 5.7+ or Postgres, you can do:
+            $query->where('properties->branch_id', $branchVal);
+
+            // Alternatively, for older MySQL or complex logic, you might do
+            // $query->whereJsonContains('properties->branch_id', $branchVal);
+        }
+
         $logs = $query->get();
-    
+
         // Convert each activity to the shape your React table wants
         $logsArray = $logs->map(function($activity) {
+            // We'll retrieve the branch_id from properties, if present
+            $props = $activity->properties->toArray();
+            $branchId = $props['branch_id'] ?? 'N/A';
+
             return [
-                'logId' => 'LOG-'.$activity->id,
+                'logId'     => 'LOG-'.$activity->id,
                 'timestamp' => $activity->created_at->format('Y-m-d H:i:s'),
-                'user' => optional($activity->causer)->FullName ?? 'System',
-                'actionDesc' => $activity->description,
-                'module' => $activity->log_name,
-                'logType' => $activity->event ?? 'informational', // or parse from your description
-                'details' => json_encode($activity->properties),
-                'ipAddress' => $activity->properties['ip'] ?? 'N/A',
-                'branch' => 'N/A', // if your properties store branch
+                'user'      => optional($activity->causer)->FullName ?? 'System',
+                'actionDesc'=> $activity->description,
+                'module'    => $activity->log_name,
+                'logType'   => $activity->event ?? 'informational',
+                'details'   => json_encode($props),
+                'ipAddress' => $props['ip'] ?? 'N/A',
+                'branch'    => $branchId,  // passing branch to the front end
             ];
         });
-    
+
         return response()->json(['logs' => $logsArray]);
     }
 
@@ -50,7 +66,13 @@ class SystemController extends Controller
     {
         $this->authorize('delete-logs');  // Only owners or specific roles
 
-        $log = SystemLog::findOrFail($id);
+        // If you're storing logs in Spatie's default 'activity_log' table,
+        // you might do: $log = Activity::findOrFail($id);
+        // Or if you have SystemLog as a separate model:
+        // $log = SystemLog::findOrFail($id);
+
+        // Example if you store them in SystemLog:
+        $log = \App\Models\SystemLog::findOrFail($id);
         $log->delete();
 
         return response()->json([
@@ -71,7 +93,7 @@ class SystemController extends Controller
             'logIds.*' => 'exists:system_logs,id',
         ]);
 
-        SystemLog::whereIn('id', $request->logIds)->delete();
+        \App\Models\SystemLog::whereIn('id', $request->logIds)->delete();
 
         return response()->json([
             'success' => true,
@@ -92,8 +114,6 @@ class SystemController extends Controller
             ->limit(30)
             ->get();
 
-        // If you want this as JSON for React, return response()->json([...])
-        // Otherwise, if you still use Inertia:
         return Inertia::render('System/Reports/Index', [
             'membershipCount' => $membershipCount,
             'attendanceStats' => $attendanceStats,
@@ -101,16 +121,14 @@ class SystemController extends Controller
     }
 
     public function systemMetrics()
-{
-    // Count total logs and notifications.
-    $logsCount = \DB::table('system_logs')->count();
-    $notificationsCount = \DB::table('notifications')->count();
+    {
+        // Just example
+        $logsCount = \DB::table('system_logs')->count();
+        $notificationsCount = \DB::table('notifications')->count();
 
-
-    return response()->json([
-        'logsCount' => $logsCount,
-        'notificationsCount' => $notificationsCount,
-    ], 200);
-}
-
+        return response()->json([
+            'logsCount' => $logsCount,
+            'notificationsCount' => $notificationsCount,
+        ], 200);
+    }
 }

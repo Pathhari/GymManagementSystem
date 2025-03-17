@@ -14,6 +14,7 @@ class Coach extends Model
         'FullName',
         'Specialty',
         'ContactInfo',
+        'Email', 
     ];
 
     // A coach can have many sessions
@@ -49,6 +50,15 @@ class Coach extends Model
 
         // If no slot matched, coach is not available
         return false;
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('coach')
+            ->setDescriptionForEvent(fn ($eventName) => "Coach {$eventName}")
+            ->logFillable()
+            ->logOnlyDirty();
     }
 
 }

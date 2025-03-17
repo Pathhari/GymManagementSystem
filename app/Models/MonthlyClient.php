@@ -50,4 +50,8 @@ class MonthlyClient extends Model
         return $this->belongsTo(Branch::class, 'BranchID', 'BranchID');
     }
 
+    public function attendances()
+{
+    return $this->hasMany(MonthlyClientAttendance::class, 'MonthlyClientID', 'MonthlyClientID');
+}
 }

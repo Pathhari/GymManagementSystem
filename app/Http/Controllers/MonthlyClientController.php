@@ -11,6 +11,9 @@ use App\Models\InvoiceLineItem;
 use App\Models\Payment;
 use App\Models\PaymentInvoice;
 use App\Models\Branch; // if needed
+use App\Models\MonthlyClientAttendance;
+
+
 
 class MonthlyClientController extends Controller
 {
@@ -19,19 +22,8 @@ class MonthlyClientController extends Controller
      */
     public function index()
     {
-        $staff = auth('staff')->user();
-
-        if ($staff) {
-            // Show only the monthly clients in staff's branch(es)
-            $branchIDs = $staff->branches->pluck('BranchID');
-            $clients = MonthlyClient::whereIn('BranchID', $branchIDs)
-                ->orderBy('MonthlyClientID','desc')
-                ->get();
-        } else {
-            // Admin => show all
-            $clients = MonthlyClient::orderBy('MonthlyClientID','desc')->get();
-        }
-
+        
+        $clients = MonthlyClient::orderBy('MonthlyClientID','desc')->get();
         return response()->json($clients);
     }
 
@@ -70,10 +62,12 @@ class MonthlyClientController extends Controller
             'Payments.*.PaymentAmount'=> 'numeric|min:0',
         ]);
     
-        // Staff => override BranchID
+        // If a staff user is logged in, use the branch from their associated branches.
         $staff = auth('staff')->user();
         if ($staff) {
-            $data['BranchID'] = $staff->BranchID;
+            // Retrieve the branch id from the staff's associated branches.
+            $branch = $staff->branches()->first();
+            $data['BranchID'] = $branch ? $branch->BranchID : null;
         }
     
         DB::beginTransaction();
@@ -108,11 +102,11 @@ class MonthlyClientController extends Controller
                 'InvoiceTotal'     => 0,
             ]);
     
-            $monthlyFee = 2500; // fixed
+            $monthlyFee = 2500; // fixed fee
             $monthsUpfront = $data['MonthsToPayUpfront'] ?? 1;
             $subtotal = $monthlyFee * $monthsUpfront;
     
-            $lineItem = InvoiceLineItem::create([
+            InvoiceLineItem::create([
                 'InvoiceID'   => $invoice->InvoiceID,
                 'ItemType'    => 'MonthlyClientFee', // or 'MonthlyMembership'
                 'ItemID'      => null,
@@ -140,7 +134,6 @@ class MonthlyClientController extends Controller
                     'Status'           => 'Completed',
                 ]);
     
-                // PaymentInvoice bridging
                 PaymentInvoice::create([
                     'PaymentID'       => $payment->PaymentID,
                     'InvoiceID'       => $invoice->InvoiceID,
@@ -181,25 +174,31 @@ class MonthlyClientController extends Controller
     public function update(Request $request, $id)
     {
         $client = MonthlyClient::findOrFail($id);
-
-        $staff = auth('staff')->user();
-        if ($staff && $client->BranchID != $staff->BranchID) {
-            abort(403, 'Not your branch');
+        $staff  = auth('staff')->user();
+    
+        // if staff is logged in, confirm the client’s BranchID is in staff’s branches
+        if ($staff) {
+            $branchIDs = $staff->branches->pluck('BranchID')->toArray();
+            if (! in_array($client->BranchID, $branchIDs)) {
+                abort(403, 'Not your branch');
+            }
         }
-
+    
+        // Now do your validation and update
         $data = $request->validate([
-            'FullName'   => 'nullable|string|max:255',
-            'Email'      => 'nullable|email|unique:monthly_clients,Email,' . $client->MonthlyClientID . ',MonthlyClientID',
-            'Phone'      => 'nullable|string|max:50',
-            'StartDate'  => 'nullable|date',
-            'EndDate'    => 'nullable|date|after_or_equal:StartDate',
-            'IsActive'   => 'boolean',
+            'FullName'  => 'nullable|string|max:255',
+            'Email'     => 'nullable|email|unique:monthly_clients,Email,' . $client->MonthlyClientID . ',MonthlyClientID',
+            'Phone'     => 'nullable|string|max:50',
+            'StartDate' => 'nullable|date',
+            'EndDate'   => 'nullable|date|after_or_equal:StartDate',
+            'IsActive'  => 'boolean',
         ]);
-
+    
         $client->update($data);
+    
         return response()->json($client);
     }
-
+    
     /**
      * DELETE /monthly-clients/{id}
      * You might want to handle invoice/payment reversion, or just soft-delete the client.
@@ -218,4 +217,64 @@ class MonthlyClientController extends Controller
         $client->delete();
         return response()->json(['message' => 'MonthlyClient deleted']);
     }
+
+    public function indexAttendances($monthlyClientID)
+    {
+        $client = MonthlyClient::findOrFail($monthlyClientID);
+
+        // Staff branch check, if needed
+        $staff = auth('staff')->user();
+        if ($staff && $client->BranchID != $staff->BranchID) {
+            abort(403, 'Not your branch');
+        }
+
+        // Eager-load or just get them
+        $attendances = $client->attendances()
+            ->orderBy('VisitDateTime', 'desc')
+            ->get();
+
+        return response()->json($attendances, 200);
+    }
+
+    // E.g. in MonthlyClientController
+    public function indexAllAttendances()
+    {
+        // You can do a join or eager load:
+        $attendances = MonthlyClientAttendance::with('monthlyClient')->get();
+
+        return response()->json([
+        'attendances' => $attendances
+        ]);
+    }
+
+
+    /**
+     * POST /monthly-clients/{monthlyClientID}/attendances
+     * Create a new attendance record (like "Check-In").
+     */
+    public function storeAttendance(Request $request, $monthlyClientID)
+    {
+        $client = MonthlyClient::findOrFail($monthlyClientID);
+    
+        // Validate the request data
+        $data = $request->validate([
+            'VisitDateTime' => 'required|date',
+            'Notes'         => 'nullable|string|max:255',
+        ]);
+    
+        // Convert the ISO8601 datetime to MySQL datetime format
+        $formattedVisitDateTime = Carbon::parse($data['VisitDateTime'])->format('Y-m-d H:i:s');
+    
+        // Create the attendance record for the monthly client
+        $attendance = MonthlyClientAttendance::create([
+            'MonthlyClientID' => $client->MonthlyClientID,
+            'VisitDateTime'   => $formattedVisitDateTime,
+            'Notes'           => $data['Notes'] ?? null,
+        ]);
+    
+        return response()->json($attendance, 201);
+    }
+    
+
+    
 }

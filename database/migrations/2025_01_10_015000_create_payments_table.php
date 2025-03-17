@@ -19,8 +19,12 @@ return new class extends Migration
             $table->string('WalkInName')->nullable();    // for walk-in clients
             $table->string('BookingRef')->nullable();     // if referencing a booking
             $table->string('SessionRef')->nullable();     // if referencing a session 
-            $table->unsignedBigInteger('MonthlyClientID')->nullable();
-            $table->foreign('MonthlyClientID')->references('MonthlyClientID')->on('monthly_clients')->onDelete('cascade'); // or set null
+            $table->unsignedInteger('MonthlyClientID')->nullable();
+            $table
+              ->foreign('MonthlyClientID')
+              ->references('MonthlyClientID')
+              ->on('monthly_clients')
+              ->onDelete('cascade');            
             $table->text('PaymentFor')->nullable();          
             $table->string('PaymentMethod')->nullable();    // "Cash", "GCash", "BPI"
             $table->decimal('Amount', 10, 2);
